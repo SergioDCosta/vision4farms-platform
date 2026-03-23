@@ -1,0 +1,232 @@
+{% extends "dashboard/admin/base_admin.html" %}
+
+{% block admin_content %}
+<style>
+  /* ── formulário de utilizador ─────────────────────────────────── */
+  .form-page { --accent:#16a34a; --accent-soft:#dcfce7; --muted:#6b7280; --border:#f0f0f0; }
+
+  .form-card {
+    background:#fff; border-radius:1rem;
+    border:1px solid var(--border);
+    box-shadow:0 1px 4px rgba(0,0,0,.04);
+    overflow:hidden;
+  }
+  .form-card-header {
+    padding:1.5rem 2rem; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;
+  }
+  .form-card-header .title   { font-size:1.1rem; font-weight:700; color:#111; margin:0; }
+  .form-card-header .subtitle{ font-size:.85rem; color:var(--muted); margin:.2rem 0 0; }
+  .form-card-body { padding:2rem; }
+
+  /* field groups */
+  .field-section { margin-bottom:2rem; }
+  .field-section-label {
+    font-size:.72rem; font-weight:700; letter-spacing:.07em;
+    text-transform:uppercase; color:var(--muted);
+    padding-bottom:.6rem; border-bottom:1px solid var(--border);
+    margin-bottom:1.25rem;
+    display:flex; align-items:center; gap:.5rem;
+  }
+  .field-section-label i { color:var(--accent); font-size:.9rem; }
+
+  /* inputs */
+  .field-label { font-size:.82rem; font-weight:600; color:#374151; margin-bottom:.4rem; display:block; }
+  .field-wrap input, .field-wrap select {
+    width:100%; padding:.6rem .9rem;
+    border:1.5px solid #e5e7eb; border-radius:.6rem;
+    font-size:.9rem; color:#111; background:#fff;
+    transition:border-color .15s, box-shadow .15s;
+    outline:none;
+  }
+  .field-wrap input:focus, .field-wrap select:focus {
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(22,163,74,.1);
+  }
+  .field-wrap input::placeholder { color:#9ca3af; }
+  .field-error { font-size:.78rem; color:#dc2626; margin-top:.3rem; }
+  .field-optional { font-size:.75rem; color:#9ca3af; font-weight:400; margin-left:.3rem; }
+
+  /* password row hint */
+  .pw-hint { font-size:.78rem; color:var(--muted); margin-top:.35rem; }
+
+  /* footer */
+  .form-footer {
+    padding:1.25rem 2rem; border-top:1px solid var(--border);
+    background:#fafafa;
+    display:flex; justify-content:flex-end; gap:.75rem;
+  }
+  .btn-cancel { background:#fff; border:1.5px solid #e5e7eb; color:#374151; font-weight:600; font-size:.875rem; border-radius:.6rem; padding:.5rem 1.25rem; }
+  .btn-cancel:hover { background:#f9fafb; }
+  .btn-save   { background:var(--accent); color:#fff; border:none; font-weight:600; font-size:.875rem; border-radius:.6rem; padding:.5rem 1.5rem; }
+  .btn-save:hover { background:#15803d; }
+
+  /* back button */
+  .btn-back { background:#f3f4f6; color:#374151; border:none; font-weight:600; font-size:.82rem; border-radius:.6rem; padding:.45rem 1rem; }
+  .btn-back:hover { background:#e5e7eb; }
+
+  /* non_field_errors */
+  .form-error-banner { background:#fef2f2; border:1px solid #fecaca; border-radius:.6rem; padding:.9rem 1.25rem; font-size:.875rem; color:#b91c1c; }
+</style>
+
+<div class="form-page">
+<div class="form-card">
+
+  {# ── cabeçalho ───────────────────────────────────────────────── #}
+  <div class="form-card-header">
+    <div>
+      <p class="title">{{ page_title }}</p>
+      <p class="subtitle">Preencha os dados da conta e do perfil de produtor.</p>
+    </div>
+    <a href="{% url 'dashboard:gestor_utilizadores' %}" class="btn-back">
+      <i class="bi bi-arrow-left me-1"></i>Voltar
+    </a>
+  </div>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <div class="form-card-body">
+
+      {% if form.non_field_errors %}
+        <div class="form-error-banner mb-4">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      {# ── secção: dados pessoais ── #}
+      <div class="field-section">
+        <div class="field-section-label"><i class="bi bi-person"></i>Dados pessoais</div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="field-wrap">
+              <label class="field-label">{{ form.first_name.label }}</label>
+              {{ form.first_name }}
+              {% if form.first_name.errors %}<p class="field-error">{{ form.first_name.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="field-wrap">
+              <label class="field-label">{{ form.last_name.label }}</label>
+              {{ form.last_name }}
+              {% if form.last_name.errors %}<p class="field-error">{{ form.last_name.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="field-wrap">
+              <label class="field-label">{{ form.email.label }}</label>
+              {{ form.email }}
+              {% if form.email.errors %}<p class="field-error">{{ form.email.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="field-wrap">
+              <label class="field-label">{{ form.role.label }}</label>
+              {{ form.role }}
+              {% if form.role.errors %}<p class="field-error">{{ form.role.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── secção: perfil de produtor ── #}
+      <div class="field-section">
+        <div class="field-section-label"><i class="bi bi-person-vcard"></i>Perfil de produtor</div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="field-wrap">
+              <label class="field-label">
+                {{ form.company_name.label }}
+                <span class="field-optional">(opcional)</span>
+              </label>
+              {{ form.company_name }}
+              {% if form.company_name.errors %}<p class="field-error">{{ form.company_name.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="field-wrap">
+              <label class="field-label">{{ form.user_type.label }}</label>
+              {{ form.user_type }}
+              {% if form.user_type.errors %}<p class="field-error">{{ form.user_type.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── secção: estado da conta (só edição) ── #}
+      {% if form.account_status %}
+      <div class="field-section">
+        <div class="field-section-label"><i class="bi bi-shield-check"></i>Estado da conta</div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="field-wrap">
+              <label class="field-label">{{ form.account_status.label }}</label>
+              {{ form.account_status }}
+              {% if form.account_status.errors %}<p class="field-error">{{ form.account_status.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+          <div class="col-md-6 d-flex align-items-center pt-3">
+            <div class="form-check">
+              {{ form.is_active }}
+              <label class="form-check-label" style="font-size:.875rem;font-weight:500;color:#374151">
+                {{ form.is_active.label }}
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── secção: password ── #}
+      <div class="field-section mb-0">
+        <div class="field-section-label"><i class="bi bi-lock"></i>
+          {% if is_create %}Password{% else %}Alterar password <span class="field-optional" style="text-transform:none;letter-spacing:0">(deixe em branco para não alterar)</span>{% endif %}
+        </div>
+        <div class="row g-3">
+          {% if is_create %}
+            <div class="col-md-6">
+              <div class="field-wrap">
+                <label class="field-label">{{ form.password.label }}</label>
+                {{ form.password }}
+                <p class="pw-hint">Mínimo 8 caracteres.</p>
+                {% if form.password.errors %}<p class="field-error">{{ form.password.errors|join:" " }}</p>{% endif %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-wrap">
+                <label class="field-label">{{ form.password_confirm.label }}</label>
+                {{ form.password_confirm }}
+                {% if form.password_confirm.errors %}<p class="field-error">{{ form.password_confirm.errors|join:" " }}</p>{% endif %}
+              </div>
+            </div>
+          {% else %}
+            <div class="col-md-6">
+              <div class="field-wrap">
+                <label class="field-label">{{ form.new_password.label }}</label>
+                {{ form.new_password }}
+                <p class="pw-hint">Mínimo 8 caracteres. Deixe em branco para não alterar.</p>
+                {% if form.new_password.errors %}<p class="field-error">{{ form.new_password.errors|join:" " }}</p>{% endif %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-wrap">
+                <label class="field-label">{{ form.new_password_confirm.label }}</label>
+                {{ form.new_password_confirm }}
+                {% if form.new_password_confirm.errors %}<p class="field-error">{{ form.new_password_confirm.errors|join:" " }}</p>{% endif %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>{# /form-card-body #}
+
+    {# ── footer com acções ───────────────────────────────────────── #}
+    <div class="form-footer">
+      <a href="{% url 'dashboard:gestor_utilizadores' %}" class="btn-cancel">Cancelar</a>
+      <button type="submit" class="btn-save">
+        <i class="bi bi-check2-circle me-2"></i>{{ submit_label }}
+      </button>
+    </div>
+
+  </form>
+</div>
+</div>
+{% endblock %}

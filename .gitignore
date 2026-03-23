@@ -1,0 +1,71 @@
+# -----------------------------
+# PYTHON / DJANGO
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Django stuff
+*.log
+db.sqlite3
+
+# -----------------------------
+# ENV / SEGREDOS (CRÍTICO)
+# -----------------------------
+.env
+.env.*
+*.env
+
+# -----------------------------
+# STATIC / MEDIA
+# -----------------------------
+staticfiles/
+media/
+
+# -----------------------------
+# IDE / EDITORES
+# -----------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# -----------------------------
+# OS FILES
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# NODE / FRONTEND (caso uses)
+# -----------------------------
+node_modules/
+dist/
+build/
+
+# -----------------------------
+# MIGRATIONS (no teu caso específico)
+# -----------------------------
+**/migrations/*
+!**/migrations/__init__.py
+
+# -----------------------------
+# TEST / CACHE
+# -----------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+
+# -----------------------------
+# FILES TEMP / EXPORTS
+# -----------------------------
+*.csv
+*.xlsx
+*.pdf

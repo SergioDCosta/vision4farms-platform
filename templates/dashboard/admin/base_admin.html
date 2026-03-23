@@ -1,0 +1,47 @@
+{% extends "dashboard/base_app.html" %}
+
+{% block app_title %}Gestão da Cooperativa{% endblock %}
+
+{% block app_content %}
+<div class="d-flex flex-column gap-4">
+    <div>
+        <h1 class="h2 fw-bold text-dark mb-1">Gestão da Cooperativa</h1>
+        <p class="text-secondary mb-0">Visão global, auditoria e administração do sistema</p>
+    </div>
+
+    <ul class="nav nav-tabs border-0 gap-2">
+        <li class="nav-item">
+            <a class="nav-link rounded-3 {% if admin_tab == 'dashboard' %}active{% endif %}"
+               href="{% url 'dashboard:gestor' %}">
+                <i class="bi bi-grid me-2"></i>Dashboard
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link rounded-3 {% if admin_tab == 'produtos' %}active{% endif %}"
+               href="{% url 'dashboard:gestor_produtos' %}">
+                <i class="bi bi-box-seam me-2"></i>Produtos
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link rounded-3 {% if admin_tab == 'categorias' %}active{% endif %}"
+               href="{% url 'dashboard:gestor_categorias' %}">
+                <i class="bi bi-tags me-2"></i>Categorias
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link rounded-3 {% if admin_tab == 'utilizadores' %}active{% endif %}"
+               href="{% url 'dashboard:gestor_utilizadores' %}">
+                <i class="bi bi-people me-2"></i>Utilizadores
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link rounded-3 {% if admin_tab == 'auditoria' %}active{% endif %}"
+               href="{% url 'dashboard:gestor_auditoria' %}">
+                <i class="bi bi-journal-text me-2"></i>Auditoria
+            </a>
+        </li>
+    </ul>
+
+    {% block admin_content %}{% endblock %}
+</div>
+{% endblock %}

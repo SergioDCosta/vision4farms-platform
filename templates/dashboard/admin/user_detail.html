@@ -1,0 +1,227 @@
+{% extends "dashboard/admin/base_admin.html" %}
+
+{% block admin_content %}
+<style>
+  /* ── página de detalhe ────────────────────────────────────────── */
+  .detail-page { --accent: #16a34a; --accent-soft: #dcfce7; --muted: #6b7280; --surface: #ffffff; --border: #f0f0f0; }
+
+  .page-header-bar {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    flex-wrap: wrap; gap: 1rem;
+    padding: 1.75rem 2rem; background: var(--surface);
+    border-radius: 1rem; border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  .avatar-circle {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent);
+    font-weight: 700; font-size: 1.1rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .page-header-bar .name { font-size: 1.2rem; font-weight: 700; color: #111; margin: 0; }
+  .page-header-bar .sub  { font-size: .875rem; color: var(--muted); margin: 0; }
+
+  /* status badges */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .25rem .7rem; border-radius: 99px;
+    font-size: .75rem; font-weight: 600; letter-spacing: .02em;
+  }
+  .status-pill.active    { background:#dcfce7; color:#15803d; }
+  .status-pill.pending   { background:#fef9c3; color:#854d0e; }
+  .status-pill.suspended { background:#fee2e2; color:#b91c1c; }
+  .status-pill .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+  /* info card */
+  .info-card {
+    background: var(--surface); border-radius: 1rem;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    overflow: hidden;
+  }
+  .info-card-header {
+    padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--border);
+    font-size: .8rem; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .info-card-header i { font-size: 1rem; color: var(--accent); }
+  .info-rows { padding: .5rem 0; }
+  .info-row {
+    display: flex; align-items: baseline;
+    padding: .65rem 1.5rem; gap: 1rem;
+    border-bottom: 1px solid #fafafa;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row dt { width: 10rem; flex-shrink: 0; font-size: .8rem; color: var(--muted); font-weight: 500; }
+  .info-row dd { margin: 0; font-size: .9rem; color: #111; font-weight: 500; }
+
+  /* action buttons */
+  .btn-edit   { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-weight:600; font-size:.85rem; }
+  .btn-edit:hover { background:#dcfce7; }
+  .btn-suspend{ background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-weight:600; font-size:.85rem; }
+  .btn-suspend:hover{ background:#fee2e2; }
+  .btn-activate{background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-weight:600; font-size:.85rem;}
+  .btn-activate:hover{background:#dcfce7;}
+
+  /* audit table */
+  .audit-card { background:var(--surface); border-radius:1rem; border:1px solid var(--border); box-shadow:0 1px 4px rgba(0,0,0,.04); overflow:hidden; }
+  .audit-table thead th { font-size:.75rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); background:#fafafa; border-bottom:1px solid var(--border); padding:.75rem 1.25rem; }
+  .audit-table tbody td { font-size:.85rem; padding:.75rem 1.25rem; border-bottom:1px solid #fafafa; color:#374151; vertical-align:middle; }
+  .audit-table tbody tr:last-child td { border-bottom:none; }
+  .audit-table tbody tr:hover td { background:#fafafa; }
+  .action-tag { display:inline-block; padding:.15rem .55rem; border-radius:.35rem; font-size:.75rem; font-weight:600; background:#f3f4f6; color:#374151; }
+</style>
+
+<div class="detail-page d-flex flex-column gap-4">
+
+  {# ── cabeçalho ──────────────────────────────────────────────────── #}
+  <div class="page-header-bar">
+    <div class="d-flex align-items-center gap-3">
+      <div class="avatar-circle">
+        {{ user_obj.first_name|slice:":1" }}{{ user_obj.last_name|slice:":1" }}
+      </div>
+      <div>
+        <p class="name">{{ user_obj.first_name }} {{ user_obj.last_name }}</p>
+        <p class="sub">{{ user_obj.email }}</p>
+        <div class="mt-2 d-flex gap-2 flex-wrap">
+          {% if user_obj.account_status == "ACTIVE" %}
+            <span class="status-pill active"><span class="dot"></span>Ativa</span>
+          {% elif user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" %}
+            <span class="status-pill pending"><span class="dot"></span>Pendente confirmação</span>
+          {% else %}
+            <span class="status-pill suspended"><span class="dot"></span>Suspensa</span>
+          {% endif %}
+          <span class="status-pill" style="background:#f3f4f6;color:#374151;">
+            <i class="bi bi-person-badge" style="font-size:.75rem"></i>
+            {{ user_obj.get_role_display|default:user_obj.role }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{% url 'dashboard:gestor_utilizador_editar' user_obj.id %}" class="btn btn-edit rounded-3 px-4">
+        <i class="bi bi-pencil me-2"></i>Editar
+      </a>
+      <form method="post" action="{% url 'dashboard:gestor_utilizador_estado' user_obj.id %}">
+        {% csrf_token %}
+        {% if user_obj.is_active %}
+          <button type="submit" class="btn btn-suspend rounded-3 px-4">
+            <i class="bi bi-slash-circle me-2"></i>Suspender
+          </button>
+        {% else %}
+          <button type="submit" class="btn btn-activate rounded-3 px-4">
+            <i class="bi bi-check-circle me-2"></i>Reativar
+          </button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  {# ── cards de detalhe ───────────────────────────────────────────── #}
+  <div class="row g-4">
+
+    <div class="col-lg-6">
+      <div class="info-card h-100">
+        <div class="info-card-header"><i class="bi bi-shield-lock"></i>Dados da conta</div>
+        <dl class="info-rows mb-0">
+          <div class="info-row"><dt>Nome</dt><dd>{{ user_obj.first_name }} {{ user_obj.last_name }}</dd></div>
+          <div class="info-row"><dt>Email</dt><dd>{{ user_obj.email }}</dd></div>
+          <div class="info-row"><dt>Perfil</dt><dd>{{ user_obj.get_role_display|default:user_obj.role }}</dd></div>
+          <div class="info-row"><dt>Origem</dt><dd>{{ user_obj.get_registration_source_display|default:user_obj.registration_source }}</dd></div>
+          <div class="info-row">
+            <dt>Estado</dt>
+            <dd>
+              {% if user_obj.account_status == "ACTIVE" %}
+                <span class="status-pill active"><span class="dot"></span>Ativa</span>
+              {% elif user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" %}
+                <span class="status-pill pending"><span class="dot"></span>Pendente</span>
+              {% else %}
+                <span class="status-pill suspended"><span class="dot"></span>Suspensa</span>
+              {% endif %}
+            </dd>
+          </div>
+          <div class="info-row"><dt>Email verificado</dt><dd>{{ user_obj.email_verified_at|date:"d/m/Y H:i"|default:"—" }}</dd></div>
+          <div class="info-row"><dt>Último login</dt><dd>{{ user_obj.last_login|date:"d/m/Y H:i"|default:"—" }}</dd></div>
+          <div class="info-row"><dt>Criado em</dt><dd>{{ user_obj.created_at|date:"d/m/Y H:i" }}</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="info-card h-100">
+        <div class="info-card-header"><i class="bi bi-person-vcard"></i>Perfil de produtor</div>
+        {% if producer_profile %}
+          <dl class="info-rows mb-0">
+            <div class="info-row"><dt>Nome visível</dt><dd>{{ producer_profile.display_name }}</dd></div>
+            <div class="info-row"><dt>Empresa</dt><dd>{{ producer_profile.company_name|default:"—" }}</dd></div>
+            <div class="info-row"><dt>Tipo</dt><dd>{{ producer_profile.get_user_type_display|default:producer_profile.user_type|default:"—" }}</dd></div>
+            <div class="info-row"><dt>Telefone</dt><dd>{{ producer_profile.phone|default:"—" }}</dd></div>
+            <div class="info-row"><dt>Cidade</dt><dd>{{ producer_profile.city|default:"—" }}</dd></div>
+            <div class="info-row">
+              <dt>Marketplace</dt>
+              <dd>
+                {% if producer_profile.is_active_marketplace %}
+                  <span class="status-pill active"><span class="dot"></span>Ativo</span>
+                {% else %}
+                  <span class="status-pill suspended"><span class="dot"></span>Inativo</span>
+                {% endif %}
+              </dd>
+            </div>
+            <div class="info-row"><dt>Membro desde</dt><dd>{{ producer_profile.member_since|date:"d/m/Y" }}</dd></div>
+            <div class="info-row"><dt>Transações</dt><dd>{{ producer_profile.completed_transactions_count }}</dd></div>
+          </dl>
+        {% else %}
+          <div class="d-flex flex-column align-items-center justify-content-center py-5 gap-2" style="color:#9ca3af">
+            <i class="bi bi-person-x" style="font-size:2rem"></i>
+            <p class="mb-0" style="font-size:.875rem">Sem perfil de produtor associado.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── auditoria ──────────────────────────────────────────────────── #}
+  <div class="audit-card">
+    <div class="info-card-header" style="padding:1.1rem 1.5rem">
+      <i class="bi bi-journal-text"></i>Últimos registos de auditoria
+    </div>
+    <div class="table-responsive">
+      <table class="table audit-table mb-0">
+        <thead>
+          <tr>
+            <th>Data / Hora</th>
+            <th>Ação</th>
+            <th>Entidade</th>
+            <th>Notas</th>
+            <th>IP</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in related_logs %}
+          <tr>
+            <td style="color:#6b7280">{{ log.created_at|date:"d/m/Y H:i" }}</td>
+            <td><span class="action-tag">{{ log.action }}</span></td>
+            <td>{{ log.entity_type|default:"—" }}</td>
+            <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ log.notes }}">{{ log.notes|default:"—" }}</td>
+            <td style="font-family:monospace;font-size:.8rem">{{ log.ip_address|default:"—" }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5">
+              <div class="d-flex flex-column align-items-center py-5 gap-2" style="color:#9ca3af">
+                <i class="bi bi-journal-x" style="font-size:1.75rem"></i>
+                <span style="font-size:.875rem">Sem registos de auditoria para este utilizador.</span>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

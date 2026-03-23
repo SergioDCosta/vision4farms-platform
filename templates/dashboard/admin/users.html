@@ -1,0 +1,123 @@
+{% extends "dashboard/admin/base_admin.html" %}
+
+{% block admin_content %}
+<div class="card border-0 shadow-sm rounded-4">
+    <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <form method="get" class="input-group" style="max-width: 420px;">
+            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <input
+                type="text"
+                name="q"
+                value="{{ q }}"
+                class="form-control"
+                placeholder="Pesquisar por nome, email ou role...">
+            <button class="btn btn-outline-secondary" type="submit">Pesquisar</button>
+        </form>
+
+        <a href="{% url 'dashboard:gestor_utilizador_novo' %}" class="btn btn-success">
+            <i class="bi bi-person-plus me-2"></i>Novo Utilizador
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Origem</th>
+                    <th>Estado da conta</th>
+                    <th>Ativo</th>
+                    <th>Último login</th>
+                    <th class="text-end">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in page_obj %}
+                    <tr>
+                        <td class="fw-semibold">{{ user.first_name }} {{ user.last_name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.role == "ADMIN" %}
+                                <span class="badge text-bg-primary-subtle text-primary-emphasis">Administrador</span>
+                            {% else %}
+                                <span class="badge text-bg-secondary-subtle text-secondary-emphasis">Cliente</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.registration_source }}</td>
+                        <td>
+                            {% if user.account_status == "ACTIVE" %}
+                                <span class="badge text-bg-success-subtle text-success-emphasis">Ativa</span>
+                            {% elif user.account_status == "PENDING_EMAIL_CONFIRMATION" %}
+                                <span class="badge text-bg-warning-subtle text-warning-emphasis">Pendente</span>
+                            {% else %}
+                                <span class="badge text-bg-secondary-subtle text-secondary-emphasis">Suspensa</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                                <span class="badge text-bg-success-subtle text-success-emphasis">Sim</span>
+                            {% else %}
+                                <span class="badge text-bg-secondary-subtle text-secondary-emphasis">Não</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.last_login|date:"d/m/Y H:i"|default:"-" }}</td>
+                        <td class="text-end">
+                            <div class="d-inline-flex gap-2">
+                                <a href="{% url 'dashboard:gestor_utilizador_detalhe' user.id %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{% url 'dashboard:gestor_utilizador_editar' user.id %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="post" action="{% url 'dashboard:gestor_utilizador_estado' user.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-warning">
+                                        {% if user.is_active %}
+                                            <i class="bi bi-slash-circle"></i>
+                                        {% else %}
+                                            <i class="bi bi-check-circle"></i>
+                                        {% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center text-secondary py-4">Sem utilizadores registados.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="card-footer bg-white border-0 p-4">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-end">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?q={{ q }}&page={{ page_obj.previous_page_number }}">Anterior</a>
+                    </li>
+                {% endif %}
+
+                {% for page_num in page_obj.paginator.page_range %}
+                    <li class="page-item {% if page_obj.number == page_num %}active{% endif %}">
+                        <a class="page-link" href="?q={{ q }}&page={{ page_num }}">{{ page_num }}</a>
+                    </li>
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?q={{ q }}&page={{ page_obj.next_page_number }}">Seguinte</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
