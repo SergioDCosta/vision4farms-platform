@@ -39,15 +39,8 @@ class BootstrapFormMixin:
 
 
 class AdminUserCreateForm(BootstrapFormMixin, forms.Form):
-    first_name = forms.CharField(label="Primeiro nome", max_length=150)
-    last_name = forms.CharField(label="Último nome", max_length=150)
     email = forms.EmailField(label="Email")
     role = forms.ChoiceField(label="Tipo de utilizador", choices=ROLE_CHOICES)
-    password = forms.CharField(label="Palavra-passe", widget=forms.PasswordInput, min_length=8)
-    password_confirm = forms.CharField(label="Confirmar palavra-passe", widget=forms.PasswordInput, min_length=8)
-
-    company_name = forms.CharField(label="Empresa", required=False, max_length=255)
-    user_type = forms.ChoiceField(label="Tipo de produtor", required=False, choices=producer_user_type_choices())
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()

@@ -2,10 +2,11 @@ import secrets
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.contrib.auth.hashers import make_password, check_password
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
-from django.contrib.auth.hashers import make_password, check_password
 
 from apps.accounts.models import (
     User,
@@ -18,14 +19,18 @@ from apps.accounts.models import (
 from apps.inventory.models import ProducerProfile
 
 
-def _send_system_email(subject, message, recipient_list):
-    email = EmailMessage(
+def _send_system_email(subject, text_body, html_body, recipient_list):
+    email = EmailMultiAlternatives(
         subject=subject,
-        body=message,
+        body=text_body,
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=recipient_list,
         reply_to=[settings.DEFAULT_REPLY_TO_EMAIL],
     )
+
+    if html_body:
+        email.attach_alternative(html_body, "text/html")
+
     email.send(fail_silently=False)
 
 
@@ -79,18 +84,19 @@ def send_signup_confirmation_email(request, user, verification_token):
         reverse("accounts:verify_email", kwargs={"token": verification_token.token})
     )
 
-    subject = "Confirme a sua conta"
-    message = (
-        f"Olá {user.first_name},\n\n"
-        f"Obrigado pelo registo.\n"
-        f"Para ativar a sua conta, clique no link abaixo:\n\n"
-        f"{verify_url}\n\n"
-        f"Se não foi você, ignore este email."
-    )
+    context = {
+        "first_name": user.first_name,
+        "verify_url": verify_url,
+    }
+
+    subject = render_to_string("emails/signup_confirmation_subject.txt", context).strip()
+    text_body = render_to_string("emails/signup_confirmation.txt", context)
+    html_body = render_to_string("emails/signup_confirmation.html", context)
 
     _send_system_email(
         subject=subject,
-        message=message,
+        text_body=text_body,
+        html_body=html_body,
         recipient_list=[user.email],
     )
 
@@ -122,6 +128,7 @@ def mark_user_as_verified(user):
     user.is_active = True
     user.updated_at = now
     user.save(update_fields=["email_verified_at", "account_status", "is_active", "updated_at"])
+
 
 def validate_verification_token(token_value):
     try:
@@ -172,18 +179,19 @@ def send_password_reset_email(request, user, reset_token):
         reverse("accounts:password_reset_confirm", kwargs={"token": reset_token.token})
     )
 
-    subject = "Recuperação de palavra-passe"
-    message = (
-        f"Olá {user.first_name},\n\n"
-        f"Recebemos um pedido para redefinir a sua palavra-passe.\n"
-        f"Use o link abaixo:\n\n"
-        f"{reset_url}\n\n"
-        f"Se não foi você, ignore este email."
-    )
+    context = {
+        "first_name": user.first_name,
+        "reset_url": reset_url,
+    }
+
+    subject = render_to_string("emails/password_reset_subject.txt", context).strip()
+    text_body = render_to_string("emails/password_reset.txt", context)
+    html_body = render_to_string("emails/password_reset.html", context)
 
     _send_system_email(
         subject=subject,
-        message=message,
+        text_body=text_body,
+        html_body=html_body,
         recipient_list=[user.email],
     )
 

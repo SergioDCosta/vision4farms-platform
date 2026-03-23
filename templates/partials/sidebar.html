@@ -1,74 +1,92 @@
 <aside class="app-sidebar" id="appSidebar">
-    <div class="sidebar-brand">
-        <div class="sidebar-brand-icon">
-            <i class="bi bi-flower1"></i>
-        </div>
-        <span class="sidebar-brand-text">Cooperativa</span>
+
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-icon">
+      <i class="bi bi-flower1"></i>
     </div>
+    <span class="sidebar-brand-text">Cooperativa</span>
+    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Colapsar menu" aria-label="Colapsar menu">
+      <i class="bi bi-layout-sidebar-reverse"></i>
+    </button>
+  </div>
 
-    <nav class="sidebar-nav">
-        {% if request.session.user_role == "ADMIN" %}
-            <a href="{% url 'dashboard:gestor' %}" class="sidebar-link {% if '/gestor/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-grid"></i></span>
-                <span>Painel Admin</span>
-            </a>
+  <nav class="sidebar-nav">
+    {% if request.session.user_role == "ADMIN" %}
+      <a href="{% url 'dashboard:gestor' %}"
+         class="sidebar-link {% if '/gestor/' in request.path %}active{% endif %}"
+         data-tooltip="Painel Admin">
+        <span class="sidebar-link-icon"><i class="bi bi-grid-fill"></i></span>
+        <span class="sidebar-link-text">Painel Admin</span>
+      </a>
+      <a href="/marketplace/"
+         class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}"
+         data-tooltip="Marketplace">
+        <span class="sidebar-link-icon"><i class="bi bi-shop"></i></span>
+        <span class="sidebar-link-text">Marketplace</span>
+      </a>
+      <a href="/definicoes/"
+         class="sidebar-link {% if '/definicoes/' in request.path %}active{% endif %}"
+         data-tooltip="Definições">
+        <span class="sidebar-link-icon"><i class="bi bi-gear-fill"></i></span>
+        <span class="sidebar-link-text">Definições</span>
+      </a>
+    {% else %}
+      <a href="{% url 'dashboard:painel' %}"
+         class="sidebar-link {% if request.path == '/painel/' %}active{% endif %}"
+         data-tooltip="Painel">
+        <span class="sidebar-link-icon"><i class="bi bi-grid-fill"></i></span>
+        <span class="sidebar-link-text">Painel</span>
+      </a>
+      <a href="/alertas/"
+         class="sidebar-link {% if '/alertas/' in request.path %}active{% endif %}"
+         data-tooltip="Alertas">
+        <span class="sidebar-link-icon"><i class="bi bi-bell-fill"></i></span>
+        <span class="sidebar-link-text">Alertas</span>
+      </a>
+      <a href="/marketplace/"
+         class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}"
+         data-tooltip="Marketplace">
+        <span class="sidebar-link-icon"><i class="bi bi-shop"></i></span>
+        <span class="sidebar-link-text">Marketplace</span>
+      </a>
+      <a href="/mensagens/"
+         class="sidebar-link {% if '/mensagens/' in request.path %}active{% endif %}"
+         data-tooltip="Mensagens">
+        <span class="sidebar-link-icon"><i class="bi bi-chat-fill"></i></span>
+        <span class="sidebar-link-text">Mensagens</span>
+      </a>
+      <a href="/recomendacoes/"
+         class="sidebar-link {% if '/recomendacoes/' in request.path %}active{% endif %}"
+         data-tooltip="Recomendações">
+        <span class="sidebar-link-icon"><i class="bi bi-stars"></i></span>
+        <span class="sidebar-link-text">Recomendações</span>
+      </a>
+      <a href="/encomendas/"
+         class="sidebar-link {% if '/encomendas/' in request.path %}active{% endif %}"
+         data-tooltip="Encomendas">
+        <span class="sidebar-link-icon"><i class="bi bi-truck"></i></span>
+        <span class="sidebar-link-text">Encomendas</span>
+      </a>
+      <a href="/stocks/"
+         class="sidebar-link {% if '/stocks/' in request.path %}active{% endif %}"
+         data-tooltip="Stocks">
+        <span class="sidebar-link-icon"><i class="bi bi-box-seam-fill"></i></span>
+        <span class="sidebar-link-text">Stocks e Compras</span>
+      </a>
+      <a href="/definicoes/"
+         class="sidebar-link {% if '/definicoes/' in request.path %}active{% endif %}"
+         data-tooltip="Definições">
+        <span class="sidebar-link-icon"><i class="bi bi-gear-fill"></i></span>
+        <span class="sidebar-link-text">Definições</span>
+      </a>
+    {% endif %}
+  </nav>
 
-            <a href="/marketplace/" class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-shop"></i></span>
-                <span>Marketplace</span>
-            </a>
+  <div class="sidebar-footer">
+    <a href="{% url 'accounts:logout' %}" class="sidebar-link sidebar-logout" data-tooltip="Sair">
+      <span class="sidebar-link-icon"><i class="bi bi-box-arrow-right"></i></span>
+      <span class="sidebar-link-text">Sair</span>
+    </a>
+  </div>
 
-            <a href="/definicoes/" class="sidebar-link {% if '/definicoes/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-gear"></i></span>
-                <span>Definições</span>
-            </a>
-        {% else %}
-            <a href="{% url 'dashboard:painel' %}" class="sidebar-link {% if request.path == '/painel/' %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-grid"></i></span>
-                <span>Painel</span>
-            </a>
-
-            <a href="/alertas/" class="sidebar-link {% if '/alertas/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-bell"></i></span>
-                <span>Alertas</span>
-            </a>
-
-            <a href="/marketplace/" class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-shop"></i></span>
-                <span>Marketplace</span>
-            </a>
-
-            <a href="/mensagens/" class="sidebar-link {% if '/mensagens/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-chat"></i></span>
-                <span>Mensagens</span>
-            </a>
-
-            <a href="/recomendacoes/" class="sidebar-link {% if '/recomendacoes/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-stars"></i></span>
-                <span>Recomendações</span>
-            </a>
-
-            <a href="/encomendas/" class="sidebar-link {% if '/encomendas/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-truck"></i></span>
-                <span>Encomendas</span>
-            </a>
-
-            <a href="/stocks/" class="sidebar-link {% if '/stocks/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-box-seam"></i></span>
-                <span>Stocks e Compras</span>
-            </a>
-
-            <a href="/definicoes/" class="sidebar-link {% if '/definicoes/' in request.path %}active{% endif %}">
-                <span class="sidebar-link-icon"><i class="bi bi-gear"></i></span>
-                <span>Definições</span>
-            </a>
-        {% endif %}
-    </nav>
-
-    <div class="sidebar-footer">
-        <a href="{% url 'accounts:logout' %}" class="sidebar-link logout-link">
-            <span class="sidebar-link-icon"><i class="bi bi-box-arrow-right"></i></span>
-            <span>Sair</span>
-        </a>
-    </div>
 </aside>

@@ -1,424 +1,481 @@
 {% extends "dashboard/base_app.html" %}
+{% load static %}
 
 {% block app_title %}Painel{% endblock %}
 
 {% block app_content %}
-<div class="dashboard-page">
-    <div class="mb-4">
-        <h1 class="h2 fw-bold text-dark mb-1">Painel</h1>
-        <p class="text-secondary mb-0">Resumo da sua exploração, encomendas e mercado.</p>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<div class="pnl">
+
+  {# ══ HERO ═══════════════════════════════════════════════════════════════ #}
+  <div class="pnl-hero">
+    <div class="pnl-hero-text">
+      <p class="pnl-greeting"><span class="pnl-pulse"></span>Sessão ativa</p>
+      <h1 class="pnl-hero-title">Bom dia, <span class="pnl-hero-accent">{{ producer.display_name|truncatewords:2 }}</span></h1>
+      <p class="pnl-hero-sub">
+        {% if critical_alerts_count > 0 %}
+          Tens <strong>{{ critical_alerts_count }} alerta{{ critical_alerts_count|pluralize:"s" }} crítico{{ critical_alerts_count|pluralize:"s" }}</strong> que precisam de atenção.
+        {% else %}
+          Sem alertas críticos — tudo sob controlo.
+        {% endif %}
+      </p>
+    </div>
+    <div class="pnl-hero-btns">
+      <a href="/recomendacoes/" class="pnl-hero-btn pnl-hero-btn--white">
+        <i class="bi bi-magic"></i> Recomendações
+      </a>
+      <a href="/marketplace/" class="pnl-hero-btn pnl-hero-btn--ghost">
+        <i class="bi bi-plus-lg"></i> Publicar excedente
+      </a>
+    </div>
+  </div>
+
+  {# ══ KPIs ════════════════════════════════════════════════════════════════ #}
+  <div class="pnl-kpis">
+    <a href="/alertas/" class="pnl-kpi pnl-kpi--red">
+      <div class="pnl-kpi-header">
+        <span class="pnl-kpi-label">Alertas ativos</span>
+        <span class="pnl-kpi-ico"><i class="bi bi-bell-fill"></i></span>
+      </div>
+      <div class="pnl-kpi-num">{{ active_alerts_count }}</div>
+      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>{{ critical_alerts_count }} crítico{{ critical_alerts_count|pluralize:"s" }}</div>
+    </a>
+
+    <a href="/stocks/" class="pnl-kpi pnl-kpi--amber">
+      <div class="pnl-kpi-header">
+        <span class="pnl-kpi-label">Stock crítico</span>
+        <span class="pnl-kpi-ico"><i class="bi bi-box-seam-fill"></i></span>
+      </div>
+      <div class="pnl-kpi-num">{{ critical_stock_count }}</div>
+      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>produto{{ critical_stock_count|pluralize:"s" }} abaixo do mínimo</div>
+    </a>
+
+    <a href="/encomendas/" class="pnl-kpi pnl-kpi--blue">
+      <div class="pnl-kpi-header">
+        <span class="pnl-kpi-label">Encomendas</span>
+        <span class="pnl-kpi-ico"><i class="bi bi-truck"></i></span>
+      </div>
+      <div class="pnl-kpi-num">{{ pending_orders_count }}</div>
+      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>em aberto</div>
+    </a>
+
+    <a href="/marketplace/" class="pnl-kpi pnl-kpi--green">
+      <div class="pnl-kpi-header">
+        <span class="pnl-kpi-label">Excedentes</span>
+        <span class="pnl-kpi-ico"><i class="bi bi-shop"></i></span>
+      </div>
+      <div class="pnl-kpi-num">{{ surplus_listings_count }}</div>
+      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>publicados</div>
+    </a>
+  </div>
+
+  {# ══ BODY GRID ════════════════════════════════════════════════════════════ #}
+  <div class="pnl-body">
+
+    {# ── coluna central (alertas + recomendações) ── #}
+    <div class="pnl-center">
+
+      <div class="pnl-card">
+        <div class="pnl-card-head">
+          <div>
+            <h2 class="pnl-card-title">Alertas prioritários</h2>
+            <p class="pnl-card-hint">Situações que merecem atenção imediata.</p>
+          </div>
+          <a href="/alertas/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>
+        </div>
+
+        <div class="pnl-alert-list">
+          {% for alert in priority_alerts %}
+            <div class="pnl-alert pnl-alert--{{ alert.severity|lower }}">
+              <div class="pnl-alert-stripe"></div>
+              <div class="pnl-alert-info">
+                <div class="pnl-alert-top">
+                  <span class="pnl-tag pnl-tag--{{ alert.severity|lower }}">
+                    {% if alert.severity == 'CRITICAL' %}Crítico{% elif alert.severity == 'WARNING' %}Atenção{% else %}Info{% endif %}
+                  </span>
+                  <span class="pnl-alert-ts">{{ alert.created_at|date:"d/m · H:i" }}</span>
+                </div>
+                <h3 class="pnl-alert-title">{{ alert.title }}</h3>
+                <p class="pnl-alert-desc">{{ alert.description|default:""|truncatechars:110 }}</p>
+              </div>
+              <div class="pnl-alert-cta">
+                {% if alert.type in 'SHORTAGE,BUY_OPPORTUNITY,EXTERNAL_DEFICIT' %}
+                  <a href="/recomendacoes/" class="pnl-cta-red">Resolver</a>
+                {% elif alert.type == 'CRITICAL_STOCK' %}
+                  <a href="/stocks/" class="pnl-cta-ghost">Ver stock</a>
+                {% else %}
+                  <a href="/alertas/" class="pnl-cta-ghost">Ver alerta</a>
+                {% endif %}
+              </div>
+            </div>
+          {% empty %}
+            <div class="pnl-empty">
+              <i class="bi bi-check-circle-fill" style="font-size:2rem;color:#16a34a;display:block;margin-bottom:.6rem"></i>
+              <p style="margin:0;font-size:.875rem;color:#64748b">Sem alertas prioritários neste momento.</p>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if recommended_actions %}
+      <div class="pnl-card">
+        <div class="pnl-card-head">
+          <div>
+            <h2 class="pnl-card-title">Ações recomendadas</h2>
+            <p class="pnl-card-hint">Geradas com base no estado atual da sua exploração.</p>
+          </div>
+        </div>
+        <div class="pnl-rec-list">
+          {% for action in recommended_actions %}
+            <div class="pnl-rec pnl-rec--{{ action.variant }}">
+              <div class="pnl-rec-ico"><i class="bi bi-{{ action.icon }}"></i></div>
+              <div class="pnl-rec-body">
+                <span class="pnl-rec-title">{{ action.title }}</span>
+                <span class="pnl-rec-desc">{{ action.description }}</span>
+              </div>
+              <a href="{{ action.url }}" class="pnl-cta-ghost">{{ action.button_label }}</a>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
     </div>
 
-    <div class="row g-4 mb-4">
-        <div class="col-12 col-sm-6 col-xl-3">
-            <a href="/alertas/" class="text-decoration-none">
-                <div class="card dashboard-kpi-card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex justify-content-between align-items-start">
-                        <div>
-                            <p class="text-secondary small fw-semibold mb-1">Alertas ativos</p>
-                            <h2 class="fw-bold text-dark mb-2">{{ active_alerts_count }}</h2>
-                            <span class="badge text-bg-danger-subtle text-danger-emphasis">
-                                {{ critical_alerts_count }} crítico{% if critical_alerts_count != 1 %}s{% endif %}
-                            </span>
-                        </div>
-                        <div class="dashboard-kpi-icon bg-danger-subtle text-danger">
-                            <i class="bi bi-bell-fill"></i>
-                        </div>
-                    </div>
-                </div>
-            </a>
-        </div>
+    {# ── coluna direita (ações + stocks + actividade) ── #}
+    <div class="pnl-side">
 
-        <div class="col-12 col-sm-6 col-xl-3">
-            <a href="/stocks/" class="text-decoration-none">
-                <div class="card dashboard-kpi-card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex justify-content-between align-items-start">
-                        <div>
-                            <p class="text-secondary small fw-semibold mb-1">Stock crítico</p>
-                            <h2 class="fw-bold text-dark mb-2">{{ critical_stock_count }}</h2>
-                            <span class="badge text-bg-warning-subtle text-warning-emphasis">Atenção</span>
-                        </div>
-                        <div class="dashboard-kpi-icon bg-warning-subtle text-warning">
-                            <i class="bi bi-box-seam"></i>
-                        </div>
-                    </div>
-                </div>
-            </a>
+      <div class="pnl-card">
+        <div class="pnl-card-head"><h2 class="pnl-card-title">Ações rápidas</h2></div>
+        <div class="pnl-qa-list">
+          <a href="/recomendacoes/" class="pnl-qa pnl-qa--blue">
+            <div class="pnl-qa-ico"><i class="bi bi-magic"></i></div>
+            <div class="pnl-qa-txt"><b>Recomendações</b><span>Sugestões de compra</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          <a href="/marketplace/" class="pnl-qa pnl-qa--green">
+            <div class="pnl-qa-ico"><i class="bi bi-shop"></i></div>
+            <div class="pnl-qa-txt"><b>Publicar excedente</b><span>Gerir anúncios</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          <a href="/stocks/" class="pnl-qa pnl-qa--amber">
+            <div class="pnl-qa-ico"><i class="bi bi-box-seam-fill"></i></div>
+            <div class="pnl-qa-txt"><b>Atualizar stock</b><span>Registar consumos</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          <a href="/encomendas/" class="pnl-qa pnl-qa--slate">
+            <div class="pnl-qa-ico"><i class="bi bi-truck"></i></div>
+            <div class="pnl-qa-txt"><b>Ver encomendas</b><span>Acompanhar estados</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
         </div>
+      </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
-            <a href="/encomendas/" class="text-decoration-none">
-                <div class="card dashboard-kpi-card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex justify-content-between align-items-start">
-                        <div>
-                            <p class="text-secondary small fw-semibold mb-1">Encomendas pendentes</p>
-                            <h2 class="fw-bold text-dark mb-2">{{ pending_orders_count }}</h2>
-                            <span class="badge text-bg-primary-subtle text-primary-emphasis">Em acompanhamento</span>
-                        </div>
-                        <div class="dashboard-kpi-icon bg-primary-subtle text-primary">
-                            <i class="bi bi-truck"></i>
-                        </div>
-                    </div>
-                </div>
-            </a>
+      <div class="pnl-card">
+        <div class="pnl-card-head">
+          <div>
+            <h2 class="pnl-card-title">Stocks críticos</h2>
+            <p class="pnl-card-hint">Abaixo do limiar mínimo.</p>
+          </div>
+          {% if low_stock_preview %}<a href="/stocks/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>{% endif %}
         </div>
+        {% if low_stock_preview %}
+          <div class="pnl-stock-list">
+            {% for stock in low_stock_preview %}
+              <div class="pnl-stock">
+                <div class="pnl-stock-row">
+                  <span class="pnl-stock-name">{{ stock.product.name }}</span>
+                  <span class="pnl-stock-val">{{ stock.current_quantity }}<small> {{ stock.product.unit }}</small></span>
+                </div>
+                <div class="pnl-stock-track">
+                  {% widthratio stock.current_quantity stock.minimum_threshold 100 as pct %}
+                  <div class="pnl-stock-fill" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
+                </div>
+                <span class="pnl-stock-min">mín. {{ stock.minimum_threshold }} {{ stock.product.unit }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="pnl-empty"><p style="margin:0;font-size:.875rem;color:#64748b">Sem stocks críticos.</p></div>
+        {% endif %}
+      </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
-            <a href="/marketplace/" class="text-decoration-none">
-                <div class="card dashboard-kpi-card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex justify-content-between align-items-start">
-                        <div>
-                            <p class="text-secondary small fw-semibold mb-1">Excedentes publicados</p>
-                            <h2 class="fw-bold text-dark mb-2">{{ surplus_listings_count }}</h2>
-                            <span class="badge text-bg-success-subtle text-success-emphasis">Marketplace</span>
-                        </div>
-                        <div class="dashboard-kpi-icon bg-success-subtle text-success">
-                            <i class="bi bi-shop"></i>
-                        </div>
-                    </div>
-                </div>
-            </a>
+      {% if recent_activity %}
+      <div class="pnl-card">
+        <div class="pnl-card-head"><h2 class="pnl-card-title">Última atividade</h2></div>
+        <div class="pnl-timeline">
+          {% for log in recent_activity %}
+            <div class="pnl-tl">
+              <div class="pnl-tl-dot"></div>
+              <div class="pnl-tl-body">
+                <span class="pnl-tl-action">{{ log.action }}</span>
+                <span class="pnl-tl-note">{{ log.notes|default:"Atividade registada." }}</span>
+                <span class="pnl-tl-ts">{{ log.created_at|date:"d/m/Y · H:i" }}</span>
+              </div>
+            </div>
+          {% endfor %}
         </div>
+      </div>
+      {% endif %}
+
     </div>
-
-    <div class="row g-4">
-        <div class="col-12 col-xl-8">
-            <div class="card border-0 shadow-sm rounded-4 mb-4">
-                <div class="card-header bg-white border-0 p-4">
-                    <h3 class="h5 fw-bold mb-1">Ações recomendadas</h3>
-                    <p class="text-secondary small mb-0">Sugestões automáticas com base no estado atual dos seus stocks e encomendas.</p>
-                </div>
-                <div class="card-body p-4">
-                    <div class="row g-3">
-                        {% for action in recommended_actions %}
-                            <div class="col-12">
-                                <div class="recommended-action-card recommended-{{ action.variant }}">
-                                    <div class="recommended-action-icon">
-                                        <i class="bi bi-{{ action.icon }}"></i>
-                                    </div>
-
-                                    <div class="recommended-action-content">
-                                        <h4 class="h6 fw-bold mb-1">{{ action.title }}</h4>
-                                        <p class="text-secondary mb-0">{{ action.description }}</p>
-                                    </div>
-
-                                    <div class="recommended-action-btn">
-                                        <a href="{{ action.url }}" class="btn btn-sm btn-outline-dark">
-                                            {{ action.button_label }}
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="card border-0 shadow-sm rounded-4">
-                <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center">
-                    <div>
-                        <h3 class="h5 fw-bold mb-1">Alertas prioritários</h3>
-                        <p class="text-secondary small mb-0">Os alertas mais relevantes para agir primeiro.</p>
-                    </div>
-                    <a href="/alertas/" class="btn btn-sm btn-outline-secondary">Ver todos</a>
-                </div>
-
-                <div class="card-body p-4">
-                    {% if priority_alerts %}
-                        <div class="d-flex flex-column gap-3">
-                            {% for alert in priority_alerts %}
-                                <div class="priority-alert-card
-                                    {% if alert.severity == 'CRITICAL' %}priority-critical
-                                    {% elif alert.severity == 'WARNING' %}priority-warning
-                                    {% else %}priority-info{% endif %}">
-                                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-                                        <div>
-                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-                                                {% if alert.severity == "CRITICAL" %}
-                                                    <span class="badge text-bg-danger-subtle text-danger-emphasis">Crítico</span>
-                                                {% elif alert.severity == "WARNING" %}
-                                                    <span class="badge text-bg-warning-subtle text-warning-emphasis">Atenção</span>
-                                                {% else %}
-                                                    <span class="badge text-bg-primary-subtle text-primary-emphasis">Informação</span>
-                                                {% endif %}
-                                                <span class="text-secondary small">{{ alert.created_at|date:"d/m/Y H:i" }}</span>
-                                            </div>
-
-                                            <h4 class="h6 fw-bold mb-1">{{ alert.title }}</h4>
-                                            <p class="text-secondary mb-0">{{ alert.description|default:"Sem descrição." }}</p>
-                                        </div>
-
-                                        <div>
-                                            {% if alert.type == 'SHORTAGE' or alert.type == 'BUY_OPPORTUNITY' or alert.type == 'EXTERNAL_DEFICIT' %}
-                                                <a href="/recomendacoes/" class="btn btn-sm btn-danger">Resolver</a>
-                                            {% elif alert.type == 'CRITICAL_STOCK' %}
-                                                <a href="/stocks/" class="btn btn-sm btn-outline-warning">Ver stock</a>
-                                            {% else %}
-                                                <a href="/alertas/" class="btn btn-sm btn-outline-secondary">Ver alerta</a>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                </div>
-                            {% endfor %}
-                        </div>
-                    {% else %}
-                        <div class="empty-state-box">
-                            <i class="bi bi-check-circle fs-2 text-success"></i>
-                            <h4 class="h6 fw-bold mt-3 mb-1">Sem alertas prioritários</h4>
-                            <p class="text-secondary mb-0">Neste momento não existem alertas ativos que exijam intervenção imediata.</p>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <div class="col-12 col-xl-4">
-            <div class="card border-0 shadow-sm rounded-4 mb-4">
-                <div class="card-header bg-white border-0 p-4">
-                    <h3 class="h5 fw-bold mb-1">Ações rápidas</h3>
-                    <p class="text-secondary small mb-0">Acessos diretos às tarefas mais comuns.</p>
-                </div>
-
-                <div class="list-group list-group-flush rounded-bottom-4">
-                    <a href="/recomendacoes/" class="list-group-item list-group-item-action border-0 px-4 py-3 d-flex align-items-center gap-3">
-                        <div class="quick-action-icon bg-primary-subtle text-primary">
-                            <i class="bi bi-magic"></i>
-                        </div>
-                        <div>
-                            <div class="fw-semibold text-dark">Ver recomendações</div>
-                            <div class="small text-secondary">Sugestões automáticas de compra</div>
-                        </div>
-                    </a>
-
-                    <a href="/marketplace/" class="list-group-item list-group-item-action border-0 px-4 py-3 d-flex align-items-center gap-3">
-                        <div class="quick-action-icon bg-success-subtle text-success">
-                            <i class="bi bi-shop"></i>
-                        </div>
-                        <div>
-                            <div class="fw-semibold text-dark">Publicar excedente</div>
-                            <div class="small text-secondary">Gerir anúncios no marketplace</div>
-                        </div>
-                    </a>
-
-                    <a href="/stocks/" class="list-group-item list-group-item-action border-0 px-4 py-3 d-flex align-items-center gap-3">
-                        <div class="quick-action-icon bg-warning-subtle text-warning">
-                            <i class="bi bi-box-seam"></i>
-                        </div>
-                        <div>
-                            <div class="fw-semibold text-dark">Atualizar stock</div>
-                            <div class="small text-secondary">Registar consumos e quantidades</div>
-                        </div>
-                    </a>
-
-                    <a href="/encomendas/" class="list-group-item list-group-item-action border-0 px-4 py-3 d-flex align-items-center gap-3">
-                        <div class="quick-action-icon bg-info-subtle text-info">
-                            <i class="bi bi-truck"></i>
-                        </div>
-                        <div>
-                            <div class="fw-semibold text-dark">Ver encomendas</div>
-                            <div class="small text-secondary">Acompanhar estado das encomendas</div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <div class="card border-0 shadow-sm rounded-4 mb-4">
-                <div class="card-header bg-white border-0 p-4">
-                    <h3 class="h5 fw-bold mb-1">Resumo rápido</h3>
-                    <p class="text-secondary small mb-0">Situação operacional imediata.</p>
-                </div>
-
-                <div class="card-body p-4">
-                    <div class="summary-stat-item">
-                        <span class="summary-stat-label">Stocks abaixo do mínimo</span>
-                        <span class="summary-stat-value">{{ critical_stock_count }}</span>
-                    </div>
-                    <div class="summary-stat-item">
-                        <span class="summary-stat-label">Encomendas em aberto</span>
-                        <span class="summary-stat-value">{{ pending_orders_count }}</span>
-                    </div>
-                    <div class="summary-stat-item">
-                        <span class="summary-stat-label">Alertas ativos</span>
-                        <span class="summary-stat-value">{{ active_alerts_count }}</span>
-                    </div>
-                    <div class="summary-stat-item border-0 pb-0">
-                        <span class="summary-stat-label">Anúncios publicados</span>
-                        <span class="summary-stat-value">{{ surplus_listings_count }}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card border-0 shadow-sm rounded-4">
-                <div class="card-header bg-white border-0 p-4">
-                    <h3 class="h5 fw-bold mb-1">Última atividade</h3>
-                    <p class="text-secondary small mb-0">As suas ações mais recentes na plataforma.</p>
-                </div>
-
-                <div class="card-body p-4">
-                    {% if recent_activity %}
-                        <div class="activity-timeline">
-                            {% for log in recent_activity %}
-                                <div class="activity-item">
-                                    <div class="activity-dot"></div>
-                                    <div>
-                                        <div class="fw-semibold text-dark small">{{ log.action }}</div>
-                                        <div class="text-secondary small">{{ log.notes|default:"Atividade registada." }}</div>
-                                        <div class="text-secondary small mt-1">{{ log.created_at|date:"d/m/Y H:i" }}</div>
-                                    </div>
-                                </div>
-                            {% endfor %}
-                        </div>
-                    {% else %}
-                        <p class="text-secondary mb-0">Ainda não existem atividades recentes para mostrar.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+  </div>
 </div>
 
 <style>
-.dashboard-kpi-card {
-    transition: transform .18s ease, box-shadow .18s ease;
-}
-.dashboard-kpi-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 .75rem 1.5rem rgba(15, 23, 42, .08) !important;
-}
-.dashboard-kpi-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
+/* ── vars ─────────────────────────────────────────────────────────────── */
+.pnl {
+  --g:   #16a34a; --gd: #15803d; --gs: #dcfce7;
+  --r:   #dc2626; --rs: #fee2e2;
+  --a:   #d97706; --as: #fef3c7;
+  --b:   #2563eb; --bs: #dbeafe;
+  --sl:  #475569; --sls:#f1f5f9;
+  --tx:  #0f172a; --mt: #64748b; --br: #e2e8f0;
+  --cbg: #ffffff; --pbg: #f1f5f3;
+  --rad: .85rem;
+  --shd: 0 1px 3px rgba(15,23,42,.05),0 4px 14px rgba(15,23,42,.05);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  display: flex; flex-direction: column; gap: 1.25rem;
 }
 
-.recommended-action-card {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem 1.1rem;
-    border: 1px solid #e9ecef;
-    border-radius: 1rem;
-    background: #fff;
-    flex-wrap: wrap;
+/* ── hero ─────────────────────────────────────────────────────────────── */
+.pnl-hero {
+  background: linear-gradient(135deg,#0d2117 0%,#18432a 55%,#16a34a 100%);
+  border-radius: var(--rad);
+  padding: 2rem 2.5rem;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 1.25rem;
+  position: relative; overflow: hidden;
 }
-.recommended-action-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.15rem;
-    flex-shrink: 0;
+.pnl-hero::before {
+  content:''; position:absolute; inset:0;
+  background: radial-gradient(ellipse 50% 90% at 85% 50%,rgba(134,239,172,.14),transparent);
+  pointer-events:none;
 }
-.recommended-danger .recommended-action-icon {
-    background: rgba(220, 53, 69, .12);
-    color: #dc3545;
+.pnl-greeting {
+  display:flex; align-items:center; gap:.45rem;
+  font-size:.72rem; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; color:rgba(255,255,255,.5); margin:0 0 .5rem;
 }
-.recommended-warning .recommended-action-icon {
-    background: rgba(255, 193, 7, .18);
-    color: #b58100;
+.pnl-pulse {
+  width:7px; height:7px; border-radius:50%; background:#4ade80;
+  box-shadow:0 0 0 3px rgba(74,222,128,.25);
+  animation: pulse-ring 2s ease-in-out infinite;
 }
-.recommended-primary .recommended-action-icon {
-    background: rgba(13, 110, 253, .12);
-    color: #0d6efd;
+@keyframes pulse-ring { 0%,100%{box-shadow:0 0 0 3px rgba(74,222,128,.25)} 50%{box-shadow:0 0 0 6px rgba(74,222,128,.08)} }
+.pnl-hero-title {
+  font-size:clamp(1.6rem,2.5vw,2.2rem); font-weight:800;
+  color:#fff; margin:0 0 .45rem; letter-spacing:-.02em; line-height:1.15;
 }
-.recommended-success .recommended-action-icon {
-    background: rgba(25, 135, 84, .12);
-    color: #198754;
+.pnl-hero-accent { color:#86efac; }
+.pnl-hero-sub { font-size:.9rem; color:rgba(255,255,255,.65); margin:0; }
+.pnl-hero-sub strong { color:#fca5a5; font-weight:600; }
+.pnl-hero-btns { display:flex; gap:.75rem; flex-wrap:wrap; }
+.pnl-hero-btn {
+  display:inline-flex; align-items:center; gap:.45rem;
+  padding:.6rem 1.25rem; border-radius:.65rem;
+  font-size:.85rem; font-weight:700; text-decoration:none;
+  transition:transform .15s, box-shadow .15s;
 }
-.recommended-secondary .recommended-action-icon {
-    background: rgba(108, 117, 125, .12);
-    color: #6c757d;
+.pnl-hero-btn--white { background:#fff; color:var(--gd); box-shadow:0 2px 8px rgba(0,0,0,.12); }
+.pnl-hero-btn--white:hover { transform:translateY(-1px); box-shadow:0 6px 18px rgba(0,0,0,.18); }
+.pnl-hero-btn--ghost {
+  background:rgba(255,255,255,.1); color:#fff;
+  border:1.5px solid rgba(255,255,255,.22); backdrop-filter:blur(4px);
 }
-.recommended-action-content {
-    flex: 1 1 250px;
-}
-.recommended-action-btn {
-    flex-shrink: 0;
-}
+.pnl-hero-btn--ghost:hover { background:rgba(255,255,255,.18); color:#fff; }
 
-.priority-alert-card {
-    border-radius: 1rem;
-    padding: 1rem 1.1rem;
-    border-left: 4px solid transparent;
-    background: #fff;
-    border: 1px solid #edf2f7;
+/* ── kpis ─────────────────────────────────────────────────────────────── */
+.pnl-kpis {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 1rem;
 }
-.priority-critical { border-left-color: #dc3545; }
-.priority-warning { border-left-color: #ffc107; }
-.priority-info { border-left-color: #0d6efd; }
+.pnl-kpi {
+  background:var(--cbg); border-radius:var(--rad);
+  border:1px solid var(--br); box-shadow:var(--shd);
+  padding:1.25rem 1.4rem; text-decoration:none;
+  display:flex; flex-direction:column; gap:.5rem;
+  position:relative; overflow:hidden;
+  transition:transform .18s, box-shadow .18s;
+}
+.pnl-kpi::after {
+  content:''; position:absolute; inset-inline:0; bottom:0;
+  height:3px; border-radius:0 0 var(--rad) var(--rad);
+}
+.pnl-kpi--red::after   { background:var(--r); }
+.pnl-kpi--amber::after { background:var(--a); }
+.pnl-kpi--blue::after  { background:var(--b); }
+.pnl-kpi--green::after { background:var(--g); }
+.pnl-kpi:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(15,23,42,.1); }
+.pnl-kpi-header { display:flex; justify-content:space-between; align-items:center; }
+.pnl-kpi-label  { font-size:.72rem; font-weight:700; color:var(--mt); letter-spacing:.04em; text-transform:uppercase; }
+.pnl-kpi-ico    { font-size:1rem; }
+.pnl-kpi--red   .pnl-kpi-ico { color:var(--r); }
+.pnl-kpi--amber .pnl-kpi-ico { color:var(--a); }
+.pnl-kpi--blue  .pnl-kpi-ico { color:var(--b); }
+.pnl-kpi--green .pnl-kpi-ico { color:var(--g); }
+.pnl-kpi-num { font-size:2.4rem; font-weight:800; color:var(--tx); line-height:1; letter-spacing:-.03em; font-family:'DM Mono',monospace; }
+.pnl-kpi-foot { display:flex; align-items:center; gap:.35rem; font-size:.78rem; color:var(--mt); }
+.pnl-dot { width:5px; height:5px; border-radius:50%; background:currentColor; flex-shrink:0; }
+.pnl-kpi--red   .pnl-dot { color:var(--r); }
+.pnl-kpi--amber .pnl-dot { color:var(--a); }
+.pnl-kpi--blue  .pnl-dot { color:var(--b); }
+.pnl-kpi--green .pnl-dot { color:var(--g); }
 
-.quick-action-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
+/* ── body grid ────────────────────────────────────────────────────────── */
+.pnl-body {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1.25rem;
+  align-items: start;
 }
+.pnl-center, .pnl-side { display:flex; flex-direction:column; gap:1.25rem; }
 
-.summary-stat-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: .85rem 0;
-    border-bottom: 1px solid #f1f5f9;
+/* ── card ─────────────────────────────────────────────────────────────── */
+.pnl-card { background:var(--cbg); border-radius:var(--rad); border:1px solid var(--br); box-shadow:var(--shd); overflow:hidden; }
+.pnl-card-head {
+  display:flex; align-items:flex-start; justify-content:space-between;
+  padding:1.2rem 1.4rem; border-bottom:1px solid var(--br); gap:1rem;
 }
-.summary-stat-label {
-    color: #64748b;
-    font-size: .95rem;
+.pnl-card-title { font-size:.95rem; font-weight:700; color:var(--tx); margin:0 0 .1rem; }
+.pnl-card-hint  { font-size:.78rem; color:var(--mt); margin:0; }
+.pnl-see-all {
+  display:inline-flex; align-items:center; gap:.3rem; flex-shrink:0;
+  font-size:.78rem; font-weight:600; color:var(--g); text-decoration:none; padding-top:.1rem;
 }
-.summary-stat-value {
-    font-weight: 700;
-    color: #0f172a;
-}
+.pnl-see-all:hover { text-decoration:underline; }
+.pnl-empty { text-align:center; padding:1.75rem 1rem; }
 
-.activity-timeline {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+/* ── alerts ───────────────────────────────────────────────────────────── */
+.pnl-alert-list { display:flex; flex-direction:column; gap:.75rem; padding:1.1rem 1.4rem; }
+.pnl-alert {
+  display:flex; align-items:stretch;
+  border:1px solid var(--br); border-radius:.75rem; overflow:hidden;
+  background:#fff; transition:box-shadow .15s;
 }
-.activity-item {
-    display: flex;
-    gap: .85rem;
-    align-items: flex-start;
+.pnl-alert:hover { box-shadow:0 4px 14px rgba(15,23,42,.08); }
+.pnl-alert-stripe { width:4px; flex-shrink:0; }
+.pnl-alert--critical .pnl-alert-stripe { background:var(--r); }
+.pnl-alert--warning  .pnl-alert-stripe { background:var(--a); }
+.pnl-alert--info     .pnl-alert-stripe { background:var(--b); }
+.pnl-alert-info  { flex:1; padding:.95rem 1rem .95rem 1.1rem; min-width:0; }
+.pnl-alert-top   { display:flex; align-items:center; gap:.6rem; margin-bottom:.45rem; flex-wrap:wrap; }
+.pnl-alert-ts    { font-size:.72rem; color:var(--mt); font-family:'DM Mono',monospace; }
+.pnl-alert-title { font-size:.9rem; font-weight:700; color:var(--tx); margin:0 0 .3rem; }
+.pnl-alert-desc  { font-size:.8rem; color:var(--mt); margin:0; }
+.pnl-alert-cta   { display:flex; align-items:center; padding:0 1rem; flex-shrink:0; }
+
+.pnl-tag { display:inline-block; padding:.18rem .6rem; border-radius:99px; font-size:.67rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+.pnl-tag--critical { background:var(--rs); color:var(--r); }
+.pnl-tag--warning  { background:var(--as); color:var(--a); }
+.pnl-tag--info     { background:var(--bs); color:var(--b); }
+
+.pnl-cta-red {
+  display:inline-flex; align-items:center;
+  background:var(--r); color:#fff;
+  padding:.4rem .9rem; border-radius:.55rem;
+  font-size:.78rem; font-weight:700; text-decoration:none; white-space:nowrap;
+  transition:background .15s;
 }
-.activity-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #198754;
-    margin-top: .35rem;
-    flex-shrink: 0;
+.pnl-cta-red:hover { background:#b91c1c; color:#fff; }
+.pnl-cta-ghost {
+  display:inline-flex; align-items:center;
+  background:#fff; color:var(--tx);
+  border:1.5px solid var(--br);
+  padding:.4rem .9rem; border-radius:.55rem;
+  font-size:.78rem; font-weight:600; text-decoration:none; white-space:nowrap;
+  transition:background .15s, border-color .15s;
 }
+.pnl-cta-ghost:hover { background:var(--sls); border-color:#94a3b8; }
 
-.empty-state-box {
-    border: 1px dashed #dbe3ea;
-    border-radius: 1rem;
-    padding: 2rem 1rem;
-    text-align: center;
-    background: #fbfdff;
+/* ── recommended actions ──────────────────────────────────────────────── */
+.pnl-rec-list { display:flex; flex-direction:column; gap:.7rem; padding:1.1rem 1.4rem; }
+.pnl-rec {
+  display:flex; align-items:center; gap:.9rem;
+  padding:.85rem .95rem; border-radius:.7rem;
+  border:1px solid var(--br); flex-wrap:wrap;
 }
+.pnl-rec-ico { width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:.95rem; flex-shrink:0; }
+.pnl-rec--danger  .pnl-rec-ico { background:var(--rs); color:var(--r); }
+.pnl-rec--warning .pnl-rec-ico { background:var(--as); color:var(--a); }
+.pnl-rec--primary .pnl-rec-ico { background:var(--bs); color:var(--b); }
+.pnl-rec--success .pnl-rec-ico { background:var(--gs); color:var(--g); }
+.pnl-rec--secondary .pnl-rec-ico { background:var(--sls); color:var(--sl); }
+.pnl-rec-body { flex:1 1 140px; display:flex; flex-direction:column; gap:.1rem; }
+.pnl-rec-title { font-size:.85rem; font-weight:700; color:var(--tx); }
+.pnl-rec-desc  { font-size:.77rem; color:var(--mt); }
 
-@media (max-width: 767.98px) {
-    .recommended-action-card {
-        align-items: flex-start;
-    }
+/* ── quick actions ────────────────────────────────────────────────────── */
+.pnl-qa-list { display:flex; flex-direction:column; }
+.pnl-qa {
+  display:flex; align-items:center; gap:.85rem;
+  padding:.9rem 1.4rem; text-decoration:none; color:var(--tx);
+  border-bottom:1px solid var(--br); transition:background .15s;
+}
+.pnl-qa:last-child { border-bottom:none; }
+.pnl-qa:hover { background:var(--sls); }
+.pnl-qa-ico { width:36px; height:36px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:.9rem; flex-shrink:0; }
+.pnl-qa--blue  .pnl-qa-ico { background:var(--bs); color:var(--b); }
+.pnl-qa--green .pnl-qa-ico { background:var(--gs); color:var(--g); }
+.pnl-qa--amber .pnl-qa-ico { background:var(--as); color:var(--a); }
+.pnl-qa--slate .pnl-qa-ico { background:var(--sls); color:var(--sl); }
+.pnl-qa-txt { flex:1; display:flex; flex-direction:column; gap:1px; }
+.pnl-qa-txt b    { font-size:.84rem; font-weight:600; color:var(--tx); }
+.pnl-qa-txt span { font-size:.75rem; color:var(--mt); }
+.pnl-qa-arr { font-size:.72rem; color:#cbd5e1; }
 
-    .recommended-action-btn {
-        width: 100%;
-    }
+/* ── stocks ───────────────────────────────────────────────────────────── */
+.pnl-stock-list { display:flex; flex-direction:column; gap:.95rem; padding:1.1rem 1.4rem; }
+.pnl-stock-row  { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:.3rem; }
+.pnl-stock-name { font-size:.84rem; font-weight:600; color:var(--tx); }
+.pnl-stock-val  { font-size:1rem; font-weight:800; color:var(--r); font-family:'DM Mono',monospace; }
+.pnl-stock-val small { font-size:.7rem; font-weight:500; color:var(--mt); }
+.pnl-stock-track { height:5px; background:#f1f5f9; border-radius:99px; overflow:hidden; margin-bottom:.3rem; }
+.pnl-stock-fill  { height:100%; background:linear-gradient(90deg,var(--r),var(--a)); border-radius:99px; min-width:3px; }
+.pnl-stock-min  { font-size:.72rem; color:var(--mt); }
 
-    .recommended-action-btn .btn {
-        width: 100%;
-    }
+/* ── timeline ─────────────────────────────────────────────────────────── */
+.pnl-timeline { display:flex; flex-direction:column; gap:.9rem; padding:1.1rem 1.4rem; }
+.pnl-tl { display:flex; gap:.8rem; }
+.pnl-tl-dot { width:8px; height:8px; border-radius:50%; background:var(--g); margin-top:.35rem; flex-shrink:0; box-shadow:0 0 0 3px var(--gs); }
+.pnl-tl-body { display:flex; flex-direction:column; gap:.1rem; }
+.pnl-tl-action { font-size:.84rem; font-weight:600; color:var(--tx); }
+.pnl-tl-note   { font-size:.78rem; color:var(--mt); }
+.pnl-tl-ts     { font-size:.7rem; color:#94a3b8; font-family:'DM Mono',monospace; }
+
+/* ── responsive ───────────────────────────────────────────────────────── */
+/* wide — 5 colunas de KPI se quiser adicionar mais */
+@media (min-width:1600px) {
+  .pnl-body { grid-template-columns:1fr 380px; }
+}
+/* medium */
+@media (max-width:1200px) {
+  .pnl-body { grid-template-columns:1fr 300px; }
+}
+/* collapse side into grid below center */
+@media (max-width:960px) {
+  .pnl-kpis { grid-template-columns:repeat(2,1fr); }
+  .pnl-body  { grid-template-columns:1fr; }
+  .pnl-side  { display:grid; grid-template-columns:repeat(2,1fr); }
+}
+/* tablet */
+@media (max-width:640px) {
+  .pnl-hero  { padding:1.4rem 1.25rem; }
+  .pnl-hero-btns { width:100%; }
+  .pnl-hero-btn  { flex:1; justify-content:center; }
+  .pnl-side  { grid-template-columns:1fr; }
+}
+/* mobile */
+@media (max-width:480px) {
+  .pnl-kpis { grid-template-columns:1fr 1fr; gap:.75rem; }
+  .pnl-kpi-num { font-size:2rem; }
+  .pnl-alert  { flex-direction:column; }
+  .pnl-alert-cta { padding:.75rem 1rem; }
+  .pnl-cta-red, .pnl-cta-ghost { width:100%; justify-content:center; }
 }
 </style>
+
 {% endblock %}

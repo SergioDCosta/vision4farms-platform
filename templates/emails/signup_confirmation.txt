@@ -1,0 +1,11 @@
+Olá {{ first_name }},
+
+Obrigado pelo seu registo na plataforma Vision4Farms.
+
+Para ativar a sua conta, clique no link abaixo:
+{{ verify_url }}
+
+Se não realizou este registo, pode ignorar este email.
+
+—
+Equipa Vision4Farms
