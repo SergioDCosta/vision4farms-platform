@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Convite Vision4Farms</title>
+</head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+    <div style="max-width:640px;margin:0 auto;padding:32px 20px;">
+        <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+            <div style="background:#16a34a;padding:20px 24px;color:#ffffff;">
+                <h1 style="margin:0;font-size:22px;">Vision4Farms</h1>
+            </div>
+
+            <div style="padding:32px 24px;">
+                <h2 style="margin:0 0 16px;font-size:22px;color:#1e293b;">Convite para aceder à plataforma</h2>
+
+                <p style="margin:0 0 16px;line-height:1.6;">
+                    Olá <strong>{{ first_name }}</strong>,
+                </p>
+
+                <p style="margin:0 0 16px;line-height:1.6;">
+                    Foi criada uma conta para si na plataforma Vision4Farms.
+                </p>
+
+                <p style="margin:0 0 24px;line-height:1.6;">
+                    Para ativar a sua conta, clique no botão abaixo:
+                </p>
+
+                <p style="margin:0 0 24px;">
+                    <a href="{{ verify_url }}"
+                       style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:10px;font-weight:bold;">
+                        Ativar conta
+                    </a>
+                </p>
+
+                <p style="margin:0 0 12px;line-height:1.6;">
+                    Caso o botão não funcione, pode copiar e colar este link no navegador:
+                </p>
+
+                <p style="margin:0 0 24px;word-break:break-all;color:#2563eb;">
+                    {{ verify_url }}
+                </p>
+
+                <p style="margin:0 0 16px;line-height:1.6;color:#475569;">
+                    Se não estava à espera deste convite, pode ignorar este email.
+                </p>
+
+                <p style="margin:24px 0 0;line-height:1.6;color:#475569;">
+                    —<br>
+                    Equipa Vision4Farms
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

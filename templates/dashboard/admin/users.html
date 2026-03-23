@@ -68,9 +68,6 @@
                                 <a href="{% url 'dashboard:gestor_utilizador_detalhe' user.id %}" class="btn btn-sm btn-outline-primary">
                                     <i class="bi bi-eye"></i>
                                 </a>
-                                <a href="{% url 'dashboard:gestor_utilizador_editar' user.id %}" class="btn btn-sm btn-outline-secondary">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
                                 <form method="post" action="{% url 'dashboard:gestor_utilizador_estado' user.id %}" class="d-inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="next" value="{{ request.get_full_path }}">

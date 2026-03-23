@@ -8,8 +8,9 @@ from apps.accounts.forms import (
     RegisterForm,
     PasswordResetRequestForm,
     PasswordResetConfirmForm,
+    AdminInviteCompleteForm,
 )
-from apps.accounts.models import User
+from apps.accounts.models import User, VerificationPurpose
 from apps.accounts.services import (
     create_user_and_profile,
     create_signup_verification_token,
@@ -22,6 +23,8 @@ from apps.accounts.services import (
     create_password_reset_token,
     send_password_reset_email,
     validate_password_reset_token,
+    validate_admin_invite_token,
+    complete_invited_user_account,
 )
 
 
@@ -83,6 +86,9 @@ def verify_email_view(request, token):
         messages.error(request, "O link de confirmação é inválido ou expirou.")
         return redirect("accounts:login")
 
+    if token_obj.purpose == VerificationPurpose.ADMIN_INVITE:
+        return redirect("accounts:admin_invite_complete", token=token_obj.token)
+
     token_obj.used_at = timezone.now()
     token_obj.save(update_fields=["used_at"])
 
@@ -90,6 +96,36 @@ def verify_email_view(request, token):
 
     messages.success(request, "Conta ativada com sucesso. Já pode iniciar sessão.")
     return redirect("accounts:login")
+
+
+def admin_invite_complete_view(request, token):
+    token_obj = validate_admin_invite_token(token)
+
+    if not token_obj:
+        messages.error(request, "O link de convite é inválido ou expirou.")
+        return redirect("accounts:login")
+
+    user = token_obj.user
+    form = AdminInviteCompleteForm(request.POST or None)
+
+    if request.method == "POST" and form.is_valid():
+        complete_invited_user_account(user, form.cleaned_data)
+
+        token_obj.used_at = timezone.now()
+        token_obj.save(update_fields=["used_at"])
+
+        messages.success(request, "Conta ativada com sucesso. Já pode iniciar sessão.")
+        return redirect("accounts:login")
+
+    return render(
+        request,
+        "accounts/admin_invite_complete.html",
+        {
+            "form": form,
+            "invited_email": user.email,
+            "token": token,
+        },
+    )
 
 
 def logout_view(request):

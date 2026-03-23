@@ -79,6 +79,18 @@ def create_signup_verification_token(user):
     return verification
 
 
+def create_admin_invite_token(user):
+    token = secrets.token_urlsafe(48)
+
+    verification = AccountVerificationToken.objects.create(
+        user=user,
+        token=token,
+        purpose=VerificationPurpose.ADMIN_INVITE,
+        expires_at=timezone.now() + timedelta(hours=48),
+    )
+    return verification
+
+
 def send_signup_confirmation_email(request, user, verification_token):
     verify_url = request.build_absolute_uri(
         reverse("accounts:verify_email", kwargs={"token": verification_token.token})
@@ -92,6 +104,28 @@ def send_signup_confirmation_email(request, user, verification_token):
     subject = render_to_string("emails/signup_confirmation_subject.txt", context).strip()
     text_body = render_to_string("emails/signup_confirmation.txt", context)
     html_body = render_to_string("emails/signup_confirmation.html", context)
+
+    _send_system_email(
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        recipient_list=[user.email],
+    )
+
+
+def send_admin_invite_email(request, user, verification_token):
+    verify_url = request.build_absolute_uri(
+        reverse("accounts:verify_email", kwargs={"token": verification_token.token})
+    )
+
+    context = {
+        "first_name": user.first_name or "Utilizador",
+        "verify_url": verify_url,
+    }
+
+    subject = render_to_string("emails/admin_invite_subject.txt", context).strip()
+    text_body = render_to_string("emails/admin_invite.txt", context)
+    html_body = render_to_string("emails/admin_invite.html", context)
 
     _send_system_email(
         subject=subject,
@@ -134,7 +168,10 @@ def validate_verification_token(token_value):
     try:
         token = AccountVerificationToken.objects.select_related("user").get(
             token=token_value,
-            purpose=VerificationPurpose.SIGNUP_CONFIRMATION,
+            purpose__in=[
+                VerificationPurpose.SIGNUP_CONFIRMATION,
+                VerificationPurpose.ADMIN_INVITE,
+            ],
             used_at__isnull=True,
         )
     except AccountVerificationToken.DoesNotExist:
@@ -144,6 +181,67 @@ def validate_verification_token(token_value):
         return None
 
     return token
+
+
+def validate_admin_invite_token(token_value):
+    try:
+        token = AccountVerificationToken.objects.select_related("user").get(
+            token=token_value,
+            purpose=VerificationPurpose.ADMIN_INVITE,
+            used_at__isnull=True,
+        )
+    except AccountVerificationToken.DoesNotExist:
+        return None
+
+    if token.expires_at < timezone.now():
+        return None
+
+    return token
+
+
+def complete_invited_user_account(user, form_data):
+    now = timezone.now()
+
+    user.first_name = form_data["first_name"].strip()
+    user.last_name = form_data["last_name"].strip()
+    user.password = make_password(form_data["password"])
+    user.account_status = AccountStatus.ACTIVE
+    user.is_active = True
+    user.email_verified_at = now
+    user.updated_at = now
+    user.save(
+        update_fields=[
+            "first_name",
+            "last_name",
+            "password",
+            "account_status",
+            "is_active",
+            "email_verified_at",
+            "updated_at",
+        ]
+    )
+
+    if user.role == UserRole.CLIENTE:
+        producer_profile, created = ProducerProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                "display_name": f"{user.first_name} {user.last_name}".strip(),
+                "company_name": form_data.get("company") or None,
+                "user_type": form_data.get("user_type") or None,
+                "member_since": now,
+                "completed_transactions_count": 0,
+                "is_active_marketplace": True,
+            },
+        )
+
+        if not created:
+            producer_profile.display_name = f"{user.first_name} {user.last_name}".strip()
+            producer_profile.company_name = form_data.get("company") or None
+            producer_profile.user_type = form_data.get("user_type") or None
+            producer_profile.updated_at = now
+            producer_profile.save(
+                update_fields=["display_name", "company_name", "user_type", "updated_at"]
+            )
 
 
 def login_user_manual(request, user, remember_me=False):

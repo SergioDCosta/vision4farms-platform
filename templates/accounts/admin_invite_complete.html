@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Completar Conta{% endblock %}
+
+{% block content %}
+<div class="page-center">
+    <div class="auth-wrapper">
+        <div class="auth-header">
+            <div class="logo-box">
+                <i class="bi bi-leaf-fill"></i>
+            </div>
+            <h1 class="auth-title">Completar conta</h1>
+            <p class="auth-subtitle">Defina os seus dados para ativar o acesso à plataforma.</p>
+        </div>
+
+        <div class="card">
+            {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}
+                        <div class="message {{ message.tags }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <div class="field-wrap">
+                        <span class="field-icon">
+                            <i class="bi bi-envelope"></i>
+                        </span>
+                        <input
+                            type="email"
+                            value="{{ invited_email }}"
+                            class="form-input with-left-icon"
+                            disabled
+                        >
+                    </div>
+                </div>
+
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.first_name.label }}</label>
+                        <div class="field-wrap">
+                            <span class="field-icon">
+                                <i class="bi bi-person"></i>
+                            </span>
+                            {{ form.first_name }}
+                        </div>
+                        {{ form.first_name.errors }}
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">{{ form.last_name.label }}</label>
+                        <div class="field-wrap">
+                            <span class="field-icon">
+                                <i class="bi bi-person"></i>
+                            </span>
+                            {{ form.last_name }}
+                        </div>
+                        {{ form.last_name.errors }}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">{{ form.company.label }} <span style="color:#94a3b8; font-weight:400;">(Opcional)</span></label>
+                    <div class="field-wrap">
+                        <span class="field-icon">
+                            <i class="bi bi-building"></i>
+                        </span>
+                        {{ form.company }}
+                    </div>
+                    {{ form.company.errors }}
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">{{ form.user_type.label }}</label>
+                    <div class="field-wrap">
+                        <span class="field-icon">
+                            <i class="bi bi-person-badge"></i>
+                        </span>
+                        {{ form.user_type }}
+                    </div>
+                    {{ form.user_type.errors }}
+                </div>
+
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label class="form-label">{{ form.password.label }}</label>
+                        <div class="field-wrap">
+                            <span class="field-icon">
+                                <i class="bi bi-lock"></i>
+                            </span>
+                            {{ form.password }}
+
+                            <button type="button" data-toggle-password data-target="id_password" class="password-toggle-btn">
+                                <span data-eye style="display:inline-flex;">
+                                    <i class="bi bi-eye"></i>
+                                </span>
+                                <span data-eye-off style="display:none;">
+                                    <i class="bi bi-eye-slash"></i>
+                                </span>
+                                <span data-toggle-label>Ver</span>
+                            </button>
+                        </div>
+                        {{ form.password.errors }}
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">{{ form.confirm_password.label }}</label>
+                        <div class="field-wrap">
+                            <span class="field-icon">
+                                <i class="bi bi-lock"></i>
+                            </span>
+                            {{ form.confirm_password }}
+
+                            <button type="button" data-toggle-password data-target="id_confirm_password" class="password-toggle-btn">
+                                <span data-eye style="display:inline-flex;">
+                                    <i class="bi bi-eye"></i>
+                                </span>
+                                <span data-eye-off style="display:none;">
+                                    <i class="bi bi-eye-slash"></i>
+                                </span>
+                                <span data-toggle-label>Ver</span>
+                            </button>
+                        </div>
+                        {{ form.confirm_password.errors }}
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Ativar conta</button>
+            </form>
+
+            <div class="divider">Já tem uma conta?</div>
+
+            <a href="{% url 'accounts:login' %}" class="btn btn-secondary">
+                Iniciar Sessão
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

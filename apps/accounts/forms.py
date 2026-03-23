@@ -1,5 +1,5 @@
 from django import forms
-from apps.inventory.models import ProducerUserType
+from apps.inventory.models import ProducerUserType, ProducerProfile
 
 
 class LoginForm(forms.Form):
@@ -150,6 +150,81 @@ class PasswordResetConfirmForm(forms.Form):
         cleaned_data = super().clean()
         password = cleaned_data.get("password")
         confirm_password = cleaned_data.get("confirm_password")
+
+        if password and confirm_password and password != confirm_password:
+            self.add_error("confirm_password", "As palavras-passe não coincidem.")
+
+        return cleaned_data
+
+
+class AdminInviteCompleteForm(forms.Form):
+    first_name = forms.CharField(
+        label="Primeiro Nome",
+        max_length=150,
+        widget=forms.TextInput(attrs={
+            "placeholder": "Ex: João",
+            "class": "form-input with-left-icon",
+            "id": "id_first_name",
+        })
+    )
+    last_name = forms.CharField(
+        label="Último Nome",
+        max_length=150,
+        widget=forms.TextInput(attrs={
+            "placeholder": "Ex: Silva",
+            "class": "form-input with-left-icon",
+            "id": "id_last_name",
+        })
+    )
+    company = forms.CharField(
+        label="Empresa",
+        required=False,
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            "placeholder": "Nome da sua exploração ou empresa",
+            "class": "form-input with-left-icon",
+            "id": "id_company",
+        })
+    )
+    user_type = forms.ChoiceField(
+        label="Tipo de Utilizador",
+        required=False,
+        choices=[
+            ("", "Selecione o seu perfil"),
+            (ProducerUserType.AGRICULTOR, "Agricultor / Produtor"),
+            (ProducerUserType.DISTRIBUIDOR, "Distribuidor"),
+            (ProducerUserType.VENDEDOR, "Vendedor / Retalhista"),
+        ],
+        widget=forms.Select(attrs={
+            "class": "form-input with-left-icon",
+            "id": "id_user_type",
+        })
+    )
+    password = forms.CharField(
+        label="Palavra-passe",
+        min_length=8,
+        widget=forms.PasswordInput(attrs={
+            "placeholder": "Mínimo 8 caracteres",
+            "class": "form-input with-left-icon with-right-button",
+            "id": "id_password",
+            "minlength": "8",
+        })
+    )
+    confirm_password = forms.CharField(
+        label="Repetir Palavra-passe",
+        widget=forms.PasswordInput(attrs={
+            "placeholder": "Repita a palavra-passe",
+            "class": "form-input with-left-icon with-right-button",
+            "id": "id_confirm_password",
+            "minlength": "8",
+        })
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get("password")
+        confirm_password = cleaned_data.get("confirm_password")
+        user_type = cleaned_data.get("user_type")
 
         if password and confirm_password and password != confirm_password:
             self.add_error("confirm_password", "As palavras-passe não coincidem.")

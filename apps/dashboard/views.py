@@ -1,25 +1,31 @@
 from decimal import Decimal
 
-
 from django.contrib import messages
-from django.contrib.auth.hashers import make_password
 from django.core.paginator import Paginator
 from django.db import models, transaction
 from django.db.models import Q, Sum
 from django.shortcuts import render, redirect, get_object_or_404
+from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.common.decorators import login_required, admin_required, client_only_required
-from apps.accounts.models import User, UserRole, RegistrationSource, AccountStatus
+from apps.common.decorators import admin_required, client_only_required
+from apps.accounts.models import (
+    User,
+    UserRole,
+    RegistrationSource,
+    AccountStatus,
+)
+from apps.accounts.services import send_admin_invite_email, create_admin_invite_token
 from apps.inventory.models import ProducerProfile, Stock
 from apps.alerts.models import Alert, AlertStatus, AlertSeverity
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import Order, OrderStatus
 from apps.catalog.models import Product, ProductCategory
 from apps.dashboard.models import AuditLog
-from apps.dashboard.forms import AdminUserCreateForm, AdminUserUpdateForm
-from apps.dashboard.models import AuditLog
+from apps.dashboard.forms import AdminUserCreateForm
+
 
 def _get_client_ip(request):
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -108,9 +114,7 @@ def dashboard_view(request):
     surplus_listings_count = active_listings_qs.count()
 
     priority_alerts = active_alerts_qs.order_by("-created_at")[:3]
-    recent_orders = pending_orders_qs[:3]
     low_stock_preview = critical_stock_qs[:3]
-
     recent_activity = AuditLog.objects.filter(user=user).order_by("-created_at")[:5]
 
     listed_product_ids = active_listings_qs.values_list("product_id", flat=True)
@@ -200,7 +204,6 @@ def dashboard_view(request):
         "surplus_listings_count": surplus_listings_count,
         "priority_alerts": priority_alerts,
         "recommended_actions": recommended_actions,
-        "recent_orders": recent_orders,
         "low_stock_preview": low_stock_preview,
         "recent_activity": recent_activity,
     }
@@ -295,55 +298,43 @@ def admin_user_create_view(request):
 
     if request.method == "POST" and form.is_valid():
         with transaction.atomic():
-            now = timezone.now()
             role = form.cleaned_data["role"]
 
             user = User.objects.create(
                 email=form.cleaned_data["email"],
-                password=make_password(form.cleaned_data["password"]),
-                first_name=form.cleaned_data["first_name"].strip(),
-                last_name=form.cleaned_data["last_name"].strip(),
+                password="",
+                first_name="",
+                last_name="",
                 role=role,
                 registration_source=RegistrationSource.ADMIN_CREATED,
-                account_status=AccountStatus.ACTIVE,
-                email_verified_at=now,
-                is_active=True,
+                account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
+                is_active=False,
                 is_staff=(role == UserRole.ADMIN),
             )
 
-            producer_profile = None
-            if role == UserRole.CLIENTE:
-                producer_profile = ProducerProfile.objects.create(
-                    user=user,
-                    display_name=f"{user.first_name} {user.last_name}".strip(),
-                    company_name=form.cleaned_data.get("company_name") or None,
-                    user_type=form.cleaned_data["user_type"],
-                    member_since=now,
-                    completed_transactions_count=0,
-                    is_active_marketplace=True,
-                )
+            verification = create_admin_invite_token(user)
+            send_admin_invite_email(request, user, verification)
 
             _log_admin_action(
                 request=request,
-                action="USER_CREATED",
+                action="USER_INVITED",
                 entity_type="users",
                 entity_id=user.id,
-                notes=f"Administrador criou utilizador {user.email}.",
-                new_values=_user_snapshot(user, producer_profile),
+                notes=f"Administrador convidou utilizador {user.email}.",
+                new_values=_user_snapshot(user),
             )
 
-        messages.success(request, "Utilizador criado com sucesso.")
-        return redirect("dashboard:gestor_utilizador_detalhe", user_id=user.id)
+        messages.success(request, "Convite enviado com sucesso.")
+        return redirect("dashboard:gestor_utilizadores")
 
     context = {
         "admin_tab": "utilizadores",
         "form": form,
         "page_title": "Novo Utilizador",
-        "submit_label": "Criar utilizador",
+        "submit_label": "Enviar convite",
         "is_create": True,
     }
     return render(request, "dashboard/admin/user_form.html", context)
-
 
 @admin_required
 def admin_user_detail_view(request, user_id):
@@ -364,100 +355,6 @@ def admin_user_detail_view(request, user_id):
 
 
 @admin_required
-def admin_user_update_view(request, user_id):
-    user_obj = get_object_or_404(User, id=user_id)
-    producer_profile = ProducerProfile.objects.filter(user=user_obj).first()
-
-    form = AdminUserUpdateForm(
-        request.POST or None,
-        user_instance=user_obj,
-        producer_profile=producer_profile,
-    )
-
-    if request.method == "POST" and form.is_valid():
-        old_snapshot = _user_snapshot(user_obj, producer_profile)
-
-        with transaction.atomic():
-            now = timezone.now()
-
-            user_obj.first_name = form.cleaned_data["first_name"].strip()
-            user_obj.last_name = form.cleaned_data["last_name"].strip()
-            user_obj.email = form.cleaned_data["email"]
-            user_obj.role = form.cleaned_data["role"]
-            user_obj.account_status = form.cleaned_data["account_status"]
-            user_obj.is_active = form.cleaned_data["is_active"]
-            user_obj.is_staff = user_obj.role == UserRole.ADMIN
-
-            update_fields = [
-                "first_name",
-                "last_name",
-                "email",
-                "role",
-                "account_status",
-                "is_active",
-                "is_staff",
-                "updated_at",
-            ]
-
-            if user_obj.account_status == AccountStatus.ACTIVE and not user_obj.email_verified_at:
-                user_obj.email_verified_at = now
-                update_fields.append("email_verified_at")
-
-            new_password = form.cleaned_data.get("new_password")
-            if new_password:
-                user_obj.password = make_password(new_password)
-                update_fields.append("password")
-
-            user_obj.updated_at = now
-            user_obj.save(update_fields=update_fields)
-
-            if user_obj.role == UserRole.CLIENTE:
-                if producer_profile:
-                    producer_profile.display_name = f"{user_obj.first_name} {user_obj.last_name}".strip()
-                    producer_profile.company_name = form.cleaned_data.get("company_name") or None
-                    producer_profile.user_type = form.cleaned_data["user_type"]
-                    producer_profile.updated_at = now
-                    producer_profile.save(
-                        update_fields=["display_name", "company_name", "user_type", "updated_at"]
-                    )
-                else:
-                    producer_profile = ProducerProfile.objects.create(
-                        user=user_obj,
-                        display_name=f"{user_obj.first_name} {user_obj.last_name}".strip(),
-                        company_name=form.cleaned_data.get("company_name") or None,
-                        user_type=form.cleaned_data["user_type"],
-                        member_since=now,
-                        completed_transactions_count=0,
-                        is_active_marketplace=True,
-                    )
-
-            new_snapshot = _user_snapshot(user_obj, producer_profile)
-
-            _log_admin_action(
-                request=request,
-                action="USER_UPDATED",
-                entity_type="users",
-                entity_id=user_obj.id,
-                notes=f"Administrador editou utilizador {user_obj.email}.",
-                old_values=old_snapshot,
-                new_values=new_snapshot,
-            )
-
-        messages.success(request, "Utilizador atualizado com sucesso.")
-        return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
-
-    context = {
-        "admin_tab": "utilizadores",
-        "form": form,
-        "user_obj": user_obj,
-        "page_title": "Editar Utilizador",
-        "submit_label": "Guardar alterações",
-        "is_create": False,
-    }
-    return render(request, "dashboard/admin/user_form.html", context)
-
-
-@admin_required
 @require_POST
 def admin_user_toggle_status_view(request, user_id):
     user_obj = get_object_or_404(User, id=user_id)
@@ -471,7 +368,7 @@ def admin_user_toggle_status_view(request, user_id):
     if not user_obj.is_active and user_obj.account_status == AccountStatus.PENDING_EMAIL_CONFIRMATION:
         messages.error(
             request,
-            "Esta conta está pendente de confirmação de email. Edite o utilizador se quiser ativá-lo manualmente."
+            "Esta conta está pendente de confirmação de email. Só ficará ativa depois do utilizador confirmar a conta."
         )
         return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
 
