@@ -1,47 +1,100 @@
 {% extends "dashboard/base_app.html" %}
-
 {% block app_title %}Gestão da Cooperativa{% endblock %}
-
 {% block app_content %}
-<div class="d-flex flex-column gap-4">
+<div class="adm">
+
+  <div class="adm-header">
     <div>
-        <h1 class="h2 fw-bold text-dark mb-1">Gestão da Cooperativa</h1>
-        <p class="text-secondary mb-0">Visão global, auditoria e administração do sistema</p>
+      <h1 class="adm-title">Gestão da Cooperativa</h1>
+      <p class="adm-sub">Visão global, auditoria e administração do sistema</p>
     </div>
+  </div>
 
-    <ul class="nav nav-tabs border-0 gap-2">
-        <li class="nav-item">
-            <a class="nav-link rounded-3 {% if admin_tab == 'dashboard' %}active{% endif %}"
-               href="{% url 'dashboard:gestor' %}">
-                <i class="bi bi-grid me-2"></i>Dashboard
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link rounded-3 {% if admin_tab == 'produtos' %}active{% endif %}"
-               href="{% url 'dashboard:gestor_produtos' %}">
-                <i class="bi bi-box-seam me-2"></i>Produtos
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link rounded-3 {% if admin_tab == 'categorias' %}active{% endif %}"
-               href="{% url 'dashboard:gestor_categorias' %}">
-                <i class="bi bi-tags me-2"></i>Categorias
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link rounded-3 {% if admin_tab == 'utilizadores' %}active{% endif %}"
-               href="{% url 'dashboard:gestor_utilizadores' %}">
-                <i class="bi bi-people me-2"></i>Utilizadores
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link rounded-3 {% if admin_tab == 'auditoria' %}active{% endif %}"
-               href="{% url 'dashboard:gestor_auditoria' %}">
-                <i class="bi bi-journal-text me-2"></i>Auditoria
-            </a>
-        </li>
-    </ul>
+  <nav class="adm-tabs">
+    <a href="{% url 'dashboard:gestor' %}" class="adm-tab {% if admin_tab == 'dashboard' %}adm-tab--active{% endif %}">
+      <i class="bi bi-grid-fill"></i><span>Dashboard</span>
+    </a>
+    <a href="{% url 'dashboard:gestor_produtos' %}" class="adm-tab {% if admin_tab == 'produtos' %}adm-tab--active{% endif %}">
+      <i class="bi bi-box-seam-fill"></i><span>Produtos</span>
+    </a>
+    <a href="{% url 'dashboard:gestor_categorias' %}" class="adm-tab {% if admin_tab == 'categorias' %}adm-tab--active{% endif %}">
+      <i class="bi bi-tags-fill"></i><span>Categorias</span>
+    </a>
+    <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-tab {% if admin_tab == 'utilizadores' %}adm-tab--active{% endif %}">
+      <i class="bi bi-people-fill"></i><span>Utilizadores</span>
+    </a>
+    <a href="{% url 'dashboard:gestor_auditoria' %}" class="adm-tab {% if admin_tab == 'auditoria' %}adm-tab--active{% endif %}">
+      <i class="bi bi-journal-text"></i><span>Auditoria</span>
+    </a>
+  </nav>
 
+  <div class="adm-content">
     {% block admin_content %}{% endblock %}
+  </div>
 </div>
+
+<style>
+.adm{font-family:'DM Sans',system-ui,sans-serif;display:flex;flex-direction:column;gap:1.5rem;}
+.adm-header{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:1rem;}
+.adm-title{font-size:1.6rem;font-weight:800;color:#0f172a;margin:0 0 .2rem;letter-spacing:-.02em;}
+.adm-sub{font-size:.85rem;color:#64748b;margin:0;}
+
+.adm-tabs{
+  display:flex;gap:.25rem;
+  background:#f1f5f3;border-radius:.85rem;
+  padding:.3rem;border:1px solid #e2e8f0;
+  flex-wrap:wrap;
+}
+.adm-tab{
+  display:inline-flex;align-items:center;gap:.5rem;
+  padding:.55rem 1rem;border-radius:.6rem;
+  font-size:.84rem;font-weight:500;color:#64748b;
+  text-decoration:none;transition:background .15s,color .15s;white-space:nowrap;
+}
+.adm-tab:hover{background:#fff;color:#0f172a;}
+.adm-tab--active{background:#fff;color:#15803d;font-weight:700;box-shadow:0 1px 3px rgba(15,23,42,.08);}
+.adm-tab i{font-size:.9rem;}
+
+/* shared card / table styles for admin pages */
+.adm-card{background:#fff;border-radius:.85rem;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(15,23,42,.05),0 4px 12px rgba(15,23,42,.04);overflow:hidden;}
+.adm-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;padding:1.2rem 1.4rem;border-bottom:1px solid #f1f5f9;}
+.adm-search{display:flex;align-items:center;gap:.5rem;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:.6rem;padding:.5rem .85rem;max-width:340px;flex:1;}
+.adm-search i{color:#94a3b8;font-size:.9rem;flex-shrink:0;}
+.adm-search input{border:none;background:none;outline:none;font-size:.85rem;color:#0f172a;width:100%;font-family:inherit;}
+.adm-search input::placeholder{color:#94a3b8;}
+.adm-btn-primary{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1.1rem;border-radius:.6rem;background:#16a34a;color:#fff;border:none;font-size:.84rem;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit;transition:background .15s;}
+.adm-btn-primary:hover{background:#15803d;color:#fff;}
+.adm-btn-ghost{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem 1rem;border-radius:.6rem;background:#fff;color:#374151;border:1.5px solid #e2e8f0;font-size:.84rem;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit;transition:background .15s;}
+.adm-btn-ghost:hover{background:#f8fafc;}
+
+.adm-table{width:100%;border-collapse:collapse;}
+.adm-table thead th{font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#64748b;background:#fafafa;border-bottom:1px solid #f1f5f9;padding:.8rem 1.2rem;text-align:left;white-space:nowrap;}
+.adm-table tbody td{font-size:.875rem;padding:.85rem 1.2rem;border-bottom:1px solid #f8fafc;color:#374151;vertical-align:middle;}
+.adm-table tbody tr:last-child td{border-bottom:none;}
+.adm-table tbody tr:hover td{background:#fafafa;}
+.adm-table th:last-child,.adm-table td:last-child{text-align:right;}
+
+.adm-pill{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .65rem;border-radius:99px;font-size:.72rem;font-weight:700;letter-spacing:.03em;}
+.adm-pill--green{background:#dcfce7;color:#15803d;}
+.adm-pill--amber{background:#fef3c7;color:#b45309;}
+.adm-pill--red{background:#fee2e2;color:#b91c1c;}
+.adm-pill--grey{background:#f1f5f9;color:#475569;}
+.adm-pill--blue{background:#dbeafe;color:#1d4ed8;}
+.adm-pill-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+
+.adm-act-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:.45rem;border:1.5px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer;font-size:.85rem;text-decoration:none;transition:background .15s,color .15s,border-color .15s;}
+.adm-act-btn:hover{background:#f8fafc;color:#0f172a;border-color:#94a3b8;}
+.adm-act-btn--danger:hover{background:#fee2e2;color:#dc2626;border-color:#fecaca;}
+.adm-act-btn--warn:hover{background:#fef3c7;color:#d97706;border-color:#fde68a;}
+
+.adm-empty{text-align:center;padding:3rem 1rem;color:#94a3b8;}
+.adm-empty i{font-size:2rem;display:block;margin-bottom:.6rem;}
+.adm-empty p{font-size:.875rem;margin:0;}
+
+.adm-pagination{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;padding:1rem 1.4rem;border-top:1px solid #f1f5f9;}
+.adm-page-btn{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 .5rem;border-radius:.45rem;font-size:.8rem;font-weight:600;text-decoration:none;color:#374151;border:1.5px solid #e2e8f0;background:#fff;transition:background .15s;}
+.adm-page-btn:hover{background:#f8fafc;}
+.adm-page-btn--active{background:#16a34a;color:#fff;border-color:#16a34a;}
+.adm-page-btn--active:hover{background:#15803d;}
+</style>
 {% endblock %}

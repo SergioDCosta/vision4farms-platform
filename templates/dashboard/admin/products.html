@@ -1,62 +1,55 @@
 {% extends "dashboard/admin/base_admin.html" %}
-
 {% block admin_content %}
-<div class="card border-0 shadow-sm rounded-4">
-    <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center gap-3 flex-wrap">
-        <div class="input-group" style="max-width: 420px;">
-            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-            <input type="text" class="form-control" placeholder="Pesquisar produtos...">
-        </div>
-
-        <div class="alert alert-light border mb-0 py-2 px-3 small">
-            <i class="bi bi-info-circle me-2"></i>
-            Os produtos são adicionados pelos agricultores.
-        </div>
+<div class="adm-card">
+  <div class="adm-card-head">
+    <div class="adm-search">
+      <i class="bi bi-search"></i>
+      <input type="text" placeholder="Pesquisar produtos...">
     </div>
-
-    <div class="table-responsive">
-        <table class="table align-middle mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Nome</th>
-                    <th>Slug</th>
-                    <th>Categoria</th>
-                    <th>Unidade</th>
-                    <th>Estado</th>
-                    <th>Criado em</th>
-                    <th>Atualizado em</th>
-                    <th class="text-end">Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for product in products %}
-                    <tr>
-                        <td class="fw-semibold">{{ product.name }}</td>
-                        <td>{{ product.slug }}</td>
-                        <td>{{ product.category.name|default:"-" }}</td>
-                        <td>{{ product.unit }}</td>
-                        <td>
-                            {% if product.is_active %}
-                                <span class="badge text-bg-success-subtle text-success-emphasis">Ativo</span>
-                            {% else %}
-                                <span class="badge text-bg-secondary-subtle text-secondary-emphasis">Inativo</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ product.created_at|date:"d/m/Y" }}</td>
-                        <td>{{ product.updated_at|date:"d/m/Y" }}</td>
-                        <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary" disabled title="Em estudo">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                        </td>
-                    </tr>
-                {% empty %}
-                    <tr>
-                        <td colspan="8" class="text-center text-secondary py-4">Sem produtos registados.</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .9rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.6rem;font-size:.8rem;color:#64748b;">
+        <i class="bi bi-info-circle" style="color:#2563eb;"></i>
+        Os produtos são geridos pelo administrador
+      </div>
+      <button class="adm-btn-primary"><i class="bi bi-plus-lg"></i> Novo produto</button>
     </div>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="adm-table">
+      <thead><tr>
+        <th>Produto</th>
+        <th>Categoria</th>
+        <th>Unidade</th>
+        <th>Estado</th>
+        <th>Atualizado</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        {% for product in products %}
+        <tr>
+          <td>
+            <div style="font-weight:600;color:#0f172a;">{{ product.name }}</div>
+            <div style="font-size:.75rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ product.slug }}</div>
+          </td>
+          <td style="font-size:.84rem;color:#64748b;">{{ product.category.name|default:"—" }}</td>
+          <td><span style="font-size:.8rem;background:#f1f5f9;color:#475569;padding:.2rem .55rem;border-radius:.4rem;font-weight:600;">{{ product.unit }}</span></td>
+          <td>
+            {% if product.is_active %}
+              <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativo</span>
+            {% else %}
+              <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Inativo</span>
+            {% endif %}
+          </td>
+          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">{{ product.updated_at|date:"d/m/Y" }}</td>
+          <td>
+            <button class="adm-act-btn" title="Editar" disabled><i class="bi bi-pencil"></i></button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6"><div class="adm-empty"><i class="bi bi-box-seam"></i><p>Sem produtos registados.</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

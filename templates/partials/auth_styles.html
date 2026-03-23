@@ -1,0 +1,157 @@
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   AUTH PAGES — shared styles
+   Usado em: login, register, password_reset, register_success,
+             admin_invite_complete
+═══════════════════════════════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f1f5f3;color:#0f172a;-webkit-font-smoothing:antialiased}
+
+/* ── layout split ─────────────────────────────────────────────── */
+.auth-page{min-height:100vh;display:flex}
+.auth-split{display:grid;grid-template-columns:420px 1fr;min-height:100vh;width:100%}
+
+/* ── green panel ──────────────────────────────────────────────── */
+.auth-panel{
+  background:linear-gradient(160deg,#0d2117 0%,#16432a 60%,#1a5c35 100%);
+  display:flex;align-items:center;justify-content:center;
+  padding:3rem 2.5rem;position:relative;overflow:hidden;
+}
+.auth-panel::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 70% 60% at 30% 80%,rgba(22,163,74,.18),transparent);
+  pointer-events:none;
+}
+.auth-panel-inner{position:relative;max-width:320px;}
+.auth-logo{
+  width:56px;height:56px;border-radius:16px;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.6rem;color:#86efac;margin-bottom:2rem;
+  backdrop-filter:blur(4px);
+}
+.auth-panel-title{font-size:1.75rem;font-weight:800;color:#fff;margin:0 0 .75rem;letter-spacing:-.02em;line-height:1.2;}
+.auth-panel-sub{font-size:.9rem;color:rgba(255,255,255,.65);margin:0 0 2.5rem;line-height:1.6;}
+.auth-panel-features{display:flex;flex-direction:column;gap:.9rem;}
+.auth-feat{display:flex;align-items:center;gap:.75rem;font-size:.85rem;color:rgba(255,255,255,.75);}
+.auth-feat i{font-size:1rem;color:#4ade80;flex-shrink:0;}
+
+/* ── form side ────────────────────────────────────────────────── */
+.auth-form-side{
+  display:flex;align-items:center;justify-content:center;
+  padding:3rem 2rem;background:#fff;
+}
+.auth-form-wrap{width:100%;max-width:420px;}
+.auth-form-header{margin-bottom:2rem;}
+.auth-form-title{font-size:1.6rem;font-weight:800;color:#0f172a;margin:0 0 .4rem;letter-spacing:-.02em;}
+.auth-form-sub{font-size:.875rem;color:#64748b;margin:0;}
+
+/* ── alerts ───────────────────────────────────────────────────── */
+.auth-alert{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.8rem 1rem;border-radius:.65rem;
+  font-size:.85rem;margin-bottom:1.25rem;
+}
+.auth-alert--error,.auth-alert--danger{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;}
+.auth-alert--success{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;}
+
+/* ── form groups ──────────────────────────────────────────────── */
+.auth-form{display:flex;flex-direction:column;gap:1.1rem;}
+.af-group{display:flex;flex-direction:column;gap:.4rem;}
+.af-label{font-size:.82rem;font-weight:600;color:#374151;}
+.af-label-row{display:flex;justify-content:space-between;align-items:center;}
+.af-forgot{font-size:.78rem;font-weight:600;color:#16a34a;text-decoration:none;}
+.af-forgot:hover{text-decoration:underline;}
+
+.af-field{position:relative;display:flex;align-items:center;}
+.af-icon{
+  position:absolute;left:.9rem;font-size:.95rem;color:#94a3b8;
+  pointer-events:none;z-index:1;
+}
+.af-field input,.af-field select{
+  width:100%;padding:.7rem .9rem .7rem 2.6rem;
+  border:1.5px solid #e2e8f0;border-radius:.65rem;
+  font-size:.9rem;color:#0f172a;background:#f8fafc;
+  outline:none;transition:border-color .15s,box-shadow .15s,background .15s;
+  font-family:inherit;
+}
+.af-field input:focus,.af-field select:focus{
+  border-color:#16a34a;background:#fff;
+  box-shadow:0 0 0 3px rgba(22,163,74,.12);
+}
+.af-field input::placeholder{color:#94a3b8;}
+.af-field--pw input{padding-right:3.2rem;}
+.af-eye{
+  position:absolute;right:.75rem;
+  background:none;border:none;cursor:pointer;
+  color:#64748b;padding:.25rem;display:flex;align-items:center;
+  font-size:1rem;transition:color .15s;
+}
+.af-eye:hover{color:#0f172a;}
+.af-error{font-size:.78rem;color:#dc2626;margin:0;}
+
+/* grid 2 cols */
+.af-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+
+/* checkbox */
+.af-check{
+  display:flex;align-items:center;gap:.55rem;
+  font-size:.84rem;color:#475569;cursor:pointer;
+}
+.af-check input{accent-color:#16a34a;width:15px;height:15px;cursor:pointer;}
+
+/* optional label */
+.af-optional{font-size:.75rem;font-weight:400;color:#94a3b8;margin-left:.25rem;}
+
+/* submit */
+.af-submit{
+  display:flex;align-items:center;justify-content:center;gap:.5rem;
+  width:100%;padding:.8rem;border-radius:.75rem;
+  background:#16a34a;color:#fff;border:none;
+  font-size:.95rem;font-weight:700;cursor:pointer;
+  font-family:inherit;transition:background .15s,transform .1s;
+  margin-top:.25rem;
+}
+.af-submit:hover{background:#15803d;transform:translateY(-1px);}
+.af-submit:active{transform:translateY(0);}
+
+/* secondary btn */
+.af-secondary{
+  display:flex;align-items:center;justify-content:center;gap:.5rem;
+  width:100%;padding:.75rem;border-radius:.75rem;
+  background:#fff;color:#374151;
+  border:1.5px solid #e2e8f0;
+  font-size:.9rem;font-weight:600;text-decoration:none;
+  font-family:inherit;transition:background .15s,border-color .15s;
+}
+.af-secondary:hover{background:#f8fafc;border-color:#cbd5e1;}
+
+/* divider */
+.af-divider{
+  display:flex;align-items:center;gap:.75rem;
+  color:#94a3b8;font-size:.8rem;margin:.5rem 0;
+}
+.af-divider::before,.af-divider::after{content:'';flex:1;height:1px;background:#e2e8f0;}
+
+/* success state */
+.af-success-icon{
+  width:72px;height:72px;border-radius:50%;
+  background:#dcfce7;color:#16a34a;
+  display:flex;align-items:center;justify-content:center;
+  font-size:2rem;margin:0 auto 1.5rem;
+}
+.af-success-title{font-size:1.4rem;font-weight:800;color:#0f172a;margin:0 0 .6rem;text-align:center;}
+.af-success-text{font-size:.9rem;color:#64748b;margin:0 0 1.75rem;text-align:center;line-height:1.6;}
+.af-success-email{color:#0f172a;font-weight:600;}
+
+/* ── responsive ───────────────────────────────────────────────── */
+@media(max-width:900px){
+  .auth-split{grid-template-columns:1fr;}
+  .auth-panel{display:none;}
+  .auth-form-side{min-height:100vh;padding:2rem 1.25rem;}
+}
+@media(max-width:480px){
+  .af-grid-2{grid-template-columns:1fr;}
+  .auth-form-wrap{max-width:100%;}
+}
+</style>

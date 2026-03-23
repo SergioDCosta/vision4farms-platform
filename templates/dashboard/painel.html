@@ -13,8 +13,7 @@
   <div class="pnl-hero">
     <div class="pnl-hero-text">
       <p class="pnl-greeting"><span class="pnl-pulse"></span>Sessão ativa</p>
-      <h1 class="pnl-hero-title">Bom dia, <span class="pnl-hero-accent">{{ producer.display_name|truncatewords:2 }}</span></h1>
-      <p class="pnl-hero-sub">
+        <h1 class="pnl-hero-title"><span id="pnl-saudacao">Olá</span>, <span class="pnl-hero-accent">{{ producer.display_name|truncatewords:2 }}</span></h1>      <p class="pnl-hero-sub">
         {% if critical_alerts_count > 0 %}
           Tens <strong>{{ critical_alerts_count }} alerta{{ critical_alerts_count|pluralize:"s" }} crítico{{ critical_alerts_count|pluralize:"s" }}</strong> que precisam de atenção.
         {% else %}
@@ -477,5 +476,13 @@
   .pnl-cta-red, .pnl-cta-ghost { width:100%; justify-content:center; }
 }
 </style>
+
+<script>
+(function(){
+  const h = new Date().getHours();
+  const s = h < 12 ? 'Bom dia' : h < 19 ? 'Boa tarde' : 'Boa noite';
+  document.getElementById('pnl-saudacao').textContent = s;
+})();
+</script>
 
 {% endblock %}

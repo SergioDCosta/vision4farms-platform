@@ -1,52 +1,38 @@
 {% extends "dashboard/admin/base_admin.html" %}
-
 {% block admin_content %}
-<div class="row justify-content-center">
-    <div class="col-xl-7">
-        <div class="card border-0 shadow-sm rounded-4">
-            <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center">
-                <div>
-                    <h3 class="h5 fw-bold mb-1">{{ page_title }}</h3>
-                    <p class="text-secondary mb-0">Será enviado um email de ativação ao utilizador.</p>
-                </div>
-                <a href="{% url 'dashboard:gestor_utilizadores' %}" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left me-2"></i>Voltar
-                </a>
-            </div>
-
-            <div class="card-body p-4">
-                <form method="post" novalidate>
-                    {% csrf_token %}
-
-                    {% if form.non_field_errors %}
-                        <div class="alert alert-danger">
-                            {{ form.non_field_errors }}
-                        </div>
-                    {% endif %}
-
-                    <div class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label">{{ form.email.label }}</label>
-                            {{ form.email }}
-                            <div class="text-danger small mt-1">{{ form.email.errors }}</div>
-                        </div>
-
-                        <div class="col-12">
-                            <label class="form-label">{{ form.role.label }}</label>
-                            {{ form.role }}
-                            <div class="text-danger small mt-1">{{ form.role.errors }}</div>
-                        </div>
-                    </div>
-
-                    <div class="d-flex justify-content-end gap-2 mt-4">
-                        <a href="{% url 'dashboard:gestor_utilizadores' %}" class="btn btn-outline-secondary">Cancelar</a>
-                        <button type="submit" class="btn btn-success">
-                            <i class="bi bi-envelope-check me-2"></i>{{ submit_label }}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+<div style="max-width:560px;">
+  <div class="adm-card">
+    <div class="adm-card-head">
+      <div>
+        <h3 style="font-size:1rem;font-weight:700;color:#0f172a;margin:0 0 .15rem;">{{ page_title }}</h3>
+        <p style="font-size:.8rem;color:#64748b;margin:0;">Será enviado um email de ativação ao utilizador.</p>
+      </div>
+      <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-btn-ghost"><i class="bi bi-arrow-left"></i> Voltar</a>
     </div>
+    <div style="padding:1.4rem;">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+          <div style="background:#fee2e2;border:1px solid #fecaca;border-radius:.6rem;padding:.8rem 1rem;font-size:.84rem;color:#b91c1c;margin-bottom:1rem;">{{ form.non_field_errors }}</div>
+        {% endif %}
+        <div style="display:flex;flex-direction:column;gap:1rem;">
+          <div>
+            <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.4rem;">{{ form.email.label }}</label>
+            {{ form.email }}
+            {% if form.email.errors %}<p style="font-size:.78rem;color:#dc2626;margin:.3rem 0 0;">{{ form.email.errors|join:" " }}</p>{% endif %}
+          </div>
+          <div>
+            <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.4rem;">{{ form.role.label }}</label>
+            {{ form.role }}
+            {% if form.role.errors %}<p style="font-size:.78rem;color:#dc2626;margin:.3rem 0 0;">{{ form.role.errors|join:" " }}</p>{% endif %}
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid #f1f5f9;">
+          <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-btn-ghost">Cancelar</a>
+          <button type="submit" class="adm-btn-primary"><i class="bi bi-envelope-check"></i> {{ submit_label }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 {% endblock %}

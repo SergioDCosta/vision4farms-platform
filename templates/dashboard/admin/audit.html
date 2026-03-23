@@ -1,54 +1,41 @@
 {% extends "dashboard/admin/base_admin.html" %}
-
 {% block admin_content %}
-<div class="card border-0 shadow-sm rounded-4">
-    <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center gap-3 flex-wrap">
-        <div class="input-group" style="max-width: 420px;">
-            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-            <input type="text" class="form-control" placeholder="Pesquisar registos...">
-        </div>
-
-        <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary">
-                <i class="bi bi-funnel me-2"></i>Filtrar
-            </button>
-            <button class="btn btn-outline-secondary">
-                <i class="bi bi-download me-2"></i>Exportar
-            </button>
-        </div>
+<div class="adm-card">
+  <div class="adm-card-head">
+    <div class="adm-search">
+      <i class="bi bi-search"></i>
+      <input type="text" placeholder="Pesquisar registos de auditoria...">
     </div>
-
-    <div class="table-responsive">
-        <table class="table align-middle mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Data/Hora</th>
-                    <th>Utilizador</th>
-                    <th>Ação</th>
-                    <th>Entidade</th>
-                    <th>Registo</th>
-                    <th>Notas</th>
-                    <th>IP</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                    <tr>
-                        <td>{{ log.created_at|date:"d/m/Y H:i" }}</td>
-                        <td>{{ log.user.first_name }} {{ log.user.last_name|default:"Sistema" }}</td>
-                        <td>{{ log.action }}</td>
-                        <td>{{ log.entity_type|default:"-" }}</td>
-                        <td>{{ log.entity_id|default:"-" }}</td>
-                        <td>{{ log.notes|default:"-" }}</td>
-                        <td>{{ log.ip_address|default:"-" }}</td>
-                    </tr>
-                {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center text-secondary py-4">Sem registos de auditoria.</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div style="display:flex;gap:.5rem;">
+      <button class="adm-btn-ghost"><i class="bi bi-funnel"></i> Filtrar</button>
+      <button class="adm-btn-ghost"><i class="bi bi-download"></i> Exportar</button>
     </div>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="adm-table">
+      <thead><tr>
+        <th>Data / Hora</th>
+        <th>Utilizador</th>
+        <th>Ação</th>
+        <th>Entidade</th>
+        <th>Notas</th>
+        <th>IP</th>
+      </tr></thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;">{{ log.created_at|date:"d/m/Y H:i" }}</td>
+          <td style="font-size:.84rem;">{{ log.user.first_name }} {{ log.user.last_name|default:"Sistema" }}</td>
+          <td><span style="display:inline-block;padding:.15rem .6rem;border-radius:.4rem;background:#f1f5f9;color:#374151;font-size:.75rem;font-weight:600;">{{ log.action }}</span></td>
+          <td style="font-size:.8rem;color:#64748b;">{{ log.entity_type|default:"—" }}</td>
+          <td style="font-size:.8rem;color:#64748b;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ log.notes }}">{{ log.notes|default:"—" }}</td>
+          <td style="font-size:.78rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ log.ip_address|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6"><div class="adm-empty"><i class="bi bi-journal-x"></i><p>Sem registos de auditoria.</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

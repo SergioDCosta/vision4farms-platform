@@ -1,144 +1,85 @@
 {% extends "base.html" %}
-
-{% block title %}Completar Conta{% endblock %}
-
+{% block title %}Ativar Conta · Cooperativa{% endblock %}
 {% block content %}
-<div class="page-center">
-    <div class="auth-wrapper">
-        <div class="auth-header">
-            <div class="logo-box">
-                <i class="bi bi-leaf-fill"></i>
-            </div>
-            <h1 class="auth-title">Completar conta</h1>
-            <p class="auth-subtitle">Defina os seus dados para ativar o acesso à plataforma.</p>
+<div class="auth-page">
+  <div class="auth-split">
+    <div class="auth-panel">
+      <div class="auth-panel-inner">
+        <div class="auth-logo"><i class="bi bi-flower1"></i></div>
+        <h2 class="auth-panel-title">Bem-vindo à cooperativa</h2>
+        <p class="auth-panel-sub">Foi convidado a fazer parte da plataforma. Complete o seu registo para ativar o acesso.</p>
+        <div class="auth-panel-features">
+          <div class="auth-feat"><i class="bi bi-person-check"></i><span>Conta criada pelo administrador</span></div>
+          <div class="auth-feat"><i class="bi bi-lock-fill"></i><span>Defina a sua palavra-passe segura</span></div>
+          <div class="auth-feat"><i class="bi bi-stars"></i><span>Acesso imediato após ativação</span></div>
         </div>
-
-        <div class="card">
-            {% if messages %}
-                <div class="messages">
-                    {% for message in messages %}
-                        <div class="message {{ message.tags }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-
-            <form method="post">
-                {% csrf_token %}
-
-                <div class="form-group">
-                    <label class="form-label">Email</label>
-                    <div class="field-wrap">
-                        <span class="field-icon">
-                            <i class="bi bi-envelope"></i>
-                        </span>
-                        <input
-                            type="email"
-                            value="{{ invited_email }}"
-                            class="form-input with-left-icon"
-                            disabled
-                        >
-                    </div>
-                </div>
-
-                <div class="form-grid-2">
-                    <div class="form-group">
-                        <label class="form-label">{{ form.first_name.label }}</label>
-                        <div class="field-wrap">
-                            <span class="field-icon">
-                                <i class="bi bi-person"></i>
-                            </span>
-                            {{ form.first_name }}
-                        </div>
-                        {{ form.first_name.errors }}
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">{{ form.last_name.label }}</label>
-                        <div class="field-wrap">
-                            <span class="field-icon">
-                                <i class="bi bi-person"></i>
-                            </span>
-                            {{ form.last_name }}
-                        </div>
-                        {{ form.last_name.errors }}
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">{{ form.company.label }} <span style="color:#94a3b8; font-weight:400;">(Opcional)</span></label>
-                    <div class="field-wrap">
-                        <span class="field-icon">
-                            <i class="bi bi-building"></i>
-                        </span>
-                        {{ form.company }}
-                    </div>
-                    {{ form.company.errors }}
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">{{ form.user_type.label }}</label>
-                    <div class="field-wrap">
-                        <span class="field-icon">
-                            <i class="bi bi-person-badge"></i>
-                        </span>
-                        {{ form.user_type }}
-                    </div>
-                    {{ form.user_type.errors }}
-                </div>
-
-                <div class="form-grid-2">
-                    <div class="form-group">
-                        <label class="form-label">{{ form.password.label }}</label>
-                        <div class="field-wrap">
-                            <span class="field-icon">
-                                <i class="bi bi-lock"></i>
-                            </span>
-                            {{ form.password }}
-
-                            <button type="button" data-toggle-password data-target="id_password" class="password-toggle-btn">
-                                <span data-eye style="display:inline-flex;">
-                                    <i class="bi bi-eye"></i>
-                                </span>
-                                <span data-eye-off style="display:none;">
-                                    <i class="bi bi-eye-slash"></i>
-                                </span>
-                                <span data-toggle-label>Ver</span>
-                            </button>
-                        </div>
-                        {{ form.password.errors }}
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">{{ form.confirm_password.label }}</label>
-                        <div class="field-wrap">
-                            <span class="field-icon">
-                                <i class="bi bi-lock"></i>
-                            </span>
-                            {{ form.confirm_password }}
-
-                            <button type="button" data-toggle-password data-target="id_confirm_password" class="password-toggle-btn">
-                                <span data-eye style="display:inline-flex;">
-                                    <i class="bi bi-eye"></i>
-                                </span>
-                                <span data-eye-off style="display:none;">
-                                    <i class="bi bi-eye-slash"></i>
-                                </span>
-                                <span data-toggle-label>Ver</span>
-                            </button>
-                        </div>
-                        {{ form.confirm_password.errors }}
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-primary">Ativar conta</button>
-            </form>
-
-            <div class="divider">Já tem uma conta?</div>
-
-            <a href="{% url 'accounts:login' %}" class="btn btn-secondary">
-                Iniciar Sessão
-            </a>
-        </div>
+      </div>
     </div>
+    <div class="auth-form-side">
+      <div class="auth-form-wrap" style="max-width:460px">
+        <div class="auth-form-header">
+          <h1 class="auth-form-title">Completar conta</h1>
+          <p class="auth-form-sub">Defina os seus dados para ativar o acesso à plataforma.</p>
+        </div>
+        {% if messages %}{% for message in messages %}
+          <div class="auth-alert auth-alert--{{ message.tags }}"><i class="bi bi-exclamation-circle"></i>{{ message }}</div>
+        {% endfor %}{% endif %}
+        <form method="post" class="auth-form" novalidate>
+          {% csrf_token %}
+          <div class="af-group">
+            <label class="af-label">Email</label>
+            <div class="af-field">
+              <i class="bi bi-envelope af-icon"></i>
+              <input type="email" value="{{ invited_email }}" class="form-input" disabled style="opacity:.65;cursor:not-allowed">
+            </div>
+          </div>
+          <div class="af-grid-2">
+            <div class="af-group">
+              <label class="af-label">{{ form.first_name.label }}</label>
+              <div class="af-field"><i class="bi bi-person af-icon"></i>{{ form.first_name }}</div>
+              {% if form.first_name.errors %}<p class="af-error">{{ form.first_name.errors|join:" " }}</p>{% endif %}
+            </div>
+            <div class="af-group">
+              <label class="af-label">{{ form.last_name.label }}</label>
+              <div class="af-field"><i class="bi bi-person af-icon"></i>{{ form.last_name }}</div>
+              {% if form.last_name.errors %}<p class="af-error">{{ form.last_name.errors|join:" " }}</p>{% endif %}
+            </div>
+          </div>
+          <div class="af-group">
+            <label class="af-label">Empresa<span class="af-optional">(opcional)</span></label>
+            <div class="af-field"><i class="bi bi-building af-icon"></i>{{ form.company }}</div>
+          </div>
+          <div class="af-group">
+            <label class="af-label">{{ form.user_type.label }}</label>
+            <div class="af-field"><i class="bi bi-person-badge af-icon"></i>{{ form.user_type }}</div>
+          </div>
+          <div class="af-grid-2">
+            <div class="af-group">
+              <label class="af-label">{{ form.password.label }}</label>
+              <div class="af-field af-field--pw">
+                <i class="bi bi-lock af-icon"></i>{{ form.password }}
+                <button type="button" class="af-eye" data-toggle-password data-target="id_password">
+                  <i class="bi bi-eye" data-eye></i><i class="bi bi-eye-slash" data-eye-off style="display:none"></i>
+                </button>
+              </div>
+            </div>
+            <div class="af-group">
+              <label class="af-label">{{ form.confirm_password.label }}</label>
+              <div class="af-field af-field--pw">
+                <i class="bi bi-lock af-icon"></i>{{ form.confirm_password }}
+                <button type="button" class="af-eye" data-toggle-password data-target="id_confirm_password">
+                  <i class="bi bi-eye" data-eye></i><i class="bi bi-eye-slash" data-eye-off style="display:none"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="af-submit"><i class="bi bi-person-check"></i> Ativar conta</button>
+        </form>
+        <div class="af-divider"><span>Já tem uma conta?</span></div>
+        <a href="{% url 'accounts:login' %}" class="af-secondary">Iniciar sessão</a>
+      </div>
+    </div>
+  </div>
 </div>
+{% include "partials/auth_styles.html" %}
 {% endblock %}

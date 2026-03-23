@@ -1,82 +1,60 @@
 {% extends "base.html" %}
-
-{% block title %}Login{% endblock %}
-
+{% block title %}Login · Cooperativa{% endblock %}
 {% block content %}
-<div class="page-center">
-    <div class="auth-wrapper" style="max-width: 520px;">
-        <div class="card">
-            <div class="auth-header">
-                <div class="logo-box">
-                    <i class="bi bi-flower1" style="font-size: 30px;"></i>
-                </div>
-                <h1 class="auth-title">Cooperativa</h1>
-                <p class="auth-subtitle">
-                    Acesso simples para gestão da sua exploração e compras na cooperativa.
-                </p>
-            </div>
-
-            {% if messages %}
-                <div class="messages">
-                    {% for message in messages %}
-                        <div class="message {{ message.tags }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-
-            <form method="post">
-                {% csrf_token %}
-
-                <div class="form-group">
-                    <label class="form-label">{{ form.email.label }}</label>
-                    <div class="field-wrap">
-                        <span class="field-icon">
-                            <i class="bi bi-envelope"></i>
-                        </span>
-                        {{ form.email }}
-                    </div>
-                    {{ form.email.errors }}
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">{{ form.password.label }}</label>
-                    <div class="field-wrap">
-                        <span class="field-icon">
-                            <i class="bi bi-lock"></i>
-                        </span>
-                        {{ form.password }}
-
-                        <button type="button" data-toggle-password data-target="id_password" class="password-toggle-btn">
-                            <span data-eye style="display:inline-flex;">
-                                <i class="bi bi-eye"></i>
-                            </span>
-                            <span data-eye-off style="display:none;">
-                                <i class="bi bi-eye-slash"></i>
-                            </span>
-                            <span data-toggle-label>Ver</span>
-                        </button>
-                    </div>
-                    {{ form.password.errors }}
-                </div>
-
-                <div class="checkbox-row">
-                    <label class="checkbox-label">
-                        {{ form.remember_me }} Lembrar-me
-                    </label>
-                    <a href="{% url 'accounts:password_reset_request' %}" class="muted-link">
-                        Recuperar palavra-passe
-                    </a>
-                </div>
-
-                <button type="submit" class="btn btn-primary">Entrar</button>
-            </form>
-
-            <div class="divider">Ainda não tem conta?</div>
-
-            <a href="{% url 'accounts:register' %}" class="btn btn-secondary">
-                Registar agora
-            </a>
+<div class="auth-page">
+  <div class="auth-split">
+    <div class="auth-panel">
+      <div class="auth-panel-inner">
+        <div class="auth-logo"><i class="bi bi-flower1"></i></div>
+        <h2 class="auth-panel-title">Cooperativa Agrícola</h2>
+        <p class="auth-panel-sub">Gerencie stocks, escoamento e recomendações inteligentes para a sua exploração.</p>
+        <div class="auth-panel-features">
+          <div class="auth-feat"><i class="bi bi-graph-up-arrow"></i><span>Análise de stocks e necessidades</span></div>
+          <div class="auth-feat"><i class="bi bi-shop"></i><span>Marketplace interno de excedentes</span></div>
+          <div class="auth-feat"><i class="bi bi-stars"></i><span>Recomendações automáticas de compra</span></div>
         </div>
+      </div>
     </div>
+    <div class="auth-form-side">
+      <div class="auth-form-wrap">
+        <div class="auth-form-header">
+          <h1 class="auth-form-title">Bem-vindo de volta</h1>
+          <p class="auth-form-sub">Aceda à sua área de exploração e cooperativa.</p>
+        </div>
+        {% if messages %}{% for message in messages %}
+          <div class="auth-alert auth-alert--{{ message.tags }}">
+            <i class="bi bi-{% if message.tags == 'error' %}exclamation-circle{% else %}check-circle{% endif %}"></i>
+            {{ message }}
+          </div>
+        {% endfor %}{% endif %}
+        <form method="post" class="auth-form" novalidate>
+          {% csrf_token %}
+          <div class="af-group">
+            <label class="af-label">{{ form.email.label }}</label>
+            <div class="af-field"><i class="bi bi-envelope af-icon"></i>{{ form.email }}</div>
+            {% if form.email.errors %}<p class="af-error">{{ form.email.errors|join:" " }}</p>{% endif %}
+          </div>
+          <div class="af-group">
+            <div class="af-label-row">
+              <label class="af-label">{{ form.password.label }}</label>
+              <a href="{% url 'accounts:password_reset_request' %}" class="af-forgot">Recuperar palavra-passe</a>
+            </div>
+            <div class="af-field af-field--pw">
+              <i class="bi bi-lock af-icon"></i>{{ form.password }}
+              <button type="button" class="af-eye" data-toggle-password data-target="id_password">
+                <i class="bi bi-eye" data-eye></i><i class="bi bi-eye-slash" data-eye-off style="display:none"></i>
+              </button>
+            </div>
+            {% if form.password.errors %}<p class="af-error">{{ form.password.errors|join:" " }}</p>{% endif %}
+          </div>
+          <label class="af-check">{{ form.remember_me }}<span>Lembrar-me neste dispositivo</span></label>
+          <button type="submit" class="af-submit"><i class="bi bi-box-arrow-in-right"></i> Entrar</button>
+        </form>
+        <div class="af-divider"><span>Ainda não tem conta?</span></div>
+        <a href="{% url 'accounts:register' %}" class="af-secondary">Criar conta gratuita</a>
+      </div>
+    </div>
+  </div>
 </div>
+{% include "partials/auth_styles.html" %}
 {% endblock %}
