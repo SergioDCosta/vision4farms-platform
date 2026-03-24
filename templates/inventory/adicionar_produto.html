@@ -1,0 +1,452 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Adicionar Produto{% endblock %}
+{% block app_content %}
+
+{% include "inventory/partials/inventory_styles.html" %}
+
+<div class="inv-page">
+  <div class="inv-add-head">
+    <div>
+      <h1 class="inv-title">Adicionar Produto</h1>
+      <p class="inv-sub">
+        Associe produtos do catálogo ou crie um novo produto numa categoria existente.
+      </p>
+    </div>
+
+    <div class="inv-head-actions">
+      <button type="button"
+              class="inv-btn inv-btn--primary"
+              data-bs-toggle="modal"
+              data-bs-target="#customProductModal">
+        <i class="bi bi-plus-circle"></i>
+        <span>Criar novo produto</span>
+      </button>
+
+      <a href="{% url 'inventory:meus_produtos' %}?tab=stock" class="inv-btn inv-btn--secondary">
+        <i class="bi bi-arrow-left"></i>
+        <span>Voltar a Stocks</span>
+      </a>
+    </div>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="inv-alert inv-alert--danger">
+      {% for error in form.non_field_errors %}
+        <div>{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if custom_form.non_field_errors %}
+    <div class="inv-alert inv-alert--danger">
+      {% for error in custom_form.non_field_errors %}
+        <div>{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if available_products %}
+    <div class="inv-card">
+      <div class="inv-card-head">
+        <div>
+          <h3 class="inv-card-title">Produtos já existentes no catálogo</h3>
+          <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
+            Pode associar quantos produtos quiser dentro da mesma categoria.
+          </p>
+        </div>
+
+        <div class="inv-search">
+          <i class="bi bi-search"></i>
+          <input id="productFilterInput" type="text" placeholder="Pesquisar produto ou categoria...">
+        </div>
+      </div>
+
+      {% regroup available_products by category as category_list %}
+
+      <div class="inv-category-list">
+        {% for cat_group in category_list %}
+          <section class="inv-category-block" data-category-name="{{ cat_group.grouper.name|default:'Sem categoria'|lower }}">
+            <div class="inv-category-head">
+              <div>
+                <h3 class="inv-category-title">{{ cat_group.grouper.name|default:"Sem categoria" }}</h3>
+                <p class="inv-category-sub">{{ cat_group.list|length }} produto{{ cat_group.list|length|pluralize }}</p>
+              </div>
+            </div>
+
+            <div class="inv-product-grid">
+              {% for product in cat_group.list %}
+                <article class="inv-product-card"
+                         data-product-name="{{ product.name|lower }}"
+                         data-category-name="{{ cat_group.grouper.name|default:'Sem categoria'|lower }}">
+                  <div class="inv-product-card-top">
+                    <div>
+                      <h4 class="inv-product-card-title">{{ product.name }}</h4>
+                      <p class="inv-product-card-meta">
+                        {{ cat_group.grouper.name|default:"Sem categoria" }}
+                      </p>
+                    </div>
+
+                    <span class="inv-chip">{{ product.unit }}</span>
+                  </div>
+
+                  {% if product.description %}
+                    <p class="inv-product-card-desc">{{ product.description|truncatewords:18 }}</p>
+                  {% else %}
+                    <p class="inv-product-card-desc inv-product-card-desc--muted">Sem descrição adicional.</p>
+                  {% endif %}
+
+                  <div class="inv-product-card-actions">
+                    <button type="button"
+                            class="inv-btn inv-btn--secondary btn-add-product"
+                            data-product-id="{{ product.id }}"
+                            data-product-name="{{ product.name }}"
+                            data-product-unit="{{ product.unit }}"
+                            data-bs-toggle="modal"
+                            data-bs-target="#catalogProductModal">
+                      <i class="bi bi-link-45deg"></i>
+                      <span>Associar ao meu inventário</span>
+                    </button>
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <div class="inv-card">
+      <div class="inv-empty">
+        <i class="bi bi-box-seam"></i>
+        <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">
+          Não existem mais produtos disponíveis no catálogo para adicionar
+        </p>
+        <p style="margin:0 0 1rem 0;">
+          Pode criar um novo produto e associá-lo a uma categoria já existente.
+        </p>
+
+        <button type="button"
+                class="inv-btn inv-btn--primary"
+                data-bs-toggle="modal"
+                data-bs-target="#customProductModal">
+          <i class="bi bi-plus-circle"></i>
+          <span>Criar novo produto</span>
+        </button>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<div class="modal fade" id="catalogProductModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:1.1rem;border:none;overflow:hidden;">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="catalog">
+        {{ form.product_id }}
+
+        <div class="modal-header" style="padding:1rem 1.2rem;border-bottom:1px solid #e2e8f0;">
+          <h5 class="modal-title fw-bold" id="catalogModalTitle">
+            {% if selected_product %}Adicionar: {{ selected_product.name }}{% else %}Adicionar produto{% endif %}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body" style="padding:1.1rem 1.2rem;">
+          <p class="text-muted small mb-3">
+            Define o stock inicial e o limiar mínimo para começares a gerir este produto.
+          </p>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="{{ form.initial_quantity.id_for_label }}">
+              Stock inicial <span class="text-muted fw-normal" id="catalogModalUnitInitial"></span>
+            </label>
+            {{ form.initial_quantity }}
+            {% if form.initial_quantity.errors %}
+              <div class="text-danger small mt-1">{{ form.initial_quantity.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="{{ form.minimum_threshold.id_for_label }}">
+              Stock mínimo de alerta <span class="text-muted fw-normal" id="catalogModalUnitThreshold"></span>
+            </label>
+            {{ form.minimum_threshold }}
+            {% if form.minimum_threshold.errors %}
+              <div class="text-danger small mt-1">{{ form.minimum_threshold.errors.0 }}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding:1rem 1.2rem;border-top:1px solid #e2e8f0;">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check-circle me-1"></i> Associar produto
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="customProductModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="border-radius:1.1rem;border:none;overflow:hidden;">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="custom">
+
+        <div class="modal-header" style="padding:1rem 1.2rem;border-bottom:1px solid #e2e8f0;">
+          <h5 class="modal-title fw-bold">Criar novo produto</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body" style="padding:1.1rem 1.2rem;">
+          <p class="text-muted small mb-3">
+            Cria um produto novo e associa-o logo ao teu inventário. A categoria tem de ser uma das existentes.
+          </p>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="{{ custom_form.category.id_for_label }}">
+                {{ custom_form.category.label }}
+              </label>
+              {{ custom_form.category }}
+              {% if custom_form.category.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.category.errors.0 }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="{{ custom_form.name.id_for_label }}">
+                {{ custom_form.name.label }}
+              </label>
+              {{ custom_form.name }}
+              {% if custom_form.name.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.name.errors.0 }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="{{ custom_form.unit.id_for_label }}">
+                {{ custom_form.unit.label }}
+              </label>
+              {{ custom_form.unit }}
+              {% if custom_form.unit.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.unit.errors.0 }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="{{ custom_form.initial_quantity.id_for_label }}">
+                {{ custom_form.initial_quantity.label }}
+              </label>
+              {{ custom_form.initial_quantity }}
+              {% if custom_form.initial_quantity.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.initial_quantity.errors.0 }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="{{ custom_form.minimum_threshold.id_for_label }}">
+                {{ custom_form.minimum_threshold.label }}
+              </label>
+              {{ custom_form.minimum_threshold }}
+              {% if custom_form.minimum_threshold.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.minimum_threshold.errors.0 }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12">
+              <label class="form-label fw-semibold" for="{{ custom_form.description.id_for_label }}">
+                {{ custom_form.description.label }}
+              </label>
+              {{ custom_form.description }}
+              {% if custom_form.description.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.description.errors.0 }}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding:1rem 1.2rem;border-top:1px solid #e2e8f0;">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-plus-circle me-1"></i> Criar e associar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+.inv-category-list{
+  padding:1rem 1.1rem 1.1rem;
+  display:flex;
+  flex-direction:column;
+  gap:1.2rem;
+}
+
+.inv-category-block{
+  border:1px solid #e2e8f0;
+  border-radius:1rem;
+  padding:1rem;
+  background:#fff;
+}
+
+.inv-category-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:1rem;
+  margin-bottom:.9rem;
+}
+
+.inv-category-title{
+  margin:0;
+  font-size:1rem;
+  font-weight:800;
+  color:#1e293b;
+}
+
+.inv-category-sub{
+  margin:.25rem 0 0 0;
+  color:#64748b;
+  font-size:.82rem;
+}
+
+.inv-product-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+  gap:.9rem;
+}
+
+.inv-product-card{
+  border:1px solid #e2e8f0;
+  border-radius:1rem;
+  padding:1rem;
+  display:flex;
+  flex-direction:column;
+  gap:.85rem;
+  background:#fff;
+  transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.inv-product-card:hover{
+  border-color:#86efac;
+  box-shadow:0 10px 24px rgba(15,23,42,.06);
+  transform:translateY(-1px);
+}
+
+.inv-product-card-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:.75rem;
+}
+
+.inv-product-card-title{
+  margin:0;
+  font-size:.96rem;
+  font-weight:800;
+  color:#0f172a;
+}
+
+.inv-product-card-meta{
+  margin:.25rem 0 0 0;
+  font-size:.8rem;
+  color:#64748b;
+}
+
+.inv-product-card-desc{
+  margin:0;
+  color:#475569;
+  font-size:.86rem;
+  line-height:1.45;
+}
+
+.inv-product-card-desc--muted{
+  color:#94a3b8;
+}
+
+.inv-product-card-actions{
+  margin-top:auto;
+  display:flex;
+  justify-content:flex-start;
+}
+
+.inv-chip{
+  display:inline-flex;
+  align-items:center;
+  padding:.25rem .6rem;
+  border-radius:999px;
+  background:#f1f5f9;
+  color:#475569;
+  font-size:.74rem;
+  font-weight:700;
+  white-space:nowrap;
+}
+</style>
+
+<script>
+  document.querySelectorAll(".btn-add-product").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const productId = this.dataset.productId;
+      const productName = this.dataset.productName;
+      const productUnit = this.dataset.productUnit;
+
+      document.getElementById("id_product_id").value = productId;
+      document.getElementById("catalogModalTitle").textContent = "Adicionar: " + productName;
+      document.getElementById("catalogModalUnitInitial").textContent = "(" + productUnit + ")";
+      document.getElementById("catalogModalUnitThreshold").textContent = "(" + productUnit + ")";
+    });
+  });
+
+  const productFilterInput = document.getElementById("productFilterInput");
+  if (productFilterInput) {
+    productFilterInput.addEventListener("input", function () {
+      const term = this.value.trim().toLowerCase();
+      const productCards = document.querySelectorAll(".inv-product-card");
+      const categoryBlocks = document.querySelectorAll(".inv-category-block");
+
+      productCards.forEach(function(card){
+        const productName = card.dataset.productName || "";
+        const categoryName = card.dataset.categoryName || "";
+        const match = !term || productName.includes(term) || categoryName.includes(term);
+        card.style.display = match ? "" : "none";
+      });
+
+      categoryBlocks.forEach(function(block){
+        const visibleCards = Array.from(block.querySelectorAll(".inv-product-card"))
+          .filter(card => card.style.display !== "none");
+        block.style.display = visibleCards.length ? "" : "none";
+      });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    {% if show_catalog_modal and selected_product %}
+      document.getElementById("id_product_id").value = "{{ selected_product.id }}";
+      document.getElementById("catalogModalTitle").textContent = "Adicionar: {{ selected_product.name|escapejs }}";
+      document.getElementById("catalogModalUnitInitial").textContent = "({{ selected_product.unit|escapejs }})";
+      document.getElementById("catalogModalUnitThreshold").textContent = "({{ selected_product.unit|escapejs }})";
+
+      const catalogModalElement = document.getElementById("catalogProductModal");
+      if (catalogModalElement && window.bootstrap) {
+        const modal = new bootstrap.Modal(catalogModalElement);
+        modal.show();
+      }
+    {% endif %}
+
+    {% if show_custom_modal %}
+      const customModalElement = document.getElementById("customProductModal");
+      if (customModalElement && window.bootstrap) {
+        const modal = new bootstrap.Modal(customModalElement);
+        modal.show();
+      }
+    {% endif %}
+  });
+</script>
+
+{% endblock %}

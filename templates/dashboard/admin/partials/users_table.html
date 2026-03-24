@@ -1,0 +1,73 @@
+<div id="users-table">
+  <div style="overflow-x:auto">
+    <table class="adm-table">
+      <thead>
+        <tr>
+          <th>Utilizador</th>
+          <th>Role</th>
+          <th>Origem</th>
+          <th>Estado</th>
+          <th>Último login</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in page_obj %}
+          {% include "dashboard/admin/partials/user_row.html" with user=user q=q %}
+        {% empty %}
+        <tr>
+          <td colspan="6">
+            <div class="adm-empty">
+              <i class="bi bi-people"></i>
+              <p>Sem utilizadores registados.</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="adm-pagination">
+    {% if page_obj.has_previous %}
+      <a
+        href="?q={{ q }}&page={{ page_obj.previous_page_number }}"
+        class="adm-page-btn"
+        hx-get="{% url 'dashboard:gestor_utilizadores' %}?q={{ q }}&page={{ page_obj.previous_page_number }}"
+        hx-target="#users-table"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >
+        <i class="bi bi-chevron-left"></i>
+      </a>
+    {% endif %}
+
+    {% for n in page_obj.paginator.page_range %}
+      <a
+        href="?q={{ q }}&page={{ n }}"
+        class="adm-page-btn {% if page_obj.number == n %}adm-page-btn--active{% endif %}"
+        hx-get="{% url 'dashboard:gestor_utilizadores' %}?q={{ q }}&page={{ n }}"
+        hx-target="#users-table"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >
+        {{ n }}
+      </a>
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <a
+        href="?q={{ q }}&page={{ page_obj.next_page_number }}"
+        class="adm-page-btn"
+        hx-get="{% url 'dashboard:gestor_utilizadores' %}?q={{ q }}&page={{ page_obj.next_page_number }}"
+        hx-target="#users-table"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >
+        <i class="bi bi-chevron-right"></i>
+      </a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

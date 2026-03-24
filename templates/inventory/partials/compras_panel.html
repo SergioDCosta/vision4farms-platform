@@ -1,0 +1,130 @@
+<div class="inv-grid">
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+    <div class="inv-card inv-metric">
+      <p class="inv-metric-label">Compras concluídas (4 semanas)</p>
+      <p class="inv-metric-value">{{ purchase_total_last_4w|floatformat:2 }} €</p>
+      <p class="inv-metric-sub">
+        {{ purchase_completed_count_last_4w }} encomenda{{ purchase_completed_count_last_4w|pluralize }} concluída{{ purchase_completed_count_last_4w|pluralize }}
+        · média de {{ purchase_avg_weekly|floatformat:2 }} €/semana
+      </p>
+    </div>
+
+    <div class="inv-card inv-metric">
+      <p class="inv-metric-label">Tendência de Compras</p>
+
+      <div class="inv-trend inv-trend--{{ purchase_trend_direction }}">
+        <div class="inv-trend-icon">
+          {% if purchase_trend_direction == "up" %}
+            <i class="bi bi-trending-up"></i>
+          {% elif purchase_trend_direction == "down" %}
+            <i class="bi bi-trending-down"></i>
+          {% else %}
+            <i class="bi bi-dash-lg"></i>
+          {% endif %}
+        </div>
+
+        <div>
+          <p class="inv-trend-value">
+            {% if purchase_trend_pct > 0 %}+{% endif %}{{ purchase_trend_pct|floatformat:1 }}%
+          </p>
+          <p class="inv-metric-sub" style="margin:.15rem 0 0 0;">
+            {{ purchase_trend_label }}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="inv-card inv-metric">
+      <p class="inv-metric-label">Encomendas em curso</p>
+      <p class="inv-metric-value">{{ purchase_in_progress_count }}</p>
+      <p class="inv-metric-sub">Estados: confirmada, em preparação ou em entrega</p>
+    </div>
+  </div>
+
+  <div class="inv-card inv-chart">
+    <div class="inv-chart-head">
+      <div>
+        <h3 class="inv-card-title" style="margin-bottom:.2rem;">Evolução de Compras</h3>
+        <p style="margin:0;font-size:.82rem;color:#64748b;">Últimos 6 meses · encomendas concluídas</p>
+      </div>
+    </div>
+
+    <div class="inv-chart-area">
+      <div class="inv-chart-grid">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+
+      <div class="inv-bars">
+        {% for point in purchase_chart_points %}
+          <div class="inv-bar-wrap">
+            <div class="inv-bar {% if forloop.last %}inv-bar--active{% endif %}"
+                 style="height: {{ point.height }}%;">
+              <span class="inv-bar-tooltip">{{ point.total|floatformat:2 }} €</span>
+            </div>
+            <span class="inv-bar-label">{{ point.label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="inv-data-grid" style="margin-top:1.5rem;">
+  <div class="inv-card inv-list-card">
+    <div class="inv-list-head">
+      <h3 class="inv-list-title">Compras recentes</h3>
+    </div>
+
+    {% if recent_orders %}
+      <div class="inv-list">
+        {% for order in recent_orders %}
+          <div class="inv-list-item">
+            <div class="inv-list-item-main">
+              <p class="inv-list-item-title">Encomenda #{{ order.order_number }}</p>
+              <p class="inv-list-item-meta">
+                {{ order.created_at|date:"d/m/Y H:i" }} · {{ order.get_status_display|default:order.status }}
+              </p>
+            </div>
+            <div class="inv-list-item-val">{{ order.total_amount|floatformat:2 }} €</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="inv-empty">
+        <i class="bi bi-receipt"></i>
+        <p style="margin:0;">Ainda não existem compras registadas.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="inv-card inv-list-card">
+    <div class="inv-list-head">
+      <h3 class="inv-list-title">Produtos mais comprados</h3>
+    </div>
+
+    {% if top_products %}
+      <div class="inv-list">
+        {% for item in top_products %}
+          <div class="inv-list-item">
+            <div class="inv-list-item-main">
+              <p class="inv-list-item-title">{{ item.product__name }}</p>
+              <p class="inv-list-item-meta">Últimos 6 meses</p>
+            </div>
+            <div class="inv-list-item-val">
+              {{ item.total_quantity|floatformat:"-3" }} {{ item.product__unit }}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="inv-empty">
+        <i class="bi bi-bar-chart"></i>
+        <p style="margin:0;">Sem histórico suficiente para análise de produtos.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>

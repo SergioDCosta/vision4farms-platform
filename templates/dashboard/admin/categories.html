@@ -2,46 +2,22 @@
 {% block admin_content %}
 <div class="adm-card">
   <div class="adm-card-head">
-    <div class="adm-search">
+    <form
+      method="get"
+      class="adm-search"
+      hx-get="{% url 'dashboard:gestor_categorias' %}"
+      hx-trigger="keyup changed delay:300ms from:input[name='q']"
+      hx-target="#categories-table"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+    >
       <i class="bi bi-search"></i>
-      <input type="text" placeholder="Pesquisar categorias...">
-    </div>
+      <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar categorias..." autocomplete="off">
+    </form>
+
     <button class="adm-btn-primary"><i class="bi bi-plus-lg"></i> Nova categoria</button>
   </div>
-  <div style="overflow-x:auto">
-    <table class="adm-table">
-      <thead><tr>
-        <th>Categoria</th>
-        <th>Slug</th>
-        <th>Estado</th>
-        <th>Criado</th>
-        <th></th>
-      </tr></thead>
-      <tbody>
-        {% for cat in categories %}
-        <tr>
-          <td style="font-weight:600;color:#0f172a;">{{ cat.name }}</td>
-          <td style="font-size:.8rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ cat.slug }}</td>
-          <td>
-            {% if cat.is_active %}
-              <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativa</span>
-            {% else %}
-              <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Inativa</span>
-            {% endif %}
-          </td>
-          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">{{ cat.created_at|date:"d/m/Y" }}</td>
-          <td>
-            <div style="display:flex;justify-content:flex-end;gap:.35rem;">
-              <button class="adm-act-btn" title="Editar"><i class="bi bi-pencil"></i></button>
-              <button class="adm-act-btn adm-act-btn--warn" title="Desativar"><i class="bi bi-slash-circle"></i></button>
-            </div>
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="5"><div class="adm-empty"><i class="bi bi-tags"></i><p>Sem categorias registadas.</p></div></td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+
+  {% include "dashboard/admin/partials/categories_table.html" %}
 </div>
 {% endblock %}

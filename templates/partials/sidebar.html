@@ -1,11 +1,15 @@
 <aside class="app-sidebar" id="appSidebar">
 
-  <div class="sidebar-brand">
-    <div class="sidebar-brand-icon">
-      <i class="bi bi-flower1"></i>
-    </div>
-    <span class="sidebar-brand-text">Cooperativa</span>
-  </div>
+  {% if request.session.user_role == "ADMIN" %}
+    <a href="{% url 'dashboard:gestor' %}" class="sidebar-brand">
+  {% else %}
+    <a href="{% url 'dashboard:painel' %}" class="sidebar-brand">
+  {% endif %}
+      <div class="sidebar-brand-icon">
+        <i class="bi bi-flower1"></i>
+      </div>
+      <span class="sidebar-brand-text">Cooperativa</span>
+    </a>
 
   <nav class="sidebar-nav">
     {% if request.session.user_role == "ADMIN" %}
@@ -64,8 +68,8 @@
         <span class="sidebar-link-icon"><i class="bi bi-truck"></i></span>
         <span class="sidebar-link-text">Encomendas</span>
       </a>
-      <a href="/stocks/"
-         class="sidebar-link {% if '/stocks/' in request.path %}active{% endif %}"
+      <a href="{% url 'inventory:meus_produtos' %}"
+         class="sidebar-link {% if '/inventario/' in request.path %}active{% endif %}"
          data-tooltip="Stocks">
         <span class="sidebar-link-icon"><i class="bi bi-box-seam-fill"></i></span>
         <span class="sidebar-link-text">Stocks e Compras</span>

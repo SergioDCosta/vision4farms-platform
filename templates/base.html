@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Cooperativa{% endblock %}</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"> 
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
     <style>
         :root {
             --bg: #f8fafc;
@@ -223,18 +225,6 @@
 
         .text-center { text-align: center; }
 
-        .messages { margin-bottom: 20px; }
-
-        .message {
-            padding: 12px 14px;
-            border-radius: 12px;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        .message.error { background: #fee2e2; color: #991b1b; }
-        .message.success { background: #dcfce7; color: #166534; }
-
         .checkbox-row {
             display:flex;
             justify-content:space-between;
@@ -274,6 +264,118 @@
             justify-content: center;
         }
 
+        .app-toast-stack{
+            position:fixed;
+            top:1rem;
+            right:1rem;
+            z-index:2000;
+            display:flex;
+            flex-direction:column;
+            gap:.75rem;
+            width:min(380px, calc(100vw - 2rem));
+            pointer-events:none;
+        }
+
+        .app-toast{
+            pointer-events:auto;
+            display:flex;
+            align-items:flex-start;
+            gap:.75rem;
+            padding:.95rem 1rem;
+            border-radius:1rem;
+            border:1px solid transparent;
+            background:#fff;
+            box-shadow:0 16px 40px rgba(15, 23, 42, .12);
+            color:#0f172a;
+            animation:toast-in .18s ease;
+        }
+
+        .app-toast__icon{
+            flex-shrink:0;
+            width:1.25rem;
+            text-align:center;
+            margin-top:.1rem;
+        }
+
+        .app-toast__content{
+            flex:1;
+            min-width:0;
+        }
+
+        .app-toast__title{
+            font-size:.88rem;
+            font-weight:700;
+            line-height:1.2;
+            margin:0 0 .15rem 0;
+        }
+
+        .app-toast__message{
+            font-size:.82rem;
+            line-height:1.4;
+            margin:0;
+        }
+
+        .app-toast__close{
+            border:0;
+            background:transparent;
+            color:inherit;
+            cursor:pointer;
+            opacity:.6;
+            padding:0;
+            line-height:1;
+            font-size:1rem;
+        }
+
+        .app-toast--success{
+            background:#ecfdf3;
+            border-color:#bbf7d0;
+            color:#166534;
+        }
+
+        .app-toast--error{
+            background:#fef2f2;
+            border-color:#fecaca;
+            color:#b91c1c;
+        }
+
+        .app-toast--warning{
+            background:#fffbeb;
+            border-color:#fde68a;
+            color:#92400e;
+        }
+
+        .app-toast--info{
+            background:#eff6ff;
+            border-color:#bfdbfe;
+            color:#1d4ed8;
+        }
+
+        .app-toast.is-leaving{
+            animation:toast-out .18s ease forwards;
+        }
+
+        @keyframes toast-in{
+            from{
+                opacity:0;
+                transform:translateY(-8px) scale(.98);
+            }
+            to{
+                opacity:1;
+                transform:translateY(0) scale(1);
+            }
+        }
+
+        @keyframes toast-out{
+            from{
+                opacity:1;
+                transform:translateY(0) scale(1);
+            }
+            to{
+                opacity:0;
+                transform:translateY(-8px) scale(.98);
+            }
+        }
+
         @media (max-width: 768px) {
             .form-grid-2 {
                 grid-template-columns: 1fr;
@@ -296,9 +398,13 @@
 
     {% block extra_css %}{% endblock %}
 </head>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <body>
     {% block content %}{% endblock %}
+
+    <div id="toast-stack" class="app-toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 
     <script>
     document.addEventListener("click", function (e) {
@@ -326,5 +432,77 @@
         }
     });
     </script>
+
+    <script>
+    (function () {
+        const stack = document.getElementById("toast-stack");
+        if (!stack) return;
+
+        function getToastMeta(level) {
+            switch (level) {
+                case "success":
+                    return { title: "Sucesso", icon: "bi-check-circle" };
+                case "error":
+                    return { title: "Erro", icon: "bi-exclamation-circle" };
+                case "warning":
+                    return { title: "Aviso", icon: "bi-exclamation-triangle" };
+                default:
+                    return { title: "Informação", icon: "bi-info-circle" };
+            }
+        }
+
+        function removeToast(toast) {
+            if (!toast || toast.classList.contains("is-leaving")) return;
+            toast.classList.add("is-leaving");
+            setTimeout(() => toast.remove(), 180);
+        }
+
+        function showToast(level, message) {
+            if (!message) return;
+
+            const meta = getToastMeta(level || "info");
+            const toast = document.createElement("div");
+            toast.className = `app-toast app-toast--${level || "info"}`;
+
+            toast.innerHTML = `
+                <div class="app-toast__icon">
+                    <i class="bi ${meta.icon}"></i>
+                </div>
+                <div class="app-toast__content">
+                    <p class="app-toast__title">${meta.title}</p>
+                    <p class="app-toast__message"></p>
+                </div>
+                <button type="button" class="app-toast__close" aria-label="Fechar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            `;
+
+            toast.querySelector(".app-toast__message").textContent = message;
+            toast.querySelector(".app-toast__close").addEventListener("click", () => removeToast(toast));
+
+            stack.appendChild(toast);
+            setTimeout(() => removeToast(toast), 4000);
+        }
+
+        document.body.addEventListener("app:toast", function (event) {
+            const detail = event.detail && typeof event.detail === "object"
+                ? (event.detail.value && typeof event.detail.value === "object" ? event.detail.value : event.detail)
+                : {};
+
+            showToast(detail.level || "info", detail.message || "");
+        });
+
+        {% if messages %}
+            {% for message in messages %}
+                showToast(
+                    "{% if 'error' in message.tags %}error{% elif 'warning' in message.tags %}warning{% elif 'success' in message.tags %}success{% else %}info{% endif %}",
+                    "{{ message|escapejs }}"
+                );
+            {% endfor %}
+        {% endif %}
+    })();
+    </script>
+
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

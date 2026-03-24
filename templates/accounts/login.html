@@ -21,12 +21,6 @@
           <h1 class="auth-form-title">Bem-vindo de volta</h1>
           <p class="auth-form-sub">Aceda à sua área de exploração e cooperativa.</p>
         </div>
-        {% if messages %}{% for message in messages %}
-          <div class="auth-alert auth-alert--{{ message.tags }}">
-            <i class="bi bi-{% if message.tags == 'error' %}exclamation-circle{% else %}check-circle{% endif %}"></i>
-            {{ message }}
-          </div>
-        {% endfor %}{% endif %}
         <form method="post" class="auth-form" novalidate>
           {% csrf_token %}
           <div class="af-group">

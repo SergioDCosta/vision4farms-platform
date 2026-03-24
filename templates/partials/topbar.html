@@ -5,13 +5,11 @@
       <i class="bi bi-list"></i>
     </button>
     <div class="topbar-breadcrumb">
-      <span class="topbar-breadcrumb-root">Cooperativa</span>
-      <i class="bi bi-chevron-right topbar-breadcrumb-sep"></i>
       <span class="topbar-breadcrumb-page">
         {% if request.session.user_role == "ADMIN" %}
-          Gestão da Cooperativa
+          {{ page_title|default:"Gestão da Cooperativa" }}
         {% else %}
-          Painel
+          {{ page_title|default:"Painel" }}
         {% endif %}
       </span>
     </div>

@@ -96,5 +96,21 @@
 .adm-page-btn:hover{background:#f8fafc;}
 .adm-page-btn--active{background:#16a34a;color:#fff;border-color:#16a34a;}
 .adm-page-btn--active:hover{background:#15803d;}
+.htmx-request {
+  opacity: .72;
+  transition: opacity .15s ease;
+}
+
+#users-table.htmx-request,
+#products-table.htmx-request,
+#categories-table.htmx-request,
+#audit-table.htmx-request {
+  opacity: .55;
+}
+
+.adm-search.htmx-request {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
 </style>
 {% endblock %}

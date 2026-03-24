@@ -1,0 +1,51 @@
+<div id="audit-table">
+  <div style="overflow-x:auto">
+    <table class="adm-table">
+      <thead>
+        <tr>
+          <th>Data / Hora</th>
+          <th>Utilizador</th>
+          <th>Ação</th>
+          <th>Entidade</th>
+          <th>Notas</th>
+          <th>IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;">
+            {{ log.created_at|date:"d/m/Y H:i" }}
+          </td>
+          <td style="font-size:.84rem;">
+            {% if log.user %}
+              {{ log.user.first_name }} {{ log.user.last_name }}
+            {% else %}
+              Sistema
+            {% endif %}
+          </td>
+          <td>
+            <span style="display:inline-block;padding:.15rem .6rem;border-radius:.4rem;background:#f1f5f9;color:#374151;font-size:.75rem;font-weight:600;">
+              {{ log.action }}
+            </span>
+          </td>
+          <td style="font-size:.8rem;color:#64748b;">{{ log.entity_type|default:"—" }}</td>
+          <td style="font-size:.8rem;color:#64748b;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ log.notes }}">
+            {{ log.notes|default:"—" }}
+          </td>
+          <td style="font-size:.78rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ log.ip_address|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6">
+            <div class="adm-empty">
+              <i class="bi bi-journal-x"></i>
+              <p>Sem registos de auditoria.</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

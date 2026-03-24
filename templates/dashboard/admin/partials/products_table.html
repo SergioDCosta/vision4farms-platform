@@ -1,0 +1,52 @@
+<div id="products-table">
+  <div style="overflow-x:auto">
+    <table class="adm-table">
+      <thead>
+        <tr>
+          <th>Produto</th>
+          <th>Categoria</th>
+          <th>Unidade</th>
+          <th>Estado</th>
+          <th>Atualizado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+        <tr>
+          <td>
+            <div style="font-weight:600;color:#0f172a;">{{ product.name }}</div>
+            <div style="font-size:.75rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ product.slug }}</div>
+          </td>
+          <td style="font-size:.84rem;color:#64748b;">{{ product.category.name|default:"—" }}</td>
+          <td>
+            <span style="font-size:.8rem;background:#f1f5f9;color:#475569;padding:.2rem .55rem;border-radius:.4rem;font-weight:600;">
+              {{ product.unit }}
+            </span>
+          </td>
+          <td>
+            {% if product.is_active %}
+              <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativo</span>
+            {% else %}
+              <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Inativo</span>
+            {% endif %}
+          </td>
+          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">{{ product.updated_at|date:"d/m/Y" }}</td>
+          <td>
+            <button class="adm-act-btn" title="Editar" disabled><i class="bi bi-pencil"></i></button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6">
+            <div class="adm-empty">
+              <i class="bi bi-box-seam"></i>
+              <p>Sem produtos registados.</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

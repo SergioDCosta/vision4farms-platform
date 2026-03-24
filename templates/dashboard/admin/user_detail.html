@@ -1,89 +1,248 @@
 {% extends "dashboard/admin/base_admin.html" %}
 {% block admin_content %}
-<div class="adm-card">
-  <div class="adm-card-head">
-    <form method="get" class="adm-search">
-      <i class="bi bi-search"></i>
-      <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar por nome, email ou role...">
-    </form>
-    <a href="{% url 'dashboard:gestor_utilizador_novo' %}" class="adm-btn-primary">
-      <i class="bi bi-person-plus-fill"></i> Novo utilizador
-    </a>
+
+<div class="adm-card" style="margin-bottom:1rem;">
+  <div class="adm-card-head" style="align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+    <div>
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.45rem;">
+        <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-btn-ghost">
+          <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+      </div>
+
+      <h2 style="margin:0;font-size:1.35rem;font-weight:800;color:#0f172a;">
+        {{ user_obj.first_name }} {{ user_obj.last_name }}
+      </h2>
+      <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.92rem;">
+        {{ user_obj.email }}
+      </p>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;">
+      {% if user_obj.role == "ADMIN" %}
+        <span class="adm-pill adm-pill--blue"><span class="adm-pill-dot"></span>Admin</span>
+      {% else %}
+        <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Cliente</span>
+      {% endif %}
+
+      {% if user_obj.account_status == "ACTIVE" %}
+        <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativa</span>
+      {% elif user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" %}
+        <span class="adm-pill adm-pill--amber"><span class="adm-pill-dot"></span>Pendente</span>
+      {% else %}
+        <span class="adm-pill adm-pill--red"><span class="adm-pill-dot"></span>Suspensa</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:1rem;">
+  <div style="grid-column:span 8;min-width:0;">
+    <div class="adm-card" style="margin-bottom:1rem;">
+      <div class="adm-card-head" style="margin-bottom:1rem;">
+        <div>
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Informação da conta</h3>
+          <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
+            Detalhes principais do utilizador e da conta.
+          </p>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;">
+        <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Primeiro nome</div>
+          <div style="font-weight:700;color:#0f172a;">{{ user_obj.first_name|default:"—" }}</div>
+        </div>
+
+        <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Último nome</div>
+          <div style="font-weight:700;color:#0f172a;">{{ user_obj.last_name|default:"—" }}</div>
+        </div>
+
+        <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Email</div>
+          <div style="font-weight:700;color:#0f172a;">{{ user_obj.email }}</div>
+        </div>
+
+        <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Origem de registo</div>
+          <div style="font-weight:700;color:#0f172a;">
+            {{ user_obj.get_registration_source_display|default:user_obj.registration_source }}
+          </div>
+        </div>
+
+        <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Email verificado</div>
+          <div style="font-weight:700;color:#0f172a;">
+            {% if user_obj.email_verified_at %}
+              Sim
+            {% else %}
+              Não
+            {% endif %}
+          </div>
+        </div>
+
+        <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+          <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Último login</div>
+          <div style="font-weight:700;color:#0f172a;">
+            {{ user_obj.last_login|date:"d/m/Y H:i"|default:"—" }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="adm-card">
+      <div class="adm-card-head" style="margin-bottom:1rem;">
+        <div>
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Perfil do produtor</h3>
+          <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
+            Informação complementar associada ao utilizador.
+          </p>
+        </div>
+      </div>
+
+      {% if producer_profile %}
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;">
+          <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Empresa</div>
+            <div style="font-weight:700;color:#0f172a;">{{ producer_profile.company_name|default:"—" }}</div>
+          </div>
+
+          <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Tipo de utilizador</div>
+            <div style="font-weight:700;color:#0f172a;">{{ producer_profile.user_type|default:"—" }}</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="adm-empty">
+          <i class="bi bi-person-vcard"></i>
+          <p>Este utilizador não tem perfil de produtor associado.</p>
+        </div>
+      {% endif %}
+    </div>
   </div>
 
-  <div style="overflow-x:auto">
+  <div style="grid-column:span 4;min-width:0;">
+    <div class="adm-card" style="margin-bottom:1rem;">
+      <div class="adm-card-head" style="margin-bottom:1rem;">
+        <div>
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Ações</h3>
+          <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
+            Operações administrativas disponíveis.
+          </p>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:.75rem;">
+        {% if request.current_user and request.current_user.id == user_obj.id %}
+          <button
+            type="button"
+            class="adm-btn-ghost"
+            disabled
+            style="opacity:.45;cursor:not-allowed;justify-content:center;"
+          >
+            <i class="bi bi-slash-circle"></i> Não pode alterar a sua própria conta
+          </button>
+        {% else %}
+          <form method="post" action="{% url 'dashboard:gestor_utilizador_estado' user_obj.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+            <button
+              type="submit"
+              class="adm-btn-primary"
+              style="width:100%;justify-content:center;"
+            >
+              <i class="bi bi-{% if user_obj.is_active %}slash-circle{% else %}check-circle{% endif %}"></i>
+              {% if user_obj.is_active %}Suspender utilizador{% else %}Reativar utilizador{% endif %}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="adm-card">
+      <div class="adm-card-head" style="margin-bottom:1rem;">
+        <div>
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Resumo rápido</h3>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:.75rem;">
+        <div style="padding:.9rem 1rem;border:1px solid #e2e8f0;border-radius:1rem;">
+          <div style="font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Criado em</div>
+          <div style="font-weight:700;color:#0f172a;">{{ user_obj.created_at|date:"d/m/Y H:i" }}</div>
+        </div>
+
+        <div style="padding:.9rem 1rem;border:1px solid #e2e8f0;border-radius:1rem;">
+          <div style="font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Atualizado em</div>
+          <div style="font-weight:700;color:#0f172a;">{{ user_obj.updated_at|date:"d/m/Y H:i"|default:"—" }}</div>
+        </div>
+
+        <div style="padding:.9rem 1rem;border:1px solid #e2e8f0;border-radius:1rem;">
+          <div style="font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Estado interno</div>
+          <div style="font-weight:700;color:#0f172a;">{{ user_obj.account_status }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="adm-card" style="margin-top:1rem;">
+  <div class="adm-card-head" style="margin-bottom:1rem;">
+    <div>
+      <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Atividade relacionada</h3>
+      <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
+        Últimos registos de auditoria associados a este utilizador.
+      </p>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto;">
     <table class="adm-table">
-      <thead><tr>
-        <th>Utilizador</th>
-        <th>Role</th>
-        <th>Origem</th>
-        <th>Estado</th>
-        <th>Último login</th>
-        <th></th>
-      </tr></thead>
-      <tbody>
-        {% for user in page_obj %}
+      <thead>
         <tr>
-          <td>
-            <div style="display:flex;align-items:center;gap:.75rem;">
-              <div style="width:34px;height:34px;border-radius:50%;background:#dcfce7;color:#15803d;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;flex-shrink:0;">
-                {{ user.first_name|slice:":1" }}{{ user.last_name|slice:":1" }}
-              </div>
-              <div>
-                <div style="font-weight:600;color:#0f172a;font-size:.875rem;">{{ user.first_name }} {{ user.last_name }}</div>
-                <div style="font-size:.78rem;color:#64748b;">{{ user.email }}</div>
-              </div>
-            </div>
+          <th>Data / Hora</th>
+          <th>Ação</th>
+          <th>Notas</th>
+          <th>Autor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in related_logs %}
+        <tr>
+          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;">
+            {{ log.created_at|date:"d/m/Y H:i" }}
           </td>
           <td>
-            {% if user.role == "ADMIN" %}
-              <span class="adm-pill adm-pill--blue"><span class="adm-pill-dot"></span>Admin</span>
+            <span style="display:inline-block;padding:.15rem .6rem;border-radius:.4rem;background:#f1f5f9;color:#374151;font-size:.75rem;font-weight:600;">
+              {{ log.action }}
+            </span>
+          </td>
+          <td style="font-size:.82rem;color:#64748b;">
+            {{ log.notes|default:"—" }}
+          </td>
+          <td style="font-size:.82rem;color:#64748b;">
+            {% if log.user %}
+              {{ log.user.first_name }} {{ log.user.last_name }}
             {% else %}
-              <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Cliente</span>
+              Sistema
             {% endif %}
-          </td>
-          <td style="font-size:.8rem;color:#64748b;">{{ user.get_registration_source_display|default:user.registration_source }}</td>
-          <td>
-            {% if user.account_status == "ACTIVE" %}
-              <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativa</span>
-            {% elif user.account_status == "PENDING_EMAIL_CONFIRMATION" %}
-              <span class="adm-pill adm-pill--amber"><span class="adm-pill-dot"></span>Pendente</span>
-            {% else %}
-              <span class="adm-pill adm-pill--red"><span class="adm-pill-dot"></span>Suspensa</span>
-            {% endif %}
-          </td>
-          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">{{ user.last_login|date:"d/m/Y H:i"|default:"—" }}</td>
-          <td>
-            <div style="display:flex;align-items:center;justify-content:flex-end;gap:.35rem;">
-              <a href="{% url 'dashboard:gestor_utilizador_detalhe' user.id %}" class="adm-act-btn" title="Ver detalhe"><i class="bi bi-eye"></i></a>
-              <form method="post" action="{% url 'dashboard:gestor_utilizador_estado' user.id %}" style="display:inline">
-                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <button type="submit" class="adm-act-btn adm-act-btn--warn" title="{% if user.is_active %}Suspender{% else %}Reativar{% endif %}">
-                  <i class="bi bi-{% if user.is_active %}slash-circle{% else %}check-circle{% endif %}"></i>
-                </button>
-              </form>
-            </div>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6"><div class="adm-empty"><i class="bi bi-people"></i><p>Sem utilizadores registados.</p></div></td></tr>
+        <tr>
+          <td colspan="4">
+            <div class="adm-empty">
+              <i class="bi bi-journal-x"></i>
+              <p>Sem atividade registada para este utilizador.</p>
+            </div>
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-
-  {% if page_obj.paginator.num_pages > 1 %}
-  <div class="adm-pagination">
-    {% if page_obj.has_previous %}
-      <a href="?q={{ q }}&page={{ page_obj.previous_page_number }}" class="adm-page-btn"><i class="bi bi-chevron-left"></i></a>
-    {% endif %}
-    {% for n in page_obj.paginator.page_range %}
-      <a href="?q={{ q }}&page={{ n }}" class="adm-page-btn {% if page_obj.number == n %}adm-page-btn--active{% endif %}">{{ n }}</a>
-    {% endfor %}
-    {% if page_obj.has_next %}
-      <a href="?q={{ q }}&page={{ page_obj.next_page_number }}" class="adm-page-btn"><i class="bi bi-chevron-right"></i></a>
-    {% endif %}
-  </div>
-  {% endif %}
 </div>
+
 {% endblock %}

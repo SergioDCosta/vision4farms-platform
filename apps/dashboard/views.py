@@ -1,4 +1,6 @@
 from decimal import Decimal
+import json
+from apps.common.htmx import with_htmx_toast
 
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -32,7 +34,6 @@ def _get_client_ip(request):
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
-
 
 def _log_admin_action(request, action, entity_type, entity_id=None, notes=None, old_values=None, new_values=None):
     AuditLog.objects.create(
@@ -247,25 +248,51 @@ def admin_dashboard_view(request):
 
 @admin_required
 def admin_products_view(request):
+    q = request.GET.get("q", "").strip()
+
     products = Product.objects.select_related("category").order_by("name")
+
+    if q:
+        products = products.filter(
+            Q(name__icontains=q)
+            | Q(slug__icontains=q)
+            | Q(unit__icontains=q)
+            | Q(category__name__icontains=q)
+        )
 
     context = {
         "admin_tab": "produtos",
         "products": products,
+        "q": q,
     }
-    return render(request, "dashboard/admin/products.html", context)
 
+    if request.htmx:
+        return render(request, "dashboard/admin/partials/products_table.html", context)
+
+    return render(request, "dashboard/admin/products.html", context)
 
 @admin_required
 def admin_categories_view(request):
+    q = request.GET.get("q", "").strip()
+
     categories = ProductCategory.objects.order_by("name")
+
+    if q:
+        categories = categories.filter(
+            Q(name__icontains=q)
+            | Q(slug__icontains=q)
+        )
 
     context = {
         "admin_tab": "categorias",
         "categories": categories,
+        "q": q,
     }
-    return render(request, "dashboard/admin/categories.html", context)
 
+    if request.htmx:
+        return render(request, "dashboard/admin/partials/categories_table.html", context)
+
+    return render(request, "dashboard/admin/categories.html", context)
 
 @admin_required
 def admin_users_view(request):
@@ -289,6 +316,10 @@ def admin_users_view(request):
         "page_obj": page_obj,
         "q": q,
     }
+
+    if request.htmx:
+        return render(request, "dashboard/admin/partials/users_table.html", context)
+
     return render(request, "dashboard/admin/users.html", context)
 
 
@@ -360,18 +391,37 @@ def admin_user_toggle_status_view(request, user_id):
     user_obj = get_object_or_404(User, id=user_id)
 
     if user_obj.id == request.current_user.id:
-        messages.error(request, "Não pode suspender ou reativar a sua própria conta.")
+        error_msg = "Não pode suspender ou reativar a sua própria conta."
+
+        if request.htmx:
+            context = {
+                "user": user_obj,
+                "q": request.POST.get("q", "").strip(),
+            }
+            response = render(request, "dashboard/admin/partials/user_row.html", context)
+            return _with_htmx_toast(response, "error", error_msg)
+
+        messages.error(request, error_msg)
         return redirect("dashboard:gestor_utilizadores")
 
-    old_snapshot = _user_snapshot(user_obj, ProducerProfile.objects.filter(user=user_obj).first())
-
     if not user_obj.is_active and user_obj.account_status == AccountStatus.PENDING_EMAIL_CONFIRMATION:
-        messages.error(
-            request,
-            "Esta conta está pendente de confirmação de email. Só ficará ativa depois do utilizador confirmar a conta."
+        error_msg = (
+            "Esta conta está pendente de confirmação de email. "
+            "Só ficará ativa depois do utilizador confirmar a conta."
         )
+
+        if request.htmx:
+            context = {
+                "user": user_obj,
+                "q": request.POST.get("q", "").strip(),
+            }
+            response = render(request, "dashboard/admin/partials/user_row.html", context)
+            return _with_htmx_toast(response, "error", error_msg)
+
+        messages.error(request, error_msg)
         return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
 
+    old_snapshot = _user_snapshot(user_obj, ProducerProfile.objects.filter(user=user_obj).first())
     now = timezone.now()
 
     if user_obj.is_active:
@@ -404,6 +454,14 @@ def admin_user_toggle_status_view(request, user_id):
         new_values=new_snapshot,
     )
 
+    if request.htmx:
+        context = {
+            "user": user_obj,
+            "q": request.POST.get("q", "").strip(),
+        }
+        response = render(request, "dashboard/admin/partials/user_row.html", context)
+        return with_htmx_toast(response, "success", success_msg)
+
     messages.success(request, success_msg)
 
     next_url = request.POST.get("next")
@@ -412,13 +470,32 @@ def admin_user_toggle_status_view(request, user_id):
 
     return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
 
-
 @admin_required
 def admin_audit_view(request):
-    logs = AuditLog.objects.select_related("user").order_by("-created_at")[:100]
+    q = request.GET.get("q", "").strip()
+
+    logs = AuditLog.objects.select_related("user").order_by("-created_at")
+
+    if q:
+        logs = logs.filter(
+            Q(action__icontains=q)
+            | Q(entity_type__icontains=q)
+            | Q(notes__icontains=q)
+            | Q(ip_address__icontains=q)
+            | Q(user__first_name__icontains=q)
+            | Q(user__last_name__icontains=q)
+            | Q(user__email__icontains=q)
+        )
+
+    logs = logs[:100]
 
     context = {
         "admin_tab": "auditoria",
         "logs": logs,
+        "q": q,
     }
+
+    if request.htmx:
+        return render(request, "dashboard/admin/partials/audit_table.html", context)
+
     return render(request, "dashboard/admin/audit.html", context)

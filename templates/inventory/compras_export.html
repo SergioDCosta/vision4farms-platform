@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Exportar Compras</title>
+  <style>
+    body{
+      font-family: Arial, sans-serif;
+      color:#111827;
+      margin:2rem;
+      background:#fff;
+    }
+
+    .print-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:1rem;
+      margin-bottom:2rem;
+    }
+
+    .print-title{
+      font-size:1.6rem;
+      font-weight:700;
+      margin:0;
+    }
+
+    .print-sub{
+      margin:.35rem 0 0 0;
+      color:#4b5563;
+      font-size:.95rem;
+    }
+
+    .print-meta{
+      text-align:right;
+      font-size:.9rem;
+      color:#4b5563;
+    }
+
+    .print-card{
+      border:1px solid #d1d5db;
+      border-radius:12px;
+      padding:1rem 1.1rem;
+      margin-bottom:1.5rem;
+      background:#f9fafb;
+    }
+
+    .print-kpi{
+      font-size:1.4rem;
+      font-weight:700;
+      color:#111827;
+      margin:.35rem 0 0 0;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:1rem;
+    }
+
+    th, td{
+      border:1px solid #d1d5db;
+      padding:.75rem;
+      text-align:left;
+      font-size:.92rem;
+    }
+
+    th{
+      background:#f3f4f6;
+      font-weight:700;
+      text-transform:uppercase;
+      font-size:.78rem;
+      letter-spacing:.04em;
+      color:#4b5563;
+    }
+
+    .text-right{
+      text-align:right;
+    }
+
+    .muted{
+      color:#6b7280;
+    }
+
+    .print-actions{
+      margin-top:1.5rem;
+      display:flex;
+      gap:.75rem;
+    }
+
+    .btn{
+      display:inline-block;
+      padding:.75rem 1rem;
+      border-radius:10px;
+      text-decoration:none;
+      font-weight:700;
+      border:1px solid #d1d5db;
+      color:#111827;
+      background:#fff;
+      cursor:pointer;
+    }
+
+    @media print{
+      .print-actions{ display:none; }
+      body{ margin:0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-head">
+    <div>
+      <h1 class="print-title">Registo de Compras</h1>
+      <p class="print-sub">
+        {% if producer.company_name %}
+          {{ producer.company_name }}
+        {% else %}
+          {{ producer.display_name }}
+        {% endif %}
+      </p>
+    </div>
+
+    <div class="print-meta">
+      <div>Gerado em: {{ generated_at|date:"d/m/Y H:i" }}</div>
+      <div>Total acumulado: {{ export_total|floatformat:2 }} €</div>
+    </div>
+  </div>
+
+  <div class="print-card">
+    <strong>Resumo</strong>
+    <p class="print-kpi">{{ recent_orders|length }} encomenda{{ recent_orders|length|pluralize }} recente{{ recent_orders|length|pluralize }}</p>
+    <p class="muted">Este documento pode ser guardado como PDF através da opção de impressão do browser.</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Número</th>
+        <th>Data</th>
+        <th>Estado</th>
+        <th class="text-right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in recent_orders %}
+        <tr>
+          <td>#{{ order.order_number }}</td>
+          <td>{{ order.created_at|date:"d/m/Y H:i" }}</td>
+          <td>{{ order.get_status_display|default:order.status }}</td>
+          <td class="text-right">{{ order.total_amount|floatformat:2 }} €</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="4">Sem encomendas recentes.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="print-actions">
+    <button class="btn" onclick="window.print()">Imprimir / Guardar como PDF</button>
+    <a href="{% url 'inventory:meus_produtos' %}?tab=compras" class="btn">Voltar</a>
+  </div>
+
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        window.print();
+      }, 350);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<tr id="user-row-{{ user.id }}">
+  <td>
+    <div style="display:flex;align-items:center;gap:.75rem;">
+      <div style="width:34px;height:34px;border-radius:50%;background:#dcfce7;color:#15803d;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;flex-shrink:0;">
+        {{ user.first_name|slice:":1" }}{{ user.last_name|slice:":1" }}
+      </div>
+      <div>
+        <div style="font-weight:600;color:#0f172a;font-size:.875rem;">
+          {{ user.first_name }} {{ user.last_name }}
+        </div>
+        <div style="font-size:.78rem;color:#64748b;">{{ user.email }}</div>
+      </div>
+    </div>
+  </td>
+
+  <td>
+    {% if user.role == "ADMIN" %}
+      <span class="adm-pill adm-pill--blue"><span class="adm-pill-dot"></span>Admin</span>
+    {% else %}
+      <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Cliente</span>
+    {% endif %}
+  </td>
+
+  <td style="font-size:.8rem;color:#64748b;">
+    {{ user.get_registration_source_display|default:user.registration_source }}
+  </td>
+
+  <td>
+    {% if user.account_status == "ACTIVE" %}
+      <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativa</span>
+    {% elif user.account_status == "PENDING_EMAIL_CONFIRMATION" %}
+      <span class="adm-pill adm-pill--amber"><span class="adm-pill-dot"></span>Pendente</span>
+    {% else %}
+      <span class="adm-pill adm-pill--red"><span class="adm-pill-dot"></span>Suspensa</span>
+    {% endif %}
+  </td>
+
+  <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">
+    {{ user.last_login|date:"d/m/Y H:i"|default:"—" }}
+  </td>
+
+  <td>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:.35rem;">
+      <a href="{% url 'dashboard:gestor_utilizador_detalhe' user.id %}" class="adm-act-btn" title="Ver detalhe">
+        <i class="bi bi-eye"></i>
+      </a>
+
+      {% if request.current_user and request.current_user.id == user.id %}
+        <button
+          type="button"
+          class="adm-act-btn"
+          title="Não pode desativar a sua própria conta"
+          disabled
+          style="opacity:.45;cursor:not-allowed;"
+        >
+          <i class="bi bi-slash-circle"></i>
+        </button>
+      {% else %}
+        <form
+          method="post"
+          action="{% url 'dashboard:gestor_utilizador_estado' user.id %}"
+          style="display:inline"
+          hx-post="{% url 'dashboard:gestor_utilizador_estado' user.id %}"
+          hx-target="closest tr"
+          hx-swap="outerHTML"
+        >
+          {% csrf_token %}
+          <input type="hidden" name="q" value="{{ q }}">
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+          <button
+            type="submit"
+            class="adm-act-btn adm-act-btn--warn"
+            title="{% if user.is_active %}Suspender{% else %}Reativar{% endif %}"
+          >
+            <i class="bi bi-{% if user.is_active %}slash-circle{% else %}check-circle{% endif %}"></i>
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </td>
+</tr>

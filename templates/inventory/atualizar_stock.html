@@ -1,0 +1,175 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Atualizar Stock — {{ stock.product.name }}{% endblock %}
+{% block app_content %}
+
+{% include "inventory/partials/inventory_styles.html" %}
+
+<div class="inv-page">
+  <div class="inv-detail-head">
+    <div>
+      <h1 class="inv-title">Atualizar Stock</h1>
+      <p class="inv-sub">{{ stock.product.name }} · {{ stock.product.unit }}</p>
+    </div>
+
+    <div class="inv-head-actions">
+      <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}" class="inv-btn inv-btn--secondary">
+        <i class="bi bi-arrow-left"></i>
+        <span>Voltar ao detalhe</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="inv-stat-grid">
+    <div class="inv-stat-card">
+      <p class="inv-stat-value">{{ stock.current_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-label">Stock atual</p>
+    </div>
+
+    <div class="inv-stat-card">
+      <p class="inv-stat-value" style="color:#16a34a;">{{ stock.available_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-label">Disponível</p>
+    </div>
+
+    <div class="inv-stat-card">
+      <p class="inv-stat-value" style="color:#d97706;">{{ stock.reserved_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-label">Reservado</p>
+    </div>
+
+    <div class="inv-stat-card">
+      <p class="inv-stat-value" style="color:#475569;">{{ stock.minimum_threshold|floatformat:"-3" }}</p>
+      <p class="inv-stat-label">Mínimo recomendado</p>
+    </div>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="inv-alert inv-alert--danger">
+      {% for error in form.non_field_errors %}
+        <div>{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="inv-section-grid">
+    <div class="inv-card">
+      <div class="inv-card-head">
+        <div>
+          <h3 class="inv-card-title">Formulário de atualização</h3>
+          <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
+            Introduza o valor total atual do stock e registe o motivo da alteração.
+          </p>
+        </div>
+      </div>
+
+      <div class="inv-card-body">
+        <form method="post" novalidate class="inv-form">
+          {% csrf_token %}
+
+          <div class="inv-form-grid">
+            <div class="inv-field">
+              <label for="{{ form.new_quantity.id_for_label }}">
+                {{ form.new_quantity.label }} ({{ stock.product.unit }})
+              </label>
+              {{ form.new_quantity }}
+              {% if form.new_quantity.errors %}
+                <div class="inv-errors">{{ form.new_quantity.errors.0 }}</div>
+              {% endif %}
+              <div class="inv-help">Indique a quantidade total atual disponível em armazém/campo.</div>
+            </div>
+
+            <div class="inv-field">
+              <label for="{{ form.minimum_threshold.id_for_label }}">
+                {{ form.minimum_threshold.label }} ({{ stock.product.unit }})
+              </label>
+              {{ form.minimum_threshold }}
+              {% if form.minimum_threshold.errors %}
+                <div class="inv-errors">{{ form.minimum_threshold.errors.0 }}</div>
+              {% endif %}
+              <div class="inv-help">Este valor será usado para sinalizar stock baixo ou crítico.</div>
+            </div>
+          </div>
+
+          <div class="inv-field">
+            <label for="{{ form.movement_type.id_for_label }}">
+              {{ form.movement_type.label }}
+            </label>
+            {{ form.movement_type }}
+            {% if form.movement_type.errors %}
+              <div class="inv-errors">{{ form.movement_type.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="inv-field">
+            <label for="{{ form.notes.id_for_label }}">
+              {{ form.notes.label }}
+            </label>
+            {{ form.notes }}
+            {% if form.notes.errors %}
+              <div class="inv-errors">{{ form.notes.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="inv-actions-row">
+            <button type="submit" class="inv-btn inv-btn--primary">
+              <i class="bi bi-check-circle"></i>
+              <span>Guardar alterações</span>
+            </button>
+
+            <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}" class="inv-btn inv-btn--ghost">
+              <i class="bi bi-x-circle"></i>
+              <span>Cancelar</span>
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+      <div class="inv-card">
+        <div class="inv-card-head">
+          <h3 class="inv-card-title">Notas úteis</h3>
+        </div>
+        <div class="inv-card-body" style="display:flex;flex-direction:column;gap:.8rem;">
+          <div>
+            <div class="inv-help">Produto</div>
+            <div style="font-weight:700;color:#0f172a;">{{ stock.product.name }}</div>
+          </div>
+          <div>
+            <div class="inv-help">Categoria</div>
+            <div style="font-weight:700;color:#0f172a;">{{ stock.product.category.name|default:"Sem categoria" }}</div>
+          </div>
+          <div>
+            <div class="inv-help">Reservado</div>
+            <div style="font-weight:700;color:#0f172a;">{{ stock.reserved_quantity|floatformat:"-3" }} {{ stock.product.unit }}</div>
+          </div>
+          <div>
+            <div class="inv-help">Regra importante</div>
+            <div style="color:#475569;font-size:.88rem;">
+              A nova quantidade não pode ficar abaixo do stock reservado.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-card-head">
+          <h3 class="inv-card-title">Próxima ação útil</h3>
+        </div>
+        <div class="inv-card-body" style="display:flex;flex-direction:column;gap:.75rem;">
+          {% if stock.available_quantity > stock.minimum_threshold %}
+            <a href="/marketplace/?product={{ stock.product.id }}&action=publish" class="inv-btn inv-btn--secondary">
+              <i class="bi bi-storefront"></i>
+              <span>Publicar excedente</span>
+            </a>
+          {% else %}
+            <a href="/recomendacoes/?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
+              <i class="bi bi-stars"></i>
+              <span>Ver recomendações</span>
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
