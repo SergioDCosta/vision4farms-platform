@@ -273,7 +273,6 @@
                 {% if producer_profile_form.latitude.errors %}
                   <div class="stg-error">{{ producer_profile_form.latitude.errors|join:" " }}</div>
                 {% endif %}
-                <div class="stg-help">Pode preencher manualmente agora e automatizar mais tarde.</div>
               </div>
 
               <div class="stg-field">
@@ -282,8 +281,14 @@
                 {% if producer_profile_form.longitude.errors %}
                   <div class="stg-error">{{ producer_profile_form.longitude.errors|join:" " }}</div>
                 {% endif %}
-                <div class="stg-help">Pode preencher manualmente agora e automatizar mais tarde.</div>
               </div>
+            </div>
+
+            <div class="stg-geo-actions">
+              <button type="button" id="autoLocationBtn" class="stg-btn-ghost">
+                <i class="bi bi-geo-alt"></i> Obter localização automaticamente
+              </button>
+              <div id="autoLocationStatus" class="stg-geo-status" aria-live="polite"></div>
             </div>
 
             <div class="stg-check-inline">
@@ -422,11 +427,19 @@
 .stg-actions{display:flex;justify-content:flex-end;gap:.55rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #f1f5f9;flex-wrap:wrap;}
 .stg-btn-primary{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:none;border-radius:.65rem;background:#16a34a;color:#fff;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:background .15s;}
 .stg-btn-primary:hover{background:#15803d;}
+.stg-btn-ghost{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:1.5px solid #cbd5e1;border-radius:.65rem;background:#fff;color:#0f172a;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all .15s;}
+.stg-btn-ghost:hover{background:#f8fafc;border-color:#94a3b8;}
+.stg-btn-ghost:disabled{opacity:.7;cursor:not-allowed;}
 
 .stg-help{font-size:.77rem;color:#64748b;line-height:1.4;}
 .stg-error{font-size:.78rem;color:#dc2626;}
 .stg-error-box{margin-bottom:1rem;padding:.85rem .95rem;border-radius:.8rem;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;font-size:.82rem;line-height:1.45;}
 .stg-field input[readonly]{background:#f8fafc;color:#64748b;cursor:not-allowed;}
+.stg-geo-actions{display:flex;flex-direction:column;gap:.5rem;margin-top:.95rem;padding:.85rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc;}
+.stg-geo-status{font-size:.8rem;color:#475569;line-height:1.35;}
+.stg-geo-status--success{color:#166534;}
+.stg-geo-status--error{color:#b91c1c;}
+.stg-geo-status--info{color:#1d4ed8;}
 
 @media (max-width: 1080px){
   .stg-layout{grid-template-columns:1fr;}
@@ -441,5 +454,114 @@
   .stg-card{padding:1rem;}
 }
 </style>
+
+<script>
+(function () {
+  const button = document.getElementById("autoLocationBtn");
+  if (!button) return;
+
+  const statusEl = document.getElementById("autoLocationStatus");
+  const latitudeInput = document.getElementById("id_latitude");
+  const longitudeInput = document.getElementById("id_longitude");
+  const postalCodeInput = document.getElementById("id_postal_code");
+  const cityInput = document.getElementById("id_city");
+  const districtInput = document.getElementById("id_district");
+  const addressLineInput = document.getElementById("id_address_line");
+
+  function setStatus(level, message) {
+    if (!statusEl) return;
+    statusEl.className = "stg-geo-status";
+    if (level === "success") statusEl.classList.add("stg-geo-status--success");
+    if (level === "error") statusEl.classList.add("stg-geo-status--error");
+    if (level === "info") statusEl.classList.add("stg-geo-status--info");
+    statusEl.textContent = message;
+  }
+
+  function normalizePostalCode(value) {
+    const raw = (value || "").trim();
+    if (!raw) return "";
+
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length === 7) {
+      return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    }
+    return raw.toUpperCase();
+  }
+
+  function geolocationPromise(options) {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  }
+
+  button.addEventListener("click", async function () {
+    if (!navigator.geolocation) {
+      setStatus("error", "Este navegador não suporta geolocalização.");
+      return;
+    }
+
+    button.disabled = true;
+    setStatus("info", "A obter localização do dispositivo...");
+
+    try {
+      const position = await geolocationPromise({
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      });
+
+      const lat = Number(position.coords.latitude || 0);
+      const lon = Number(position.coords.longitude || 0);
+
+      if (latitudeInput) latitudeInput.value = lat.toFixed(6);
+      if (longitudeInput) longitudeInput.value = lon.toFixed(6);
+
+      setStatus("info", "A converter coordenadas em morada...");
+
+      const endpoint = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1&accept-language=pt-PT`;
+      const response = await fetch(endpoint, { method: "GET" });
+
+      if (!response.ok) {
+        throw new Error("Falha ao obter os dados de morada.");
+      }
+
+      const payload = await response.json();
+      const address = payload.address || {};
+
+      const postcode = normalizePostalCode(address.postcode);
+      const city = address.city || address.town || address.village || address.municipality || "";
+      const district = address.county || address.state_district || address.state || "";
+      const road = address.road || "";
+      const houseNumber = address.house_number || "";
+      const addressLine = [road, houseNumber].filter(Boolean).join(", ");
+
+      if (postalCodeInput && postcode) postalCodeInput.value = postcode;
+      if (cityInput && city) cityInput.value = city;
+      if (districtInput && district) districtInput.value = district;
+      if (addressLineInput && !addressLineInput.value.trim() && addressLine) {
+        addressLineInput.value = addressLine;
+      }
+
+      setStatus("success", "Localização preenchida. Confirma os dados e clica em \"Guardar perfil do produtor\".");
+    } catch (error) {
+      if (error && typeof error.code === "number") {
+        if (error.code === 1) {
+          setStatus("error", "Permissão de localização recusada.");
+        } else if (error.code === 2) {
+          setStatus("error", "Não foi possível determinar a localização atual.");
+        } else if (error.code === 3) {
+          setStatus("error", "Tempo limite excedido ao obter a localização.");
+        } else {
+          setStatus("error", "Erro ao obter localização automática.");
+        }
+      } else {
+        setStatus("error", "Não foi possível converter a localização em morada.");
+      }
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
 
 {% endblock %}
