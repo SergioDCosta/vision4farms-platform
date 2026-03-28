@@ -1,0 +1,445 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Definições e Perfil{% endblock %}
+{% block app_content %}
+
+<div class="stg-page">
+  <header class="stg-header">
+    <div>
+      <h1>Definições e Perfil</h1>
+      <p>Gere os dados da tua conta, preferências e segurança.</p>
+    </div>
+  </header>
+
+  <div class="stg-layout">
+    <aside class="stg-side">
+      <div class="stg-side-card">
+        <div class="stg-side-title">Navegação</div>
+        <a href="#perfil" class="stg-side-link"><i class="bi bi-person"></i> Perfil</a>
+        <a href="#notificacoes" class="stg-side-link"><i class="bi bi-bell"></i> Notificações</a>
+        <a href="#preferencias" class="stg-side-link"><i class="bi bi-sliders"></i> Preferências</a>
+        <a href="#seguranca" class="stg-side-link"><i class="bi bi-shield-lock"></i> Segurança</a>
+      </div>
+    </aside>
+
+    <div class="stg-main">
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="preferences">
+
+        <section id="perfil" class="stg-section">
+          <div class="stg-card">
+            <div class="stg-card-head">
+              <h2>Perfil</h2>
+              <p>Foto e identificação visual da tua conta.</p>
+            </div>
+
+            {% if preferences_form.non_field_errors %}
+              <div class="stg-error-box">{{ preferences_form.non_field_errors|join:" " }}</div>
+            {% endif %}
+
+            <div class="stg-profile-wrap">
+              <div class="stg-avatar-box">
+                {% if profile_photo_url %}
+                  <img src="{{ profile_photo_url }}" alt="Foto de perfil" class="stg-avatar-image">
+                {% else %}
+                  <div class="stg-avatar-fallback">{{ avatar_initials }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-profile-meta">
+                <h3>{{ request.current_user.full_name|default:request.current_user.email }}</h3>
+                <p>Atualiza a foto de perfil para personalizar o teu painel.</p>
+
+                <div class="stg-field">
+                  <label for="{{ preferences_form.profile_photo.id_for_label }}">{{ preferences_form.profile_photo.label }}</label>
+                  {{ preferences_form.profile_photo }}
+                  {% if preferences_form.profile_photo.errors %}
+                    <div class="stg-error">{{ preferences_form.profile_photo.errors|join:" " }}</div>
+                  {% endif %}
+                </div>
+
+                <div class="stg-check-inline" style="margin-top:.75rem;">
+                  {{ preferences_form.remove_profile_photo }}
+                  <label for="{{ preferences_form.remove_profile_photo.id_for_label }}">
+                    {{ preferences_form.remove_profile_photo.label }}
+                  </label>
+                </div>
+
+                <div class="stg-help" style="margin-top:.55rem;">
+                  Ao carregar uma nova foto, a anterior será substituída automaticamente.
+                </div>
+
+                <div class="stg-actions">
+                  <button type="submit" class="stg-btn-primary">
+                    <i class="bi bi-image"></i> Guardar foto e preferências
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="notificacoes" class="stg-section">
+          <div class="stg-card">
+            <div class="stg-card-head">
+              <h2>Notificações</h2>
+              <p>Define como queres receber alertas da plataforma.</p>
+            </div>
+
+            <div class="stg-checkbox-grid">
+              <label class="stg-check-item">
+                {{ preferences_form.alerts_in_app }}
+                <span>App</span>
+              </label>
+              <label class="stg-check-item">
+                {{ preferences_form.alerts_email }}
+                <span>Email</span>
+              </label>
+              <label class="stg-check-item">
+                {{ preferences_form.alerts_sms }}
+                <span>SMS</span>
+              </label>
+            </div>
+
+            {% if preferences_form.alerts_in_app.errors or preferences_form.alerts_email.errors or preferences_form.alerts_sms.errors %}
+              <div class="stg-error">Verifica as opções de alertas selecionadas.</div>
+            {% endif %}
+
+            <div id="preferencias" class="stg-subsection">
+              <h3>Preferências</h3>
+              <div class="stg-field stg-field-sm">
+                <label for="{{ preferences_form.preferred_unit.id_for_label }}">{{ preferences_form.preferred_unit.label }}</label>
+                {{ preferences_form.preferred_unit }}
+                {% if preferences_form.preferred_unit.errors %}
+                  <div class="stg-error">{{ preferences_form.preferred_unit.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="stg-actions">
+              <button type="submit" class="stg-btn-primary">
+                <i class="bi bi-check-circle"></i> Guardar preferências
+              </button>
+            </div>
+          </div>
+        </section>
+      </form>
+
+      <section class="stg-section">
+        <div class="stg-card">
+          <div class="stg-card-head">
+            <h2>Dados da conta</h2>
+            <p>Informação principal associada ao teu utilizador.</p>
+          </div>
+
+          <form method="post" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="account">
+
+            {% if account_form.non_field_errors %}
+              <div class="stg-error-box">{{ account_form.non_field_errors|join:" " }}</div>
+            {% endif %}
+
+            <div class="stg-grid-2">
+              <div class="stg-field">
+                <label for="{{ account_form.first_name.id_for_label }}">{{ account_form.first_name.label }}</label>
+                {{ account_form.first_name }}
+                {% if account_form.first_name.errors %}
+                  <div class="stg-error">{{ account_form.first_name.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ account_form.last_name.id_for_label }}">{{ account_form.last_name.label }}</label>
+                {{ account_form.last_name }}
+                {% if account_form.last_name.errors %}
+                  <div class="stg-error">{{ account_form.last_name.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="stg-field">
+              <label for="{{ account_form.email.id_for_label }}">{{ account_form.email.label }}</label>
+              {{ account_form.email }}
+              {% if account_form.email.errors %}
+                <div class="stg-error">{{ account_form.email.errors|join:" " }}</div>
+              {% endif %}
+              <div class="stg-help">
+                O email está temporariamente bloqueado para edição direta.
+              </div>
+            </div>
+
+            <div class="stg-actions">
+              <button type="submit" class="stg-btn-primary">
+                <i class="bi bi-check2"></i> Guardar dados da conta
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      {% if is_client_user and producer_profile_form %}
+      <section class="stg-section">
+        <div class="stg-card">
+          <div class="stg-card-head">
+            <h2>Perfil do produtor</h2>
+            <p>Dados comerciais e operacionais usados no marketplace.</p>
+          </div>
+
+          <form method="post" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="producer_profile">
+
+            {% if producer_profile_form.non_field_errors %}
+              <div class="stg-error-box">{{ producer_profile_form.non_field_errors|join:" " }}</div>
+            {% endif %}
+
+            <div class="stg-grid-2">
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.display_name.id_for_label }}">{{ producer_profile_form.display_name.label }}</label>
+                {{ producer_profile_form.display_name }}
+                {% if producer_profile_form.display_name.errors %}
+                  <div class="stg-error">{{ producer_profile_form.display_name.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.company_name.id_for_label }}">{{ producer_profile_form.company_name.label }}</label>
+                {{ producer_profile_form.company_name }}
+                {% if producer_profile_form.company_name.errors %}
+                  <div class="stg-error">{{ producer_profile_form.company_name.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.phone.id_for_label }}">{{ producer_profile_form.phone.label }}</label>
+                {{ producer_profile_form.phone }}
+                {% if producer_profile_form.phone.errors %}
+                  <div class="stg-error">{{ producer_profile_form.phone.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.nif.id_for_label }}">{{ producer_profile_form.nif.label }}</label>
+                {{ producer_profile_form.nif }}
+                {% if producer_profile_form.nif.errors %}
+                  <div class="stg-error">{{ producer_profile_form.nif.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field stg-span-2">
+                <label for="{{ producer_profile_form.address_line.id_for_label }}">{{ producer_profile_form.address_line.label }}</label>
+                {{ producer_profile_form.address_line }}
+                {% if producer_profile_form.address_line.errors %}
+                  <div class="stg-error">{{ producer_profile_form.address_line.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.postal_code.id_for_label }}">{{ producer_profile_form.postal_code.label }}</label>
+                {{ producer_profile_form.postal_code }}
+                {% if producer_profile_form.postal_code.errors %}
+                  <div class="stg-error">{{ producer_profile_form.postal_code.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.city.id_for_label }}">{{ producer_profile_form.city.label }}</label>
+                {{ producer_profile_form.city }}
+                {% if producer_profile_form.city.errors %}
+                  <div class="stg-error">{{ producer_profile_form.city.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.district.id_for_label }}">{{ producer_profile_form.district.label }}</label>
+                {{ producer_profile_form.district }}
+                {% if producer_profile_form.district.errors %}
+                  <div class="stg-error">{{ producer_profile_form.district.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.user_type.id_for_label }}">{{ producer_profile_form.user_type.label }}</label>
+                {{ producer_profile_form.user_type }}
+                {% if producer_profile_form.user_type.errors %}
+                  <div class="stg-error">{{ producer_profile_form.user_type.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.latitude.id_for_label }}">{{ producer_profile_form.latitude.label }}</label>
+                {{ producer_profile_form.latitude }}
+                {% if producer_profile_form.latitude.errors %}
+                  <div class="stg-error">{{ producer_profile_form.latitude.errors|join:" " }}</div>
+                {% endif %}
+                <div class="stg-help">Pode preencher manualmente agora e automatizar mais tarde.</div>
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ producer_profile_form.longitude.id_for_label }}">{{ producer_profile_form.longitude.label }}</label>
+                {{ producer_profile_form.longitude }}
+                {% if producer_profile_form.longitude.errors %}
+                  <div class="stg-error">{{ producer_profile_form.longitude.errors|join:" " }}</div>
+                {% endif %}
+                <div class="stg-help">Pode preencher manualmente agora e automatizar mais tarde.</div>
+              </div>
+            </div>
+
+            <div class="stg-check-inline">
+              {{ producer_profile_form.is_active_marketplace }}
+              <label for="{{ producer_profile_form.is_active_marketplace.id_for_label }}">{{ producer_profile_form.is_active_marketplace.label }}</label>
+            </div>
+
+            <div class="stg-actions">
+              <button type="submit" class="stg-btn-primary">
+                <i class="bi bi-check-circle"></i> Guardar perfil do produtor
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+      {% endif %}
+
+      <section id="seguranca" class="stg-section">
+        <div class="stg-card">
+          <div class="stg-card-head">
+            <h2>Segurança</h2>
+            <p>Altera a tua palavra-passe para manter a conta protegida.</p>
+          </div>
+
+          <form method="post" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="security">
+
+            {% if security_form.non_field_errors %}
+              <div class="stg-error-box">{{ security_form.non_field_errors|join:" " }}</div>
+            {% endif %}
+
+            <div class="stg-grid-1">
+              <div class="stg-field">
+                <label for="{{ security_form.current_password.id_for_label }}">{{ security_form.current_password.label }}</label>
+                <div class="stg-password-wrap">
+                  {{ security_form.current_password }}
+                  <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_current_password">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+                {% if security_form.current_password.errors %}
+                  <div class="stg-error">{{ security_form.current_password.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ security_form.new_password.id_for_label }}">{{ security_form.new_password.label }}</label>
+                <div class="stg-password-wrap">
+                  {{ security_form.new_password }}
+                  <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_new_password">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+                {% if security_form.new_password.errors %}
+                  <div class="stg-error">{{ security_form.new_password.errors|join:" " }}</div>
+                {% endif %}
+              </div>
+
+              <div class="stg-field">
+                <label for="{{ security_form.confirm_password.id_for_label }}">{{ security_form.confirm_password.label }}</label>
+                <div class="stg-password-wrap">
+                  {{ security_form.confirm_password }}
+                  <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_confirm_password_settings">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+                {% if security_form.confirm_password.errors %}
+                  <div class="stg-error">{{ security_form.confirm_password.errors|join:" " }}</div>
+                {% endif %}
+                <div class="stg-help">A nova palavra-passe deve ter pelo menos 8 caracteres.</div>
+              </div>
+            </div>
+
+            <div class="stg-actions">
+              <button type="submit" class="stg-btn-primary">
+                <i class="bi bi-shield-check"></i> Alterar palavra-passe
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<style>
+.stg-page{display:flex;flex-direction:column;gap:1.2rem;}
+.stg-header h1{margin:0;font-size:1.55rem;font-weight:800;color:#0f172a;letter-spacing:-.02em;}
+.stg-header p{margin:.35rem 0 0 0;color:#64748b;font-size:.9rem;}
+
+.stg-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:1rem;align-items:start;}
+.stg-side{position:sticky;top:78px;}
+.stg-side-card{background:#fff;border:1px solid #e2e8f0;border-radius:.95rem;padding:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 4px 10px rgba(15,23,42,.04);display:flex;flex-direction:column;gap:.45rem;}
+.stg-side-title{font-size:.74rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;font-weight:700;padding:.1rem .35rem;}
+.stg-side-link{display:flex;align-items:center;gap:.55rem;text-decoration:none;color:#334155;background:#fff;border:1px solid #e2e8f0;border-radius:.65rem;padding:.5rem .7rem;font-size:.84rem;font-weight:600;transition:all .15s;}
+.stg-side-link:hover{background:#f8fafc;color:#0f172a;border-color:#cbd5e1;}
+.stg-side-link i{font-size:.9rem;color:#16a34a;}
+
+.stg-main{display:flex;flex-direction:column;gap:1rem;}
+.stg-section{scroll-margin-top:88px;}
+.stg-card{background:#fff;border:1px solid #e2e8f0;border-radius:.95rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04);padding:1.15rem;}
+.stg-card-head{margin-bottom:1rem;}
+.stg-card-head h2{margin:0;font-size:1.05rem;font-weight:800;color:#0f172a;}
+.stg-card-head p{margin:.3rem 0 0 0;color:#64748b;font-size:.84rem;}
+
+.stg-profile-wrap{display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;}
+.stg-avatar-box{flex-shrink:0;}
+.stg-avatar-image,.stg-avatar-fallback{width:92px;height:92px;border-radius:50%;border:3px solid #dcfce7;box-shadow:0 2px 8px rgba(22,163,74,.18);}
+.stg-avatar-image{object-fit:cover;display:block;}
+.stg-avatar-fallback{display:flex;align-items:center;justify-content:center;background:#16a34a;color:#fff;font-size:1.25rem;font-weight:800;}
+.stg-profile-meta{flex:1;min-width:220px;}
+.stg-profile-meta h3{margin:0;font-size:1rem;font-weight:800;color:#0f172a;}
+.stg-profile-meta p{margin:.25rem 0 0 0;color:#64748b;font-size:.82rem;}
+
+.stg-subsection{margin-top:1.1rem;padding-top:1rem;border-top:1px solid #f1f5f9;}
+.stg-subsection h3{margin:0 0 .7rem 0;font-size:.94rem;color:#0f172a;font-weight:800;}
+
+.stg-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;}
+.stg-grid-1{display:grid;grid-template-columns:1fr;gap:.85rem;}
+.stg-span-2{grid-column:span 2;}
+
+.stg-field{display:flex;flex-direction:column;gap:.35rem;}
+.stg-field label{font-size:.79rem;font-weight:700;color:#334155;}
+.stg-field-sm{max-width:220px;}
+
+.stg-checkbox-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;}
+.stg-check-item{display:flex;align-items:center;gap:.45rem;padding:.6rem .7rem;border:1px solid #e2e8f0;border-radius:.65rem;background:#f8fafc;font-size:.84rem;color:#334155;font-weight:600;}
+.stg-check-inline{display:flex;align-items:center;gap:.5rem;margin-top:.95rem;padding:.65rem .8rem;border:1px solid #e2e8f0;border-radius:.65rem;background:#f8fafc;font-size:.84rem;color:#334155;font-weight:600;}
+
+.stg-password-wrap{position:relative;}
+.stg-password-wrap input{padding-right:2.6rem;}
+.stg-eye-btn{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);width:30px;height:30px;border:none;background:transparent;color:#64748b;border-radius:.45rem;display:inline-flex;align-items:center;justify-content:center;}
+.stg-eye-btn:hover{background:#f1f5f9;color:#0f172a;}
+
+.stg-actions{display:flex;justify-content:flex-end;gap:.55rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #f1f5f9;flex-wrap:wrap;}
+.stg-btn-primary{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:none;border-radius:.65rem;background:#16a34a;color:#fff;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:background .15s;}
+.stg-btn-primary:hover{background:#15803d;}
+
+.stg-help{font-size:.77rem;color:#64748b;line-height:1.4;}
+.stg-error{font-size:.78rem;color:#dc2626;}
+.stg-error-box{margin-bottom:1rem;padding:.85rem .95rem;border-radius:.8rem;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;font-size:.82rem;line-height:1.45;}
+.stg-field input[readonly]{background:#f8fafc;color:#64748b;cursor:not-allowed;}
+
+@media (max-width: 1080px){
+  .stg-layout{grid-template-columns:1fr;}
+  .stg-side{position:static;}
+  .stg-side-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;}
+  .stg-side-title{grid-column:1/-1;}
+}
+
+@media (max-width: 780px){
+  .stg-grid-2,.stg-checkbox-grid{grid-template-columns:1fr;}
+  .stg-span-2{grid-column:span 1;}
+  .stg-card{padding:1rem;}
+}
+</style>
+
+{% endblock %}

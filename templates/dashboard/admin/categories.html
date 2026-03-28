@@ -15,7 +15,9 @@
       <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar categorias..." autocomplete="off">
     </form>
 
-    <button class="adm-btn-primary"><i class="bi bi-plus-lg"></i> Nova categoria</button>
+    <a href="{% url 'dashboard:gestor_categoria_nova' %}" class="adm-btn-primary">
+      <i class="bi bi-plus-lg"></i> Nova categoria
+    </a>
   </div>
 
   {% include "dashboard/admin/partials/categories_table.html" %}

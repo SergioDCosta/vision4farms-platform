@@ -25,8 +25,28 @@
           <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">{{ cat.created_at|date:"d/m/Y" }}</td>
           <td>
             <div style="display:flex;justify-content:flex-end;gap:.35rem;">
-              <button class="adm-act-btn" title="Editar"><i class="bi bi-pencil"></i></button>
-              <button class="adm-act-btn adm-act-btn--warn" title="Desativar"><i class="bi bi-slash-circle"></i></button>
+              <a href="{% url 'dashboard:gestor_categoria_editar' cat.id %}" class="adm-act-btn" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form
+                method="post"
+                action="{% url 'dashboard:gestor_categoria_estado' cat.id %}"
+                style="display:inline"
+                hx-post="{% url 'dashboard:gestor_categoria_estado' cat.id %}"
+                hx-target="#categories-table"
+                hx-swap="outerHTML"
+              >
+                {% csrf_token %}
+                <input type="hidden" name="q" value="{{ q }}">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button
+                  type="submit"
+                  class="adm-act-btn {% if cat.is_active %}adm-act-btn--warn{% endif %}"
+                  title="{% if cat.is_active %}Desativar{% else %}Reativar{% endif %}"
+                >
+                  <i class="bi bi-{% if cat.is_active %}slash-circle{% else %}check-circle{% endif %}"></i>
+                </button>
+              </form>
             </div>
           </td>
         </tr>

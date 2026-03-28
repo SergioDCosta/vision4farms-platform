@@ -25,6 +25,30 @@ class AdminUserCreateForm(forms.Form):
         return (self.cleaned_data.get("email") or "").strip().lower()
 
 
+class AdminCategoryForm(forms.Form):
+    name = forms.CharField(
+        label="Nome da categoria",
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Ex: Legumes",
+        }),
+    )
+
+    is_active = forms.BooleanField(
+        label="Categoria ativa",
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    def clean_name(self):
+        value = " ".join((self.cleaned_data.get("name") or "").split()).strip()
+        if not value:
+            raise forms.ValidationError("Indica o nome da categoria.")
+        return value
+
+
 class AdminProductForm(forms.Form):
     category = forms.ModelChoiceField(
         label="Categoria",

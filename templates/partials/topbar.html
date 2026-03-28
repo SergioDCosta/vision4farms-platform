@@ -30,7 +30,7 @@
 
     <div class="topbar-divider"></div>
 
-    <a href="/definicoes/" class="topbar-profile">
+    <a href="{% url 'settings_app:settings_index' %}" class="topbar-profile">
       <div class="topbar-avatar">
         {{ request.session.user_name|default:"U"|slice:":2"|upper }}
       </div>

@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "apps.alerts",
     "apps.messaging",
     "apps.dashboard",
+    "apps.settings_app",
     "apps.notifications_app",
     "apps.integrations",
 ]

@@ -1,0 +1,66 @@
+{% extends "dashboard/admin/base_admin.html" %}
+{% block admin_content %}
+
+<div style="display:flex;flex-direction:column;gap:1rem;">
+  <div class="adm-card" style="max-width:760px;padding:1.15rem;">
+    <div class="adm-card-head" style="padding:0 0 1rem 0;">
+      <div>
+        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.55rem;">
+          <a href="{% url 'dashboard:gestor_categorias' %}" class="adm-btn-ghost">
+            <i class="bi bi-arrow-left"></i> Voltar
+          </a>
+        </div>
+
+        <h2 style="margin:0;font-size:1.35rem;font-weight:800;color:#0f172a;">
+          {{ page_title }}
+        </h2>
+        <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.92rem;">
+          Defina os dados da categoria do catálogo.
+        </p>
+      </div>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div style="margin-bottom:1rem;padding:.95rem 1rem;border-radius:1rem;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;">
+          {% for error in form.non_field_errors %}
+            <div>{{ error }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;">
+        <div>
+          <label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+          {{ form.name }}
+          {% if form.name.errors %}
+            <div class="errorlist">{{ form.name.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div style="display:flex;align-items:flex-end;">
+          <div class="form-check" style="margin-top:1.9rem;">
+            {{ form.is_active }}
+            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+              {{ form.is_active.label }}
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.5rem;">
+        <button type="submit" class="adm-btn-primary">
+          <i class="bi bi-check-circle"></i> {{ submit_label }}
+        </button>
+
+        <a href="{% url 'dashboard:gestor_categorias' %}" class="adm-btn-ghost">
+          Cancelar
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

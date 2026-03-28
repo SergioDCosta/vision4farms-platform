@@ -24,7 +24,7 @@ from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import Order, OrderStatus
 from apps.catalog.models import Product, ProductCategory
 from apps.dashboard.models import AuditLog
-from apps.dashboard.forms import AdminUserCreateForm, AdminProductForm
+from apps.dashboard.forms import AdminUserCreateForm, AdminCategoryForm, AdminProductForm
 
 def _get_client_ip(request):
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -93,6 +93,32 @@ def _product_snapshot(product):
         "is_active": product.is_active,
         "created_at": product.created_at.isoformat() if product.created_at else None,
         "updated_at": product.updated_at.isoformat() if product.updated_at else None,
+    }
+
+
+def _build_unique_category_slug(base_slug, exclude_id=None):
+    slug = base_slug or "categoria"
+    candidate = slug
+    counter = 2
+
+    while True:
+        qs = ProductCategory.objects.filter(slug=candidate)
+        if exclude_id:
+            qs = qs.exclude(id=exclude_id)
+        if not qs.exists():
+            return candidate
+        candidate = f"{slug}-{counter}"
+        counter += 1
+
+
+def _category_snapshot(category):
+    return {
+        "id": str(category.id),
+        "name": category.name,
+        "slug": category.slug,
+        "is_active": category.is_active,
+        "created_at": category.created_at.isoformat() if category.created_at else None,
+        "updated_at": category.updated_at.isoformat() if category.updated_at else None,
     }
 
 
@@ -501,6 +527,170 @@ def admin_categories_view(request):
         return render(request, "dashboard/admin/partials/categories_table.html", context)
 
     return render(request, "dashboard/admin/categories.html", context)
+
+
+@admin_required
+def admin_category_create_view(request):
+    form = AdminCategoryForm(request.POST or None)
+
+    if request.method == "POST" and form.is_valid():
+        name = _normalize_text(form.cleaned_data["name"])
+        is_active = form.cleaned_data["is_active"]
+
+        existing_by_name = ProductCategory.objects.filter(name__iexact=name).first()
+        if existing_by_name:
+            form.add_error("name", "Já existe uma categoria com esse nome.")
+        else:
+            slug = _build_unique_category_slug(slugify(name))
+
+            category = ProductCategory.objects.create(
+                name=name,
+                slug=slug,
+                is_active=is_active,
+            )
+
+            _log_admin_action(
+                request=request,
+                action="CATEGORY_CREATED",
+                entity_type="categories",
+                entity_id=category.id,
+                notes=f"Administrador criou a categoria {category.name}.",
+                new_values=_category_snapshot(category),
+            )
+
+            messages.success(request, "Categoria criada com sucesso.")
+            return redirect("dashboard:gestor_categorias")
+
+    context = {
+        "admin_tab": "categorias",
+        "form": form,
+        "page_title": "Nova Categoria",
+        "submit_label": "Criar categoria",
+        "is_create": True,
+    }
+    return render(request, "dashboard/admin/category_form.html", context)
+
+
+@admin_required
+def admin_category_update_view(request, category_id):
+    category = get_object_or_404(ProductCategory, id=category_id)
+
+    if request.method == "POST":
+        form = AdminCategoryForm(request.POST)
+        if form.is_valid():
+            name = _normalize_text(form.cleaned_data["name"])
+            is_active = form.cleaned_data["is_active"]
+
+            existing_by_name = ProductCategory.objects.filter(name__iexact=name).exclude(id=category.id).first()
+            if existing_by_name:
+                form.add_error("name", "Já existe outra categoria com esse nome.")
+            else:
+                old_snapshot = _category_snapshot(category)
+                changed_fields = []
+
+                if category.name != name:
+                    category.name = name
+                    changed_fields.append("name")
+
+                    new_slug = _build_unique_category_slug(slugify(name), exclude_id=category.id)
+                    if category.slug != new_slug:
+                        category.slug = new_slug
+                        changed_fields.append("slug")
+
+                if category.is_active != is_active:
+                    category.is_active = is_active
+                    changed_fields.append("is_active")
+
+                if changed_fields:
+                    category.save(update_fields=changed_fields + ["updated_at"])
+
+                    _log_admin_action(
+                        request=request,
+                        action="CATEGORY_UPDATED",
+                        entity_type="categories",
+                        entity_id=category.id,
+                        notes=f"Administrador atualizou a categoria {category.name}.",
+                        old_values=old_snapshot,
+                        new_values=_category_snapshot(category),
+                    )
+
+                    messages.success(request, "Categoria atualizada com sucesso.")
+                else:
+                    messages.info(request, "Não foram detetadas alterações.")
+
+                return redirect("dashboard:gestor_categorias")
+    else:
+        form = AdminCategoryForm(initial={
+            "name": category.name,
+            "is_active": category.is_active,
+        })
+
+    context = {
+        "admin_tab": "categorias",
+        "form": form,
+        "category_obj": category,
+        "page_title": f"Editar Categoria — {category.name}",
+        "submit_label": "Guardar alterações",
+        "is_create": False,
+    }
+    return render(request, "dashboard/admin/category_form.html", context)
+
+
+@admin_required
+@require_POST
+def admin_category_toggle_status_view(request, category_id):
+    category = get_object_or_404(ProductCategory, id=category_id)
+    q = request.POST.get("q", "").strip()
+    old_snapshot = _category_snapshot(category)
+
+    if category.is_active:
+        category.is_active = False
+        action = "CATEGORY_DEACTIVATED"
+        note = f"Administrador desativou a categoria {category.name}."
+        success_msg = "Categoria desativada com sucesso."
+    else:
+        category.is_active = True
+        action = "CATEGORY_REACTIVATED"
+        note = f"Administrador reativou a categoria {category.name}."
+        success_msg = "Categoria reativada com sucesso."
+
+    category.updated_at = timezone.now()
+    category.save(update_fields=["is_active", "updated_at"])
+
+    _log_admin_action(
+        request=request,
+        action=action,
+        entity_type="categories",
+        entity_id=category.id,
+        notes=note,
+        old_values=old_snapshot,
+        new_values=_category_snapshot(category),
+    )
+
+    if request.htmx:
+        categories = ProductCategory.objects.order_by("name")
+        if q:
+            categories = categories.filter(
+                Q(name__icontains=q)
+                | Q(slug__icontains=q)
+            )
+
+        context = {
+            "admin_tab": "categorias",
+            "categories": categories,
+            "q": q,
+        }
+        response = render(request, "dashboard/admin/partials/categories_table.html", context)
+        return with_htmx_toast(response, "success", success_msg)
+
+    messages.success(request, success_msg)
+
+    next_url = request.POST.get("next")
+    if next_url:
+        return redirect(next_url)
+
+    return redirect("dashboard:gestor_categorias")
+
 
 @admin_required
 def admin_users_view(request):
