@@ -1,18 +1,16 @@
 from decimal import Decimal
-import json
-from apps.common.htmx import with_htmx_toast
 
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import models, transaction
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Count
 from django.shortcuts import render, redirect, get_object_or_404
-from django.template.loader import render_to_string
-from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from apps.common.decorators import admin_required, client_only_required
+from apps.common.htmx import with_htmx_toast
 from apps.accounts.models import (
     User,
     UserRole,
@@ -20,14 +18,13 @@ from apps.accounts.models import (
     AccountStatus,
 )
 from apps.accounts.services import send_admin_invite_email, create_admin_invite_token
-from apps.inventory.models import ProducerProfile, Stock
+from apps.inventory.models import ProducerProfile, ProducerProduct, Stock
 from apps.alerts.models import Alert, AlertStatus, AlertSeverity
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import Order, OrderStatus
 from apps.catalog.models import Product, ProductCategory
 from apps.dashboard.models import AuditLog
-from apps.dashboard.forms import AdminUserCreateForm
-
+from apps.dashboard.forms import AdminUserCreateForm, AdminProductForm
 
 def _get_client_ip(request):
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -63,6 +60,39 @@ def _user_snapshot(user, producer_profile=None):
         "is_staff": user.is_staff,
         "company_name": producer_profile.company_name if producer_profile else None,
         "user_type": getattr(producer_profile, "user_type", None) if producer_profile else None,
+    }
+
+def _normalize_text(value):
+    return " ".join((value or "").split()).strip()
+
+
+def _build_unique_product_slug(base_slug, exclude_id=None):
+    slug = base_slug or "produto"
+    candidate = slug
+    counter = 2
+
+    while True:
+        qs = Product.objects.filter(slug=candidate)
+        if exclude_id:
+            qs = qs.exclude(id=exclude_id)
+        if not qs.exists():
+            return candidate
+        candidate = f"{slug}-{counter}"
+        counter += 1
+
+
+def _product_snapshot(product):
+    return {
+        "id": str(product.id),
+        "name": product.name,
+        "slug": product.slug,
+        "category_id": str(product.category_id) if product.category_id else None,
+        "category_name": product.category.name if product.category else None,
+        "unit": product.unit,
+        "description": product.description,
+        "is_active": product.is_active,
+        "created_at": product.created_at.isoformat() if product.created_at else None,
+        "updated_at": product.updated_at.isoformat() if product.updated_at else None,
     }
 
 
@@ -250,7 +280,18 @@ def admin_dashboard_view(request):
 def admin_products_view(request):
     q = request.GET.get("q", "").strip()
 
-    products = Product.objects.select_related("category").order_by("name")
+    products = (
+        Product.objects
+        .select_related("category")
+        .annotate(
+            active_producers_count=Count(
+                "producer_links",
+                filter=Q(producer_links__is_active=True),
+                distinct=True,
+            )
+        )
+        .order_by("name")
+    )
 
     if q:
         products = products.filter(
@@ -270,6 +311,173 @@ def admin_products_view(request):
         return render(request, "dashboard/admin/partials/products_table.html", context)
 
     return render(request, "dashboard/admin/products.html", context)
+
+@admin_required
+def admin_product_detail_view(request, product_id):
+    product = get_object_or_404(
+        Product.objects.select_related("category"),
+        id=product_id,
+    )
+
+    producer_links = (
+        ProducerProduct.objects
+        .filter(product=product, is_active=True)
+        .select_related("producer", "producer__user")
+        .order_by("producer__display_name", "producer__company_name")
+    )
+
+    stocks_by_producer_id = {
+        stock.producer_id: stock
+        for stock in Stock.objects.filter(product=product).select_related("producer")
+    }
+
+    producer_rows = []
+    for link in producer_links:
+        producer_rows.append({
+            "link": link,
+            "producer": link.producer,
+            "stock": stocks_by_producer_id.get(link.producer_id),
+        })
+
+    context = {
+        "admin_tab": "produtos",
+        "product_obj": product,
+        "producer_rows": producer_rows,
+        "active_producers_count": len(producer_rows),
+    }
+    return render(request, "dashboard/admin/product_detail.html", context)
+
+
+@admin_required
+def admin_product_create_view(request):
+    form = AdminProductForm(request.POST or None)
+
+    if request.method == "POST" and form.is_valid():
+        name = _normalize_text(form.cleaned_data["name"])
+        unit = _normalize_text(form.cleaned_data["unit"])
+        category = form.cleaned_data["category"]
+        description = (form.cleaned_data.get("description") or "").strip() or None
+        is_active = form.cleaned_data["is_active"]
+
+        existing_by_name = Product.objects.filter(name__iexact=name).first()
+        if existing_by_name:
+            form.add_error("name", "Já existe um produto com esse nome.")
+        else:
+            slug = _build_unique_product_slug(slugify(name))
+
+            product = Product.objects.create(
+                category=category,
+                name=name,
+                slug=slug,
+                unit=unit,
+                description=description,
+                is_active=is_active,
+            )
+
+            _log_admin_action(
+                request=request,
+                action="PRODUCT_CREATED",
+                entity_type="products",
+                entity_id=product.id,
+                notes=f"Administrador criou o produto {product.name}.",
+                new_values=_product_snapshot(product),
+            )
+
+            messages.success(request, "Produto criado com sucesso.")
+            return redirect("dashboard:gestor_produto_detalhe", product_id=product.id)
+
+    context = {
+        "admin_tab": "produtos",
+        "form": form,
+        "page_title": "Novo Produto",
+        "submit_label": "Criar produto",
+        "is_create": True,
+    }
+    return render(request, "dashboard/admin/product_form.html", context)
+
+
+@admin_required
+def admin_product_update_view(request, product_id):
+    product = get_object_or_404(Product.objects.select_related("category"), id=product_id)
+
+    if request.method == "POST":
+        form = AdminProductForm(request.POST)
+        if form.is_valid():
+            name = _normalize_text(form.cleaned_data["name"])
+            unit = _normalize_text(form.cleaned_data["unit"])
+            category = form.cleaned_data["category"]
+            description = (form.cleaned_data.get("description") or "").strip() or None
+            is_active = form.cleaned_data["is_active"]
+
+            existing_by_name = Product.objects.filter(name__iexact=name).exclude(id=product.id).first()
+            if existing_by_name:
+                form.add_error("name", "Já existe outro produto com esse nome.")
+            else:
+                old_snapshot = _product_snapshot(product)
+                changed_fields = []
+
+                if product.category_id != category.id:
+                    product.category = category
+                    changed_fields.append("category")
+
+                if product.name != name:
+                    product.name = name
+                    changed_fields.append("name")
+
+                    new_slug = _build_unique_product_slug(slugify(name), exclude_id=product.id)
+                    if product.slug != new_slug:
+                        product.slug = new_slug
+                        changed_fields.append("slug")
+
+                if product.unit != unit:
+                    product.unit = unit
+                    changed_fields.append("unit")
+
+                if product.description != description:
+                    product.description = description
+                    changed_fields.append("description")
+
+                if product.is_active != is_active:
+                    product.is_active = is_active
+                    changed_fields.append("is_active")
+
+                if changed_fields:
+                    product.save(update_fields=changed_fields + ["updated_at"])
+
+                    _log_admin_action(
+                        request=request,
+                        action="PRODUCT_UPDATED",
+                        entity_type="products",
+                        entity_id=product.id,
+                        notes=f"Administrador atualizou o produto {product.name}.",
+                        old_values=old_snapshot,
+                        new_values=_product_snapshot(product),
+                    )
+
+                    messages.success(request, "Produto atualizado com sucesso.")
+                else:
+                    messages.info(request, "Não foram detetadas alterações.")
+
+                return redirect("dashboard:gestor_produto_detalhe", product_id=product.id)
+    else:
+        form = AdminProductForm(initial={
+            "category": product.category,
+            "name": product.name,
+            "unit": product.unit,
+            "description": product.description,
+            "is_active": product.is_active,
+        })
+
+    context = {
+        "admin_tab": "produtos",
+        "form": form,
+        "product_obj": product,
+        "page_title": f"Editar Produto — {product.name}",
+        "submit_label": "Guardar alterações",
+        "is_create": False,
+    }
+    return render(request, "dashboard/admin/product_form.html", context)
+
 
 @admin_required
 def admin_categories_view(request):
@@ -399,7 +607,7 @@ def admin_user_toggle_status_view(request, user_id):
                 "q": request.POST.get("q", "").strip(),
             }
             response = render(request, "dashboard/admin/partials/user_row.html", context)
-            return _with_htmx_toast(response, "error", error_msg)
+            return with_htmx_toast(response, "error", error_msg)
 
         messages.error(request, error_msg)
         return redirect("dashboard:gestor_utilizadores")
@@ -416,7 +624,7 @@ def admin_user_toggle_status_view(request, user_id):
                 "q": request.POST.get("q", "").strip(),
             }
             response = render(request, "dashboard/admin/partials/user_row.html", context)
-            return _with_htmx_toast(response, "error", error_msg)
+            return with_htmx_toast(response, "error", error_msg)
 
         messages.error(request, error_msg)
         return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)

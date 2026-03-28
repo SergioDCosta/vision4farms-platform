@@ -1,0 +1,176 @@
+{% extends "dashboard/admin/base_admin.html" %}
+{% block admin_content %}
+
+<div style="display:flex;flex-direction:column;gap:1rem;">
+  <div class="adm-card" style="padding:1.15rem 1.15rem 1rem 1.15rem;">
+    <div class="adm-card-head" style="padding:0;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+      <div>
+        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.55rem;">
+          <a href="{% url 'dashboard:gestor_produtos' %}" class="adm-btn-ghost">
+            <i class="bi bi-arrow-left"></i> Voltar
+          </a>
+        </div>
+
+        <h2 style="margin:0;font-size:1.35rem;font-weight:800;color:#0f172a;">
+          {{ product_obj.name }}
+        </h2>
+        <p style="margin:.35rem 0 0 0;color:#64748b;font-size:.92rem;">
+          {{ product_obj.category.name|default:"Sem categoria" }} · {{ product_obj.unit }}
+        </p>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;">
+        {% if product_obj.is_active %}
+          <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativo</span>
+        {% else %}
+          <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Inativo</span>
+        {% endif %}
+
+        <a href="{% url 'dashboard:gestor_produto_editar' product_obj.id %}" class="adm-btn-primary">
+          <i class="bi bi-pencil"></i> Editar produto
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:1rem;">
+    <div style="grid-column:span 8;min-width:0;display:flex;flex-direction:column;gap:1rem;">
+      <div class="adm-card" style="padding:1.1rem;">
+        <div class="adm-card-head" style="padding:0 0 1rem 0;">
+          <div>
+            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Informação do produto</h3>
+            <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
+              Detalhes principais do produto do catálogo.
+            </p>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;">
+          <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Nome</div>
+            <div style="font-weight:700;color:#0f172a;">{{ product_obj.name }}</div>
+          </div>
+
+          <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Slug</div>
+            <div style="font-weight:700;color:#0f172a;font-family:'DM Mono',monospace;">{{ product_obj.slug }}</div>
+          </div>
+
+          <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Categoria</div>
+            <div style="font-weight:700;color:#0f172a;">{{ product_obj.category.name|default:"—" }}</div>
+          </div>
+
+          <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;">
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Unidade</div>
+            <div style="font-weight:700;color:#0f172a;">{{ product_obj.unit }}</div>
+          </div>
+
+          <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;grid-column:span 2;">
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Descrição</div>
+            <div style="font-weight:600;color:#334155;line-height:1.5;">
+              {{ product_obj.description|default:"Sem descrição." }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="adm-card" style="padding:1.1rem;">
+        <div class="adm-card-head" style="padding:0 0 1rem 0;">
+          <div>
+            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Produtores associados</h3>
+            <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
+              Produtores que têm este produto associado ao inventário.
+            </p>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;margin:0 -1.1rem;">
+          <table class="adm-table" style="margin:0;">
+            <thead>
+              <tr>
+                <th style="padding-left:1.25rem;">Produtor</th>
+                <th>Empresa</th>
+                <th>Tipo</th>
+                <th>Stock atual</th>
+                <th style="padding-right:1.25rem;">Reservado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in producer_rows %}
+              <tr>
+                <td style="padding-left:1.25rem;font-weight:700;color:#0f172a;">
+                  {{ row.producer.display_name }}
+                </td>
+                <td style="font-size:.84rem;color:#64748b;">
+                  {{ row.producer.company_name|default:"—" }}
+                </td>
+                <td style="font-size:.84rem;color:#64748b;">
+                  {{ row.producer.get_user_type_display|default:row.producer.user_type|default:"—" }}
+                </td>
+                <td style="font-size:.84rem;color:#0f172a;font-weight:700;">
+                  {% if row.stock %}
+                    {{ row.stock.current_quantity|floatformat:"-3" }} {{ product_obj.unit }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td style="padding-right:1.25rem;font-size:.84rem;color:#64748b;">
+                  {% if row.stock %}
+                    {{ row.stock.reserved_quantity|floatformat:"-3" }} {{ product_obj.unit }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="5">
+                  <div class="adm-empty" style="padding:2rem 1rem;">
+                    <i class="bi bi-people"></i>
+                    <p>Nenhum produtor tem este produto associado neste momento.</p>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div style="grid-column:span 4;min-width:0;">
+      <div class="adm-card" style="padding:1.1rem;">
+        <div class="adm-card-head" style="padding:0 0 1rem 0;">
+          <div>
+            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Resumo rápido</h3>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:.75rem;">
+          <div style="padding:.95rem 1rem;border:1px solid #e2e8f0;border-radius:1rem;">
+            <div style="font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Produtores ativos</div>
+            <div style="font-weight:700;color:#0f172a;">{{ active_producers_count }}</div>
+          </div>
+
+          <div style="padding:.95rem 1rem;border:1px solid #e2e8f0;border-radius:1rem;">
+            <div style="font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Criado em</div>
+            <div style="font-weight:700;color:#0f172a;">{{ product_obj.created_at|date:"d/m/Y H:i" }}</div>
+          </div>
+
+          <div style="padding:.95rem 1rem;border:1px solid #e2e8f0;border-radius:1rem;">
+            <div style="font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Atualizado em</div>
+            <div style="font-weight:700;color:#0f172a;">{{ product_obj.updated_at|date:"d/m/Y H:i" }}</div>
+          </div>
+
+          <div style="padding:.95rem 1rem;border:1px solid #e2e8f0;border-radius:1rem;">
+            <div style="font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Estado</div>
+            <div style="font-weight:700;color:#0f172a;">{% if product_obj.is_active %}Ativo{% else %}Inativo{% endif %}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

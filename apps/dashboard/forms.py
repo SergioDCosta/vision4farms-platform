@@ -1,37 +1,87 @@
 from django import forms
-from apps.accounts.models import User, UserRole
+
+from apps.catalog.models import ProductCategory
 
 
-ROLE_CHOICES = [
-    (UserRole.CLIENTE, "Cliente"),
-    (UserRole.ADMIN, "Administrador"),
-]
+class AdminUserCreateForm(forms.Form):
+    email = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs={
+            "class": "form-control",
+            "placeholder": "utilizador@exemplo.pt",
+        }),
+    )
 
-
-class BootstrapFormMixin:
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        for field in self.fields.values():
-            if isinstance(field.widget, forms.CheckboxInput):
-                field.widget.attrs["class"] = "form-check-input"
-            elif isinstance(field.widget, forms.Select):
-                field.widget.attrs["class"] = "form-select"
-            elif isinstance(field.widget, forms.Textarea):
-                field.widget.attrs["class"] = "form-control"
-                field.widget.attrs.setdefault("rows", 3)
-            else:
-                field.widget.attrs["class"] = "form-control"
-
-
-class AdminUserCreateForm(BootstrapFormMixin, forms.Form):
-    email = forms.EmailField(label="Email")
-    role = forms.ChoiceField(label="Tipo de utilizador", choices=ROLE_CHOICES)
+    role = forms.ChoiceField(
+        label="Role",
+        choices=[
+            ("CLIENTE", "Cliente"),
+            ("ADMIN", "Administrador"),
+        ],
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
 
     def clean_email(self):
-        email = self.cleaned_data["email"].strip().lower()
+        return (self.cleaned_data.get("email") or "").strip().lower()
 
-        if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("Já existe um utilizador com este email.")
 
-        return email
+class AdminProductForm(forms.Form):
+    category = forms.ModelChoiceField(
+        label="Categoria",
+        queryset=ProductCategory.objects.none(),
+        empty_label="Selecionar categoria",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    name = forms.CharField(
+        label="Nome do produto",
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Ex: Tomate",
+        }),
+    )
+
+    unit = forms.CharField(
+        label="Unidade",
+        max_length=50,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Ex: kg, un, caixa",
+        }),
+    )
+
+    description = forms.CharField(
+        label="Descrição (opcional)",
+        required=False,
+        widget=forms.Textarea(attrs={
+            "class": "form-control",
+            "rows": 4,
+            "placeholder": "Descrição breve do produto",
+        }),
+    )
+
+    is_active = forms.BooleanField(
+        label="Produto ativo",
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["category"].queryset = ProductCategory.objects.filter(
+            is_active=True
+        ).order_by("name")
+
+    def clean_name(self):
+        value = " ".join((self.cleaned_data.get("name") or "").split()).strip()
+        if not value:
+            raise forms.ValidationError("Indica o nome do produto.")
+        return value
+
+    def clean_unit(self):
+        value = " ".join((self.cleaned_data.get("unit") or "").split()).strip()
+        if not value:
+            raise forms.ValidationError("Indica a unidade do produto.")
+        return value

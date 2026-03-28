@@ -7,7 +7,12 @@ urlpatterns = [
     path("painel/", views.dashboard_view, name="painel"),
 
     path("gestor/", views.admin_dashboard_view, name="gestor"),
+
     path("gestor/produtos/", views.admin_products_view, name="gestor_produtos"),
+    path("gestor/produtos/novo/", views.admin_product_create_view, name="gestor_produto_novo"),
+    path("gestor/produtos/<uuid:product_id>/", views.admin_product_detail_view, name="gestor_produto_detalhe"),
+    path("gestor/produtos/<uuid:product_id>/editar/", views.admin_product_update_view, name="gestor_produto_editar"),
+
     path("gestor/categorias/", views.admin_categories_view, name="gestor_categorias"),
 
     path("gestor/utilizadores/", views.admin_users_view, name="gestor_utilizadores"),
