@@ -12,6 +12,11 @@ urlpatterns = [
         name="remover_produto",
     ),
     path(
+        "inventario/produtos/<uuid:producer_product_id>/reativar/",
+        views.reativar_produto,
+        name="reativar_produto",
+    ),
+    path(
         "inventario/stock/<uuid:product_id>/",
         views.stock_detalhe,
         name="stock_detalhe",

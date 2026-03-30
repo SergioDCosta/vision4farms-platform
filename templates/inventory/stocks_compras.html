@@ -22,10 +22,15 @@
                 <i class="bi bi-storefront"></i>
                 <span>Publicar Excedente</span>
             </a>
-        {% else %}
+        {% elif active_tab == "compras" %}
             <a href="{% url 'inventory:compras_export_pdf' %}" target="_blank" class="inv-btn inv-btn--ghost">
                 <i class="bi bi-file-earmark-pdf"></i>
                 <span>Exportar PDF</span>
+            </a>
+        {% else %}
+            <a href="{% url 'inventory:adicionar_produto' %}" class="inv-btn inv-btn--secondary">
+                <i class="bi bi-plus-circle"></i>
+                <span>Adicionar/reativar produto</span>
             </a>
         {% endif %}
         </div>
@@ -40,11 +45,17 @@
        class="inv-tab {% if active_tab == 'compras' %}inv-tab--active{% endif %}">
       Compras
     </a>
+    <a href="{% url 'inventory:meus_produtos' %}?tab=desativados"
+       class="inv-tab {% if active_tab == 'desativados' %}inv-tab--active{% endif %}">
+      Produtos desativados
+    </a>
   </div>
 
   <div id="inventory-panel">
     {% if active_tab == "compras" %}
       {% include "inventory/partials/compras_panel.html" %}
+    {% elif active_tab == "desativados" %}
+      {% include "inventory/partials/deactivated_panel.html" %}
     {% else %}
       {% include "inventory/partials/stocks_panel.html" %}
     {% endif %}

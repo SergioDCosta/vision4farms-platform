@@ -1,10 +1,12 @@
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
 from apps.common.decorators import client_only_required, login_required
+from apps.inventory.models import ProducerProduct
 from apps.inventory import services
 from apps.inventory.forms import (
     AddProducerProductForm,
@@ -26,6 +28,7 @@ def meus_produtos(request):
     Página principal: Stocks e Compras.
     - tab=stock
     - tab=compras
+    - tab=desativados
     - HTMX usado na pesquisa do tab Stock
     """
     producer = _get_producer_or_redirect(request)
@@ -33,7 +36,7 @@ def meus_produtos(request):
         return redirect("dashboard:painel")
 
     active_tab = (request.GET.get("tab") or "stock").strip().lower()
-    if active_tab not in {"stock", "compras"}:
+    if active_tab not in {"stock", "compras", "desativados"}:
         active_tab = "stock"
 
     q = (request.GET.get("q") or "").strip()
@@ -48,6 +51,10 @@ def meus_produtos(request):
         context.update(services.get_purchase_dashboard(producer))
         if request.htmx:
             return render(request, "inventory/partials/compras_panel.html", context)
+    elif active_tab == "desativados":
+        context.update(services.get_deactivated_products_dashboard(producer, q=q))
+        if request.htmx:
+            return render(request, "inventory/partials/deactivated_panel.html", context)
     else:
         context.update(services.get_stock_dashboard(producer, q=q))
         if request.htmx:
@@ -164,11 +171,37 @@ def remover_produto(request, producer_product_id):
     success, error = services.remove_product_from_producer(producer, producer_product_id)
 
     if success:
-        messages.success(request, "Produto removido da tua lista.")
+        messages.success(request, "Produto desativado com sucesso. Pode reativá-lo na aba de produtos desativados.")
     else:
         messages.error(request, error)
 
-    return redirect("inventory:meus_produtos")
+    next_url = request.POST.get("next")
+    if next_url:
+        return redirect(next_url)
+
+    return redirect(f"{reverse('inventory:meus_produtos')}?tab=desativados")
+
+
+@login_required
+@client_only_required
+@require_POST
+def reativar_produto(request, producer_product_id):
+    producer = _get_producer_or_redirect(request)
+    if not producer:
+        return redirect("dashboard:painel")
+
+    success, error = services.reactivate_product_from_producer(producer, producer_product_id)
+
+    if success:
+        messages.success(request, "Produto reativado com sucesso.")
+    else:
+        messages.error(request, error)
+
+    next_url = request.POST.get("next")
+    if next_url:
+        return redirect(next_url)
+
+    return redirect(f"{reverse('inventory:meus_produtos')}?tab=desativados")
 
 
 @login_required
@@ -183,10 +216,17 @@ def stock_detalhe(request, product_id):
         messages.error(request, "Produto não encontrado no teu inventário.")
         return redirect("inventory:meus_produtos")
 
+    producer_product = ProducerProduct.objects.filter(
+        producer=producer,
+        product_id=product_id,
+        is_active=True,
+    ).first()
+
     movements = services.get_stock_movements(stock)
 
     context = {
         "stock": stock,
+        "producer_product": producer_product,
         "movements": movements,
         "page_title": f"Stock — {stock.product.name}",
     }

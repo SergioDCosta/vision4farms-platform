@@ -4,9 +4,6 @@
 {% block app_title %}Painel{% endblock %}
 
 {% block app_content %}
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
 <div class="pnl">
 
   {# ══ HERO ═══════════════════════════════════════════════════════════════ #}
@@ -42,7 +39,7 @@
       <div class="pnl-kpi-foot"><span class="pnl-dot"></span>{{ critical_alerts_count }} crítico{{ critical_alerts_count|pluralize:"s" }}</div>
     </a>
 
-    <a href="/stocks/" class="pnl-kpi pnl-kpi--amber">
+    <a href="{% url 'inventory:meus_produtos' %}?tab=stock" class="pnl-kpi pnl-kpi--amber">
       <div class="pnl-kpi-header">
         <span class="pnl-kpi-label">Stock crítico</span>
         <span class="pnl-kpi-ico"><i class="bi bi-box-seam-fill"></i></span>
@@ -159,7 +156,7 @@
             <div class="pnl-qa-txt"><b>Publicar excedente</b><span>Gerir anúncios</span></div>
             <i class="bi bi-chevron-right pnl-qa-arr"></i>
           </a>
-          <a href="/stocks/" class="pnl-qa pnl-qa--amber">
+          <a href="{% url 'inventory:meus_produtos' %}?tab=stock" class="pnl-qa pnl-qa--amber">
             <div class="pnl-qa-ico"><i class="bi bi-box-seam-fill"></i></div>
             <div class="pnl-qa-txt"><b>Atualizar stock</b><span>Registar consumos</span></div>
             <i class="bi bi-chevron-right pnl-qa-arr"></i>
@@ -301,8 +298,9 @@
   transition:transform .18s, box-shadow .18s;
 }
 .pnl-kpi::after {
-  content:''; position:absolute; inset-inline:0; bottom:0;
-  height:3px; border-radius:0 0 var(--rad) var(--rad);
+  content:''; position:absolute;
+  left:.45rem; right:.45rem; bottom:.45rem;
+  height:4px; border-radius:999px;
 }
 .pnl-kpi--red::after   { background:var(--r); }
 .pnl-kpi--amber::after { background:var(--a); }

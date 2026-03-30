@@ -269,6 +269,42 @@ def get_stock_dashboard(producer, q=""):
     }
 
 
+def get_deactivated_products_dashboard(producer, q=""):
+    producer_products_qs = (
+        ProducerProduct.objects
+        .filter(producer=producer, is_active=False)
+        .select_related("product", "product__category")
+        .order_by("-updated_at", "product__name")
+    )
+
+    if q:
+        producer_products_qs = producer_products_qs.filter(
+            Q(product__name__icontains=q)
+            | Q(product__slug__icontains=q)
+            | Q(product__category__name__icontains=q)
+            | Q(product__unit__icontains=q)
+        )
+
+    rows = []
+    for link in producer_products_qs:
+        stock = Stock.objects.filter(
+            producer=producer,
+            product=link.product,
+        ).select_related("product", "product__category").first()
+
+        rows.append({
+            "producer_product": link,
+            "product": link.product,
+            "stock": stock,
+        })
+
+    return {
+        "rows": rows,
+        "deactivated_total_count": len(rows),
+        "q": q,
+    }
+
+
 @transaction.atomic
 def add_product_to_producer(producer, product_id, initial_quantity, minimum_threshold, user):
     """
@@ -387,21 +423,25 @@ def remove_product_from_producer(producer, producer_product_id):
     except ProducerProduct.DoesNotExist:
         return False, "Produto não encontrado."
 
-    stock = Stock.objects.filter(
-        producer=producer,
-        product=producer_product.product,
-    ).first()
-
-    if stock and (stock.current_quantity > ZERO or stock.reserved_quantity > ZERO):
-        return (
-            False,
-            (
-                f"Não é possível remover {producer_product.product.name} "
-                "porque ainda existe stock associado."
-            ),
-        )
-
     producer_product.is_active = False
+    producer_product.updated_at = timezone.now()
+    producer_product.save(update_fields=["is_active", "updated_at"])
+
+    return True, None
+
+
+@transaction.atomic
+def reactivate_product_from_producer(producer, producer_product_id):
+    try:
+        producer_product = ProducerProduct.objects.select_related("product").get(
+            id=producer_product_id,
+            producer=producer,
+            is_active=False,
+        )
+    except ProducerProduct.DoesNotExist:
+        return False, "Produto desativado não encontrado."
+
+    producer_product.is_active = True
     producer_product.updated_at = timezone.now()
     producer_product.save(update_fields=["is_active", "updated_at"])
 

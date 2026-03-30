@@ -1,7 +1,7 @@
 from django import forms
 import re
 
-from apps.accounts.models import User
+from apps.accounts.models import User, UserRole
 from apps.inventory.models import ProducerProfile, ProducerUserType
 from apps.settings_app.models import UserPreference
 
@@ -206,11 +206,6 @@ class UserPreferencesForm(forms.ModelForm):
             "accept": "image/*",
         }),
     )
-    remove_profile_photo = forms.BooleanField(
-        label="Remover foto atual",
-        required=False,
-        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-    )
 
     class Meta:
         model = UserPreference
@@ -221,6 +216,14 @@ class UserPreferencesForm(forms.ModelForm):
             "preferred_unit",
             "profile_photo",
         ]
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop("user", None)
+        super().__init__(*args, **kwargs)
+
+        is_admin = bool(self.user and self.user.role == UserRole.ADMIN)
+        if is_admin:
+            self.fields.pop("preferred_unit", None)
 
     def clean_preferred_unit(self):
         value = (self.cleaned_data.get("preferred_unit") or "").strip().lower()

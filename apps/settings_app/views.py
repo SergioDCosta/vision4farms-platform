@@ -116,7 +116,7 @@ def settings_view(request):
         ProducerProfileSettingsForm(instance=producer_profile)
         if producer_profile else None
     )
-    preferences_form = UserPreferencesForm(instance=preference)
+    preferences_form = UserPreferencesForm(instance=preference, user=user)
     security_form = ChangePasswordForm()
 
     if request.method == "POST":
@@ -170,42 +170,64 @@ def settings_view(request):
 
             messages.error(request, "Não foi possível guardar o perfil de produtor. Verifica os campos.")
 
+        elif form_type == "remove_photo":
+            if preference.profile_photo:
+                old_photo = preference.profile_photo
+                preference.profile_photo = None
+                preference.updated_at = timezone.now()
+                preference.save(update_fields=["profile_photo", "updated_at"])
+                _delete_profile_photo(old_photo)
+                messages.success(request, "Foto de perfil removida com sucesso.")
+            else:
+                messages.info(request, "Não existe foto de perfil para remover.")
+
+            return redirect("settings_app:settings_index")
+
         elif form_type == "preferences":
-            preferences_form = UserPreferencesForm(request.POST, request.FILES, instance=preference)
+            preferences_form = UserPreferencesForm(request.POST, request.FILES, instance=preference, user=user)
             if preferences_form.is_valid():
-                changed_fields = list(preferences_form.changed_data)
+                allowed_model_fields = {
+                    "alerts_in_app",
+                    "alerts_email",
+                    "alerts_sms",
+                    "preferred_unit",
+                    "profile_photo",
+                }
+
+                changed_fields = [
+                    field for field in preferences_form.changed_data
+                    if field in allowed_model_fields
+                ]
+                
+                is_admin_user = user.role == UserRole.ADMIN
 
                 uploaded_photo = request.FILES.get("profile_photo")
-                remove_photo = request.POST.get("remove_profile_photo") in {"on", "true", "1"}
 
-                # Se houver nova foto, substitui a antiga
+                updated_preference = preferences_form.save(commit=False)
+
+                if is_admin_user:
+                    updated_preference.preferred_unit = preference.preferred_unit
+
                 if uploaded_photo:
                     old_photo = preference.profile_photo
                     new_photo_path = _save_profile_photo(user, uploaded_photo)
 
-                    preference.profile_photo = new_photo_path
+                    updated_preference.profile_photo = new_photo_path
                     if "profile_photo" not in changed_fields:
                         changed_fields.append("profile_photo")
 
                     if old_photo and old_photo != new_photo_path:
                         _delete_profile_photo(old_photo)
 
-                # Se não houver upload novo e o utilizador quiser remover a atual
-                elif remove_photo and preference.profile_photo:
-                    old_photo = preference.profile_photo
-                    preference.profile_photo = None
-                    if "profile_photo" not in changed_fields:
-                        changed_fields.append("profile_photo")
-                    _delete_profile_photo(old_photo)
-
                 if changed_fields:
-                    updated_preference = preferences_form.save(commit=False)
-
-                    # garantir que a foto final fica correta
-                    updated_preference.profile_photo = preference.profile_photo
                     updated_preference.updated_at = timezone.now()
-                    updated_preference.save(update_fields=list(set(changed_fields + ["updated_at"])))
 
+                    update_fields = list(set(changed_fields + ["updated_at"]))
+
+                    if is_admin_user and "preferred_unit" in update_fields:
+                        update_fields.remove("preferred_unit")
+
+                    updated_preference.save(update_fields=update_fields)
                     messages.success(request, "Preferências atualizadas com sucesso.")
                 else:
                     messages.info(request, "Não foram detetadas alterações nas preferências.")

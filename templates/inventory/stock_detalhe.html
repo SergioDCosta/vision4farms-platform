@@ -144,6 +144,17 @@
               <span>Abrir marketplace</span>
             </a>
           {% endif %}
+
+          {% if producer_product %}
+            <form method="post" action="{% url 'inventory:remover_produto' producer_product_id=producer_product.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'inventory:meus_produtos' %}?tab=desativados">
+              <button type="submit" class="inv-btn inv-btn--secondary" style="width:100%;justify-content:center;border-color:#fecaca;color:#b91c1c;">
+                <i class="bi bi-slash-circle"></i>
+                <span>Desativar produto</span>
+              </button>
+            </form>
+          {% endif %}
         </div>
       </div>
 

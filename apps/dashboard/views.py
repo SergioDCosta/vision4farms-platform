@@ -210,7 +210,7 @@ def dashboard_view(request):
                     f"Stock atual: {low_stock.current_quantity} {low_stock.product.unit} | "
                     f"Mínimo: {low_stock.minimum_threshold} {low_stock.product.unit}"
                 ),
-                "url": "/stocks/",
+                "url": "/inventario/produtos/?tab=stock",
                 "button_label": "Ver stocks",
             })
 
@@ -248,7 +248,7 @@ def dashboard_view(request):
             "icon": "check-circle",
             "title": "Tudo controlado",
             "description": "Não existem ações urgentes neste momento. Continue a acompanhar o seu painel.",
-            "url": "/stocks/",
+            "url": "/inventario/produtos/?tab=stock",
             "button_label": "Ver stocks",
         })
 

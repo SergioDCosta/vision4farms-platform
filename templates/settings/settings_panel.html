@@ -22,7 +22,7 @@
     </aside>
 
     <div class="stg-main">
-      <form method="post" enctype="multipart/form-data">
+      <form method="post" enctype="multipart/form-data" class="stg-preferences-form">
         {% csrf_token %}
         <input type="hidden" name="form_type" value="preferences">
 
@@ -58,13 +58,6 @@
                   {% endif %}
                 </div>
 
-                <div class="stg-check-inline" style="margin-top:.75rem;">
-                  {{ preferences_form.remove_profile_photo }}
-                  <label for="{{ preferences_form.remove_profile_photo.id_for_label }}">
-                    {{ preferences_form.remove_profile_photo.label }}
-                  </label>
-                </div>
-
                 <div class="stg-help" style="margin-top:.55rem;">
                   Ao carregar uma nova foto, a anterior será substituída automaticamente.
                 </div>
@@ -73,6 +66,16 @@
                   <button type="submit" class="stg-btn-primary">
                     <i class="bi bi-image"></i> Guardar foto e preferências
                   </button>
+                  {% if profile_photo_url %}
+                    <button
+                      type="submit"
+                      class="stg-btn-danger"
+                      name="form_type"
+                      value="remove_photo"
+                      onclick="return confirm('Queres remover a foto de perfil agora?');">
+                      <i class="bi bi-trash"></i> Remover foto
+                    </button>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -83,7 +86,11 @@
           <div class="stg-card">
             <div class="stg-card-head">
               <h2>Notificações</h2>
+              {% if is_client_user %}
               <p>Define como queres receber alertas da plataforma.</p>
+            {% else %}
+              <p>Define como queres receber notificações de gestão e auditoria.</p>
+            {% endif %}
             </div>
 
             <div class="stg-checkbox-grid">
@@ -105,6 +112,7 @@
               <div class="stg-error">Verifica as opções de alertas selecionadas.</div>
             {% endif %}
 
+            {% if is_client_user and preferences_form.preferred_unit %}
             <div id="preferencias" class="stg-subsection">
               <h3>Preferências</h3>
               <div class="stg-field stg-field-sm">
@@ -115,6 +123,7 @@
                 {% endif %}
               </div>
             </div>
+            {% endif %}
 
             <div class="stg-actions">
               <button type="submit" class="stg-btn-primary">
@@ -389,6 +398,7 @@
 .stg-side-link i{font-size:.9rem;color:#16a34a;}
 
 .stg-main{display:flex;flex-direction:column;gap:1rem;}
+.stg-preferences-form{display:flex;flex-direction:column;gap:1.35rem;}
 .stg-section{scroll-margin-top:88px;}
 .stg-card{background:#fff;border:1px solid #e2e8f0;border-radius:.95rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04);padding:1.15rem;}
 .stg-card-head{margin-bottom:1rem;}
@@ -430,6 +440,8 @@
 .stg-btn-ghost{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:1.5px solid #cbd5e1;border-radius:.65rem;background:#fff;color:#0f172a;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all .15s;}
 .stg-btn-ghost:hover{background:#f8fafc;border-color:#94a3b8;}
 .stg-btn-ghost:disabled{opacity:.7;cursor:not-allowed;}
+.stg-btn-danger{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:1px solid #fecaca;border-radius:.65rem;background:#fff;color:#b91c1c;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all .15s;}
+.stg-btn-danger:hover{background:#fef2f2;border-color:#fca5a5;color:#991b1b;}
 
 .stg-help{font-size:.77rem;color:#64748b;line-height:1.4;}
 .stg-error{font-size:.78rem;color:#dc2626;}
