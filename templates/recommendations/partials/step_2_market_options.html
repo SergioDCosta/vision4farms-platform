@@ -1,0 +1,53 @@
+{% if alternative_items %}
+  <div class="rec-table-wrap" style="margin-top:1rem;">
+    <table class="rec-table">
+      <thead>
+        <tr>
+          <th>Produtor</th>
+          <th>Disponível</th>
+          <th>Preço</th>
+          <th>Entrega</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for listing in alternative_items %}
+          <tr>
+            <td>
+              <strong>{{ listing.producer.display_name|default:listing.producer.company_name|default:"Produtor" }}</strong>
+            </td>
+            <td>{{ listing.quantity_available|floatformat:"-3" }} {{ listing.product.unit }}</td>
+            <td>{{ listing.unit_price|floatformat:2 }} €/{{ listing.product.unit }}</td>
+            <td>
+              {% if listing.delivery_mode %}
+                {{ listing.get_delivery_mode_display|default:listing.delivery_mode }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              <form
+                method="post"
+                hx-post="{% url 'recommendations:step_replace_item' recommendation.id %}"
+                hx-target="#recommendation-wizard"
+                hx-swap="innerHTML"
+                style="margin:0;"
+              >
+                {% csrf_token %}
+                <input type="hidden" name="listing_id" value="{{ listing.id }}">
+                <button type="submit" class="rec-btn-ghost">
+                  <i class="bi bi-arrow-repeat"></i> Usar nesta recomendação
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="rec-empty" style="margin-top:1rem;">
+    <i class="bi bi-box-seam"></i>
+    <p>Não existem alternativas adicionais para este produto neste momento.</p>
+  </div>
+{% endif %}

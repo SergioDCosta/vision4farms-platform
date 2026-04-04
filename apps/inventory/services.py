@@ -132,6 +132,36 @@ def _build_unique_slug(base_slug):
     return candidate
 
 
+def _build_category_groups(rows):
+    grouped = {}
+
+    for row in rows:
+        category_name = (
+            getattr(getattr(row.get("product"), "category", None), "name", None)
+            or "Sem categoria"
+        ).strip()
+        normalized_name = category_name or "Sem categoria"
+
+        key = normalized_name.lower()
+        if key not in grouped:
+            grouped[key] = {
+                "name": normalized_name,
+                "rows": [],
+            }
+
+        grouped[key]["rows"].append(row)
+
+    ordered_groups = sorted(
+        grouped.values(),
+        key=lambda group: group["name"].lower(),
+    )
+
+    for group in ordered_groups:
+        group["count"] = len(group["rows"])
+
+    return ordered_groups
+
+
 def _ensure_stock_for_product(producer, product, initial_quantity, minimum_threshold, user):
     """
     Garante o registo de stock para produtor+produto.
@@ -212,7 +242,12 @@ def get_available_products_to_add(producer):
     )
 
 
-def get_stock_dashboard(producer, q=""):
+def get_stock_dashboard(producer, q="", sort="name"):
+    valid_sort_options = {"name", "stock_desc", "stock_asc", "state"}
+    sort = (sort or "name").strip().lower()
+    if sort not in valid_sort_options:
+        sort = "name"
+
     producer_products_qs = (
         ProducerProduct.objects
         .filter(producer=producer, is_active=True)
@@ -260,12 +295,40 @@ def get_stock_dashboard(producer, q=""):
             "state": state,
         })
 
+    def _row_stock_value(row):
+        if row["stock"] and row["stock"].current_quantity is not None:
+            return row["stock"].current_quantity
+        return ZERO
+
+    if sort == "stock_desc":
+        rows.sort(
+            key=lambda row: (_row_stock_value(row), row["product"].name.lower()),
+            reverse=True,
+        )
+    elif sort == "stock_asc":
+        rows.sort(key=lambda row: (_row_stock_value(row), row["product"].name.lower()))
+    elif sort == "state":
+        state_priority = {"critical": 0, "normal": 1, "excess": 2}
+        rows.sort(
+            key=lambda row: (
+                state_priority.get(row["state"]["key"], 99),
+                -_row_stock_value(row),
+                row["product"].name.lower(),
+            )
+        )
+    else:
+        rows.sort(key=lambda row: row["product"].name.lower())
+
+    category_groups = _build_category_groups(rows)
+
     return {
         "rows": rows,
+        "category_groups": category_groups,
         "stock_total_count": len(rows),
         "critical_count": critical_count,
         "excess_count": excess_count,
         "q": q,
+        "sort": sort,
     }
 
 
@@ -298,8 +361,11 @@ def get_deactivated_products_dashboard(producer, q=""):
             "stock": stock,
         })
 
+    category_groups = _build_category_groups(rows)
+
     return {
         "rows": rows,
+        "category_groups": category_groups,
         "deactivated_total_count": len(rows),
         "q": q,
     }

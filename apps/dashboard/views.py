@@ -66,6 +66,10 @@ def _normalize_text(value):
     return " ".join((value or "").split()).strip()
 
 
+def _htmx_target(request):
+    return (request.headers.get("HX-Target") or "").lstrip("#")
+
+
 def _build_unique_product_slug(base_slug, exclude_id=None):
     slug = base_slug or "produto"
     candidate = slug
@@ -333,7 +337,7 @@ def admin_products_view(request):
         "q": q,
     }
 
-    if request.htmx:
+    if request.htmx and _htmx_target(request) == "products-table":
         return render(request, "dashboard/admin/partials/products_table.html", context)
 
     return render(request, "dashboard/admin/products.html", context)
@@ -523,7 +527,7 @@ def admin_categories_view(request):
         "q": q,
     }
 
-    if request.htmx:
+    if request.htmx and _htmx_target(request) == "categories-table":
         return render(request, "dashboard/admin/partials/categories_table.html", context)
 
     return render(request, "dashboard/admin/categories.html", context)
@@ -715,7 +719,7 @@ def admin_users_view(request):
         "q": q,
     }
 
-    if request.htmx:
+    if request.htmx and _htmx_target(request) == "users-table":
         return render(request, "dashboard/admin/partials/users_table.html", context)
 
     return render(request, "dashboard/admin/users.html", context)
@@ -893,7 +897,7 @@ def admin_audit_view(request):
         "q": q,
     }
 
-    if request.htmx:
+    if request.htmx and _htmx_target(request) == "audit-table":
         return render(request, "dashboard/admin/partials/audit_table.html", context)
 
     return render(request, "dashboard/admin/audit.html", context)

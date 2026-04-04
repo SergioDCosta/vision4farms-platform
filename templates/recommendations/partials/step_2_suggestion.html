@@ -1,0 +1,102 @@
+<div class="rec-card">
+  <div class="rec-card__head">
+    <h2>Passo 2 — Sugestão</h2>
+    <p>O sistema dividiu a necessidade pela melhor combinação de ofertas disponíveis.</p>
+  </div>
+
+  <div class="rec-card__body">
+    <div class="rec-summary-grid">
+      <div class="rec-stat">
+        <p class="rec-stat__label">Produto</p>
+        <p class="rec-stat__value">{{ recommendation.product.name }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Quantidade pedida</p>
+        <p class="rec-stat__value">{{ recommendation.requested_quantity|floatformat:"-3" }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Défice restante</p>
+        <p class="rec-stat__value">{{ remaining_deficit|default:"0"|floatformat:"-3" }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Total estimado</p>
+        <p class="rec-stat__value">{{ recommendation.estimated_total|default:"0"|floatformat:2 }} €</p>
+      </div>
+    </div>
+
+    {% if recommendation.summary_text %}
+      <div class="rec-info">
+        {{ recommendation.summary_text }}
+      </div>
+    {% endif %}
+
+    {% if remaining_deficit and remaining_deficit > 0 %}
+      <div class="rec-info rec-info--warning">
+        A recomendação cobre apenas parte da necessidade. Continua a faltar
+        <strong>{{ remaining_deficit|floatformat:"-3" }}</strong>
+        {{ recommendation.product.unit }}.
+      </div>
+    {% endif %}
+
+    <div class="rec-list">
+      {% for item in selected_items %}
+        <div class="rec-item">
+          <div class="rec-item__top">
+            <div>
+              <p class="rec-item__title">
+                {{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:"Produtor" }}
+              </p>
+              <p class="rec-item__meta">
+                {{ item.suggested_quantity|floatformat:"-3" }} {{ item.product.unit }}
+                · {{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}
+              </p>
+            </div>
+
+            <div class="rec-price">
+              <strong>{{ item.subtotal|floatformat:2 }} €</strong>
+              <span class="rec-item__meta">subtotal</span>
+            </div>
+          </div>
+
+          {% if item.reasons %}
+            <div class="rec-badges">
+              {% for reason in item.reasons %}
+                <span class="rec-badge {% cycle 'rec-badge--green' 'rec-badge--blue' 'rec-badge--amber' %}">{{ reason }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% empty %}
+        <div class="rec-empty">
+          <i class="bi bi-search"></i>
+          <p>Não foram encontradas opções compatíveis no marketplace.</p>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% include "recommendations/partials/step_2_market_toggle.html" with recommendation=recommendation market_options_expanded=market_options_expanded alternative_items=alternative_items %}
+
+    <div class="rec-actions">
+      <button
+        type="button"
+        class="rec-btn-secondary"
+        hx-get="{% url 'recommendations:step_back_to_need' recommendation.id %}"
+        hx-target="#recommendation-wizard"
+        hx-swap="innerHTML"
+      >
+        <i class="bi bi-arrow-left"></i> Ajustar quantidades
+      </button>
+
+      <button
+        type="button"
+        class="rec-btn-primary"
+        hx-post="{% url 'recommendations:step_prepare_confirm' recommendation.id %}"
+        hx-target="#recommendation-wizard"
+        hx-swap="innerHTML"
+        {% if not can_accept %}disabled style="opacity:.55;cursor:not-allowed;"{% endif %}
+      >
+        <i class="bi bi-check2-circle"></i> Aceitar recomendação
+      </button>
+    </div>
+  </div>
+</div>

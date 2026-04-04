@@ -1,7 +1,7 @@
 {% extends "dashboard/base_app.html" %}
 {% block app_title %}Gestão da Cooperativa{% endblock %}
 {% block app_content %}
-<div class="adm">
+<div id="admin-shell" class="adm">
 
   <div class="adm-header">
     <div>
@@ -11,19 +11,59 @@
   </div>
 
   <nav class="adm-tabs">
-    <a href="{% url 'dashboard:gestor' %}" class="adm-tab {% if admin_tab == 'dashboard' %}adm-tab--active{% endif %}">
+    <a
+      href="{% url 'dashboard:gestor' %}"
+      hx-get="{% url 'dashboard:gestor' %}"
+      hx-target="#admin-shell"
+      hx-select="#admin-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="adm-tab {% if admin_tab == 'dashboard' %}adm-tab--active{% endif %}"
+    >
       <i class="bi bi-grid-fill"></i><span>Dashboard</span>
     </a>
-    <a href="{% url 'dashboard:gestor_produtos' %}" class="adm-tab {% if admin_tab == 'produtos' %}adm-tab--active{% endif %}">
+    <a
+      href="{% url 'dashboard:gestor_produtos' %}"
+      hx-get="{% url 'dashboard:gestor_produtos' %}"
+      hx-target="#admin-shell"
+      hx-select="#admin-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="adm-tab {% if admin_tab == 'produtos' %}adm-tab--active{% endif %}"
+    >
       <i class="bi bi-box-seam-fill"></i><span>Produtos</span>
     </a>
-    <a href="{% url 'dashboard:gestor_categorias' %}" class="adm-tab {% if admin_tab == 'categorias' %}adm-tab--active{% endif %}">
+    <a
+      href="{% url 'dashboard:gestor_categorias' %}"
+      hx-get="{% url 'dashboard:gestor_categorias' %}"
+      hx-target="#admin-shell"
+      hx-select="#admin-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="adm-tab {% if admin_tab == 'categorias' %}adm-tab--active{% endif %}"
+    >
       <i class="bi bi-tags-fill"></i><span>Categorias</span>
     </a>
-    <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-tab {% if admin_tab == 'utilizadores' %}adm-tab--active{% endif %}">
+    <a
+      href="{% url 'dashboard:gestor_utilizadores' %}"
+      hx-get="{% url 'dashboard:gestor_utilizadores' %}"
+      hx-target="#admin-shell"
+      hx-select="#admin-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="adm-tab {% if admin_tab == 'utilizadores' %}adm-tab--active{% endif %}"
+    >
       <i class="bi bi-people-fill"></i><span>Utilizadores</span>
     </a>
-    <a href="{% url 'dashboard:gestor_auditoria' %}" class="adm-tab {% if admin_tab == 'auditoria' %}adm-tab--active{% endif %}">
+    <a
+      href="{% url 'dashboard:gestor_auditoria' %}"
+      hx-get="{% url 'dashboard:gestor_auditoria' %}"
+      hx-target="#admin-shell"
+      hx-select="#admin-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="adm-tab {% if admin_tab == 'auditoria' %}adm-tab--active{% endif %}"
+    >
       <i class="bi bi-journal-text"></i><span>Auditoria</span>
     </a>
   </nav>
@@ -55,9 +95,16 @@
 .adm-tab--active{background:#fff;color:#15803d;font-weight:700;box-shadow:0 1px 3px rgba(15,23,42,.08);}
 .adm-tab i{font-size:.9rem;}
 
+.adm-content{
+  display:flex;
+  flex-direction:column;
+  gap:1rem;
+  margin-top:.3rem;
+}
+
 /* shared card / table styles for admin pages */
 .adm-card{background:#fff;border-radius:.85rem;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(15,23,42,.05),0 4px 12px rgba(15,23,42,.04);overflow:hidden;}
-.adm-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;padding:1.2rem 1.4rem;border-bottom:1px solid #f1f5f9;}
+.adm-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.85rem;padding:1rem 1.25rem;border-bottom:1px solid #f1f5f9;}
 .adm-search{display:flex;align-items:center;gap:.5rem;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:.6rem;padding:.5rem .85rem;max-width:340px;flex:1;}
 .adm-search i{color:#94a3b8;font-size:.9rem;flex-shrink:0;}
 .adm-search input{border:none;background:none;outline:none;font-size:.85rem;color:#0f172a;width:100%;font-family:inherit;}
@@ -73,6 +120,8 @@
 .adm-table tbody tr:last-child td{border-bottom:none;}
 .adm-table tbody tr:hover td{background:#fafafa;}
 .adm-table th:last-child,.adm-table td:last-child{text-align:right;}
+.adm-table--products thead th{padding:.88rem 1.4rem;}
+.adm-table--products tbody td{padding:1rem 1.4rem;}
 
 .adm-pill{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .65rem;border-radius:99px;font-size:.72rem;font-weight:700;letter-spacing:.03em;}
 .adm-pill--green{background:#dcfce7;color:#15803d;}
@@ -111,6 +160,11 @@
 .adm-search.htmx-request {
   border-color: #16a34a;
   background: #f0fdf4;
+}
+
+#admin-shell.htmx-request{
+  opacity:.72;
+  transition:opacity .15s ease;
 }
 </style>
 {% endblock %}

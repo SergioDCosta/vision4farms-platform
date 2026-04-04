@@ -129,26 +129,24 @@ class UpdateStockForm(forms.Form):
         (StockMovementType.IMPORT, "Importação / entrada"),
     ]
 
-    new_quantity = forms.DecimalField(
+    new_quantity = forms.IntegerField(
         label="Nova quantidade em stock",
         min_value=0,
-        max_digits=14,
-        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "0.001",
+            "step": "1",
+            "inputmode": "numeric",
             "placeholder": "0",
         }),
     )
 
-    minimum_threshold = forms.DecimalField(
+    minimum_threshold = forms.IntegerField(
         label="Stock mínimo de alerta",
         min_value=0,
-        max_digits=14,
-        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "0.001",
+            "step": "1",
+            "inputmode": "numeric",
             "placeholder": "0",
         }),
     )

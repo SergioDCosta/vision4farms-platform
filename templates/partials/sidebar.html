@@ -1,9 +1,21 @@
 <aside class="app-sidebar" id="appSidebar">
 
   {% if request.session.user_role == "ADMIN" %}
-    <a href="{% url 'dashboard:gestor' %}" class="sidebar-brand">
+    <a href="{% url 'dashboard:gestor' %}"
+       hx-get="{% url 'dashboard:gestor' %}"
+       hx-target="#shellMain"
+       hx-select="#shellMain"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="sidebar-brand">
   {% else %}
-    <a href="{% url 'dashboard:painel' %}" class="sidebar-brand">
+    <a href="{% url 'dashboard:painel' %}"
+       hx-get="{% url 'dashboard:painel' %}"
+       hx-target="#shellMain"
+       hx-select="#shellMain"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="sidebar-brand">
   {% endif %}
       <div class="sidebar-brand-icon">
         <i class="bi bi-flower1"></i>
@@ -14,18 +26,34 @@
   <nav class="sidebar-nav">
     {% if request.session.user_role == "ADMIN" %}
       <a href="{% url 'dashboard:gestor' %}"
+         hx-get="{% url 'dashboard:gestor' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/gestor/"
          class="sidebar-link {% if '/gestor/' in request.path %}active{% endif %}"
          data-tooltip="Painel Admin">
         <span class="sidebar-link-icon"><i class="bi bi-grid-fill"></i></span>
         <span class="sidebar-link-text">Painel Admin</span>
       </a>
       <a href="/marketplace/"
+         data-active-mode="prefix"
+         data-active-value="/marketplace/"
          class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}"
          data-tooltip="Marketplace">
         <span class="sidebar-link-icon"><i class="bi bi-shop"></i></span>
         <span class="sidebar-link-text">Marketplace</span>
       </a>
       <a href="{% url 'settings_app:settings_index' %}"
+         hx-get="{% url 'settings_app:settings_index' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/definicoes/"
          class="sidebar-link {% if '/definicoes/' in request.path %}active{% endif %}"
          data-tooltip="Definições">
         <span class="sidebar-link-icon"><i class="bi bi-gear-fill"></i></span>
@@ -33,48 +61,84 @@
       </a>
     {% else %}
       <a href="{% url 'dashboard:painel' %}"
+         hx-get="{% url 'dashboard:painel' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="exact"
+         data-active-value="/painel/"
          class="sidebar-link {% if request.path == '/painel/' %}active{% endif %}"
          data-tooltip="Painel">
         <span class="sidebar-link-icon"><i class="bi bi-grid-fill"></i></span>
         <span class="sidebar-link-text">Painel</span>
       </a>
       <a href="/alertas/"
+         data-active-mode="prefix"
+         data-active-value="/alertas/"
          class="sidebar-link {% if '/alertas/' in request.path %}active{% endif %}"
          data-tooltip="Alertas">
         <span class="sidebar-link-icon"><i class="bi bi-bell-fill"></i></span>
         <span class="sidebar-link-text">Alertas</span>
       </a>
       <a href="/marketplace/"
+         data-active-mode="prefix"
+         data-active-value="/marketplace/"
          class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}"
          data-tooltip="Marketplace">
         <span class="sidebar-link-icon"><i class="bi bi-shop"></i></span>
         <span class="sidebar-link-text">Marketplace</span>
       </a>
       <a href="/mensagens/"
+         data-active-mode="prefix"
+         data-active-value="/mensagens/"
          class="sidebar-link {% if '/mensagens/' in request.path %}active{% endif %}"
          data-tooltip="Mensagens">
         <span class="sidebar-link-icon"><i class="bi bi-chat-fill"></i></span>
         <span class="sidebar-link-text">Mensagens</span>
       </a>
       <a href="/recomendacoes/"
+         hx-get="/recomendacoes/"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/recomendacoes/"
          class="sidebar-link {% if '/recomendacoes/' in request.path %}active{% endif %}"
          data-tooltip="Recomendações">
         <span class="sidebar-link-icon"><i class="bi bi-stars"></i></span>
         <span class="sidebar-link-text">Recomendações</span>
       </a>
       <a href="/encomendas/"
+         data-active-mode="prefix"
+         data-active-value="/encomendas/"
          class="sidebar-link {% if '/encomendas/' in request.path %}active{% endif %}"
          data-tooltip="Encomendas">
         <span class="sidebar-link-icon"><i class="bi bi-truck"></i></span>
         <span class="sidebar-link-text">Encomendas</span>
       </a>
       <a href="{% url 'inventory:meus_produtos' %}"
+         hx-get="{% url 'inventory:meus_produtos' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/inventario/"
          class="sidebar-link {% if '/inventario/' in request.path %}active{% endif %}"
          data-tooltip="Stocks">
         <span class="sidebar-link-icon"><i class="bi bi-box-seam-fill"></i></span>
         <span class="sidebar-link-text">Stocks e Compras</span>
       </a>
       <a href="{% url 'settings_app:settings_index' %}"
+         hx-get="{% url 'settings_app:settings_index' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/definicoes/"
          class="sidebar-link {% if '/definicoes/' in request.path %}active{% endif %}"
          data-tooltip="Definições">
         <span class="sidebar-link-icon"><i class="bi bi-gear-fill"></i></span>

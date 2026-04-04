@@ -11,6 +11,11 @@
       <p class="inv-sub">
         {{ stock.product.category.name|default:"Sem categoria" }} · {{ stock.product.unit }}
       </p>
+      {% if stock.product.description %}
+        <p class="inv-sub" style="margin-top:.25rem;">{{ stock.product.description }}</p>
+      {% else %}
+        <p class="inv-sub" style="margin-top:.25rem;color:#94a3b8;">Sem descrição</p>
+      {% endif %}
     </div>
 
     <div class="inv-head-actions">

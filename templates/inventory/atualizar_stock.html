@@ -149,25 +149,6 @@
           </div>
         </div>
       </div>
-
-      <div class="inv-card">
-        <div class="inv-card-head">
-          <h3 class="inv-card-title">Próxima ação útil</h3>
-        </div>
-        <div class="inv-card-body" style="display:flex;flex-direction:column;gap:.75rem;">
-          {% if stock.available_quantity > stock.minimum_threshold %}
-            <a href="/marketplace/?product={{ stock.product.id }}&action=publish" class="inv-btn inv-btn--secondary">
-              <i class="bi bi-storefront"></i>
-              <span>Publicar excedente</span>
-            </a>
-          {% else %}
-            <a href="/recomendacoes/?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
-              <i class="bi bi-stars"></i>
-              <span>Ver recomendações</span>
-            </a>
-          {% endif %}
-        </div>
-      </div>
     </div>
   </div>
 </div>

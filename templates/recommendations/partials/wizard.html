@@ -1,0 +1,35 @@
+<div class="rec-shell">
+  <div class="rec-steps">
+    <div class="rec-step {% if wizard_step == 1 %}rec-step--active{% endif %}">
+      <div class="rec-step__num">1</div>
+      <div class="rec-step__body">
+        <p class="rec-step__title">O que precisa?</p>
+        <p class="rec-step__text">Indique o produto e a quantidade para gerar a recomendação.</p>
+      </div>
+    </div>
+
+    <div class="rec-step {% if wizard_step == 2 %}rec-step--active{% endif %}">
+      <div class="rec-step__num">2</div>
+      <div class="rec-step__body">
+        <p class="rec-step__title">Sugestão</p>
+        <p class="rec-step__text">O sistema calcula a melhor combinação de ofertas.</p>
+      </div>
+    </div>
+
+    <div class="rec-step {% if wizard_step == 3 %}rec-step--active{% endif %}">
+      <div class="rec-step__num">3</div>
+      <div class="rec-step__body">
+        <p class="rec-step__title">Confirmar</p>
+        <p class="rec-step__text">Valide o resumo final antes de gerar a encomenda.</p>
+      </div>
+    </div>
+  </div>
+
+  {% if wizard_step == 1 %}
+    {% include "recommendations/partials/step_1_need.html" %}
+  {% elif wizard_step == 2 %}
+    {% include "recommendations/partials/step_2_suggestion.html" %}
+  {% elif wizard_step == 3 %}
+    {% include "recommendations/partials/step_3_confirm.html" %}
+  {% endif %}
+</div>

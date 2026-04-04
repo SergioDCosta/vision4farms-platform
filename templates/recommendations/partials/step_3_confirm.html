@@ -1,0 +1,88 @@
+<div class="rec-card">
+  <div class="rec-card__head">
+    <h2>Passo 3 — Confirmar encomenda</h2>
+    <p>Valide o resumo final antes de gerar a encomenda.</p>
+  </div>
+
+  <div class="rec-card__body">
+    <div class="rec-summary-grid">
+      <div class="rec-stat">
+        <p class="rec-stat__label">Produto</p>
+        <p class="rec-stat__value">{{ recommendation.product.name }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Quantidade total</p>
+        <p class="rec-stat__value">{{ selected_total_quantity|floatformat:"-3" }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Produtores</p>
+        <p class="rec-stat__value">{{ selected_items|length }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Total a pagar</p>
+        <p class="rec-stat__value">{{ selected_total_amount|floatformat:2 }} €</p>
+      </div>
+    </div>
+
+    {% if recommendation.deficit_quantity and recommendation.deficit_quantity > 0 %}
+      <div class="rec-info rec-info--warning">
+        Atenção: a recomendação continua com défice parcial de
+        <strong>{{ recommendation.deficit_quantity|floatformat:"-3" }}</strong>
+        {{ recommendation.product.unit }}.
+      </div>
+    {% endif %}
+
+    <div class="rec-table-wrap">
+      <table class="rec-table">
+        <thead>
+          <tr>
+            <th>Produtor</th>
+            <th>Quantidade</th>
+            <th>Preço unitário</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in selected_items %}
+            <tr>
+              <td>
+                <strong>{{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:"Produtor" }}</strong>
+              </td>
+              <td>{{ item.suggested_quantity|floatformat:"-3" }} {{ item.product.unit }}</td>
+              <td>{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</td>
+              <td><strong>{{ item.subtotal|floatformat:2 }} €</strong></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rec-actions">
+      <button
+        type="button"
+        class="rec-btn-secondary"
+        hx-get="{% url 'recommendations:step_back_to_need' recommendation.id %}"
+        hx-target="#recommendation-wizard"
+        hx-swap="innerHTML"
+      >
+        <i class="bi bi-arrow-left"></i> Voltar
+      </button>
+
+      <form
+        method="post"
+        hx-post="{% url 'recommendations:confirm_order' recommendation.id %}"
+        hx-swap="none"
+        style="margin:0;"
+      >
+        {% csrf_token %}
+        <button
+          type="submit"
+          class="rec-btn-primary"
+          {% if not can_accept %}disabled style="opacity:.55;cursor:not-allowed;"{% endif %}
+        >
+          <i class="bi bi-bag-check"></i> Confirmar encomenda
+        </button>
+      </form>
+    </div>
+  </div>
+</div>

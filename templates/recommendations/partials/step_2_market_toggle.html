@@ -1,0 +1,36 @@
+<div id="market-options-wrapper" class="rec-alt-box">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <div>
+      <h3 style="margin:0;font-size:.96rem;font-weight:800;color:#0f172a;">Outras opções no mercado</h3>
+      <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
+        Podes abrir e fechar esta secção para comparar alternativas e substituir um produtor sugerido.
+      </p>
+    </div>
+
+    {% if market_options_expanded %}
+      <button
+        type="button"
+        class="rec-btn-secondary"
+        hx-get="{% url 'recommendations:step_market_options' recommendation.id %}?expanded=0"
+        hx-target="#market-options-wrapper"
+        hx-swap="outerHTML"
+      >
+        <i class="bi bi-chevron-up"></i> Ocultar outras opções
+      </button>
+    {% else %}
+      <button
+        type="button"
+        class="rec-btn-secondary"
+        hx-get="{% url 'recommendations:step_market_options' recommendation.id %}?expanded=1"
+        hx-target="#market-options-wrapper"
+        hx-swap="outerHTML"
+      >
+        <i class="bi bi-grid-3x3-gap"></i> Ver outras opções no mercado
+      </button>
+    {% endif %}
+  </div>
+
+  {% if market_options_expanded %}
+    {% include "recommendations/partials/step_2_market_options.html" %}
+  {% endif %}
+</div>

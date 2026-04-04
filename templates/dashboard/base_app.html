@@ -27,6 +27,7 @@
 :root {
   --sidebar-w:          240px;
   --sidebar-w-collapsed: 64px;
+  --sidebar-pill-size:  40px;
   --topbar-h:           60px;
 
   --green:        #16a34a;
@@ -231,8 +232,13 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 
 /* tooltip for collapsed icons */
 .shell.sidebar-collapsed .sidebar-link {
+  width: var(--sidebar-pill-size);
+  height: var(--sidebar-pill-size);
+  margin-inline: auto;
   justify-content: center;
-  padding: .65rem;
+  align-items: center;
+  gap: 0;
+  padding: 0;
 }
 .shell.sidebar-collapsed .sidebar-link::after {
   content: attr(data-tooltip);
@@ -374,7 +380,15 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   .shell:not(.sidebar-mobile-open) .shell-main  { margin-left: var(--sidebar-w-collapsed); }
   .shell:not(.sidebar-mobile-open) .sidebar-brand-text { opacity: 0; width: 0; }
   .shell:not(.sidebar-mobile-open) .sidebar-link-text  { opacity: 0; width: 0; }
-  .shell:not(.sidebar-mobile-open) .sidebar-link       { justify-content: center; padding: .65rem; }
+  .shell:not(.sidebar-mobile-open) .sidebar-link{
+    width: var(--sidebar-pill-size);
+    height: var(--sidebar-pill-size);
+    margin-inline: auto;
+    justify-content: center;
+    align-items: center;
+    gap: 0;
+    padding: 0;
+  }
   .shell:not(.sidebar-mobile-open) .sidebar-collapse-btn { display: none; }
   /* re-show on hover */
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover {
@@ -383,7 +397,14 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover ~ .shell-main { margin-left: var(--sidebar-w); }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-brand-text { opacity: 1; width: auto; }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-link-text  { opacity: 1; width: auto; }
-  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-link       { justify-content: flex-start; padding: .65rem .75rem; }
+  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-link{
+    width: auto;
+    height: auto;
+    margin-inline: 0;
+    justify-content: flex-start;
+    gap: .75rem;
+    padding: .65rem .75rem;
+  }
 }
 
 /* tablet (768–1024) */
@@ -422,52 +443,152 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 
 <script>
 (function () {
-  const shell        = document.getElementById('appShell');
-  const overlay      = document.getElementById('shellOverlay');
-  const toggleBtn    = document.getElementById('sidebarToggleBtn');
-  const collapseBtn  = document.getElementById('sidebarCollapseBtn');
+  const shell = document.getElementById('appShell');
+  if (!shell) return;
+
+  const overlay = document.getElementById('shellOverlay');
   const COLLAPSED_KEY = 'sidebar_collapsed';
+
   const isMobile = () => window.innerWidth < 768;
   const isAutoCollapse = () => window.innerWidth < 1280 && window.innerWidth >= 768;
+  const normalizePath = (rawPath) => {
+    if (!rawPath) return "/";
+    let path = rawPath;
+    try {
+      path = new URL(rawPath, window.location.origin).pathname;
+    } catch (error) {
+      path = rawPath;
+    }
+    if (!path.startsWith("/")) {
+      path = `/${path}`;
+    }
+    return path.endsWith("/") ? path : `${path}/`;
+  };
+
+  const pathMatches = (currentPath, activeValue, mode) => {
+    const expectedPath = normalizePath(activeValue || "/");
+    if (mode === "exact") {
+      return currentPath === expectedPath;
+    }
+    return currentPath.startsWith(expectedPath);
+  };
+
+  const syncSidebarActive = () => {
+    const links = document.querySelectorAll(".sidebar-link[data-active-mode][data-active-value]");
+    if (!links.length) return;
+
+    const currentPath = normalizePath(window.location.pathname);
+    let matched = false;
+
+    links.forEach((link) => {
+      link.classList.remove("active");
+    });
+
+    links.forEach((link) => {
+      const mode = (link.dataset.activeMode || "prefix").toLowerCase();
+      const activeValue = link.dataset.activeValue || link.getAttribute("href") || "/";
+      if (pathMatches(currentPath, activeValue, mode)) {
+        link.classList.add("active");
+        matched = true;
+      }
+    });
+
+    if (matched) return;
+
+    links.forEach((link) => {
+      const hrefPath = normalizePath(link.getAttribute("href") || "");
+      if (hrefPath === currentPath) {
+        link.classList.add("active");
+      }
+    });
+  };
+
+  const closeMobileSidebar = () => {
+    shell.classList.remove("sidebar-mobile-open");
+  };
+
+  const toggleMainSidebar = () => {
+    if (isMobile()) {
+      shell.classList.toggle("sidebar-mobile-open");
+      return;
+    }
+
+    if (!isAutoCollapse()) {
+      shell.classList.toggle("sidebar-collapsed");
+      localStorage.setItem(
+        COLLAPSED_KEY,
+        shell.classList.contains("sidebar-collapsed") ? "1" : "0"
+      );
+    }
+  };
+
+  const toggleDesktopCollapsed = () => {
+    if (isMobile() || isAutoCollapse()) return;
+    shell.classList.toggle("sidebar-collapsed");
+    localStorage.setItem(
+      COLLAPSED_KEY,
+      shell.classList.contains("sidebar-collapsed") ? "1" : "0"
+    );
+  };
 
   // restore desktop collapsed state
   if (!isMobile() && !isAutoCollapse() && localStorage.getItem(COLLAPSED_KEY) === '1') {
     shell.classList.add('sidebar-collapsed');
   }
 
-  // hamburger / toggle
-  toggleBtn?.addEventListener('click', () => {
-    if (isMobile()) {
-      shell.classList.toggle('sidebar-mobile-open');
-    } else if (!isAutoCollapse()) {
-      shell.classList.toggle('sidebar-collapsed');
-      localStorage.setItem(COLLAPSED_KEY, shell.classList.contains('sidebar-collapsed') ? '1' : '0');
-    }
-  });
+  syncSidebarActive();
 
-  // collapse button (inside sidebar)
-  collapseBtn?.addEventListener('click', () => {
-    shell.classList.toggle('sidebar-collapsed');
-    localStorage.setItem(COLLAPSED_KEY, shell.classList.contains('sidebar-collapsed') ? '1' : '0');
-  });
+  if (!window.__appShellHandlersBound) {
+    document.addEventListener("click", (event) => {
+      const toggleBtn = event.target.closest("#sidebarToggleBtn");
+      if (toggleBtn) {
+        event.preventDefault();
+        toggleMainSidebar();
+        return;
+      }
 
-  // close on overlay click
-  overlay?.addEventListener('click', () => {
-    shell.classList.remove('sidebar-mobile-open');
-  });
+      const collapseBtn = event.target.closest("#sidebarCollapseBtn");
+      if (collapseBtn) {
+        event.preventDefault();
+        toggleDesktopCollapsed();
+        return;
+      }
 
-  // handle resize
-  let lastWidth = window.innerWidth;
-  window.addEventListener('resize', () => {
-    const w = window.innerWidth;
-    if (w === lastWidth) return;
-    lastWidth = w;
-    if (isMobile()) {
-      shell.classList.remove('sidebar-collapsed');
-    } else {
-      shell.classList.remove('sidebar-mobile-open');
-    }
-  });
+      const sidebarHtmxLink = event.target.closest('.sidebar-link[hx-target="#shellMain"]');
+      if (sidebarHtmxLink && isMobile()) {
+        closeMobileSidebar();
+      }
+    });
+
+    // close on overlay click
+    overlay?.addEventListener("click", closeMobileSidebar);
+
+    document.body.addEventListener("htmx:afterSwap", (event) => {
+      const target = event.detail && event.detail.target;
+      if (target && target.id === "shellMain") {
+        syncSidebarActive();
+      }
+    });
+
+    document.body.addEventListener("htmx:historyRestore", syncSidebarActive);
+    window.addEventListener("popstate", syncSidebarActive);
+
+    // handle resize
+    let lastWidth = window.innerWidth;
+    window.addEventListener("resize", () => {
+      const width = window.innerWidth;
+      if (width === lastWidth) return;
+
+      lastWidth = width;
+      if (isMobile()) {
+        shell.classList.remove("sidebar-collapsed");
+      } else {
+        closeMobileSidebar();
+      }
+    });
+
+    window.__appShellHandlersBound = true;
+  }
 })();
 </script>
 {% endblock %}

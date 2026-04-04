@@ -1,0 +1,69 @@
+<div id="inventory-shell">
+  <div class="inv-head">
+    <div>
+      <h1 class="inv-title">Stocks e Compras</h1>
+      <p class="inv-sub">Gira o seu inventário e acompanhe as compras no marketplace</p>
+    </div>
+
+    <div class="inv-head-actions">
+      {% if active_tab == "stock" %}
+        <a href="{% url 'inventory:adicionar_produto' %}" class="inv-btn inv-btn--secondary">
+          <i class="bi bi-plus-circle"></i>
+          <span>Adicionar Produto</span>
+        </a>
+
+        <a href="/marketplace/" class="inv-btn inv-btn--primary">
+          <i class="bi bi-storefront"></i>
+          <span>Publicar Excedente</span>
+        </a>
+      {% elif active_tab == "compras" %}
+        <a href="{% url 'inventory:compras_export_pdf' %}" target="_blank" class="inv-btn inv-btn--ghost">
+          <i class="bi bi-file-earmark-pdf"></i>
+          <span>Exportar PDF</span>
+        </a>
+      {% else %}
+        <a href="{% url 'inventory:adicionar_produto' %}" class="inv-btn inv-btn--secondary">
+          <i class="bi bi-plus-circle"></i>
+          <span>Adicionar/reativar produto</span>
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="inv-tabs">
+    <a
+      href="{% url 'inventory:meus_produtos' %}?tab=stock"
+      hx-get="{% url 'inventory:meus_produtos' %}?tab=stock"
+      hx-target="#inventory-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="inv-tab {% if active_tab == 'stock' %}inv-tab--active{% endif %}"
+    >
+      Stock
+    </a>
+    <a
+      href="{% url 'inventory:meus_produtos' %}?tab=compras"
+      hx-get="{% url 'inventory:meus_produtos' %}?tab=compras"
+      hx-target="#inventory-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="inv-tab {% if active_tab == 'compras' %}inv-tab--active{% endif %}"
+    >
+      Compras
+    </a>
+    <a
+      href="{% url 'inventory:meus_produtos' %}?tab=desativados"
+      hx-get="{% url 'inventory:meus_produtos' %}?tab=desativados"
+      hx-target="#inventory-shell"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="inv-tab {% if active_tab == 'desativados' %}inv-tab--active{% endif %}"
+    >
+      Produtos desativados
+    </a>
+  </div>
+
+  <div id="inventory-panel">
+    {% include panel_template %}
+  </div>
+</div>

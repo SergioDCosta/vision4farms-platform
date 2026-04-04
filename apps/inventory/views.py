@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
@@ -21,6 +23,13 @@ def _get_producer_or_redirect(request):
     return producer
 
 
+def _decimal_to_int(value):
+    if value is None:
+        return 0
+    decimal_value = Decimal(str(value))
+    return int(decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 @login_required
 @client_only_required
 def meus_produtos(request):
@@ -40,25 +49,36 @@ def meus_produtos(request):
         active_tab = "stock"
 
     q = (request.GET.get("q") or "").strip()
+    sort = (request.GET.get("sort") or "name").strip().lower()
+    if sort not in {"name", "stock_desc", "stock_asc", "state"}:
+        sort = "name"
 
     context = {
         "page_title": "Stocks e Compras",
         "active_tab": active_tab,
         "q": q,
+        "sort": sort,
     }
 
     if active_tab == "compras":
         context.update(services.get_purchase_dashboard(producer))
-        if request.htmx:
-            return render(request, "inventory/partials/compras_panel.html", context)
+        panel_template = "inventory/partials/compras_panel.html"
     elif active_tab == "desativados":
         context.update(services.get_deactivated_products_dashboard(producer, q=q))
-        if request.htmx:
-            return render(request, "inventory/partials/deactivated_panel.html", context)
+        panel_template = "inventory/partials/deactivated_panel.html"
     else:
-        context.update(services.get_stock_dashboard(producer, q=q))
-        if request.htmx:
-            return render(request, "inventory/partials/stocks_panel.html", context)
+        context.update(services.get_stock_dashboard(producer, q=q, sort=sort))
+        panel_template = "inventory/partials/stocks_panel.html"
+
+    context["panel_template"] = panel_template
+
+    if request.htmx:
+        hx_target = (request.headers.get("HX-Target") or "").lstrip("#")
+        if hx_target == "inventory-shell":
+            return render(request, "inventory/partials/stocks_compras_shell.html", context)
+        if hx_target == "shellMain":
+            return render(request, "inventory/stocks_compras.html", context)
+        return render(request, panel_template, context)
 
     return render(request, "inventory/stocks_compras.html", context)
 
@@ -249,10 +269,12 @@ def atualizar_stock(request, product_id):
         form = UpdateStockForm(request.POST)
         if form.is_valid():
             try:
+                new_quantity = Decimal(str(form.cleaned_data["new_quantity"]))
+                minimum_threshold = Decimal(str(form.cleaned_data["minimum_threshold"]))
                 services.update_stock(
                     stock=stock,
-                    new_quantity=form.cleaned_data["new_quantity"],
-                    minimum_threshold=form.cleaned_data["minimum_threshold"],
+                    new_quantity=new_quantity,
+                    minimum_threshold=minimum_threshold,
                     movement_type=form.cleaned_data["movement_type"],
                     user=request.current_user,
                     notes=form.cleaned_data.get("notes", ""),
@@ -267,8 +289,8 @@ def atualizar_stock(request, product_id):
                 form.add_error(None, f"Erro ao atualizar stock: {exc}")
     else:
         form = UpdateStockForm(initial={
-            "new_quantity": stock.current_quantity,
-            "minimum_threshold": stock.minimum_threshold,
+            "new_quantity": _decimal_to_int(stock.current_quantity),
+            "minimum_threshold": _decimal_to_int(stock.minimum_threshold),
         })
 
     context = {
