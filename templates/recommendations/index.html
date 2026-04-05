@@ -271,6 +271,43 @@
   border-style:dashed;
 }
 
+.rec-stat--need-deficit{
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:1.1rem 1rem;
+}
+
+.rec-stat__hint{
+  margin:.35rem 0 0 0;
+  font-size:.74rem;
+  color:#64748b;
+  line-height:1.35;
+}
+
+.rec-stat__meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.5rem;
+  margin-top:.4rem;
+  padding-top:.45rem;
+  border-top:1px dashed #dbe3ee;
+}
+
+.rec-stat__meta-label{
+  font-size:.74rem;
+  color:#64748b;
+  font-weight:600;
+}
+
+.rec-stat__meta-value{
+  font-size:.95rem;
+  color:#0f172a;
+  font-weight:800;
+}
+
 .rec-stat__label{
   margin:0 0 .3rem 0;
   font-size:.76rem;
@@ -284,6 +321,10 @@
   font-size:1.15rem;
   font-weight:800;
   color:#0f172a;
+}
+
+.rec-stat--need-deficit .rec-stat__value{
+  font-size:1.45rem;
 }
 
 .rec-list{

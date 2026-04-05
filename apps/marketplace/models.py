@@ -13,7 +13,7 @@ class ListingStatus(models.TextChoices):
     RESERVED = "RESERVED", "Reservado"
     CLOSED = "CLOSED", "Fechado"
     EXPIRED = "EXPIRED", "Expirado"
-    CANCELLED = "CANCELLED", "Cancelado"
+    CANCELLED = "CANCELLED", "Desativado"
 
 
 class MarketplaceListing(models.Model):
@@ -43,6 +43,7 @@ class MarketplaceListing(models.Model):
     delivery_radius_km = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
+    photo_path = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=ListingStatus.choices, default=ListingStatus.ACTIVE)
     published_at = models.DateTimeField()
     expires_at = models.DateTimeField(blank=True, null=True)

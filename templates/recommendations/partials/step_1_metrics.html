@@ -1,6 +1,11 @@
 <div id="step-1-metrics">
-  <div class="rec-stat rec-stat--deficit">
+  <div class="rec-stat rec-stat--deficit rec-stat--need-deficit">
     <p class="rec-stat__label">Défice atual</p>
     <p class="rec-stat__value">{{ initial_deficit_quantity|default:"0"|floatformat:"-3" }}</p>
+    <div class="rec-stat__meta">
+      <span class="rec-stat__meta-label">Quantidade atual</span>
+      <strong class="rec-stat__meta-value">{{ initial_current_quantity|default:"0"|floatformat:"-3" }}</strong>
+    </div>
+    <p class="rec-stat__hint">Atualiza automaticamente ao selecionar o produto.</p>
   </div>
 </div>

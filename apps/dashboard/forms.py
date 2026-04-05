@@ -76,12 +76,12 @@ class AdminProductForm(forms.Form):
     )
 
     description = forms.CharField(
-        label="Descrição (opcional)",
+        label="Descrição genérica do catálogo (opcional)",
         required=False,
         widget=forms.Textarea(attrs={
             "class": "form-control",
             "rows": 4,
-            "placeholder": "Descrição breve do produto",
+            "placeholder": "Descrição genérica para o catálogo global",
         }),
     )
 

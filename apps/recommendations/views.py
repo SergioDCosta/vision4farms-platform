@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from apps.common.decorators import login_required, client_only_required
 from apps.common.htmx import with_htmx_toast
-from apps.inventory.models import ProducerProfile
+from apps.inventory.models import ProducerProfile, Stock
 from apps.recommendations.forms import RecommendationRequestForm
 from apps.recommendations.models import Recommendation
 from apps.recommendations.services import (
@@ -36,7 +36,29 @@ def _render_wizard(request, context):
 
 
 def _get_form_products(producer):
-    return list(get_producer_products(producer))
+    products = list(get_producer_products(producer))
+    if not products:
+        return products
+
+    product_ids = [product.id for product in products]
+    stock_rows = Stock.objects.filter(
+        producer=producer,
+        product_id__in=product_ids,
+    ).values_list("product_id", "current_quantity", "minimum_threshold")
+
+    # Sem registo de stock assume crítico (equivalente a 0 atual vs 0 mínimo).
+    critical_product_ids = {str(product_id) for product_id in product_ids}
+
+    for product_id, current_quantity, minimum_threshold in stock_rows:
+        current_qty = Decimal(str(current_quantity or 0))
+        minimum_qty = Decimal(str(minimum_threshold or 0))
+        if current_qty > minimum_qty:
+            critical_product_ids.discard(str(product_id))
+
+    for product in products:
+        product.is_critical_stock = str(product.id) in critical_product_ids
+
+    return products
 
 
 def _build_step_1_context(
@@ -45,6 +67,7 @@ def _build_step_1_context(
     wizard_step=1,
     errors=None,
     initial_deficit_quantity="0",
+    initial_current_quantity="0",
 ):
     return {
         "wizard_step": wizard_step,
@@ -52,6 +75,7 @@ def _build_step_1_context(
         "errors": errors or {},
         "initial_product_id": form.initial.get("product_id", ""),
         "initial_deficit_quantity": initial_deficit_quantity,
+        "initial_current_quantity": initial_current_quantity,
         "initial_requested_quantity": form.initial.get("requested_quantity", ""),
     }
 
@@ -77,6 +101,7 @@ def recommendations_index_view(request):
     context = _build_step_1_context(
         form=form,
         initial_deficit_quantity="0",
+        initial_current_quantity="0",
     )
     return render(request, "recommendations/index.html", context)
 
@@ -92,6 +117,7 @@ def recommendations_product_metrics_view(request):
     if not product_id:
         context = {
             "initial_deficit_quantity": "0",
+            "initial_current_quantity": "0",
             "initial_requested_quantity": "0",
         }
         return render(request, "recommendations/partials/step_1_metrics.html", context)
@@ -102,6 +128,7 @@ def recommendations_product_metrics_view(request):
     if not product:
         context = {
             "initial_deficit_quantity": "0",
+            "initial_current_quantity": "0",
             "initial_requested_quantity": "0",
         }
         return render(request, "recommendations/partials/step_1_metrics.html", context)
@@ -110,6 +137,7 @@ def recommendations_product_metrics_view(request):
 
     context = {
         "initial_deficit_quantity": deficit_data["deficit_quantity"],
+        "initial_current_quantity": deficit_data["current_stock"],
         "initial_requested_quantity": deficit_data["deficit_quantity"],
     }
     return render(request, "recommendations/partials/step_1_metrics.html", context)
@@ -136,10 +164,12 @@ def recommendations_generate_view(request):
 
     if not form.is_valid() or not product:
         deficit_quantity = "0"
+        current_quantity = "0"
 
         if product:
             deficit_data = calculate_current_deficit(producer, product)
             deficit_quantity = deficit_data["deficit_quantity"]
+            current_quantity = deficit_data["current_stock"]
 
         initial_requested_quantity = request.POST.get("requested_quantity", "")
 
@@ -152,6 +182,7 @@ def recommendations_generate_view(request):
             form=form,
             errors={k: v[0] for k, v in form.errors.items()},
             initial_deficit_quantity=deficit_quantity,
+            initial_current_quantity=current_quantity,
         )
         return _render_wizard(request, context)
 
@@ -174,6 +205,7 @@ def recommendations_generate_view(request):
             form=form,
             errors={"requested_quantity": str(exc)},
             initial_deficit_quantity=deficit_data["deficit_quantity"],
+            initial_current_quantity=deficit_data["current_stock"],
         )
         return _render_wizard(request, context)
 
@@ -221,6 +253,7 @@ def recommendations_back_to_need_view(request, recommendation_id):
     context = _build_step_1_context(
         form=form,
         initial_deficit_quantity=deficit_data["deficit_quantity"],
+        initial_current_quantity=deficit_data["current_stock"],
     )
     return _render_wizard(request, context)
 
@@ -228,6 +261,9 @@ def recommendations_back_to_need_view(request, recommendation_id):
 @login_required
 @client_only_required
 def recommendations_prepare_confirm_view(request, recommendation_id):
+    if request.method != "GET":
+        return redirect("recommendations:index")
+
     producer = _get_current_producer(request)
     if not producer:
         messages.error(request, "Perfil de produtor não encontrado.")

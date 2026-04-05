@@ -1,0 +1,718 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Editar Anúncio{% endblock %}
+{% block app_content %}
+
+<div class="mke-page">
+  <header class="mke-header">
+    <div>
+      <h1>Editar Anúncio</h1>
+      <p>Atualize preço, quantidade, estado e expiração da sua listing.</p>
+    </div>
+  </header>
+
+  <div class="mke-layout">
+    <section class="mke-card">
+      <form method="post" enctype="multipart/form-data" class="mke-form" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <div class="mke-form-error">
+            {% for error in form.non_field_errors %}
+              <p>{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <div class="mke-field">
+          <label>Produto</label>
+          <input type="text" value="{{ listing.product.name }} ({{ listing.product.unit }})" readonly>
+          <div class="mke-help">Este campo é apenas informativo e não pode ser alterado.</div>
+        </div>
+
+        <div class="mke-grid-2">
+          <div class="mke-field{% if form.quantity_total.errors %} has-error{% endif %}">
+            <label for="{{ form.quantity_total.id_for_label }}">{{ form.quantity_total.label }}</label>
+            <div class="mke-input-wrap">
+              {{ form.quantity_total }}
+              <span>Qtd.</span>
+            </div>
+            {% if form.quantity_total.errors %}
+              <div class="mke-field-errors">{% for error in form.quantity_total.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+          </div>
+
+          <div class="mke-field{% if form.unit_price.errors %} has-error{% endif %}">
+            <label for="{{ form.unit_price.id_for_label }}">{{ form.unit_price.label }}</label>
+            <div class="mke-input-wrap">
+              {{ form.unit_price }}
+              <span>€</span>
+            </div>
+            {% if form.unit_price.errors %}
+              <div class="mke-field-errors">{% for error in form.unit_price.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mke-grid-2">
+          <div class="mke-field{% if form.status.errors %} has-error{% endif %}">
+            <label for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>
+            {{ form.status }}
+            {% if form.status.errors %}
+              <div class="mke-field-errors">{% for error in form.status.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+          </div>
+
+          <div class="mke-field{% if form.expiration_mode.errors %} has-error{% endif %}">
+            <label for="{{ form.expiration_mode.id_for_label }}">{{ form.expiration_mode.label }}</label>
+            {{ form.expiration_mode }}
+            {% if form.expiration_mode.errors %}
+              <div class="mke-field-errors">{% for error in form.expiration_mode.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mke-grid-2">
+          <div class="mke-field{% if form.expires_in.errors %} has-error{% endif %}" id="mke-timer-wrap">
+            <label for="{{ form.expires_in.id_for_label }}">{{ form.expires_in.label }}</label>
+            {{ form.expires_in }}
+            {% if form.expires_in.errors %}
+              <div class="mke-field-errors">{% for error in form.expires_in.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+            <div class="mke-help">Escolhe um valor exato entre 6 e 720 horas (1 mês).</div>
+          </div>
+
+          <div class="mke-field{% if form.expires_at.errors %} has-error{% endif %}" id="mke-date-wrap">
+            <label for="{{ form.expires_at.id_for_label }}">{{ form.expires_at.label }}</label>
+            {{ form.expires_at }}
+            {% if form.expires_at.errors %}
+              <div class="mke-field-errors">{% for error in form.expires_at.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mke-field{% if form.delivery_mode.errors %} has-error{% endif %}">
+          <label for="{{ form.delivery_mode.id_for_label }}">{{ form.delivery_mode.label }}</label>
+          {{ form.delivery_mode }}
+          {% if form.delivery_mode.errors %}
+            <div class="mke-field-errors">{% for error in form.delivery_mode.errors %}<span>{{ error }}</span>{% endfor %}</div>
+          {% endif %}
+        </div>
+
+        <div class="mke-grid-2">
+          <div class="mke-field{% if form.delivery_radius_km.errors %} has-error{% endif %}">
+            <label for="{{ form.delivery_radius_km.id_for_label }}">{{ form.delivery_radius_km.label }}</label>
+            <div class="mke-input-wrap">
+              {{ form.delivery_radius_km }}
+              <span>km</span>
+            </div>
+            {% if form.delivery_radius_km.errors %}
+              <div class="mke-field-errors">{% for error in form.delivery_radius_km.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+          </div>
+
+          <div class="mke-field{% if form.delivery_fee.errors %} has-error{% endif %}">
+            <label for="{{ form.delivery_fee.id_for_label }}">{{ form.delivery_fee.label }}</label>
+            <div class="mke-input-wrap">
+              {{ form.delivery_fee }}
+              <span>€</span>
+            </div>
+            {% if form.delivery_fee.errors %}
+              <div class="mke-field-errors">{% for error in form.delivery_fee.errors %}<span>{{ error }}</span>{% endfor %}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mke-field{% if form.notes.errors %} has-error{% endif %}">
+          <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+          {{ form.notes }}
+          {% if form.notes.errors %}
+            <div class="mke-field-errors">{% for error in form.notes.errors %}<span>{{ error }}</span>{% endfor %}</div>
+          {% endif %}
+        </div>
+
+        <div class="mke-field{% if form.photo.errors %} has-error{% endif %}">
+          <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
+          {{ form.photo }}
+          {{ form.photo_crop }}
+          {% if form.photo.errors %}
+            <div class="mke-field-errors">{% for error in form.photo.errors %}<span>{{ error }}</span>{% endfor %}</div>
+          {% endif %}
+          <div class="mke-cropper" id="mke-cropper" hidden>
+            <div class="mke-help">Recorta a foto arrastando a área verde antes de guardar.</div>
+            <div class="mke-crop-stage" id="mke-crop-stage">
+              <img id="mke-crop-image" alt="Pré-visualização para recorte">
+              <div class="mke-crop-box" id="mke-crop-box">
+                <span class="mke-crop-handle" id="mke-crop-handle"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mke-actions">
+          <a href="{% url 'marketplace:index' %}?tab=meus"
+             hx-get="{% url 'marketplace:index' %}?tab=meus"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mke-btn-secondary">Voltar</a>
+          <button type="submit" class="mke-btn-primary">
+            <i class="bi bi-check2-circle"></i>
+            Guardar alterações
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="mke-side">
+      <section class="mke-card mke-card--side">
+        <h3>Resumo da listing</h3>
+        <ul class="mke-meta">
+          <li><span>Produto</span><strong>{{ listing.product.name }}</strong></li>
+          <li><span>Reservado</span><strong>{{ listing.quantity_reserved|floatformat:"-3" }} {{ listing.product.unit }}</strong></li>
+          <li><span>Disponível atual</span><strong>{{ listing.quantity_available|floatformat:"-3" }} {{ listing.product.unit }}</strong></li>
+          <li><span>Publicado em</span><strong>{{ listing.published_at|date:"d/m/Y H:i" }}</strong></li>
+        </ul>
+      </section>
+
+      <section class="mke-card mke-card--side">
+        <h3>Foto atual</h3>
+        {% if current_photo_url %}
+          <div class="mke-photo">
+            <img src="{{ current_photo_url }}" alt="{{ listing.product.name }}">
+          </div>
+        {% else %}
+          <div class="mke-photo-empty">
+            <i class="bi bi-image"></i>
+            <span>Sem foto no anúncio</span>
+          </div>
+        {% endif %}
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
+  const timerWrap = document.getElementById("mke-timer-wrap");
+  const dateWrap = document.getElementById("mke-date-wrap");
+
+  function syncExpiryFields() {
+    if (!modeField || !timerWrap || !dateWrap) return;
+    const mode = modeField.value;
+    timerWrap.style.display = mode === "timer" ? "" : "none";
+    dateWrap.style.display = mode === "date" ? "" : "none";
+  }
+
+  if (modeField) {
+    modeField.addEventListener("change", syncExpiryFields);
+  }
+  syncExpiryFields();
+
+  const photoInput = document.getElementById("{{ form.photo.id_for_label }}");
+  const photoCropInput = document.getElementById("{{ form.photo_crop.id_for_label }}");
+  const cropper = document.getElementById("mke-cropper");
+  const cropStage = document.getElementById("mke-crop-stage");
+  const cropImage = document.getElementById("mke-crop-image");
+  const cropBox = document.getElementById("mke-crop-box");
+  const cropHandle = document.getElementById("mke-crop-handle");
+
+  if (!photoInput || !photoCropInput || !cropper || !cropStage || !cropImage || !cropBox || !cropHandle) {
+    return;
+  }
+
+  const state = {
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    pointerId: null,
+    dragging: false,
+    resizing: false,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+    originW: 0,
+    originH: 0,
+    objectUrl: null,
+  };
+
+  function stageWidth() {
+    return cropStage.clientWidth || 0;
+  }
+
+  function stageHeight() {
+    return cropStage.clientHeight || 0;
+  }
+
+  function updateCropPayload() {
+    const sw = stageWidth();
+    const sh = stageHeight();
+    if (!sw || !sh) {
+      photoCropInput.value = "";
+      return;
+    }
+
+    const payload = {
+      x: Number((state.x / sw).toFixed(6)),
+      y: Number((state.y / sh).toFixed(6)),
+      w: Number((state.w / sw).toFixed(6)),
+      h: Number((state.h / sh).toFixed(6)),
+    };
+    photoCropInput.value = JSON.stringify(payload);
+  }
+
+  function drawCropBox() {
+    cropBox.style.left = `${state.x}px`;
+    cropBox.style.top = `${state.y}px`;
+    cropBox.style.width = `${state.w}px`;
+    cropBox.style.height = `${state.h}px`;
+    updateCropPayload();
+  }
+
+  function setInitialCropBox() {
+    const sw = stageWidth();
+    const sh = stageHeight();
+    if (!sw || !sh) return;
+
+    const initW = Math.max(80, Math.round(sw * 0.7));
+    const initH = Math.max(80, Math.round(sh * 0.7));
+    state.w = Math.min(initW, sw);
+    state.h = Math.min(initH, sh);
+    state.x = Math.max(0, Math.round((sw - state.w) / 2));
+    state.y = Math.max(0, Math.round((sh - state.h) / 2));
+    drawCropBox();
+  }
+
+  function endPointerInteraction() {
+    state.dragging = false;
+    state.resizing = false;
+    state.pointerId = null;
+    cropBox.classList.remove("is-dragging");
+    cropBox.classList.remove("is-resizing");
+  }
+
+  function onCropPointerDown(event) {
+    if (!cropImage.getAttribute("src")) return;
+    event.preventDefault();
+
+    const isHandle = event.target === cropHandle || cropHandle.contains(event.target);
+    state.pointerId = event.pointerId;
+    state.startX = event.clientX;
+    state.startY = event.clientY;
+    state.originX = state.x;
+    state.originY = state.y;
+    state.originW = state.w;
+    state.originH = state.h;
+    state.dragging = !isHandle;
+    state.resizing = isHandle;
+
+    cropBox.classList.toggle("is-dragging", state.dragging);
+    cropBox.classList.toggle("is-resizing", state.resizing);
+    cropBox.setPointerCapture(event.pointerId);
+  }
+
+  function onCropPointerMove(event) {
+    if (state.pointerId !== event.pointerId) return;
+    if (!state.dragging && !state.resizing) return;
+
+    const sw = stageWidth();
+    const sh = stageHeight();
+    if (!sw || !sh) return;
+
+    const dx = event.clientX - state.startX;
+    const dy = event.clientY - state.startY;
+
+    if (state.dragging) {
+      const maxX = Math.max(0, sw - state.w);
+      const maxY = Math.max(0, sh - state.h);
+      state.x = Math.min(Math.max(0, state.originX + dx), maxX);
+      state.y = Math.min(Math.max(0, state.originY + dy), maxY);
+    } else if (state.resizing) {
+      const minSize = 40;
+      const maxW = Math.max(minSize, sw - state.originX);
+      const maxH = Math.max(minSize, sh - state.originY);
+      state.w = Math.min(Math.max(minSize, state.originW + dx), maxW);
+      state.h = Math.min(Math.max(minSize, state.originH + dy), maxH);
+      state.x = state.originX;
+      state.y = state.originY;
+    }
+
+    drawCropBox();
+  }
+
+  function onCropPointerEnd(event) {
+    if (state.pointerId !== event.pointerId) return;
+    try {
+      cropBox.releasePointerCapture(event.pointerId);
+    } catch (error) {}
+    endPointerInteraction();
+  }
+
+  function clearPreview() {
+    if (state.objectUrl) {
+      URL.revokeObjectURL(state.objectUrl);
+      state.objectUrl = null;
+    }
+    cropImage.removeAttribute("src");
+    cropper.hidden = true;
+    photoCropInput.value = "";
+    endPointerInteraction();
+  }
+
+  function loadPreview(file) {
+    clearPreview();
+    state.objectUrl = URL.createObjectURL(file);
+    cropImage.onload = function () {
+      cropper.hidden = false;
+      setInitialCropBox();
+    };
+    cropImage.src = state.objectUrl;
+  }
+
+  photoInput.addEventListener("change", function () {
+    const file = photoInput.files && photoInput.files[0];
+    if (!file) {
+      clearPreview();
+      return;
+    }
+    loadPreview(file);
+  });
+
+  cropBox.addEventListener("pointerdown", onCropPointerDown);
+  cropBox.addEventListener("pointermove", onCropPointerMove);
+  cropBox.addEventListener("pointerup", onCropPointerEnd);
+  cropBox.addEventListener("pointercancel", onCropPointerEnd);
+
+  window.addEventListener("resize", function () {
+    if (cropper.hidden || !cropImage.getAttribute("src")) return;
+    setInitialCropBox();
+  });
+})();
+</script>
+
+<style>
+.mke-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1180px;
+}
+
+.mke-header h1 {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.mke-header p {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.mke-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 1.15rem;
+  align-items: start;
+}
+
+.mke-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mke-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1.25rem;
+  padding: 1.4rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.04);
+}
+
+.mke-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mke-form-error {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  border-radius: 0.9rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.mke-form-error p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.mke-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.mke-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mke-field label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.mke-field input,
+.mke-field select,
+.mke-field textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+  padding: 0.9rem 1rem;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.mke-field input:focus,
+.mke-field select:focus,
+.mke-field textarea:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+  background: #fff;
+}
+
+.mke-field input[readonly] {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.mke-help {
+  font-size: 0.76rem;
+  color: #64748b;
+}
+
+.mke-input-wrap {
+  position: relative;
+}
+
+.mke-input-wrap input {
+  padding-right: 4rem;
+}
+
+.mke-input-wrap span {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.mke-field-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.mke-field-errors span {
+  color: #b91c1c;
+  font-size: 0.78rem;
+}
+
+.mke-field.has-error input,
+.mke-field.has-error select,
+.mke-field.has-error textarea {
+  border-color: #fca5a5;
+  background: #fff5f5;
+}
+
+.mke-actions {
+  display: flex;
+  gap: 0.85rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+  flex-wrap: wrap;
+}
+
+.mke-btn-primary,
+.mke-btn-secondary {
+  flex: 1;
+  min-width: 180px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  border-radius: 0.95rem;
+  padding: 1rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition: 0.15s ease;
+}
+
+.mke-btn-primary {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+}
+
+.mke-btn-primary:hover {
+  background: #15803d;
+}
+
+.mke-btn-secondary {
+  background: #fff;
+  color: #334155;
+  border: 2px solid #e2e8f0;
+}
+
+.mke-btn-secondary:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.mke-card--side h3 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mke-meta {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.mke-meta li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.65rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0.8rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.mke-meta span {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.mke-meta strong {
+  font-size: 0.84rem;
+  color: #0f172a;
+}
+
+.mke-photo {
+  width: 100%;
+  aspect-ratio: 16/10;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.mke-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mke-photo-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  text-align: center;
+  color: #64748b;
+}
+
+.mke-photo-empty i {
+  font-size: 1.2rem;
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.mke-cropper {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mke-crop-stage {
+  position: relative;
+  width: min(100%, 460px);
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.mke-crop-stage img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 340px;
+  object-fit: contain;
+  background: #0f172a;
+}
+
+.mke-crop-box {
+  position: absolute;
+  border: 2px solid #22c55e;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+  cursor: move;
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.mke-crop-box.is-dragging,
+.mke-crop-box.is-resizing {
+  border-color: #4ade80;
+}
+
+.mke-crop-handle {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  background: #22c55e;
+  cursor: nwse-resize;
+}
+
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .mke-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mke-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+{% endblock %}
+

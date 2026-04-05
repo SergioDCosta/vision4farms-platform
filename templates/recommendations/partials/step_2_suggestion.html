@@ -90,7 +90,7 @@
       <button
         type="button"
         class="rec-btn-primary"
-        hx-post="{% url 'recommendations:step_prepare_confirm' recommendation.id %}"
+        hx-get="{% url 'recommendations:step_prepare_confirm' recommendation.id %}"
         hx-target="#recommendation-wizard"
         hx-swap="innerHTML"
         {% if not can_accept %}disabled style="opacity:.55;cursor:not-allowed;"{% endif %}

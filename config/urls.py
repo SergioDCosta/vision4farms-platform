@@ -10,6 +10,7 @@ urlpatterns = [
     path("", include("apps.inventory.urls")),
     path("", include("apps.recommendations.urls")),
     path("", include("apps.settings_app.urls")),
+    path("", include("apps.marketplace.urls")),
 ]
 
 if settings.DEBUG:

@@ -111,7 +111,7 @@ def adicionar_produto(request):
                         category=custom_form.cleaned_data["category"],
                         name=custom_form.cleaned_data["name"],
                         unit=custom_form.cleaned_data["unit"],
-                        description=custom_form.cleaned_data.get("description", ""),
+                        producer_description=custom_form.cleaned_data.get("producer_description", ""),
                         initial_quantity=custom_form.cleaned_data["initial_quantity"],
                         minimum_threshold=custom_form.cleaned_data["minimum_threshold"],
                         user=request.current_user,
@@ -149,6 +149,7 @@ def adicionar_produto(request):
                     producer_product, stock, product_created, link_created = services.add_product_to_producer(
                         producer=producer,
                         product_id=form.cleaned_data["product_id"],
+                        producer_description=form.cleaned_data.get("producer_description", ""),
                         initial_quantity=form.cleaned_data["initial_quantity"],
                         minimum_threshold=form.cleaned_data["minimum_threshold"],
                         user=request.current_user,
@@ -239,7 +240,6 @@ def stock_detalhe(request, product_id):
     producer_product = ProducerProduct.objects.filter(
         producer=producer,
         product_id=product_id,
-        is_active=True,
     ).first()
 
     movements = services.get_stock_movements(stock)

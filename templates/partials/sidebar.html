@@ -39,6 +39,11 @@
         <span class="sidebar-link-text">Painel Admin</span>
       </a>
       <a href="/marketplace/"
+         hx-get="/marketplace/"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
          data-active-mode="prefix"
          data-active-value="/marketplace/"
          class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}"
@@ -82,6 +87,11 @@
         <span class="sidebar-link-text">Alertas</span>
       </a>
       <a href="/marketplace/"
+         hx-get="/marketplace/"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
          data-active-mode="prefix"
          data-active-value="/marketplace/"
          class="sidebar-link {% if '/marketplace/' in request.path %}active{% endif %}"

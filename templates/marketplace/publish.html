@@ -1,0 +1,585 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Publicar Excedente{% endblock %}
+{% block app_content %}
+
+<div class="mkp-page">
+  <header class="mkp-header">
+    <div>
+      <h1>Publicar Excedente</h1>
+      <p>Venda os seus produtos no marketplace da cooperativa.</p>
+    </div>
+  </header>
+
+  {% if not success %}
+    <div class="mkp-layout">
+      <section class="mkp-card">
+        <form method="post" enctype="multipart/form-data" class="mkp-form" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+            <div class="mkp-form-error">
+              {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <div class="mkp-field{% if form.product.errors %} has-error{% endif %}">
+            <label for="{{ form.product.id_for_label }}">{{ form.product.label }}</label>
+            {{ form.product }}
+            {% if form.product.errors %}
+              <div class="mkp-field-errors">
+                {% for error in form.product.errors %}
+                  <span>{{ error }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="mkp-grid-2">
+            <div class="mkp-field{% if form.quantity.errors %} has-error{% endif %}">
+              <label for="{{ form.quantity.id_for_label }}">{{ form.quantity.label }}</label>
+              <div class="mkp-input-wrap">
+                {{ form.quantity }}
+                <span>Qtd.</span>
+              </div>
+              {% if form.quantity.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.quantity.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="mkp-field{% if form.unit_price.errors %} has-error{% endif %}">
+              <label for="{{ form.unit_price.id_for_label }}">{{ form.unit_price.label }}</label>
+              <div class="mkp-input-wrap">
+                {{ form.unit_price }}
+                <span>€</span>
+              </div>
+              {% if form.unit_price.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.unit_price.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mkp-field{% if form.delivery_mode.errors %} has-error{% endif %}">
+            <label for="{{ form.delivery_mode.id_for_label }}">{{ form.delivery_mode.label }}</label>
+            {{ form.delivery_mode }}
+            {% if form.delivery_mode.errors %}
+              <div class="mkp-field-errors">
+                {% for error in form.delivery_mode.errors %}
+                  <span>{{ error }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="mkp-grid-2">
+            <div class="mkp-field{% if form.delivery_radius_km.errors %} has-error{% endif %}">
+              <label for="{{ form.delivery_radius_km.id_for_label }}">{{ form.delivery_radius_km.label }}</label>
+              <div class="mkp-input-wrap">
+                {{ form.delivery_radius_km }}
+                <span>km</span>
+              </div>
+              {% if form.delivery_radius_km.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.delivery_radius_km.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="mkp-field{% if form.delivery_fee.errors %} has-error{% endif %}">
+              <label for="{{ form.delivery_fee.id_for_label }}">{{ form.delivery_fee.label }}</label>
+              <div class="mkp-input-wrap">
+                {{ form.delivery_fee }}
+                <span>€</span>
+              </div>
+              {% if form.delivery_fee.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.delivery_fee.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mkp-grid-2">
+            <div class="mkp-field{% if form.status.errors %} has-error{% endif %}">
+              <label for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>
+              {{ form.status }}
+              {% if form.status.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.status.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="mkp-field{% if form.expiration_mode.errors %} has-error{% endif %}">
+              <label for="{{ form.expiration_mode.id_for_label }}">{{ form.expiration_mode.label }}</label>
+              {{ form.expiration_mode }}
+              {% if form.expiration_mode.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.expiration_mode.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mkp-grid-2">
+            <div class="mkp-field{% if form.expires_in.errors %} has-error{% endif %}" id="mkp-timer-wrap">
+              <label for="{{ form.expires_in.id_for_label }}">{{ form.expires_in.label }}</label>
+              {{ form.expires_in }}
+              {% if form.expires_in.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.expires_in.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="mkp-field{% if form.expires_at.errors %} has-error{% endif %}" id="mkp-date-wrap">
+              <label for="{{ form.expires_at.id_for_label }}">{{ form.expires_at.label }}</label>
+              {{ form.expires_at }}
+              {% if form.expires_at.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.expires_at.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mkp-field{% if form.notes.errors %} has-error{% endif %}">
+            <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+            {{ form.notes }}
+            {% if form.notes.errors %}
+              <div class="mkp-field-errors">
+                {% for error in form.notes.errors %}
+                  <span>{{ error }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="mkp-field{% if form.photo.errors %} has-error{% endif %}">
+            <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
+            <div class="mkp-photo-input">
+              {{ form.photo }}
+            </div>
+            {% if form.photo.errors %}
+              <div class="mkp-field-errors">
+                {% for error in form.photo.errors %}
+                  <span>{{ error }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="mkp-actions">
+            <a href="{% url 'marketplace:index' %}" class="mkp-btn-secondary">
+              Cancelar
+            </a>
+            <button type="submit" class="mkp-btn-primary">
+              <i class="bi bi-upload"></i>
+              Publicar no marketplace
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="mkp-side">
+        <section class="mkp-card mkp-card--side">
+          <h3>Resumo de produtos publicáveis</h3>
+          {% if publishable_summary %}
+            <ul class="mkp-summary-list">
+              {% for row in publishable_summary %}
+                <li class="mkp-summary-item">
+                  <div class="mkp-summary-item__head">
+                    <strong>{{ row.product.name }}</strong>
+                    <span>{{ row.category_name }}</span>
+                  </div>
+                  <div class="mkp-summary-item__meta">
+                    <span>Stock: {{ row.current_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                    <span>Reservado: {{ row.reserved_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                    <span>Publicável: {{ row.publishable_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="mkp-summary-empty">
+              <i class="bi bi-inbox"></i>
+              <p>Sem excedente publicável neste momento.</p>
+            </div>
+          {% endif %}
+        </section>
+      </aside>
+    </div>
+  {% else %}
+    <section class="mkp-success">
+      <div class="mkp-success__icon">
+        <i class="bi bi-check-circle-fill"></i>
+      </div>
+
+      <h2>Anúncio publicado com sucesso!</h2>
+      <p>
+        O seu produto já está disponível no marketplace para os outros membros da cooperativa.
+      </p>
+
+      <div class="mkp-actions mkp-actions--center">
+        <a href="{% url 'marketplace:index' %}" class="mkp-btn-secondary">
+          Ir para Marketplace
+        </a>
+        <a href="{% url 'marketplace:publish' %}" class="mkp-btn-primary">
+          Publicar outro
+        </a>
+      </div>
+    </section>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
+  const timerWrap = document.getElementById("mkp-timer-wrap");
+  const dateWrap = document.getElementById("mkp-date-wrap");
+  if (!modeField || !timerWrap || !dateWrap) return;
+
+  function syncExpiryFields() {
+    const mode = modeField.value;
+    timerWrap.style.display = mode === "timer" ? "" : "none";
+    dateWrap.style.display = mode === "date" ? "" : "none";
+  }
+
+  modeField.addEventListener("change", syncExpiryFields);
+  syncExpiryFields();
+})();
+</script>
+
+<style>
+.mkp-page {
+  max-width: 1180px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mkp-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.mkp-header h1 {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.mkp-header p {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.mkp-card,
+.mkp-success {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1.25rem;
+  padding: 1.4rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.04);
+}
+
+.mkp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mkp-form-error {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  border-radius: 0.9rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.mkp-form-error p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.mkp-form-error p + p {
+  margin-top: 0.35rem;
+}
+
+.mkp-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.mkp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mkp-field label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.mkp-field input,
+.mkp-field select,
+.mkp-field textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+  padding: 0.9rem 1rem;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.mkp-field input:focus,
+.mkp-field select:focus,
+.mkp-field textarea:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+  background: #fff;
+}
+
+.mkp-input-wrap {
+  position: relative;
+}
+
+.mkp-input-wrap input {
+  padding-right: 4rem;
+}
+
+.mkp-input-wrap span {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.mkp-input-wrap input[type="number"]::-webkit-outer-spin-button,
+.mkp-input-wrap input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.mkp-input-wrap input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.mkp-photo-input input[type="file"] {
+  background: #fff;
+}
+
+.mkp-field-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.mkp-field-errors span {
+  color: #b91c1c;
+  font-size: 0.78rem;
+}
+
+.mkp-field.has-error input,
+.mkp-field.has-error select,
+.mkp-field.has-error textarea {
+  border-color: #fca5a5;
+  background: #fff5f5;
+}
+
+.mkp-actions {
+  display: flex;
+  gap: 0.85rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+  flex-wrap: wrap;
+}
+
+.mkp-actions--center {
+  justify-content: center;
+}
+
+.mkp-btn-primary,
+.mkp-btn-secondary {
+  flex: 1;
+  min-width: 180px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  border-radius: 0.95rem;
+  padding: 1rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition: 0.15s ease;
+}
+
+.mkp-btn-primary {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+}
+
+.mkp-btn-primary:hover {
+  background: #15803d;
+}
+
+.mkp-btn-secondary {
+  background: #fff;
+  color: #334155;
+  border: 2px solid #e2e8f0;
+}
+
+.mkp-btn-secondary:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.mkp-success {
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+}
+
+.mkp-success__icon {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 1.2rem;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.6rem;
+}
+
+.mkp-success h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.mkp-success p {
+  max-width: 520px;
+  margin: 0 auto 1.5rem;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.mkp-card--side h3 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mkp-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mkp-summary-item {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0.9rem;
+  padding: 0.8rem;
+}
+
+.mkp-summary-item__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.65rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.mkp-summary-item__head strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.mkp-summary-item__head span {
+  font-size: 0.74rem;
+  color: #64748b;
+  background: #e2e8f0;
+  border-radius: 0.6rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.mkp-summary-item__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.mkp-summary-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  text-align: center;
+  color: #64748b;
+}
+
+.mkp-summary-empty i {
+  font-size: 1.2rem;
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .mkp-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mkp-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+{% endblock %}
+

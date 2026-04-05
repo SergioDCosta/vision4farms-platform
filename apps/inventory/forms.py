@@ -9,6 +9,16 @@ class AddProducerProductForm(forms.Form):
 
     product_id = forms.UUIDField(widget=forms.HiddenInput())
 
+    producer_description = forms.CharField(
+        label="Descrição do produtor (opcional)",
+        required=False,
+        widget=forms.Textarea(attrs={
+            "class": "form-control",
+            "rows": 3,
+            "placeholder": "Descrição específica deste produto para o seu negócio",
+        }),
+    )
+
     initial_quantity = forms.DecimalField(
         label="Stock inicial",
         min_value=0,
@@ -65,13 +75,13 @@ class CreateCustomProductForm(forms.Form):
         }),
     )
 
-    description = forms.CharField(
-        label="Descrição (opcional)",
+    producer_description = forms.CharField(
+        label="Descrição do produtor (opcional)",
         required=False,
         widget=forms.Textarea(attrs={
             "class": "form-control",
             "rows": 3,
-            "placeholder": "Descrição breve do produto",
+            "placeholder": "Descrição específica deste produto para o seu negócio",
         }),
     )
 

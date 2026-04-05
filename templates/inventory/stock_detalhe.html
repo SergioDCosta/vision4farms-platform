@@ -11,10 +11,20 @@
       <p class="inv-sub">
         {{ stock.product.category.name|default:"Sem categoria" }} · {{ stock.product.unit }}
       </p>
-      {% if stock.product.description %}
-        <p class="inv-sub" style="margin-top:.25rem;">{{ stock.product.description }}</p>
+      {% if producer_product and producer_product.producer_description %}
+        <p class="inv-sub" style="margin-top:.25rem;">
+          <strong style="color:#0f172a;">Descrição do produtor:</strong>
+          {{ producer_product.producer_description }}
+        </p>
+      {% elif stock.product.description %}
+        <p class="inv-sub" style="margin-top:.25rem;">
+          <strong style="color:#0f172a;">Descrição genérica do catálogo:</strong>
+          {{ stock.product.description }}
+        </p>
       {% else %}
-        <p class="inv-sub" style="margin-top:.25rem;color:#94a3b8;">Sem descrição</p>
+        <p class="inv-sub" style="margin-top:.25rem;color:#94a3b8;">
+          Sem descrição específica disponível.
+        </p>
       {% endif %}
     </div>
 

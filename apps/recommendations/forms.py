@@ -29,7 +29,10 @@ class RecommendationRequestForm(forms.Form):
 
         choices = [("", "Selecionar produto")]
         for product in products:
-            choices.append((str(product.id), product.name))
+            label = product.name
+            if getattr(product, "is_critical_stock", False):
+                label = f"{label} - Stock crítico"
+            choices.append((str(product.id), label))
         self.fields["product_id"].choices = choices
 
     def clean_product_id(self):

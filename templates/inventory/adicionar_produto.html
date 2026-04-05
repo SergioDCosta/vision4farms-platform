@@ -84,16 +84,24 @@
                       <p class="inv-product-card-meta">
                         {{ cat_group.grouper.name|default:"Sem categoria" }}
                       </p>
+                      <p class="inv-product-card-meta">
+                        Unidade global: {{ product.unit }}
+                      </p>
                     </div>
 
                     <span class="inv-chip">{{ product.unit }}</span>
                   </div>
 
                   {% if product.description %}
-                    <p class="inv-product-card-desc">{{ product.description|truncatewords:18 }}</p>
+                    <p class="inv-product-card-desc">
+                      <strong>Descrição do catálogo:</strong> {{ product.description|truncatewords:18 }}
+                    </p>
                   {% else %}
-                    <p class="inv-product-card-desc inv-product-card-desc--muted">Sem descrição adicional.</p>
+                    <p class="inv-product-card-desc inv-product-card-desc--muted">Sem descrição genérica no catálogo.</p>
                   {% endif %}
+                  <p class="inv-product-card-desc inv-product-card-desc--muted">
+                    A descrição específica do produtor é definida ao associar o produto.
+                  </p>
 
                   <div class="inv-product-card-actions">
                     <button type="button"
@@ -154,7 +162,7 @@
 
         <div class="modal-body" style="padding:1.1rem 1.2rem;">
           <p class="text-muted small mb-3">
-            Define o stock inicial e o limiar mínimo para começares a gerir este produto.
+            Define o stock inicial, o limiar mínimo e a tua descrição específica para este produto.
           </p>
 
           <div class="mb-3">
@@ -175,6 +183,19 @@
             {% if form.minimum_threshold.errors %}
               <div class="text-danger small mt-1">{{ form.minimum_threshold.errors.0 }}</div>
             {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="{{ form.producer_description.id_for_label }}">
+              {{ form.producer_description.label }}
+            </label>
+            {{ form.producer_description }}
+            {% if form.producer_description.errors %}
+              <div class="text-danger small mt-1">{{ form.producer_description.errors.0 }}</div>
+            {% endif %}
+            <div class="text-muted small mt-1">
+              Esta descrição é específica da sua exploração e não altera a descrição global do catálogo.
+            </div>
           </div>
         </div>
 
@@ -203,7 +224,8 @@
 
         <div class="modal-body" style="padding:1.1rem 1.2rem;">
           <p class="text-muted small mb-3">
-            Cria um produto novo e associa-o logo ao teu inventário. A categoria tem de ser uma das existentes.
+            Cria um produto novo e associa-o logo ao teu inventário. A unidade fica global no catálogo;
+            a descrição preenchida aqui será específica do produtor.
           </p>
 
           <div class="row g-3">
@@ -258,13 +280,16 @@
             </div>
 
             <div class="col-12">
-              <label class="form-label fw-semibold" for="{{ custom_form.description.id_for_label }}">
-                {{ custom_form.description.label }}
+              <label class="form-label fw-semibold" for="{{ custom_form.producer_description.id_for_label }}">
+                {{ custom_form.producer_description.label }}
               </label>
-              {{ custom_form.description }}
-              {% if custom_form.description.errors %}
-                <div class="text-danger small mt-1">{{ custom_form.description.errors.0 }}</div>
+              {{ custom_form.producer_description }}
+              {% if custom_form.producer_description.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.producer_description.errors.0 }}</div>
               {% endif %}
+              <div class="text-muted small mt-1">
+                Esta descrição ficará associada ao teu registo em inventário, não ao catálogo global.
+              </div>
             </div>
           </div>
         </div>
@@ -300,6 +325,10 @@
   align-items:flex-start;
   justify-content:space-between;
   gap:1rem;
+  padding:.78rem .95rem;
+  border:1px solid #e8eef5;
+  border-radius:.85rem;
+  background:linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
   margin-bottom:.9rem;
 }
 
@@ -318,7 +347,7 @@
 
 .inv-product-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+  grid-template-columns:repeat(5,minmax(0,1fr));
   gap:.9rem;
 }
 
@@ -326,6 +355,7 @@
   border:1px solid #e2e8f0;
   border-radius:1rem;
   padding:1rem;
+  min-width:0;
   display:flex;
   flex-direction:column;
   gap:.85rem;
@@ -376,6 +406,12 @@
   justify-content:flex-start;
 }
 
+.inv-product-card-actions .inv-btn{
+  width:100%;
+  padding:.72rem .88rem;
+  font-size:.84rem;
+}
+
 .inv-chip{
   display:inline-flex;
   align-items:center;
@@ -386,6 +422,30 @@
   font-size:.74rem;
   font-weight:700;
   white-space:nowrap;
+}
+
+@media (max-width: 1500px){
+  .inv-product-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+  }
+}
+
+@media (max-width: 1200px){
+  .inv-product-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+
+@media (max-width: 900px){
+  .inv-product-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (max-width: 620px){
+  .inv-product-grid{
+    grid-template-columns:1fr;
+  }
 }
 </style>
 

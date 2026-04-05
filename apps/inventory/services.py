@@ -120,6 +120,13 @@ def _normalize_text(value):
     return " ".join((value or "").split()).strip()
 
 
+def _normalize_optional_text(value):
+    if value is None:
+        return None
+    normalized = _normalize_text(value)
+    return normalized or None
+
+
 def _build_unique_slug(base_slug):
     slug = base_slug or "produto"
     candidate = slug
@@ -372,25 +379,50 @@ def get_deactivated_products_dashboard(producer, q=""):
 
 
 @transaction.atomic
-def add_product_to_producer(producer, product_id, initial_quantity, minimum_threshold, user):
+def add_product_to_producer(
+    producer,
+    product_id,
+    initial_quantity,
+    minimum_threshold,
+    user,
+    producer_description=None,
+):
     """
     Associa um produto do catálogo ao produtor e garante stock.
     Se já existia associação inativa, reativa-a.
     """
     product = Product.objects.get(id=product_id, is_active=True)
+    has_producer_description_input = producer_description is not None
+    normalized_producer_description = _normalize_optional_text(producer_description)
+
+    defaults = {"is_active": True}
+    if has_producer_description_input:
+        defaults["producer_description"] = normalized_producer_description
 
     producer_product, pp_created = ProducerProduct.objects.get_or_create(
         producer=producer,
         product=product,
-        defaults={"is_active": True},
+        defaults=defaults,
     )
 
     link_created = pp_created
-    if not pp_created and not producer_product.is_active:
-        producer_product.is_active = True
+    changed_fields = []
+    if not pp_created:
+        if not producer_product.is_active:
+            producer_product.is_active = True
+            changed_fields.append("is_active")
+            link_created = True
+
+        if (
+            has_producer_description_input
+            and producer_product.producer_description != normalized_producer_description
+        ):
+            producer_product.producer_description = normalized_producer_description
+            changed_fields.append("producer_description")
+
+    if changed_fields:
         producer_product.updated_at = timezone.now()
-        producer_product.save(update_fields=["is_active", "updated_at"])
-        link_created = True
+        producer_product.save(update_fields=changed_fields + ["updated_at"])
 
     stock = _ensure_stock_for_product(
         producer=producer,
@@ -408,21 +440,26 @@ def create_custom_product_for_producer(
     category,
     name,
     unit,
-    description,
     initial_quantity,
     minimum_threshold,
     user,
+    producer_description=None,
 ):
     """
     Cria um novo produto no catálogo (se não existir) e associa-o ao produtor.
     Se o produto já existir pelo slug, usa o existente em vez de duplicar.
+
+    - Dados globais: nome/categoria/unidade no Product.
+    - Dado específico do produtor: descrição em ProducerProduct.producer_description.
     """
     if not category or not isinstance(category, ProductCategory):
         raise ValidationError("Seleciona uma categoria válida.")
 
     name = _normalize_text(name)
     unit = _normalize_text(unit)
-    description = (description or "").strip() or None
+
+    has_producer_description_input = producer_description is not None
+    normalized_producer_description = _normalize_optional_text(producer_description)
 
     if not name:
         raise ValidationError("Indica o nome do produto.")
@@ -449,23 +486,39 @@ def create_custom_product_for_producer(
             name=name,
             slug=_build_unique_slug(base_slug),
             unit=unit,
-            description=description,
+            description=None,
             is_active=True,
         )
         product_created = True
 
+    pp_defaults = {"is_active": True}
+    if has_producer_description_input:
+        pp_defaults["producer_description"] = normalized_producer_description
+
     producer_product, pp_created = ProducerProduct.objects.get_or_create(
         producer=producer,
         product=product,
-        defaults={"is_active": True},
+        defaults=pp_defaults,
     )
 
     link_created = pp_created
-    if not pp_created and not producer_product.is_active:
-        producer_product.is_active = True
+    changed_fields = []
+    if not pp_created:
+        if not producer_product.is_active:
+            producer_product.is_active = True
+            changed_fields.append("is_active")
+            link_created = True
+
+        if (
+            has_producer_description_input
+            and producer_product.producer_description != normalized_producer_description
+        ):
+            producer_product.producer_description = normalized_producer_description
+            changed_fields.append("producer_description")
+
+    if changed_fields:
         producer_product.updated_at = timezone.now()
-        producer_product.save(update_fields=["is_active", "updated_at"])
-        link_created = True
+        producer_product.save(update_fields=changed_fields + ["updated_at"])
 
     stock = _ensure_stock_for_product(
         producer=producer,

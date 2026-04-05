@@ -15,7 +15,7 @@
           {{ page_title }}
         </h2>
         <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.92rem;">
-          Preencha os dados do produto do catálogo.
+          Preencha os dados globais do produto do catálogo.
         </p>
       </div>
     </div>
@@ -68,6 +68,9 @@
         <div style="grid-column:span 2;">
           <label class="form-label" for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
           {{ form.description }}
+          <p style="margin:.35rem 0 0 0;color:#64748b;font-size:.8rem;">
+            Esta descrição é global no catálogo e não representa descrições específicas de produtores.
+          </p>
           {% if form.description.errors %}
             <div class="errorlist">{{ form.description.errors }}</div>
           {% endif %}

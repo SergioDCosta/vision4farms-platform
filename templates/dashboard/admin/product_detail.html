@@ -67,10 +67,13 @@
           </div>
 
           <div style="padding:1rem;border:1px solid #e2e8f0;border-radius:1rem;background:#fff;grid-column:span 2;">
-            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Descrição</div>
+            <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-bottom:.35rem;">Descrição genérica do catálogo</div>
             <div style="font-weight:600;color:#334155;line-height:1.5;">
-              {{ product_obj.description|default:"Sem descrição." }}
+              {{ product_obj.description|default:"Sem descrição genérica no catálogo." }}
             </div>
+            <p style="margin:.45rem 0 0 0;color:#64748b;font-size:.78rem;">
+              As descrições específicas de produtores são geridas no inventário de cada produtor.
+            </p>
           </div>
         </div>
       </div>

@@ -1,0 +1,665 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Detalhe do Produto{% endblock %}
+{% block app_content %}
+
+<div class="mkd-page">
+  <nav class="mkd-breadcrumb">
+    <a href="{% url 'marketplace:index' %}">Marketplace</a>
+    <i class="bi bi-chevron-right"></i>
+    <span>Detalhe do Produto</span>
+  </nav>
+
+  <section class="mkd-main">
+    <div class="mkd-main__info">
+      <div class="mkd-topline">
+        <span class="mkd-badge {% if listing.status == 'CANCELLED' %}mkd-badge--muted{% elif listing.status == 'EXPIRED' %}mkd-badge--warn{% endif %}">{{ listing.get_status_display }}</span>
+        <span class="mkd-location">
+          <i class="bi bi-geo-alt-fill"></i>
+          {{ producer_location }}
+        </span>
+      </div>
+
+      <h1>{{ listing.product.name }} <span>/ {{ listing.product.unit }}</span></h1>
+      <p class="mkd-producer">Produtor: <strong>{{ producer_name }}</strong></p>
+
+      <div class="mkd-photo">
+        {% if listing_photo_url %}
+          <img src="{{ listing_photo_url }}" alt="{{ listing.product.name }}">
+        {% else %}
+          <div class="mkd-photo__empty">
+            <i class="bi bi-image"></i>
+            <span>Sem foto do anúncio</span>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="mkd-stats">
+        <div class="mkd-stat">
+          <p>Disponível</p>
+          <strong>{{ listing.quantity_available|floatformat:"-3" }} <span>{{ listing.product.unit }}</span></strong>
+        </div>
+
+        <div class="mkd-stat">
+          <p>Preço unitário</p>
+          <strong class="is-green">{{ listing.unit_price|floatformat:2 }} <span>€</span></strong>
+        </div>
+      </div>
+
+      <div class="mkd-delivery">
+        <h4><i class="bi bi-truck"></i> Condições de entrega</h4>
+        <p>{{ delivery_text }}</p>
+      </div>
+    </div>
+
+    {% if is_owner_listing %}
+      <aside class="mkd-buybox">
+        <h3>Gerir anúncio</h3>
+
+        <div class="mkd-owner-meta">
+          <div>
+            <p>Estado atual</p>
+            <strong>{{ listing.get_status_display }}</strong>
+          </div>
+          <div>
+            <p>Expira em</p>
+            <strong>
+              {% if expires_at_local %}
+                {{ expires_at_local|date:"d/m/Y H:i" }}
+              {% else %}
+                Sem prazo
+              {% endif %}
+            </strong>
+          </div>
+        </div>
+
+        <div class="mkd-divider"></div>
+
+        <div class="mkd-actions-stack">
+          <a href="{% url 'marketplace:edit' listing.id %}"
+             hx-get="{% url 'marketplace:edit' listing.id %}"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mkd-btn-primary">
+            <i class="bi bi-pencil-square"></i>
+            Editar anúncio
+          </a>
+
+          <form method="post"
+                action="{% url 'marketplace:toggle_status' listing.id %}"
+                hx-post="{% url 'marketplace:toggle_status' listing.id %}"
+                hx-target="#shellMain"
+                hx-select="#shellMain"
+                hx-swap="outerHTML"
+                hx-push-url="true">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="source" value="detail">
+            <button type="submit" class="mkd-btn-secondary">
+              {% if listing.status == "ACTIVE" %}
+                <i class="bi bi-pause-circle"></i>
+                Desativar anúncio
+              {% else %}
+                <i class="bi bi-play-circle"></i>
+                Ativar anúncio
+              {% endif %}
+            </button>
+          </form>
+        </div>
+      </aside>
+    {% else %}
+      <aside class="mkd-buybox">
+        <h3>Comprar</h3>
+
+        <div class="mkd-field">
+          <label for="quantityInput">Quantidade a comprar ({{ listing.product.unit }})</label>
+          <div class="mkd-quantity-wrap">
+            <input type="number"
+                  id="quantityInput"
+                  min="1"
+                  max="{{ listing.quantity_available|floatformat:'0' }}"
+                  value="{{ quantity }}">
+            <span>{{ listing.product.unit }}</span>
+          </div>
+          <p class="mkd-help">Máx: {{ listing.quantity_available|floatformat:"-3" }} {{ listing.product.unit }}</p>
+        </div>
+
+        <div class="mkd-divider"></div>
+
+        <div class="mkd-total">
+          <span>Total estimado:</span>
+          <strong id="listingTotal">{{ total|floatformat:2 }} €</strong>
+        </div>
+
+        <div class="mkd-actions-stack">
+          <button type="button" class="mkd-btn-primary">
+            <i class="bi bi-cart3"></i>
+            Adicionar à encomenda
+          </button>
+
+          <a href="/mensagens/" class="mkd-btn-secondary">
+            <i class="bi bi-chat-dots"></i>
+            Contactar produtor
+          </a>
+        </div>
+      </aside>
+    {% endif %}
+  </section>
+
+  <section class="mkd-bottom-grid">
+    <article class="mkd-card">
+      <h3><i class="bi bi-star-fill"></i> Histórico do produtor</h3>
+
+      <div class="mkd-producer-box">
+        <div class="mkd-avatar">{{ producer_initials }}</div>
+        <div>
+          <p class="mkd-producer-name">{{ producer_name }}</p>
+          <p class="mkd-producer-meta">
+            {% if producer_member_since %}
+              Membro desde {{ producer_member_since }}
+            {% else %}
+              Membro da cooperativa
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <div class="mkd-producer-stats">
+        <div>
+          <p>Estado</p>
+          <strong>Produtor ativo</strong>
+        </div>
+        <div>
+          <p>Anúncio</p>
+          <strong>{{ listing.get_status_display }}</strong>
+        </div>
+      </div>
+    </article>
+
+    <article class="mkd-card">
+      <h3><i class="bi bi-info-circle"></i> Observações</h3>
+      <p class="mkd-notes">{{ detail_description }}</p>
+    </article>
+  </section>
+</div>
+
+<script>
+(function () {
+  const input = document.getElementById("quantityInput");
+  const totalEl = document.getElementById("listingTotal");
+  const pricePerUnit = parseFloat("{{ listing.unit_price|floatformat:2 }}".replace(",", "."));
+
+  if (!input || !totalEl || Number.isNaN(pricePerUnit)) return;
+
+  function updateTotal() {
+    let qty = parseFloat(String(input.value || "0").replace(",", "."));
+    const max = parseFloat(String(input.max || "0").replace(",", "."));
+
+    if (qty < 1) qty = 1;
+    if (max > 0 && qty > max) qty = max;
+
+    input.value = qty;
+    totalEl.textContent = (qty * pricePerUnit).toFixed(2).replace(".", ",") + " €";
+  }
+
+  input.addEventListener("input", updateTotal);
+})();
+</script>
+
+<style>
+.mkd-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1100px;
+}
+
+.mkd-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.mkd-breadcrumb a {
+  text-decoration: none;
+  color: #64748b;
+}
+
+.mkd-breadcrumb a:hover {
+  color: #16a34a;
+}
+
+.mkd-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.mkd-main__info,
+.mkd-buybox,
+.mkd-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1.2rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.04);
+}
+
+.mkd-main__info {
+  padding: 1.4rem;
+}
+
+.mkd-topline {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.mkd-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.75rem;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.mkd-badge--muted {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.mkd-badge--warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.mkd-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.mkd-main__info h1 {
+  margin: 0 0 0.35rem;
+  font-size: 2.1rem;
+  line-height: 1.1;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mkd-main__info h1 span {
+  font-size: 1.2rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.mkd-producer {
+  margin: 0 0 1.2rem;
+  color: #475569;
+  font-size: 1rem;
+}
+
+.mkd-photo {
+  width: 100%;
+  aspect-ratio: 16/8;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  margin-bottom: 1rem;
+}
+
+.mkd-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mkd-photo__empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.mkd-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.mkd-stat {
+  padding: 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+}
+
+.mkd-stat p {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.mkd-stat strong {
+  font-size: 1.7rem;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mkd-stat strong span {
+  font-size: 1rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.mkd-stat strong.is-green {
+  color: #16a34a;
+}
+
+.mkd-delivery {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.mkd-delivery h4 {
+  margin: 0 0 0.45rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #1d4ed8;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.mkd-delivery p {
+  margin: 0;
+  color: #334155;
+  line-height: 1.55;
+  font-size: 0.88rem;
+}
+
+.mkd-buybox {
+  padding: 1.2rem;
+  position: sticky;
+  top: 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.mkd-buybox h3 {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.mkd-owner-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.mkd-owner-meta > div {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0.85rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.mkd-owner-meta p {
+  margin: 0 0 0.2rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.mkd-owner-meta strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.mkd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mkd-field label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.mkd-quantity-wrap {
+  position: relative;
+}
+
+.mkd-quantity-wrap input {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.9rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  outline: none;
+  background: #fff;
+}
+
+.mkd-quantity-wrap input:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+}
+
+.mkd-quantity-wrap span {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.mkd-help {
+  margin: 0;
+  text-align: right;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.mkd-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 1rem 0;
+}
+
+.mkd-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.mkd-total span {
+  color: #475569;
+  font-weight: 600;
+}
+
+.mkd-total strong {
+  font-size: 1.8rem;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mkd-btn-primary,
+.mkd-btn-secondary {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  border-radius: 0.9rem;
+  padding: 0.95rem 1rem;
+  font-size: 0.92rem;
+  font-weight: 800;
+  transition: 0.15s ease;
+}
+
+.mkd-buybox form {
+  margin: 0;
+  width: 100%;
+}
+
+.mkd-btn-primary {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+}
+
+.mkd-btn-primary:hover {
+  background: #15803d;
+}
+
+.mkd-btn-secondary {
+  background: #fff;
+  color: #334155;
+  border: 2px solid #e2e8f0;
+}
+
+.mkd-btn-secondary:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.mkd-actions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.mkd-actions-stack > * {
+  width: 100%;
+}
+
+.mkd-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.mkd-card {
+  padding: 1.2rem;
+}
+
+.mkd-card h3 {
+  margin: 0 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.mkd-producer-box {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.mkd-avatar {
+  width: 62px;
+  height: 62px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.mkd-producer-name {
+  margin: 0;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.mkd-producer-meta {
+  margin: 0.15rem 0 0;
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.mkd-producer-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.mkd-producer-stats p {
+  margin: 0 0 0.2rem;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.mkd-producer-stats strong {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mkd-notes {
+  margin: 0;
+  color: #475569;
+  line-height: 1.7;
+}
+
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 980px) {
+  .mkd-main,
+  .mkd-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mkd-buybox {
+    position: static;
+  }
+}
+
+@media (max-width: 680px) {
+  .mkd-stats {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+{% endblock %}
+
