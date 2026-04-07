@@ -1,0 +1,15 @@
+<div class="mkd-total-box {% if max_quantity <= 0 or has_user_quantity_input and is_quantity_clamped %}is-warning{% endif %}" id="mkd-total-box">
+  <div class="mkd-total-row">
+    <span>Total estimado</span>
+    <strong>{{ total|floatformat:2 }} €</strong>
+  </div>
+  <p class="mkd-total-hint">
+    {% if max_quantity <= 0 %}
+      Sem stock disponível neste anúncio.
+    {% elif has_user_quantity_input and is_quantity_clamped %}
+      Quantidade ajustada para {{ quantity|floatformat:"-3" }} {{ listing.product.unit }}.
+    {% else %}
+      Máx: {{ max_quantity|floatformat:"-3" }} {{ listing.product.unit }}
+    {% endif %}
+  </p>
+</div>

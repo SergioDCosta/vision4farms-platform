@@ -104,6 +104,10 @@ class MarketplacePublishForm(forms.Form):
             "accept": "image/*",
         }),
     )
+    photo_crop = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
+    )
 
     notes = forms.CharField(
         label="Observações",
@@ -237,7 +241,7 @@ class MarketplaceEditForm(forms.Form):
         label="Quantidade listada",
         min_value=Decimal("0.01"),
         max_digits=12,
-        decimal_places=2,
+        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
             "step": "any",

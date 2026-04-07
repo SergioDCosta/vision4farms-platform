@@ -149,7 +149,7 @@
               <span>Publicar excedente</span>
             </a>
           {% elif stock.current_quantity <= stock.minimum_threshold %}
-            <a href="/recomendacoes/?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
+            <a href="{% url 'recommendations:index' %}?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
               <i class="bi bi-stars"></i>
               <span>Ver recomendações</span>
             </a>

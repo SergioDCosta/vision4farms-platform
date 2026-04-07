@@ -180,6 +180,7 @@
             <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
             <div class="mkp-photo-input">
               {{ form.photo }}
+              {{ form.photo_crop }}
             </div>
             {% if form.photo.errors %}
               <div class="mkp-field-errors">
@@ -188,6 +189,15 @@
                 {% endfor %}
               </div>
             {% endif %}
+            <div class="mkp-cropper" id="mkp-cropper" hidden>
+              <div class="mkp-help">Recorta a foto arrastando a área verde antes de publicar.</div>
+              <div class="mkp-crop-stage" id="mkp-crop-stage">
+                <img id="mkp-crop-image" alt="Pré-visualização para recorte">
+                <div class="mkp-crop-box" id="mkp-crop-box">
+                  <span class="mkp-crop-handle" id="mkp-crop-handle"></span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="mkp-actions">
@@ -268,6 +278,187 @@
 
   modeField.addEventListener("change", syncExpiryFields);
   syncExpiryFields();
+
+  const photoInput = document.getElementById("{{ form.photo.id_for_label }}");
+  const photoCropInput = document.getElementById("{{ form.photo_crop.id_for_label }}");
+  const cropper = document.getElementById("mkp-cropper");
+  const cropStage = document.getElementById("mkp-crop-stage");
+  const cropImage = document.getElementById("mkp-crop-image");
+  const cropBox = document.getElementById("mkp-crop-box");
+  const cropHandle = document.getElementById("mkp-crop-handle");
+
+  if (!photoInput || !photoCropInput || !cropper || !cropStage || !cropImage || !cropBox || !cropHandle) {
+    return;
+  }
+
+  const state = {
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    pointerId: null,
+    dragging: false,
+    resizing: false,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+    originW: 0,
+    originH: 0,
+    objectUrl: null,
+  };
+
+  function stageWidth() {
+    return cropStage.clientWidth || 0;
+  }
+
+  function stageHeight() {
+    return cropStage.clientHeight || 0;
+  }
+
+  function updateCropPayload() {
+    const sw = stageWidth();
+    const sh = stageHeight();
+    if (!sw || !sh) {
+      photoCropInput.value = "";
+      return;
+    }
+
+    const payload = {
+      x: Number((state.x / sw).toFixed(6)),
+      y: Number((state.y / sh).toFixed(6)),
+      w: Number((state.w / sw).toFixed(6)),
+      h: Number((state.h / sh).toFixed(6)),
+    };
+    photoCropInput.value = JSON.stringify(payload);
+  }
+
+  function drawCropBox() {
+    cropBox.style.left = `${state.x}px`;
+    cropBox.style.top = `${state.y}px`;
+    cropBox.style.width = `${state.w}px`;
+    cropBox.style.height = `${state.h}px`;
+    updateCropPayload();
+  }
+
+  function setInitialCropBox() {
+    const sw = stageWidth();
+    const sh = stageHeight();
+    if (!sw || !sh) return;
+
+    const initW = Math.max(80, Math.round(sw * 0.7));
+    const initH = Math.max(80, Math.round(sh * 0.7));
+    state.w = Math.min(initW, sw);
+    state.h = Math.min(initH, sh);
+    state.x = Math.max(0, Math.round((sw - state.w) / 2));
+    state.y = Math.max(0, Math.round((sh - state.h) / 2));
+    drawCropBox();
+  }
+
+  function endPointerInteraction() {
+    state.dragging = false;
+    state.resizing = false;
+    state.pointerId = null;
+    cropBox.classList.remove("is-dragging");
+    cropBox.classList.remove("is-resizing");
+  }
+
+  function onCropPointerDown(event) {
+    if (!cropImage.getAttribute("src")) return;
+    event.preventDefault();
+
+    const isHandle = event.target === cropHandle || cropHandle.contains(event.target);
+    state.pointerId = event.pointerId;
+    state.startX = event.clientX;
+    state.startY = event.clientY;
+    state.originX = state.x;
+    state.originY = state.y;
+    state.originW = state.w;
+    state.originH = state.h;
+    state.dragging = !isHandle;
+    state.resizing = isHandle;
+
+    cropBox.classList.toggle("is-dragging", state.dragging);
+    cropBox.classList.toggle("is-resizing", state.resizing);
+    cropBox.setPointerCapture(event.pointerId);
+  }
+
+  function onCropPointerMove(event) {
+    if (state.pointerId !== event.pointerId) return;
+    if (!state.dragging && !state.resizing) return;
+
+    const sw = stageWidth();
+    const sh = stageHeight();
+    if (!sw || !sh) return;
+
+    const dx = event.clientX - state.startX;
+    const dy = event.clientY - state.startY;
+
+    if (state.dragging) {
+      const maxX = Math.max(0, sw - state.w);
+      const maxY = Math.max(0, sh - state.h);
+      state.x = Math.min(Math.max(0, state.originX + dx), maxX);
+      state.y = Math.min(Math.max(0, state.originY + dy), maxY);
+    } else if (state.resizing) {
+      const minSize = 40;
+      const maxW = Math.max(minSize, sw - state.originX);
+      const maxH = Math.max(minSize, sh - state.originY);
+      state.w = Math.min(Math.max(minSize, state.originW + dx), maxW);
+      state.h = Math.min(Math.max(minSize, state.originH + dy), maxH);
+      state.x = state.originX;
+      state.y = state.originY;
+    }
+
+    drawCropBox();
+  }
+
+  function onCropPointerEnd(event) {
+    if (state.pointerId !== event.pointerId) return;
+    try {
+      cropBox.releasePointerCapture(event.pointerId);
+    } catch (error) {}
+    endPointerInteraction();
+  }
+
+  function clearPreview() {
+    if (state.objectUrl) {
+      URL.revokeObjectURL(state.objectUrl);
+      state.objectUrl = null;
+    }
+    cropImage.removeAttribute("src");
+    cropper.hidden = true;
+    photoCropInput.value = "";
+    endPointerInteraction();
+  }
+
+  function loadPreview(file) {
+    clearPreview();
+    state.objectUrl = URL.createObjectURL(file);
+    cropImage.onload = function () {
+      cropper.hidden = false;
+      setInitialCropBox();
+    };
+    cropImage.src = state.objectUrl;
+  }
+
+  photoInput.addEventListener("change", function () {
+    const file = photoInput.files && photoInput.files[0];
+    if (!file) {
+      clearPreview();
+      return;
+    }
+    loadPreview(file);
+  });
+
+  cropBox.addEventListener("pointerdown", onCropPointerDown);
+  cropBox.addEventListener("pointermove", onCropPointerMove);
+  cropBox.addEventListener("pointerup", onCropPointerEnd);
+  cropBox.addEventListener("pointercancel", onCropPointerEnd);
+
+  window.addEventListener("resize", function () {
+    if (cropper.hidden || !cropImage.getAttribute("src")) return;
+    setInitialCropBox();
+  });
 })();
 </script>
 
@@ -401,6 +592,57 @@
 
 .mkp-photo-input input[type="file"] {
   background: #fff;
+}
+
+.mkp-cropper {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mkp-crop-stage {
+  position: relative;
+  width: min(100%, 460px);
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.mkp-crop-stage img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 340px;
+  object-fit: contain;
+  background: #0f172a;
+}
+
+.mkp-crop-box {
+  position: absolute;
+  border: 2px solid #22c55e;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+  cursor: move;
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.mkp-crop-box.is-dragging,
+.mkp-crop-box.is-resizing {
+  border-color: #4ade80;
+}
+
+.mkp-crop-handle {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  background: #22c55e;
+  cursor: nwse-resize;
 }
 
 .mkp-field-errors {

@@ -96,12 +96,31 @@ def recommendations_index_view(request):
         return redirect("dashboard:painel")
 
     form_products = _get_form_products(producer)
-    form = RecommendationRequestForm(products=form_products)
+    requested_product_id = (request.GET.get("product") or "").strip()
+    selected_product = None
+    if requested_product_id:
+        selected_product = next(
+            (product for product in form_products if str(product.id) == requested_product_id),
+            None,
+        )
+
+    form_initial = {}
+    initial_deficit_quantity = "0"
+    initial_current_quantity = "0"
+
+    if selected_product:
+        deficit_data = calculate_current_deficit(producer, selected_product)
+        form_initial["product_id"] = str(selected_product.id)
+        form_initial["requested_quantity"] = deficit_data["deficit_quantity"]
+        initial_deficit_quantity = deficit_data["deficit_quantity"]
+        initial_current_quantity = deficit_data["current_stock"]
+
+    form = RecommendationRequestForm(products=form_products, initial=form_initial)
 
     context = _build_step_1_context(
         form=form,
-        initial_deficit_quantity="0",
-        initial_current_quantity="0",
+        initial_deficit_quantity=initial_deficit_quantity,
+        initial_current_quantity=initial_current_quantity,
     )
     return render(request, "recommendations/index.html", context)
 

@@ -12,6 +12,7 @@ urlpatterns = [
     path("gestor/produtos/novo/", views.admin_product_create_view, name="gestor_produto_novo"),
     path("gestor/produtos/<uuid:product_id>/", views.admin_product_detail_view, name="gestor_produto_detalhe"),
     path("gestor/produtos/<uuid:product_id>/editar/", views.admin_product_update_view, name="gestor_produto_editar"),
+    path("gestor/produtos/<uuid:product_id>/remover/", views.admin_product_delete_view, name="gestor_produto_remover"),
 
     path("gestor/categorias/", views.admin_categories_view, name="gestor_categorias"),
     path("gestor/categorias/nova/", views.admin_category_create_view, name="gestor_categoria_nova"),

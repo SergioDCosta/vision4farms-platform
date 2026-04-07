@@ -57,6 +57,67 @@
                  title="Editar">
                 <i class="bi bi-pencil"></i>
               </a>
+
+              {% if product.producers_count == 0 %}
+                <button type="button"
+                        class="adm-act-btn adm-act-btn--danger"
+                        title="Remover definitivamente"
+                        data-bs-toggle="modal"
+                        data-bs-target="#deleteProductModal-{{ product.id }}">
+                  <i class="bi bi-trash"></i>
+                </button>
+
+                <div class="modal fade" id="deleteProductModal-{{ product.id }}" tabindex="-1" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="border-radius:1rem;border:none;overflow:hidden;">
+                      <div class="modal-header" style="padding:1rem 1.2rem;border-bottom:1px solid #e2e8f0;">
+                        <h5 class="modal-title fw-bold">Confirmar remoção</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                      </div>
+
+                      <div class="modal-body" style="padding:1.1rem 1.2rem;text-align:left;">
+                        <p style="margin:0 0 .45rem 0;color:#334155;">
+                          Tem a certeza que quer remover definitivamente o produto
+                          <strong>{{ product.name }}</strong>?
+                        </p>
+                        <p style="margin:0;font-size:.84rem;color:#b91c1c;">
+                          Esta ação não pode ser anulada.
+                        </p>
+                      </div>
+
+                      <div class="modal-footer" style="padding:1rem 1.2rem;border-top:1px solid #e2e8f0;display:flex;flex-direction:column;justify-content:flex-end;gap:.6rem;">
+                        <button type="button"
+                                class="btn btn-success"
+                                data-bs-dismiss="modal"
+                                style="width:100%;">
+                          Não
+                        </button>
+                        <form method="post"
+                              action="{% url 'dashboard:gestor_produto_remover' product.id %}"
+                              hx-post="{% url 'dashboard:gestor_produto_remover' product.id %}"
+                              hx-target="#products-table"
+                              hx-swap="outerHTML"
+                              style="margin:0;width:100%;">
+                          {% csrf_token %}
+                          <input type="hidden" name="q" value="{{ q }}">
+                          <button type="submit"
+                                  class="btn btn-danger"
+                                  data-bs-dismiss="modal"
+                                  style="width:100%;">
+                            Sim, tenho a certeza
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% else %}
+                <span class="adm-act-btn"
+                      title="Produto associado a produtores: apenas desativação disponível."
+                      style="cursor:not-allowed;opacity:.55;">
+                  <i class="bi bi-lock"></i>
+                </span>
+              {% endif %}
             </div>
           </td>
         </tr>

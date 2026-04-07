@@ -15,6 +15,7 @@ from django.urls import reverse
 from PIL import Image, ImageOps
 
 from apps.common.decorators import login_required, client_only_required
+from apps.accounts.models import UserRole
 from apps.inventory.models import ProducerProduct
 from apps.marketplace.forms import MarketplacePublishForm, MarketplaceEditForm
 from apps.marketplace.models import MarketplaceListing, ListingStatus
@@ -259,22 +260,55 @@ def _build_marketplace_index_context(producer, *, active_tab, q, category_id):
     }
 
 
-def _build_marketplace_detail_context(request, listing, producer):
-    try:
-        quantity = Decimal(request.GET.get("qty", "100"))
-    except Exception:
-        quantity = Decimal("100")
+def _build_listing_purchase_quote(listing, raw_quantity=None):
+    default_quantity = Decimal("100")
+    has_user_quantity_input = raw_quantity not in (None, "")
+    parsed_quantity = None
 
+    if has_user_quantity_input:
+        try:
+            parsed_quantity = Decimal(str(raw_quantity).strip())
+        except Exception:
+            parsed_quantity = None
+    else:
+        parsed_quantity = default_quantity
+
+    invalid_quantity_input = parsed_quantity is None
+    quantity = parsed_quantity if parsed_quantity is not None else Decimal("1")
     max_quantity = Decimal(str(listing.quantity_available or 0))
+    is_quantity_clamped = False
+
     if max_quantity <= 0:
+        if quantity != Decimal("0"):
+            is_quantity_clamped = True
         quantity = Decimal("0")
     else:
         if quantity < Decimal("1"):
             quantity = Decimal("1")
+            is_quantity_clamped = True
         if quantity > max_quantity:
             quantity = max_quantity
+            is_quantity_clamped = True
 
-    total = quantity * Decimal(str(listing.unit_price))
+    if invalid_quantity_input and has_user_quantity_input:
+        is_quantity_clamped = True
+
+    total = quantity * Decimal(str(listing.unit_price or 0))
+
+    return {
+        "quantity": quantity,
+        "max_quantity": max_quantity,
+        "total": total,
+        "is_quantity_clamped": is_quantity_clamped,
+        "has_user_quantity_input": has_user_quantity_input,
+    }
+
+
+def _build_marketplace_detail_context(request, listing, producer):
+    quote = _build_listing_purchase_quote(
+        listing,
+        raw_quantity=request.GET.get("qty"),
+    )
 
     producer_name = get_producer_display_name(listing.producer)
     producer_initials = get_producer_initials(listing.producer)
@@ -301,6 +335,8 @@ def _build_marketplace_detail_context(request, listing, producer):
         producer_member_since = producer_user.created_at.year
 
     is_owner_listing = bool(producer and listing.producer_id == producer.id)
+    is_admin_user = getattr(request.current_user, "role", None) == UserRole.ADMIN
+    show_buybox = is_owner_listing or not is_admin_user
     expires_at_local = None
     if listing.expires_at:
         expires_at_local = timezone.localtime(listing.expires_at)
@@ -309,8 +345,7 @@ def _build_marketplace_detail_context(request, listing, producer):
         "page_title": "Detalhe do Produto",
         "listing": listing,
         "listing_photo_url": _listing_photo_url(listing.photo_path),
-        "quantity": quantity,
-        "total": total,
+        **quote,
         "producer_name": producer_name,
         "producer_initials": producer_initials,
         "producer_location": producer_location,
@@ -318,6 +353,8 @@ def _build_marketplace_detail_context(request, listing, producer):
         "detail_description": detail_description,
         "producer_member_since": producer_member_since,
         "is_owner_listing": is_owner_listing,
+        "is_admin_user": is_admin_user,
+        "show_buybox": show_buybox,
         "expires_at_local": expires_at_local,
     }
 
@@ -353,6 +390,27 @@ def marketplace_detail_view(request, listing_id):
 
 
 @login_required
+def marketplace_detail_total_view(request, listing_id):
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    expire_due_active_listings()
+
+    listing = get_object_or_404(
+        get_listing_detail_queryset(producer=producer),
+        id=listing_id,
+    )
+    quote = _build_listing_purchase_quote(
+        listing,
+        raw_quantity=request.GET.get("qty"),
+    )
+    context = {
+        "listing": listing,
+        **quote,
+    }
+    return render(request, "marketplace/partials/detail_total.html", context)
+
+
+@login_required
 @client_only_required
 def marketplace_publish_view(request):
     current_user = request.current_user
@@ -370,11 +428,13 @@ def marketplace_publish_view(request):
 
     if request.method == "POST" and form.is_valid():
         uploaded_photo = request.FILES.get("photo")
+        photo_crop = form.cleaned_data.get("photo_crop")
         photo_path = None
 
         try:
             if uploaded_photo:
-                photo_path = _save_listing_photo(producer, uploaded_photo)
+                cropped_photo = _maybe_crop_uploaded_photo(uploaded_photo, photo_crop)
+                photo_path = _save_listing_photo(producer, cropped_photo)
 
             listing = create_listing(
                 producer=producer,
@@ -472,6 +532,43 @@ def marketplace_edit_view(request, listing_id):
         "current_photo_url": current_photo_url,
     }
     return render(request, "marketplace/edit.html", context)
+
+
+@login_required
+@client_only_required
+def marketplace_delete_view(request, listing_id):
+    if request.method != "POST":
+        return redirect("marketplace:index")
+
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    listing = get_object_or_404(
+        MarketplaceListing.objects.select_related("producer"),
+        id=listing_id,
+        producer=producer,
+    )
+
+    reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
+    if reserved_quantity > 0:
+        messages.error(
+            request,
+            (
+                "Não pode eliminar este anúncio porque tem quantidade reservada. "
+                "Desative-o ou ajuste primeiro."
+            ),
+        )
+        return redirect("marketplace:edit", listing_id=listing.id)
+
+    photo_path = listing.photo_path
+    listing.delete()
+    _delete_uploaded_file(photo_path)
+
+    messages.success(request, "Anúncio eliminado com sucesso.")
+    return redirect(f"{reverse('marketplace:index')}?tab=meus")
 
 
 @login_required

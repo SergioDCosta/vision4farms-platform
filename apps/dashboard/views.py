@@ -2,8 +2,9 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db import models, transaction
+from django.db import models, transaction, IntegrityError
 from django.db.models import Q, Sum, Count
+from django.db.models.deletion import ProtectedError, RestrictedError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
@@ -83,6 +84,32 @@ def _build_unique_product_slug(base_slug, exclude_id=None):
             return candidate
         candidate = f"{slug}-{counter}"
         counter += 1
+
+
+def _get_admin_products_queryset(q=""):
+    products = (
+        Product.objects
+        .select_related("category")
+        .annotate(
+            active_producers_count=Count(
+                "producer_links",
+                filter=Q(producer_links__is_active=True),
+                distinct=True,
+            ),
+            producers_count=Count("producer_links", distinct=True),
+        )
+        .order_by("name")
+    )
+
+    if q:
+        products = products.filter(
+            Q(name__icontains=q)
+            | Q(slug__icontains=q)
+            | Q(unit__icontains=q)
+            | Q(category__name__icontains=q)
+        )
+
+    return products
 
 
 def _product_snapshot(product):
@@ -309,27 +336,7 @@ def admin_dashboard_view(request):
 @admin_required
 def admin_products_view(request):
     q = request.GET.get("q", "").strip()
-
-    products = (
-        Product.objects
-        .select_related("category")
-        .annotate(
-            active_producers_count=Count(
-                "producer_links",
-                filter=Q(producer_links__is_active=True),
-                distinct=True,
-            )
-        )
-        .order_by("name")
-    )
-
-    if q:
-        products = products.filter(
-            Q(name__icontains=q)
-            | Q(slug__icontains=q)
-            | Q(unit__icontains=q)
-            | Q(category__name__icontains=q)
-        )
+    products = _get_admin_products_queryset(q=q)
 
     context = {
         "admin_tab": "produtos",
@@ -374,6 +381,7 @@ def admin_product_detail_view(request, product_id):
         "product_obj": product,
         "producer_rows": producer_rows,
         "active_producers_count": len(producer_rows),
+        "can_hard_delete": not ProducerProduct.objects.filter(product=product).exists(),
     }
     return render(request, "dashboard/admin/product_detail.html", context)
 
@@ -507,6 +515,87 @@ def admin_product_update_view(request, product_id):
         "is_create": False,
     }
     return render(request, "dashboard/admin/product_form.html", context)
+
+
+@admin_required
+@require_POST
+def admin_product_delete_view(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    q = request.POST.get("q", "").strip()
+    next_url = request.POST.get("next")
+
+    has_associated_producers = ProducerProduct.objects.filter(product=product).exists()
+    if has_associated_producers:
+        error_msg = (
+            "Este produto já está associado a produtores. "
+            "Só pode ser desativado, não removido."
+        )
+
+        if request.htmx:
+            context = {
+                "admin_tab": "produtos",
+                "products": _get_admin_products_queryset(q=q),
+                "q": q,
+            }
+            response = render(request, "dashboard/admin/partials/products_table.html", context)
+            return with_htmx_toast(response, "error", error_msg)
+
+        messages.error(request, error_msg)
+        if next_url:
+            return redirect(next_url)
+        return redirect("dashboard:gestor_produto_detalhe", product_id=product.id)
+
+    product_name = product.name
+    old_snapshot = _product_snapshot(product)
+
+    try:
+        with transaction.atomic():
+            product.delete()
+    except (ProtectedError, RestrictedError, IntegrityError):
+        error_msg = (
+            "Não foi possível remover este produto porque existem registos "
+            "relacionados. Pode desativá-lo em vez de remover."
+        )
+
+        if request.htmx:
+            context = {
+                "admin_tab": "produtos",
+                "products": _get_admin_products_queryset(q=q),
+                "q": q,
+            }
+            response = render(request, "dashboard/admin/partials/products_table.html", context)
+            return with_htmx_toast(response, "error", error_msg)
+
+        messages.error(request, error_msg)
+        if next_url:
+            return redirect(next_url)
+        return redirect("dashboard:gestor_produto_detalhe", product_id=product_id)
+
+    _log_admin_action(
+        request=request,
+        action="PRODUCT_DELETED",
+        entity_type="products",
+        entity_id=product_id,
+        notes=f"Administrador removeu o produto {product_name}.",
+        old_values=old_snapshot,
+        new_values=None,
+    )
+
+    success_msg = f"Produto {product_name} removido com sucesso."
+
+    if request.htmx:
+        context = {
+            "admin_tab": "produtos",
+            "products": _get_admin_products_queryset(q=q),
+            "q": q,
+        }
+        response = render(request, "dashboard/admin/partials/products_table.html", context)
+        return with_htmx_toast(response, "success", success_msg)
+
+    messages.success(request, success_msg)
+    if next_url:
+        return redirect(next_url)
+    return redirect("dashboard:gestor_produtos")
 
 
 @admin_required

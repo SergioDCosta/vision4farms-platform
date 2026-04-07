@@ -1,4 +1,5 @@
 {% extends "dashboard/base_app.html" %}
+{% load l10n %}
 {% block app_title %}Detalhe do Produto{% endblock %}
 {% block app_content %}
 
@@ -9,47 +10,54 @@
     <span>Detalhe do Produto</span>
   </nav>
 
-  <section class="mkd-main">
-    <div class="mkd-main__info">
-      <div class="mkd-topline">
-        <span class="mkd-badge {% if listing.status == 'CANCELLED' %}mkd-badge--muted{% elif listing.status == 'EXPIRED' %}mkd-badge--warn{% endif %}">{{ listing.get_status_display }}</span>
-        <span class="mkd-location">
-          <i class="bi bi-geo-alt-fill"></i>
-          {{ producer_location }}
-        </span>
-      </div>
+  <section class="mkd-main {% if not show_buybox %}mkd-main--single{% endif %}">
+    <article class="mkd-main__info">
+      <header class="mkd-headline">
+        <div class="mkd-topline">
+          <span class="mkd-badge {% if listing.status == 'CANCELLED' %}mkd-badge--muted{% elif listing.status == 'EXPIRED' %}mkd-badge--warn{% endif %}">
+            {{ listing.get_status_display }}
+          </span>
+          <span class="mkd-location">
+            <i class="bi bi-geo-alt-fill"></i>
+            {{ producer_location }}
+          </span>
+        </div>
 
-      <h1>{{ listing.product.name }} <span>/ {{ listing.product.unit }}</span></h1>
-      <p class="mkd-producer">Produtor: <strong>{{ producer_name }}</strong></p>
+        <h1>{{ listing.product.name }} <span>/ {{ listing.product.unit }}</span></h1>
+        <p class="mkd-producer">Produtor: <strong>{{ producer_name }}</strong></p>
+      </header>
 
-      <div class="mkd-photo">
-        {% if listing_photo_url %}
-          <img src="{{ listing_photo_url }}" alt="{{ listing.product.name }}">
-        {% else %}
-          <div class="mkd-photo__empty">
-            <i class="bi bi-image"></i>
-            <span>Sem foto do anúncio</span>
+      <div class="mkd-media-meta">
+        <div class="mkd-photo">
+          {% if listing_photo_url %}
+            <img src="{{ listing_photo_url }}" alt="{{ listing.product.name }}">
+          {% else %}
+            <div class="mkd-photo__empty">
+              <i class="bi bi-image"></i>
+              <span>Sem foto do anúncio</span>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="mkd-side-info">
+          <div class="mkd-stats">
+            <div class="mkd-stat">
+              <p>Disponível</p>
+              <strong>{{ listing.quantity_available|floatformat:"-3" }} <span>{{ listing.product.unit }}</span></strong>
+            </div>
+            <div class="mkd-stat">
+              <p>Preço unitário</p>
+              <strong class="is-green">{{ listing.unit_price|floatformat:2 }} <span>€</span></strong>
+            </div>
           </div>
-        {% endif %}
-      </div>
 
-      <div class="mkd-stats">
-        <div class="mkd-stat">
-          <p>Disponível</p>
-          <strong>{{ listing.quantity_available|floatformat:"-3" }} <span>{{ listing.product.unit }}</span></strong>
-        </div>
-
-        <div class="mkd-stat">
-          <p>Preço unitário</p>
-          <strong class="is-green">{{ listing.unit_price|floatformat:2 }} <span>€</span></strong>
+          <div class="mkd-delivery">
+            <h4><i class="bi bi-truck"></i> Condições de entrega</h4>
+            <p>{{ delivery_text }}</p>
+          </div>
         </div>
       </div>
-
-      <div class="mkd-delivery">
-        <h4><i class="bi bi-truck"></i> Condições de entrega</h4>
-        <p>{{ delivery_text }}</p>
-      </div>
-    </div>
+    </article>
 
     {% if is_owner_listing %}
       <aside class="mkd-buybox">
@@ -108,7 +116,7 @@
           </form>
         </div>
       </aside>
-    {% else %}
+    {% elif not is_admin_user %}
       <aside class="mkd-buybox">
         <h3>Comprar</h3>
 
@@ -117,20 +125,21 @@
           <div class="mkd-quantity-wrap">
             <input type="number"
                   id="quantityInput"
+                  name="qty"
                   min="1"
-                  max="{{ listing.quantity_available|floatformat:'0' }}"
-                  value="{{ quantity }}">
+                  max="{{ max_quantity|unlocalize }}"
+                  step="0.001"
+                  value="{{ quantity|unlocalize }}"
+                  hx-get="{% url 'marketplace:detail_total' listing.id %}"
+                  hx-trigger="keyup changed delay:250ms"
+                  hx-target="#mkd-total-box"
+                  hx-swap="outerHTML"
+                  hx-include="#quantityInput">
             <span>{{ listing.product.unit }}</span>
           </div>
-          <p class="mkd-help">Máx: {{ listing.quantity_available|floatformat:"-3" }} {{ listing.product.unit }}</p>
         </div>
 
-        <div class="mkd-divider"></div>
-
-        <div class="mkd-total">
-          <span>Total estimado:</span>
-          <strong id="listingTotal">{{ total|floatformat:2 }} €</strong>
-        </div>
+        {% include "marketplace/partials/detail_total.html" %}
 
         <div class="mkd-actions-stack">
           <button type="button" class="mkd-btn-primary">
@@ -184,35 +193,12 @@
   </section>
 </div>
 
-<script>
-(function () {
-  const input = document.getElementById("quantityInput");
-  const totalEl = document.getElementById("listingTotal");
-  const pricePerUnit = parseFloat("{{ listing.unit_price|floatformat:2 }}".replace(",", "."));
-
-  if (!input || !totalEl || Number.isNaN(pricePerUnit)) return;
-
-  function updateTotal() {
-    let qty = parseFloat(String(input.value || "0").replace(",", "."));
-    const max = parseFloat(String(input.max || "0").replace(",", "."));
-
-    if (qty < 1) qty = 1;
-    if (max > 0 && qty > max) qty = max;
-
-    input.value = qty;
-    totalEl.textContent = (qty * pricePerUnit).toFixed(2).replace(".", ",") + " €";
-  }
-
-  input.addEventListener("input", updateTotal);
-})();
-</script>
-
 <style>
 .mkd-page {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  max-width: 1100px;
+  max-width: 1240px;
 }
 
 .mkd-breadcrumb {
@@ -234,9 +220,19 @@
 
 .mkd-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
   gap: 1rem;
   align-items: start;
+}
+
+.mkd-main--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mkd-main--single .mkd-main__info {
+  width: 100%;
+  max-width: 920px;
+  margin-right: auto;
 }
 
 .mkd-main__info,
@@ -249,7 +245,16 @@
 }
 
 .mkd-main__info {
-  padding: 1.4rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.mkd-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .mkd-topline {
@@ -257,7 +262,6 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
-  margin-bottom: 1rem;
 }
 
 .mkd-badge {
@@ -292,33 +296,39 @@
 }
 
 .mkd-main__info h1 {
-  margin: 0 0 0.35rem;
-  font-size: 2.1rem;
-  line-height: 1.1;
+  margin: 0;
+  font-size: clamp(1.8rem, 2.5vw, 2.4rem);
+  line-height: 1.08;
   color: #0f172a;
   font-weight: 800;
 }
 
 .mkd-main__info h1 span {
-  font-size: 1.2rem;
+  font-size: clamp(1.05rem, 1.4vw, 1.3rem);
   color: #64748b;
   font-weight: 500;
 }
 
 .mkd-producer {
-  margin: 0 0 1.2rem;
+  margin: 0;
   color: #475569;
   font-size: 1rem;
 }
 
+.mkd-media-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
 .mkd-photo {
   width: 100%;
-  aspect-ratio: 16/8;
+  min-height: 280px;
   border-radius: 1rem;
   overflow: hidden;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
-  margin-bottom: 1rem;
 }
 
 .mkd-photo img {
@@ -340,11 +350,16 @@
   font-size: 0.9rem;
 }
 
+.mkd-side-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
 .mkd-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
-  margin-bottom: 1rem;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
 }
 
 .mkd-stat {
@@ -361,13 +376,13 @@
 }
 
 .mkd-stat strong {
-  font-size: 1.7rem;
+  font-size: 1.45rem;
   color: #0f172a;
   font-weight: 800;
 }
 
 .mkd-stat strong span {
-  font-size: 1rem;
+  font-size: 0.95rem;
   color: #64748b;
   font-weight: 500;
 }
@@ -401,16 +416,16 @@
 }
 
 .mkd-buybox {
-  padding: 1.2rem;
+  padding: 1.3rem;
   position: sticky;
   top: 90px;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.95rem;
 }
 
 .mkd-buybox h3 {
-  margin: 0 0 1rem;
+  margin: 0;
   font-size: 1.15rem;
   font-weight: 800;
   color: #0f172a;
@@ -419,14 +434,14 @@
 .mkd-owner-meta {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.7rem;
 }
 
 .mkd-owner-meta > div {
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   border-radius: 0.85rem;
-  padding: 0.7rem 0.8rem;
+  padding: 0.72rem 0.82rem;
 }
 
 .mkd-owner-meta p {
@@ -443,7 +458,7 @@
 .mkd-field {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 .mkd-field label {
@@ -458,7 +473,7 @@
 
 .mkd-quantity-wrap input {
   width: 100%;
-  padding: 0.9rem 1rem;
+  padding: 0.92rem 3.8rem 0.92rem 1rem;
   border: 1px solid #cbd5e1;
   border-radius: 0.9rem;
   font-size: 1.05rem;
@@ -482,35 +497,64 @@
   font-weight: 700;
 }
 
-.mkd-help {
-  margin: 0;
-  text-align: right;
+.mkd-total-box {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.95rem;
+  background: #f8fafc;
+  padding: 0.85rem 0.95rem;
+}
+
+.mkd-total-box.is-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.mkd-total-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mkd-total-row span {
+  color: #475569;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.mkd-total-row strong {
+  font-size: 1.72rem;
+  line-height: 1;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mkd-total-hint {
+  margin: 0.4rem 0 0;
   color: #64748b;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
+  text-align: right;
 }
 
 .mkd-divider {
   height: 1px;
   background: #e2e8f0;
-  margin: 1rem 0;
+  margin: 0.15rem 0;
 }
 
-.mkd-total {
+.mkd-actions-stack {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 1rem;
+  flex-direction: column;
+  gap: 0.7rem;
 }
 
-.mkd-total span {
-  color: #475569;
-  font-weight: 600;
+.mkd-actions-stack > * {
+  width: 100%;
 }
 
-.mkd-total strong {
-  font-size: 1.8rem;
-  color: #0f172a;
-  font-weight: 800;
+.mkd-actions-stack form {
+  margin: 0;
+  width: 100%;
 }
 
 .mkd-btn-primary,
@@ -526,11 +570,6 @@
   font-size: 0.92rem;
   font-weight: 800;
   transition: 0.15s ease;
-}
-
-.mkd-buybox form {
-  margin: 0;
-  width: 100%;
 }
 
 .mkd-btn-primary {
@@ -552,16 +591,6 @@
 .mkd-btn-secondary:hover {
   border-color: #2563eb;
   color: #2563eb;
-}
-
-.mkd-actions-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
-.mkd-actions-stack > * {
-  width: 100%;
 }
 
 .mkd-bottom-grid {
@@ -641,7 +670,19 @@
   line-height: 1.7;
 }
 
-/* -------------------------------------------------------------------------- */
+@media (max-width: 1180px) {
+  .mkd-media-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .mkd-photo {
+    min-height: 250px;
+  }
+
+  .mkd-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 
 @media (max-width: 980px) {
   .mkd-main,
@@ -654,12 +695,19 @@
   }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 700px) {
+  .mkd-main__info {
+    padding: 1.1rem;
+  }
+
   .mkd-stats {
     grid-template-columns: 1fr;
+  }
+
+  .mkd-total-row strong {
+    font-size: 1.5rem;
   }
 }
 </style>
 
 {% endblock %}
-

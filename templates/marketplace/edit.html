@@ -156,6 +156,13 @@
              hx-swap="outerHTML"
              hx-push-url="true"
              class="mke-btn-secondary">Voltar</a>
+          <button type="button"
+                  class="mke-btn-danger"
+                  data-bs-toggle="modal"
+                  data-bs-target="#deleteListingModal">
+            <i class="bi bi-trash"></i>
+            Eliminar anúncio
+          </button>
           <button type="submit" class="mke-btn-primary">
             <i class="bi bi-check2-circle"></i>
             Guardar alterações
@@ -189,6 +196,38 @@
         {% endif %}
       </section>
     </aside>
+  </div>
+</div>
+
+<div class="modal fade" id="deleteListingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:1rem;border:none;overflow:hidden;">
+      <div class="modal-header" style="padding:1rem 1.2rem;border-bottom:1px solid #e2e8f0;">
+        <h5 class="modal-title fw-bold">Eliminar anúncio</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+
+      <div class="modal-body" style="padding:1.1rem 1.2rem;">
+        <p style="margin:0 0 .45rem 0;color:#334155;">
+          Tem a certeza que quer eliminar definitivamente este anúncio?
+        </p>
+        <p style="margin:0;font-size:.84rem;color:#b91c1c;">
+          Esta ação não pode ser anulada.
+        </p>
+      </div>
+
+      <div class="modal-footer" style="padding:1rem 1.2rem;border-top:1px solid #e2e8f0;display:flex;flex-direction:column;gap:.6rem;">
+        <button type="button" class="btn btn-success" data-bs-dismiss="modal" style="width:100%;">
+          Não
+        </button>
+        <form method="post" action="{% url 'marketplace:delete' listing.id %}" style="margin:0;width:100%;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger" style="width:100%;">
+            Sim, tenho a certeza
+          </button>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -549,7 +588,8 @@
 }
 
 .mke-btn-primary,
-.mke-btn-secondary {
+.mke-btn-secondary,
+.mke-btn-danger {
   flex: 1;
   min-width: 180px;
   display: inline-flex;
@@ -583,6 +623,17 @@
 .mke-btn-secondary:hover {
   border-color: #cbd5e1;
   background: #f8fafc;
+}
+
+.mke-btn-danger {
+  background: #fff5f5;
+  color: #b91c1c;
+  border: 2px solid #fecaca;
+}
+
+.mke-btn-danger:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
 }
 
 .mke-card--side h3 {
