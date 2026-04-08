@@ -17,6 +17,9 @@
           <span class="mkd-badge {% if listing.status == 'CANCELLED' %}mkd-badge--muted{% elif listing.status == 'EXPIRED' %}mkd-badge--warn{% endif %}">
             {{ listing.get_status_display }}
           </span>
+          <span class="mkd-badge {{ listing_source_badge_class|default:'mkd-badge--stock' }}">
+            {{ listing_source_label|default:"Disponível agora" }}
+          </span>
           <span class="mkd-location">
             <i class="bi bi-geo-alt-fill"></i>
             {{ producer_location }}
@@ -25,6 +28,12 @@
 
         <h1>{{ listing.product.name }} <span>/ {{ listing.product.unit }}</span></h1>
         <p class="mkd-producer">Produtor: <strong>{{ producer_name }}</strong></p>
+        {% if forecast_period_text %}
+          <p class="mkd-forecast-period">
+            <i class="bi bi-calendar-event"></i>
+            Período previsto: {{ forecast_period_text }}
+          </p>
+        {% endif %}
       </header>
 
       <div class="mkd-media-meta">
@@ -111,6 +120,23 @@
               {% else %}
                 <i class="bi bi-play-circle"></i>
                 Ativar anúncio
+              {% endif %}
+            </button>
+          </form>
+
+          <form method="post"
+                action="{% url 'marketplace:delete' listing.id %}"
+                onsubmit="return confirm('Eliminar definitivamente este anúncio?');">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'marketplace:index' %}?tab=meus">
+            <button type="submit"
+                    class="mkd-btn-danger"
+                    {% if listing.quantity_reserved|default:0 > 0 %}disabled title="Não pode eliminar anúncios com quantidade reservada."{% endif %}>
+              <i class="bi bi-trash"></i>
+              {% if listing.quantity_reserved|default:0 > 0 %}
+                Eliminar (indisponível)
+              {% else %}
+                Eliminar anúncio
               {% endif %}
             </button>
           </form>
@@ -291,6 +317,16 @@
   color: #92400e;
 }
 
+.mkd-badge--stock {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.mkd-badge--forecast {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .mkd-location {
   display: inline-flex;
   align-items: center;
@@ -317,6 +353,15 @@
   margin: 0;
   color: #475569;
   font-size: 1rem;
+}
+
+.mkd-forecast-period {
+  margin: 0;
+  color: #475569;
+  font-size: 0.86rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .mkd-media-meta {
@@ -573,7 +618,8 @@
 }
 
 .mkd-btn-primary,
-.mkd-btn-secondary {
+.mkd-btn-secondary,
+.mkd-btn-danger {
   width: 100%;
   display: inline-flex;
   align-items: center;
@@ -606,6 +652,21 @@
 .mkd-btn-secondary:hover {
   border-color: #2563eb;
   color: #2563eb;
+}
+
+.mkd-btn-danger {
+  background: #fff1f2;
+  color: #b91c1c;
+  border: 2px solid #fecaca;
+}
+
+.mkd-btn-danger:hover {
+  background: #ffe4e6;
+}
+
+.mkd-btn-danger:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .mkd-bottom-grid {

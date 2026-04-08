@@ -32,8 +32,8 @@ class AddProducerProductForm(forms.Form):
         }),
     )
 
-    minimum_threshold = forms.DecimalField(
-        label="Stock mínimo de alerta",
+    safety_stock = forms.DecimalField(
+        label="Stock de segurança",
         min_value=0,
         max_digits=14,
         decimal_places=3,
@@ -42,6 +42,18 @@ class AddProducerProductForm(forms.Form):
         widget=forms.NumberInput(attrs={
             "class": "form-control",
             "step": "0.001",
+            "placeholder": "0",
+        }),
+    )
+
+    surplus_threshold = forms.IntegerField(
+        label="Limiar excedente (opcional)",
+        required=False,
+        min_value=0,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "1",
+            "inputmode": "numeric",
             "placeholder": "0",
         }),
     )
@@ -98,8 +110,8 @@ class CreateCustomProductForm(forms.Form):
         }),
     )
 
-    minimum_threshold = forms.DecimalField(
-        label="Stock mínimo de alerta",
+    safety_stock = forms.DecimalField(
+        label="Stock de segurança",
         min_value=0,
         max_digits=14,
         decimal_places=3,
@@ -107,6 +119,18 @@ class CreateCustomProductForm(forms.Form):
         widget=forms.NumberInput(attrs={
             "class": "form-control",
             "step": "0.001",
+            "placeholder": "0",
+        }),
+    )
+
+    surplus_threshold = forms.IntegerField(
+        label="Limiar excedente (opcional)",
+        required=False,
+        min_value=0,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "1",
+            "inputmode": "numeric",
             "placeholder": "0",
         }),
     )
@@ -131,7 +155,7 @@ class CreateCustomProductForm(forms.Form):
 
 
 class UpdateStockForm(forms.Form):
-    """Atualizar a quantidade em stock e o limiar mínimo."""
+    """Atualizar a quantidade em stock, stock de segurança e limiar excedente."""
 
     MOVEMENT_CHOICES = [
         (StockMovementType.MANUAL_ADJUSTMENT, "Ajuste manual"),
@@ -150,8 +174,20 @@ class UpdateStockForm(forms.Form):
         }),
     )
 
-    minimum_threshold = forms.IntegerField(
-        label="Stock mínimo de alerta",
+    safety_stock = forms.IntegerField(
+        label="Stock de segurança",
+        min_value=0,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "1",
+            "inputmode": "numeric",
+            "placeholder": "0",
+        }),
+    )
+
+    surplus_threshold = forms.IntegerField(
+        label="Limiar excedente (opcional)",
+        required=False,
         min_value=0,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
@@ -182,3 +218,61 @@ class UpdateStockForm(forms.Form):
         if value is not None and value < 0:
             raise forms.ValidationError("A quantidade não pode ser negativa.")
         return value
+
+
+class ProductionForecastForm(forms.Form):
+    forecast_id = forms.UUIDField(required=False, widget=forms.HiddenInput())
+
+    forecast_quantity = forms.DecimalField(
+        label="Quantidade prevista",
+        min_value=0,
+        max_digits=14,
+        decimal_places=3,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "0.001",
+            "placeholder": "0",
+        }),
+    )
+
+    period_start = forms.DateTimeField(
+        label="Início do período (opcional)",
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=forms.DateTimeInput(attrs={
+            "class": "form-control",
+            "type": "datetime-local",
+        }),
+    )
+
+    period_end = forms.DateTimeField(
+        label="Fim do período (opcional)",
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=forms.DateTimeInput(attrs={
+            "class": "form-control",
+            "type": "datetime-local",
+        }),
+    )
+
+    is_marketplace_enabled = forms.BooleanField(
+        label="Ativar esta previsão para pré-venda no marketplace",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        period_start = cleaned_data.get("period_start")
+        period_end = cleaned_data.get("period_end")
+        forecast_quantity = cleaned_data.get("forecast_quantity")
+
+        if forecast_quantity is not None and forecast_quantity <= 0:
+            self.add_error("forecast_quantity", "A quantidade prevista deve ser superior a zero.")
+
+        if period_start and period_end and period_end < period_start:
+            self.add_error("period_end", "O período final não pode ser anterior ao período inicial.")
+
+        return cleaned_data
+
+

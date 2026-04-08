@@ -46,18 +46,18 @@ def get_producer_products(producer):
 def calculate_current_deficit(producer, product):
     stock = Stock.objects.filter(producer=producer, product=product).first()
     if not stock:
-        minimum_recommended = Decimal("0.000")
+        safety_stock = Decimal("0.000")
         reserved_quantity = Decimal("0.000")
         current_stock = Decimal("0.000")
     else:
-        minimum_recommended = quantize_qty(Decimal(str(stock.minimum_threshold or 0)))
+        safety_stock = quantize_qty(Decimal(str(stock.safety_stock or 0)))
         reserved_quantity = quantize_qty(Decimal(str(stock.reserved_quantity or 0)))
         current_stock = quantize_qty(Decimal(str(stock.current_quantity or 0)))
 
-    deficit = quantize_qty(max(minimum_recommended + reserved_quantity - current_stock, Decimal("0.000")))
+    deficit = quantize_qty(max(safety_stock + reserved_quantity - current_stock, Decimal("0.000")))
 
     return {
-        "minimum_recommended": minimum_recommended,
+        "safety_stock": safety_stock,
         "reserved_quantity": reserved_quantity,
         "current_stock": current_stock,
         "deficit_quantity": deficit,
@@ -92,6 +92,8 @@ def _get_candidate_listings(product, buyer_producer):
             product=product,
             status=ListingStatus.ACTIVE,
             quantity_available__gt=0,
+            stock_id__isnull=False,
+            forecast_id__isnull=True,
         )
         .exclude(producer=buyer_producer)
         .order_by("unit_price", "-quantity_available", "created_at")
@@ -220,6 +222,8 @@ def get_market_alternative_listings(recommendation):
             product=recommendation.product,
             status=ListingStatus.ACTIVE,
             quantity_available__gt=0,
+            stock_id__isnull=False,
+            forecast_id__isnull=True,
         )
         .exclude(producer=recommendation.producer)
         .exclude(id__in=selected_listing_ids)
@@ -249,3 +253,4 @@ def accept_recommendation(recommendation):
     recommendation.updated_at = timezone.now()
     recommendation.save(update_fields=["status", "accepted_at", "updated_at"])
     return recommendation
+

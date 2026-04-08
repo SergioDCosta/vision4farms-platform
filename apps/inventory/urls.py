@@ -27,6 +27,11 @@ urlpatterns = [
         name="atualizar_stock",
     ),
     path(
+        "inventario/stock/<uuid:product_id>/previsoes/guardar/",
+        views.guardar_previsao,
+        name="guardar_previsao",
+    ),
+    path(
         "inventario/compras/exportar/",
         views.compras_export_pdf,
         name="compras_export_pdf",

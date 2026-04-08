@@ -16,17 +16,21 @@ from PIL import Image, ImageOps
 
 from apps.common.decorators import login_required, client_only_required
 from apps.accounts.models import UserRole
-from apps.inventory.models import ProducerProduct
+from apps.inventory.models import ProducerProduct, ProductionForecast
 from apps.marketplace.forms import MarketplacePublishForm, MarketplaceEditForm
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.marketplace.services import (
+    LISTING_SOURCE_FORECAST,
+    LISTING_SOURCE_STOCK,
     MarketplaceServiceError,
     build_delivery_text,
     create_listing,
     expire_due_active_listings,
     get_current_producer_for_user,
+    get_forecast_available_quantity,
     get_listing_categories_for_queryset,
     get_listing_detail_queryset,
+    get_market_price_trends_for_product_sources,
     get_my_listings,
     get_publishable_products_summary,
     get_producer_display_name,
@@ -55,6 +59,33 @@ def _attach_listing_photo_urls(listings):
     attached = []
     for listing in listings:
         listing.photo_url = _listing_photo_url(getattr(listing, "photo_path", None))
+        has_stock_source = bool(getattr(listing, "stock_id", None))
+        has_forecast_source = bool(getattr(listing, "forecast_id", None))
+        if has_forecast_source and not has_stock_source:
+            listing.source_key = LISTING_SOURCE_FORECAST
+            listing.source_label = "Pré-venda"
+            listing.source_badge_class = "mk-badge--forecast"
+            if getattr(listing, "forecast", None):
+                period_start = getattr(listing.forecast, "period_start", None)
+                period_end = getattr(listing.forecast, "period_end", None)
+                local_start = timezone.localtime(period_start) if period_start and timezone.is_aware(period_start) else period_start
+                local_end = timezone.localtime(period_end) if period_end and timezone.is_aware(period_end) else period_end
+                if period_start and period_end:
+                    listing.source_period = (
+                        f"{local_start.strftime('%d/%m/%Y')} - "
+                        f"{local_end.strftime('%d/%m/%Y')}"
+                    )
+                elif period_start:
+                    listing.source_period = f"A partir de {local_start.strftime('%d/%m/%Y')}"
+                else:
+                    listing.source_period = None
+            else:
+                listing.source_period = None
+        else:
+            listing.source_key = LISTING_SOURCE_STOCK
+            listing.source_label = "Disponível agora"
+            listing.source_badge_class = "mk-badge--stock"
+            listing.source_period = None
         attached.append(listing)
     return attached
 
@@ -200,6 +231,33 @@ def _is_htmx(request):
     return request.headers.get("HX-Request") == "true"
 
 
+def _activate_forecast_for_marketplace_if_possible(*, producer, product_id, forecast_id):
+    if not producer or not product_id or not forecast_id:
+        return None, None
+
+    try:
+        forecast = ProductionForecast.objects.get(
+            id=forecast_id,
+            producer=producer,
+            product_id=product_id,
+        )
+    except ProductionForecast.DoesNotExist:
+        return None, "A previsão selecionada não foi encontrada para este produto."
+
+    if get_forecast_available_quantity(forecast) <= Decimal("0"):
+        return None, "Esta previsão não tem quantidade disponível para pré-venda."
+
+    if not forecast.is_marketplace_enabled:
+        forecast.is_marketplace_enabled = True
+        if hasattr(forecast, "updated_at"):
+            forecast.updated_at = timezone.now()
+            forecast.save(update_fields=["is_marketplace_enabled", "updated_at"])
+        else:
+            forecast.save(update_fields=["is_marketplace_enabled"])
+
+    return forecast, None
+
+
 def _get_index_filters(request):
     source = request.POST if request.method == "POST" else request.GET
     active_tab = (source.get("tab") or "todos").strip()
@@ -341,6 +399,39 @@ def _build_marketplace_detail_context(request, listing, producer):
     if listing.expires_at:
         expires_at_local = timezone.localtime(listing.expires_at)
 
+    has_stock_source = bool(listing.stock_id)
+    has_forecast_source = bool(listing.forecast_id)
+    if has_forecast_source and not has_stock_source:
+        listing_source_key = LISTING_SOURCE_FORECAST
+        listing_source_label = "Pré-venda"
+        listing_source_badge_class = "mkd-badge--forecast"
+        forecast_period_text = None
+        if listing.forecast:
+            local_start = (
+                timezone.localtime(listing.forecast.period_start)
+                if listing.forecast.period_start and timezone.is_aware(listing.forecast.period_start)
+                else listing.forecast.period_start
+            )
+            local_end = (
+                timezone.localtime(listing.forecast.period_end)
+                if listing.forecast.period_end and timezone.is_aware(listing.forecast.period_end)
+                else listing.forecast.period_end
+            )
+            if listing.forecast.period_start and listing.forecast.period_end:
+                forecast_period_text = (
+                    f"{local_start.strftime('%d/%m/%Y')} - "
+                    f"{local_end.strftime('%d/%m/%Y')}"
+                )
+            elif listing.forecast.period_start:
+                forecast_period_text = (
+                    f"A partir de {local_start.strftime('%d/%m/%Y')}"
+                )
+    else:
+        listing_source_key = LISTING_SOURCE_STOCK
+        listing_source_label = "Disponível agora"
+        listing_source_badge_class = "mkd-badge--stock"
+        forecast_period_text = None
+
     return {
         "page_title": "Detalhe do Produto",
         "listing": listing,
@@ -356,6 +447,10 @@ def _build_marketplace_detail_context(request, listing, producer):
         "is_admin_user": is_admin_user,
         "show_buybox": show_buybox,
         "expires_at_local": expires_at_local,
+        "listing_source_key": listing_source_key,
+        "listing_source_label": listing_source_label,
+        "listing_source_badge_class": listing_source_badge_class,
+        "forecast_period_text": forecast_period_text,
     }
 
 
@@ -423,25 +518,131 @@ def marketplace_publish_view(request):
     success = request.GET.get("success") == "1"
     created_listing_id = request.GET.get("listing_id")
     requested_product_id = (request.GET.get("product") or "").strip()
+    requested_source = (request.GET.get("source") or LISTING_SOURCE_STOCK).strip().lower()
+    requested_forecast_id = (request.GET.get("forecast") or "").strip()
+    prefill_origin = (request.GET.get("from") or "").strip().lower()
+    forecast_quantity_limit = None
+
+    is_forecast_prefill_flow = (
+        requested_source == LISTING_SOURCE_FORECAST
+        and bool(requested_product_id)
+        and bool(requested_forecast_id)
+    )
+    is_inventory_stock_prefill_flow = (
+        prefill_origin == "inventory"
+        and requested_source == LISTING_SOURCE_STOCK
+        and bool(requested_product_id)
+    )
+    should_lock_origin_and_product = (
+        is_forecast_prefill_flow or is_inventory_stock_prefill_flow
+    )
+
+    if is_forecast_prefill_flow:
+        activated_forecast, activation_error = _activate_forecast_for_marketplace_if_possible(
+            producer=producer,
+            product_id=requested_product_id,
+            forecast_id=requested_forecast_id,
+        )
+        if activation_error:
+            messages.error(request, activation_error)
+            is_forecast_prefill_flow = False
+        elif activated_forecast:
+            requested_product_id = str(activated_forecast.product_id)
+            requested_forecast_id = str(activated_forecast.id)
+            forecast_quantity_limit = get_forecast_available_quantity(activated_forecast)
 
     form_initial = {}
-    if request.method == "GET" and requested_product_id:
+    if requested_product_id:
         form_initial["product"] = requested_product_id
+    form_initial["listing_source"] = (
+        requested_source if requested_source in {LISTING_SOURCE_STOCK, LISTING_SOURCE_FORECAST}
+        else LISTING_SOURCE_STOCK
+    )
+    if requested_forecast_id:
+        form_initial["forecast"] = requested_forecast_id
 
     form = MarketplacePublishForm(
         request.POST or None,
         request.FILES or None,
         producer=producer,
         initial=form_initial,
+        lock_listing_source=should_lock_origin_and_product,
+        lock_product=should_lock_origin_and_product,
     )
-    publishable_summary = get_publishable_products_summary(producer)
+    if is_forecast_prefill_flow and forecast_quantity_limit is not None:
+        form.fields["quantity"].widget.attrs["max"] = str(forecast_quantity_limit)
+        form.fields["quantity"].widget.attrs["data-max"] = str(forecast_quantity_limit)
+        if request.method == "GET":
+            form.initial.setdefault("quantity", forecast_quantity_limit)
+
+    selected_product_raw = form["product"].value()
+    selected_product_id = (str(selected_product_raw).strip() if selected_product_raw else "")
+    selected_source_raw = form["listing_source"].value()
+    selected_source = (str(selected_source_raw).strip().lower() if selected_source_raw else LISTING_SOURCE_STOCK)
+    if selected_source not in {LISTING_SOURCE_STOCK, LISTING_SOURCE_FORECAST}:
+        selected_source = LISTING_SOURCE_STOCK
+
+    product_ids_for_trends = list(
+        form.fields["product"].queryset.values_list("id", flat=True)
+    )
+    trend_map = get_market_price_trends_for_product_sources(
+        producer,
+        product_ids=product_ids_for_trends,
+    )
+    publishable_summary = get_publishable_products_summary(
+        producer,
+        trend_map=trend_map,
+    )
+
+    if is_inventory_stock_prefill_flow:
+        publishable_summary = [
+            row for row in publishable_summary
+            if row["product_id"] == requested_product_id and row["source"] == LISTING_SOURCE_STOCK
+        ]
+        selected_product_id = requested_product_id
+        selected_source = LISTING_SOURCE_STOCK
+
+    initial_market_trend = None
+    if selected_product_id:
+        selected_row = next(
+            (
+                row for row in publishable_summary
+                if row["product_id"] == selected_product_id and row["source"] == selected_source
+            ),
+            None,
+        )
+        if selected_row:
+            initial_market_trend = {
+                "product_name": selected_row["product"].name,
+                "product_unit": selected_row["product"].unit,
+                "source": selected_row["source"],
+                "source_label": (
+                    "Disponível agora"
+                    if selected_row["source"] == LISTING_SOURCE_STOCK
+                    else "Pré-venda"
+                ),
+                "market_min_price": selected_row.get("market_min_price"),
+                "market_max_price": selected_row.get("market_max_price"),
+                "market_count": selected_row.get("market_count", 0),
+            }
 
     if request.method == "POST" and form.is_valid():
         uploaded_photo = request.FILES.get("photo")
         photo_crop = form.cleaned_data.get("photo_crop")
         photo_path = None
+        listing_source = form.cleaned_data.get("listing_source") or LISTING_SOURCE_STOCK
+        selected_forecast = form.cleaned_data.get("forecast")
 
         try:
+            if listing_source == LISTING_SOURCE_STOCK and selected_forecast is not None:
+                raise MarketplaceServiceError(
+                    "Configuração inválida da oferta: stock atual não pode ter previsão associada."
+                )
+            if listing_source == LISTING_SOURCE_FORECAST and selected_forecast is None:
+                raise MarketplaceServiceError(
+                    "Configuração inválida da oferta: pré-venda exige previsão associada."
+                )
+
             if uploaded_photo:
                 cropped_photo = _maybe_crop_uploaded_photo(uploaded_photo, photo_crop)
                 photo_path = _save_listing_photo(producer, cropped_photo)
@@ -458,6 +659,8 @@ def marketplace_publish_view(request):
                 photo_path=photo_path,
                 status=form.cleaned_data.get("status"),
                 expires_at=form.cleaned_data.get("expires_at_final"),
+                listing_source=listing_source,
+                forecast=selected_forecast,
             )
         except MarketplaceServiceError as exc:
             _delete_uploaded_file(photo_path)
@@ -476,6 +679,11 @@ def marketplace_publish_view(request):
         "form": form,
         "created_listing_id": created_listing_id,
         "publishable_summary": publishable_summary,
+        "forecast_quantity_limit": forecast_quantity_limit,
+        "selected_product_id": selected_product_id,
+        "selected_source": selected_source,
+        "initial_market_trend": initial_market_trend,
+        "is_inventory_stock_prefill_flow": is_inventory_stock_prefill_flow,
     }
     return render(request, "marketplace/publish.html", context)
 
@@ -492,10 +700,19 @@ def marketplace_edit_view(request, listing_id):
 
     expire_due_active_listings()
     listing = get_object_or_404(
-        MarketplaceListing.objects.select_related("product", "stock", "producer"),
+        MarketplaceListing.objects.select_related("product", "stock", "forecast", "producer"),
         id=listing_id,
         producer=producer,
     )
+
+    has_stock_source = bool(listing.stock_id)
+    has_forecast_source = bool(listing.forecast_id)
+    if has_stock_source == has_forecast_source:
+        messages.error(
+            request,
+            "A listing está com origem inválida (stock/previsão). Corrija os dados antes de editar.",
+        )
+        return redirect(f"{reverse('marketplace:index')}?tab=meus")
 
     form = MarketplaceEditForm(request.POST or None, request.FILES or None, listing=listing)
     current_photo_url = _listing_photo_url(listing.photo_path)
@@ -561,6 +778,7 @@ def marketplace_delete_view(request, listing_id):
         id=listing_id,
         producer=producer,
     )
+    active_tab, q, category_id = _get_index_filters(request)
 
     reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
     if reserved_quantity > 0:
@@ -571,6 +789,18 @@ def marketplace_delete_view(request, listing_id):
                 "Desative-o ou ajuste primeiro."
             ),
         )
+        if _is_htmx(request):
+            context = _build_marketplace_index_context(
+                producer,
+                active_tab=active_tab,
+                q=q,
+                category_id=category_id,
+            )
+            return render(request, "marketplace/index.html", context)
+
+        next_url = (request.POST.get("next") or "").strip()
+        if next_url:
+            return redirect(next_url)
         return redirect("marketplace:edit", listing_id=listing.id)
 
     photo_path = listing.photo_path
@@ -578,6 +808,15 @@ def marketplace_delete_view(request, listing_id):
     _delete_uploaded_file(photo_path)
 
     messages.success(request, "Anúncio eliminado com sucesso.")
+    if _is_htmx(request):
+        context = _build_marketplace_index_context(
+            producer,
+            active_tab=active_tab,
+            q=q,
+            category_id=category_id,
+        )
+        return render(request, "marketplace/index.html", context)
+
     return redirect(f"{reverse('marketplace:index')}?tab=meus")
 
 

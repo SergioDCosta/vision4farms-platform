@@ -36,8 +36,8 @@
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="color:#475569;">{{ stock.minimum_threshold|floatformat:"-3" }}</p>
-      <p class="inv-stat-label">Mínimo recomendado</p>
+      <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|floatformat:"-3" }}</p>
+      <p class="inv-stat-label">Stock de segurança</p>
     </div>
   </div>
 
@@ -77,14 +77,27 @@
             </div>
 
             <div class="inv-field">
-              <label for="{{ form.minimum_threshold.id_for_label }}">
-                {{ form.minimum_threshold.label }} ({{ stock.product.unit }})
+              <label for="{{ form.safety_stock.id_for_label }}">
+                {{ form.safety_stock.label }} ({{ stock.product.unit }})
               </label>
-              {{ form.minimum_threshold }}
-              {% if form.minimum_threshold.errors %}
-                <div class="inv-errors">{{ form.minimum_threshold.errors.0 }}</div>
+              {{ form.safety_stock }}
+              {% if form.safety_stock.errors %}
+                <div class="inv-errors">{{ form.safety_stock.errors.0 }}</div>
               {% endif %}
               <div class="inv-help">Este valor será usado para sinalizar stock baixo ou crítico.</div>
+            </div>
+
+            <div class="inv-field">
+              <label for="{{ form.surplus_threshold.id_for_label }}">
+                {{ form.surplus_threshold.label }} ({{ stock.product.unit }})
+              </label>
+              {{ form.surplus_threshold }}
+              {% if form.surplus_threshold.errors %}
+                <div class="inv-errors">{{ form.surplus_threshold.errors.0 }}</div>
+              {% endif %}
+              <div class="inv-help">
+                Campo opcional. Se deixar vazio, será gravado como <strong>0</strong>.
+              </div>
             </div>
           </div>
 
@@ -154,3 +167,5 @@
 </div>
 
 {% endblock %}
+
+

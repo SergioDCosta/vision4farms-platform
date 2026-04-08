@@ -13,6 +13,7 @@ from apps.inventory import services
 from apps.inventory.forms import (
     AddProducerProductForm,
     CreateCustomProductForm,
+    ProductionForecastForm,
     UpdateStockForm,
 )
 
@@ -28,6 +29,54 @@ def _decimal_to_int(value):
         return 0
     decimal_value = Decimal(str(value))
     return int(decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _to_datetime_local(value):
+    if not value:
+        return ""
+    local_value = timezone.localtime(value) if timezone.is_aware(value) else value
+    return local_value.strftime("%Y-%m-%dT%H:%M")
+
+
+def _ensure_aware_datetime(value):
+    if not value:
+        return value
+    if timezone.is_naive(value):
+        return timezone.make_aware(value, timezone.get_current_timezone())
+    return value
+
+
+def _build_stock_detail_context(*, producer, stock, forecast_form=None, edit_forecast_id=None):
+    producer_product = ProducerProduct.objects.filter(
+        producer=producer,
+        product_id=stock.product_id,
+    ).first()
+
+    activity_items = services.get_stock_activity_feed(stock)
+    forecast_rows = services.get_product_forecasts(producer, stock.product_id)
+    stock_state = services.get_stock_state(stock)
+
+    if not forecast_form:
+        forecast_form = ProductionForecastForm()
+
+    editing_forecast = None
+    if edit_forecast_id:
+        for row in forecast_rows:
+            if str(row["forecast"].id) == str(edit_forecast_id):
+                editing_forecast = row["forecast"]
+                break
+
+    context = {
+        "stock": stock,
+        "stock_state": stock_state,
+        "producer_product": producer_product,
+        "activity_items": activity_items,
+        "forecast_rows": forecast_rows,
+        "forecast_form": forecast_form,
+        "editing_forecast": editing_forecast,
+        "page_title": f"Stock — {stock.product.name}",
+    }
+    return context
 
 
 @login_required
@@ -113,7 +162,8 @@ def adicionar_produto(request):
                         unit=custom_form.cleaned_data["unit"],
                         producer_description=custom_form.cleaned_data.get("producer_description", ""),
                         initial_quantity=custom_form.cleaned_data["initial_quantity"],
-                        minimum_threshold=custom_form.cleaned_data["minimum_threshold"],
+                        safety_stock=custom_form.cleaned_data["safety_stock"],
+                        surplus_threshold=Decimal(str(custom_form.cleaned_data.get("surplus_threshold") or 0)),
                         user=request.current_user,
                     )
 
@@ -151,7 +201,8 @@ def adicionar_produto(request):
                         product_id=form.cleaned_data["product_id"],
                         producer_description=form.cleaned_data.get("producer_description", ""),
                         initial_quantity=form.cleaned_data["initial_quantity"],
-                        minimum_threshold=form.cleaned_data["minimum_threshold"],
+                        safety_stock=form.cleaned_data["safety_stock"],
+                        surplus_threshold=Decimal(str(form.cleaned_data.get("surplus_threshold") or 0)),
                         user=request.current_user,
                     )
 
@@ -237,20 +288,80 @@ def stock_detalhe(request, product_id):
         messages.error(request, "Produto não encontrado no teu inventário.")
         return redirect("inventory:meus_produtos")
 
-    producer_product = ProducerProduct.objects.filter(
+    edit_forecast_id = (request.GET.get("edit_forecast") or "").strip() or None
+
+    initial = {}
+    if edit_forecast_id:
+        forecast_rows = services.get_product_forecasts(producer, product_id)
+        for row in forecast_rows:
+            forecast = row["forecast"]
+            if str(forecast.id) == edit_forecast_id:
+                initial = {
+                    "forecast_id": str(forecast.id),
+                    "forecast_quantity": forecast.forecast_quantity,
+                    "period_start": _to_datetime_local(forecast.period_start),
+                    "period_end": _to_datetime_local(forecast.period_end),
+                    "is_marketplace_enabled": forecast.is_marketplace_enabled,
+                }
+                break
+
+    forecast_form = ProductionForecastForm(initial=initial or None)
+    context = _build_stock_detail_context(
         producer=producer,
-        product_id=product_id,
-    ).first()
-
-    activity_items = services.get_stock_activity_feed(stock)
-
-    context = {
-        "stock": stock,
-        "producer_product": producer_product,
-        "activity_items": activity_items,
-        "page_title": f"Stock — {stock.product.name}",
-    }
+        stock=stock,
+        forecast_form=forecast_form,
+        edit_forecast_id=edit_forecast_id,
+    )
     return render(request, "inventory/stock_detalhe.html", context)
+
+
+@login_required
+@client_only_required
+@require_POST
+def guardar_previsao(request, product_id):
+    producer = _get_producer_or_redirect(request)
+    if not producer:
+        return redirect("dashboard:painel")
+
+    stock = services.get_stock_for_product(producer, product_id)
+    if not stock:
+        messages.error(request, "Produto não encontrado no teu inventário.")
+        return redirect("inventory:meus_produtos")
+
+    form = ProductionForecastForm(request.POST)
+    if form.is_valid():
+        try:
+            forecast_id = form.cleaned_data.get("forecast_id")
+            forecast, created = services.save_product_forecast(
+                producer=producer,
+                product=stock.product,
+                forecast_quantity=form.cleaned_data["forecast_quantity"],
+                period_start=_ensure_aware_datetime(form.cleaned_data.get("period_start")),
+                period_end=_ensure_aware_datetime(form.cleaned_data.get("period_end")),
+                is_marketplace_enabled=form.cleaned_data.get("is_marketplace_enabled", False),
+                user=request.current_user,
+                forecast_id=forecast_id,
+            )
+
+            if created:
+                messages.success(request, "Produção futura registada com sucesso.")
+            else:
+                messages.success(request, "Produção futura atualizada com sucesso.")
+
+            return redirect("inventory:stock_detalhe", product_id=product_id)
+        except ValidationError as exc:
+            form.add_error(None, str(exc))
+        except Exception as exc:
+            form.add_error(None, f"Não foi possível guardar a previsão: {exc}")
+
+    edit_forecast_id = form.data.get("forecast_id")
+    context = _build_stock_detail_context(
+        producer=producer,
+        stock=stock,
+        forecast_form=form,
+        edit_forecast_id=edit_forecast_id,
+    )
+    return render(request, "inventory/stock_detalhe.html", context, status=400)
 
 
 @login_required
@@ -270,11 +381,13 @@ def atualizar_stock(request, product_id):
         if form.is_valid():
             try:
                 new_quantity = Decimal(str(form.cleaned_data["new_quantity"]))
-                minimum_threshold = Decimal(str(form.cleaned_data["minimum_threshold"]))
+                safety_stock = Decimal(str(form.cleaned_data["safety_stock"]))
+                surplus_threshold = Decimal(str(form.cleaned_data.get("surplus_threshold") or 0))
                 services.update_stock(
                     stock=stock,
                     new_quantity=new_quantity,
-                    minimum_threshold=minimum_threshold,
+                    safety_stock=safety_stock,
+                    surplus_threshold=surplus_threshold,
                     movement_type=form.cleaned_data["movement_type"],
                     user=request.current_user,
                     notes=form.cleaned_data.get("notes", ""),
@@ -290,7 +403,8 @@ def atualizar_stock(request, product_id):
     else:
         form = UpdateStockForm(initial={
             "new_quantity": _decimal_to_int(stock.current_quantity),
-            "minimum_threshold": _decimal_to_int(stock.minimum_threshold),
+            "safety_stock": _decimal_to_int(stock.safety_stock),
+            "surplus_threshold": _decimal_to_int(stock.surplus_threshold),
         })
 
     context = {
@@ -317,3 +431,4 @@ def compras_export_pdf(request):
         "generated_at": timezone.now(),
     }
     return render(request, "inventory/compras_export.html", context)
+

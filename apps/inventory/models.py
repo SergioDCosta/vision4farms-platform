@@ -116,7 +116,8 @@ class Stock(models.Model):
     )
     current_quantity = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     reserved_quantity = models.DecimalField(max_digits=14, decimal_places=3, default=0)
-    minimum_threshold = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    safety_stock = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    surplus_threshold = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     updated_by = models.ForeignKey(
         "accounts.User",
         on_delete=models.SET_NULL,
@@ -214,6 +215,8 @@ class ProductionForecast(models.Model):
         related_name="forecasts",
     )
     forecast_quantity = models.DecimalField(max_digits=14, decimal_places=3)
+    reserved_quantity = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    is_marketplace_enabled = models.BooleanField(default=False)
     period_start = models.DateTimeField(blank=True, null=True)
     period_end = models.DateTimeField(blank=True, null=True)
     confidence_score = models.DecimalField(max_digits=4, decimal_places=3, blank=True, null=True)
@@ -228,5 +231,10 @@ class ProductionForecast(models.Model):
         db_table = "production_forecasts"
         ordering = ["-created_at"]
 
+    @property
+    def forecast_available(self):
+        return (self.forecast_quantity or 0) - (self.reserved_quantity or 0)
+
     def __str__(self):
         return f"Previsão {self.product} - {self.producer}"
+

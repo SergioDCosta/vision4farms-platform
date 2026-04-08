@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from apps.inventory.models import (
+    ProductionForecast,
     ProducerProfile,
     ProducerProduct,
     Stock,
@@ -72,6 +73,16 @@ def _create_status_history(order, status, changed_by=None, notes=None):
     )
 
 
+def _validate_listing_source_xor(listing):
+    has_stock_source = bool(getattr(listing, "stock_id", None))
+    has_forecast_source = bool(getattr(listing, "forecast_id", None))
+    if has_stock_source == has_forecast_source:
+        raise OrderServiceError(
+            "Anúncio com origem inválida (stock/previsão). Contacte o administrador."
+        )
+    return has_stock_source, has_forecast_source
+
+
 def _update_stock_reserved(stock, quantity, acting_user):
     if not stock:
         return
@@ -94,6 +105,18 @@ def _update_stock_reserved(stock, quantity, acting_user):
         update_fields.append("updated_at")
 
     stock.save(update_fields=update_fields)
+
+
+def _update_forecast_reserved(forecast, quantity):
+    if not forecast:
+        return
+
+    quantity = quantize_qty(quantity)
+    forecast.reserved_quantity = quantize_qty(
+        Decimal(str(forecast.reserved_quantity or 0)) + quantity
+    )
+    forecast.updated_at = timezone.now()
+    forecast.save(update_fields=["reserved_quantity", "updated_at"])
 
 
 def _consume_stock_reservation(stock, quantity, acting_user):
@@ -125,6 +148,17 @@ def _consume_stock_reservation(stock, quantity, acting_user):
     stock.save(update_fields=update_fields)
 
 
+def _consume_forecast_reservation(forecast, quantity):
+    if not forecast:
+        return
+
+    quantity = quantize_qty(quantity)
+    reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+    forecast.reserved_quantity = quantize_qty(max(reserved_quantity - quantity, Decimal("0.000")))
+    forecast.updated_at = timezone.now()
+    forecast.save(update_fields=["reserved_quantity", "updated_at"])
+
+
 def _release_stock_reservation(stock, quantity, acting_user):
     if not stock:
         return
@@ -151,7 +185,12 @@ def _release_stock_reservation(stock, quantity, acting_user):
 
 
 def _reserve_listing_quantity(listing_id, quantity, acting_user):
-    listing = MarketplaceListing.objects.select_for_update().get(id=listing_id)
+    listing = (
+        MarketplaceListing.objects
+        .select_for_update()
+        .get(id=listing_id)
+    )
+    has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
 
     if listing.status != ListingStatus.ACTIVE:
         raise OrderServiceError("O anúncio já não está ativo.")
@@ -179,17 +218,34 @@ def _reserve_listing_quantity(listing_id, quantity, acting_user):
     listing.updated_at = timezone.now()
     listing.save(update_fields=update_fields)
 
-    stock = None
-    if listing.stock_id:
+    if has_stock_source:
         stock = Stock.objects.select_for_update().get(id=listing.stock_id)
-
-    _update_stock_reserved(stock, quantity, acting_user)
+        _update_stock_reserved(stock, quantity, acting_user)
+    elif has_forecast_source:
+        forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
+        forecast_saleable = quantize_qty(
+            Decimal(str(forecast.forecast_quantity or 0))
+            - Decimal(str(forecast.reserved_quantity or 0))
+        )
+        if quantity > forecast_saleable:
+            raise OrderServiceError(
+                (
+                    "A quantidade pedida excede a previsão disponível para pré-venda "
+                    f"({forecast_saleable} {listing.product.unit})."
+                )
+            )
+        _update_forecast_reserved(forecast, quantity)
 
     return listing
 
 
 def _release_listing_reservation(listing_id, quantity, acting_user):
-    listing = MarketplaceListing.objects.select_for_update().get(id=listing_id)
+    listing = (
+        MarketplaceListing.objects
+        .select_for_update()
+        .get(id=listing_id)
+    )
+    has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
 
     quantity = quantize_qty(quantity)
     reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
@@ -204,17 +260,23 @@ def _release_listing_reservation(listing_id, quantity, acting_user):
     listing.updated_at = timezone.now()
     listing.save(update_fields=["quantity_reserved", "quantity_available", "status", "updated_at"])
 
-    stock = None
-    if listing.stock_id:
+    if has_stock_source:
         stock = Stock.objects.select_for_update().get(id=listing.stock_id)
-
-    _release_stock_reservation(stock, quantity, acting_user)
+        _release_stock_reservation(stock, quantity, acting_user)
+    elif has_forecast_source:
+        forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
+        _release_forecast_reservation(forecast, quantity)
 
     return listing
 
 
 def _consume_listing_reservation(listing_id, quantity, acting_user):
-    listing = MarketplaceListing.objects.select_for_update().get(id=listing_id)
+    listing = (
+        MarketplaceListing.objects
+        .select_for_update()
+        .get(id=listing_id)
+    )
+    has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
 
     quantity = quantize_qty(quantity)
     reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
@@ -229,11 +291,12 @@ def _consume_listing_reservation(listing_id, quantity, acting_user):
     listing.updated_at = timezone.now()
     listing.save(update_fields=["quantity_reserved", "status", "updated_at"])
 
-    stock = None
-    if listing.stock_id:
+    if has_stock_source:
         stock = Stock.objects.select_for_update().get(id=listing.stock_id)
-
-    _consume_stock_reservation(stock, quantity, acting_user)
+        _consume_stock_reservation(stock, quantity, acting_user)
+    elif has_forecast_source:
+        forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
+        _consume_forecast_reservation(forecast, quantity)
 
     return listing
 
@@ -258,7 +321,8 @@ def _ensure_buyer_stock(buyer_producer, product, acting_user):
     defaults = {
         "current_quantity": quantize_qty(Decimal("0")),
         "reserved_quantity": quantize_qty(Decimal("0")),
-        "minimum_threshold": quantize_qty(Decimal("0")),
+        "safety_stock": quantize_qty(Decimal("0")),
+        "surplus_threshold": quantize_qty(Decimal("0")),
         "last_updated_at": now,
     }
 
@@ -282,9 +346,12 @@ def _ensure_buyer_stock(buyer_producer, product, acting_user):
     if stock.reserved_quantity is None:
         stock.reserved_quantity = quantize_qty(Decimal("0"))
         changed_fields.append("reserved_quantity")
-    if stock.minimum_threshold is None:
-        stock.minimum_threshold = quantize_qty(Decimal("0"))
-        changed_fields.append("minimum_threshold")
+    if stock.safety_stock is None:
+        stock.safety_stock = quantize_qty(Decimal("0"))
+        changed_fields.append("safety_stock")
+    if getattr(stock, "surplus_threshold", None) is None:
+        stock.surplus_threshold = quantize_qty(Decimal("0"))
+        changed_fields.append("surplus_threshold")
     if getattr(stock, "last_updated_at", None) is None:
         stock.last_updated_at = now
         changed_fields.append("last_updated_at")
@@ -326,6 +393,17 @@ def _register_buyer_order_inbound(*, buyer_producer, order, product, quantity, a
         notes=f"Entrada por receção da encomenda #{order.order_number}.",
         performed_by=acting_user,
     )
+
+
+def _release_forecast_reservation(forecast, quantity):
+    if not forecast:
+        return
+
+    quantity = quantize_qty(quantity)
+    reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+    forecast.reserved_quantity = quantize_qty(max(reserved_quantity - quantity, Decimal("0.000")))
+    forecast.updated_at = timezone.now()
+    forecast.save(update_fields=["reserved_quantity", "updated_at"])
 
 
 def _set_order_status(order, status):
@@ -398,6 +476,7 @@ def _recalculate_order_status(order, preferred_status=None):
 def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user, buyer_notes=None):
     if listing.producer_id == buyer_producer.id:
         raise OrderServiceError("Não pode criar uma encomenda a partir do seu próprio anúncio.")
+    _validate_listing_source_xor(listing)
 
     quantity = quantize_qty(quantity)
 
@@ -474,6 +553,9 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
 
     for rec_item in selected_items:
         listing = rec_item.listing
+        if not listing:
+            raise OrderServiceError("A recomendação contém um item sem anúncio associado.")
+        _validate_listing_source_xor(listing)
 
         quantity = quantize_qty(rec_item.suggested_quantity)
         unit_price = Decimal(str(rec_item.unit_price))
@@ -769,3 +851,4 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         return order
 
     return order
+

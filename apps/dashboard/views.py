@@ -175,10 +175,28 @@ def dashboard_view(request):
     )
     critical_alerts_count = critical_alerts_qs.count()
 
-    critical_stock_qs = Stock.objects.select_related("product").filter(
-        producer=producer,
-        current_quantity__lte=models.F("minimum_threshold"),
-    ).order_by("current_quantity")
+    available_qty_expr = models.ExpressionWrapper(
+        models.F("current_quantity") - models.F("reserved_quantity"),
+        output_field=models.DecimalField(max_digits=14, decimal_places=3),
+    )
+    real_surplus_expr = models.ExpressionWrapper(
+        available_qty_expr - models.F("safety_stock"),
+        output_field=models.DecimalField(max_digits=14, decimal_places=3),
+    )
+
+    stocks_with_state = (
+        Stock.objects
+        .select_related("product")
+        .filter(producer=producer)
+        .annotate(
+            available_quantity_calc=available_qty_expr,
+            real_surplus_calc=real_surplus_expr,
+        )
+    )
+
+    critical_stock_qs = stocks_with_state.filter(
+        available_quantity_calc__lte=models.F("safety_stock"),
+    ).order_by("available_quantity_calc")
 
     critical_stock_count = critical_stock_qs.count()
 
@@ -208,13 +226,13 @@ def dashboard_view(request):
     listed_product_ids = active_listings_qs.values_list("product_id", flat=True)
 
     surplus_stock_candidate = (
-        Stock.objects.select_related("product")
+        stocks_with_state
         .filter(
-            producer=producer,
-            current_quantity__gt=models.F("minimum_threshold"),
+            available_quantity_calc__gt=models.F("safety_stock"),
+            real_surplus_calc__gte=models.F("surplus_threshold"),
         )
         .exclude(product_id__in=listed_product_ids)
-        .order_by("-current_quantity")
+        .order_by("-real_surplus_calc", "-available_quantity_calc")
         .first()
     )
 
@@ -239,7 +257,7 @@ def dashboard_view(request):
                 "title": f"Reforçar stock de {low_stock.product.name}",
                 "description": (
                     f"Stock atual: {low_stock.current_quantity} {low_stock.product.unit} | "
-                    f"Mínimo: {low_stock.minimum_threshold} {low_stock.product.unit}"
+                    f"Stock de segurança: {low_stock.safety_stock} {low_stock.product.unit}"
                 ),
                 "url": "/inventario/produtos/?tab=stock",
                 "button_label": "Ver stocks",
@@ -266,7 +284,7 @@ def dashboard_view(request):
             "icon": "shop",
             "title": "Publicar um possível excedente",
             "description": (
-                f"O produto {surplus_stock_candidate.product.name} parece ter stock acima do mínimo "
+                f"O produto {surplus_stock_candidate.product.name} parece ter stock acima do stock de segurança "
                 f"e ainda não está anunciado no marketplace."
             ),
             "url": "/marketplace/",
@@ -990,3 +1008,4 @@ def admin_audit_view(request):
         return render(request, "dashboard/admin/partials/audit_table.html", context)
 
     return render(request, "dashboard/admin/audit.html", context)
+

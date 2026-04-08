@@ -115,7 +115,10 @@
 
           <div class="mk-card__body">
             <div class="mk-card__top">
-              <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% endif %}">{{ item.get_status_display }}</span>
+              <div class="mk-card__badges">
+                <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% endif %}">{{ item.get_status_display }}</span>
+                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
+              </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
 
@@ -138,6 +141,9 @@
             <div class="mk-stock-box">
               <p>Quantidade disponível</p>
               <strong>{{ item.quantity_available|floatformat:"-3" }} <span>{{ item.product.unit }}</span></strong>
+              {% if item.source_period %}
+                <p class="mk-source-period">{{ item.source_period }}</p>
+              {% endif %}
             </div>
           </div>
 
@@ -210,7 +216,10 @@
 
           <div class="mk-card__body">
             <div class="mk-card__top">
-              <span class="mk-badge">{{ item.get_status_display }}</span>
+              <div class="mk-card__badges">
+                <span class="mk-badge">{{ item.get_status_display }}</span>
+                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
+              </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
 
@@ -233,6 +242,9 @@
             <div class="mk-stock-box">
               <p>Quantidade disponível</p>
               <strong>{{ item.quantity_available|floatformat:"-3" }} <span>{{ item.product.unit }}</span></strong>
+              {% if item.source_period %}
+                <p class="mk-source-period">{{ item.source_period }}</p>
+              {% endif %}
             </div>
           </div>
 
@@ -574,6 +586,13 @@
   margin-bottom: 1rem;
 }
 
+.mk-card__badges {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
 .mk-badge {
   display: inline-flex;
   align-items: center;
@@ -596,6 +615,16 @@
 .mk-badge--warn {
   background: #fef3c7;
   color: #92400e;
+}
+
+.mk-badge--stock {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.mk-badge--forecast {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .mk-price {
@@ -643,6 +672,12 @@
   font-weight: 500;
 }
 
+.mk-source-period {
+  margin: 0.45rem 0 0;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
 .mk-card__footer {
   display: flex;
   flex-direction: column;
@@ -653,7 +688,8 @@
 }
 
 .mk-card__footer > a,
-.mk-card__footer > form {
+.mk-card__footer > form,
+.mk-card__footer > button {
   width: 100%;
 }
 
@@ -773,4 +809,3 @@
 </style>
 
 {% endblock %}
-

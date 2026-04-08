@@ -47,7 +47,7 @@
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="{% if stock.available_quantity <= 0 %}color:#dc2626;{% elif stock.available_quantity > stock.minimum_threshold %}color:#16a34a;{% endif %}">
+      <p class="inv-stat-value" style="{% if stock_state.key == 'critical' %}color:#dc2626;{% elif stock_state.key == 'excess' %}color:#16a34a;{% endif %}">
         {{ stock.available_quantity|floatformat:"-3" }}
       </p>
       <p class="inv-stat-label">Disponível</p>
@@ -59,22 +59,144 @@
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="color:#475569;">{{ stock.minimum_threshold|floatformat:"-3" }}</p>
-      <p class="inv-stat-label">Mínimo recomendado</p>
+      <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|floatformat:"-3" }}</p>
+      <p class="inv-stat-label">Stock de segurança</p>
+      <p class="inv-help" style="margin-top:.35rem;">Limiar de excedente: {{ stock.surplus_threshold|default:0|floatformat:"-3" }} {{ stock.product.unit }}</p>
     </div>
   </div>
 
-  {% if stock.current_quantity <= stock.minimum_threshold %}
+  {% if stock_state.key == "critical" %}
     <div class="inv-alert inv-alert--warning">
       <strong>Stock crítico ou baixo.</strong>
-      O valor atual está no limiar mínimo ou abaixo dele. Deve reforçar stock ou procurar recomendação de compra.
+      O valor atual está no stock de segurança ou abaixo dele. Deve reforçar stock ou procurar recomendação de compra.
     </div>
-  {% elif stock.available_quantity > stock.minimum_threshold %}
+  {% elif stock_state.key == "excess" %}
     <div class="inv-alert inv-alert--success">
       <strong>Existe potencial de excedente.</strong>
-      Este produto está acima do mínimo e pode ser um bom candidato a publicação no marketplace.
+      O excedente real já atingiu o limiar definido e pode ser publicado no marketplace.
     </div>
   {% endif %}
+
+  <div class="inv-card">
+    <div class="inv-card-head">
+      <div>
+        <h3 class="inv-card-title">Produção futura</h3>
+        <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
+          Camada separada do stock atual para pré-venda no marketplace.
+        </p>
+      </div>
+    </div>
+    <div class="inv-card-body" style="display:flex;flex-direction:column;gap:1rem;">
+      <form method="post" action="{% url 'inventory:guardar_previsao' product_id=stock.product.id %}" class="inv-form">
+        {% csrf_token %}
+        {{ forecast_form.forecast_id }}
+
+        {% if forecast_form.non_field_errors %}
+          <div class="inv-alert inv-alert--danger">
+            {% for error in forecast_form.non_field_errors %}
+              <div>{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <div class="inv-form-grid">
+          <div class="inv-field">
+            <label for="{{ forecast_form.forecast_quantity.id_for_label }}">{{ forecast_form.forecast_quantity.label }} ({{ stock.product.unit }})</label>
+            {{ forecast_form.forecast_quantity }}
+            {% if forecast_form.forecast_quantity.errors %}<div class="inv-errors">{{ forecast_form.forecast_quantity.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="inv-field" style="display:flex;justify-content:flex-end;align-items:flex-end;">
+            <label class="form-check" style="display:flex;align-items:center;gap:.55rem;margin:0;">
+              {{ forecast_form.is_marketplace_enabled }}
+              <span>{{ forecast_form.is_marketplace_enabled.label }}</span>
+            </label>
+          </div>
+          <div class="inv-field">
+            <label for="{{ forecast_form.period_start.id_for_label }}">{{ forecast_form.period_start.label }}</label>
+            {{ forecast_form.period_start }}
+            {% if forecast_form.period_start.errors %}<div class="inv-errors">{{ forecast_form.period_start.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="inv-field">
+            <label for="{{ forecast_form.period_end.id_for_label }}">{{ forecast_form.period_end.label }}</label>
+            {{ forecast_form.period_end }}
+            {% if forecast_form.period_end.errors %}<div class="inv-errors">{{ forecast_form.period_end.errors.0 }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="inv-actions-row">
+          <button type="submit" class="inv-btn inv-btn--primary">
+            <i class="bi bi-check2-circle"></i>
+            <span>{% if editing_forecast %}Guardar previsão{% else %}Registar previsão{% endif %}</span>
+          </button>
+          {% if editing_forecast %}
+            <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}" class="inv-btn inv-btn--ghost">
+              <i class="bi bi-x-circle"></i>
+              <span>Cancelar edição</span>
+            </a>
+          {% endif %}
+        </div>
+      </form>
+
+      {% if forecast_rows %}
+        <div class="inv-table-wrap">
+          <table class="inv-table">
+            <thead>
+              <tr>
+                <th>Prevista</th>
+                <th>Reservada</th>
+                <th>Disponível pré-venda</th>
+                <th>Período</th>
+                <th>Marketplace</th>
+                <th style="text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in forecast_rows %}
+                <tr>
+                  <td>{{ row.forecast_quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
+                  <td>{{ row.reserved_quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
+                  <td>{{ row.forecast_saleable|floatformat:"-3" }} {{ stock.product.unit }}</td>
+                  <td>
+                    {% if row.forecast.period_start or row.forecast.period_end %}
+                      {% if row.forecast.period_start %}{{ row.forecast.period_start|date:"d/m/Y" }}{% else %}—{% endif %}
+                      -
+                      {% if row.forecast.period_end %}{{ row.forecast.period_end|date:"d/m/Y" }}{% else %}—{% endif %}
+                    {% else %}
+                      Sem período definido
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span class="{{ row.marketplace_status_class }}">{{ row.marketplace_status_label }}</span>
+                    {% if row.linked_listing %}
+                      <div style="margin-top:.35rem;">
+                        <a href="{% url 'marketplace:detail' row.linked_listing.id %}" class="inv-help">Ver anúncio</a>
+                      </div>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <div class="inv-actions" style="justify-content:flex-end;">
+                      <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?edit_forecast={{ row.forecast.id }}" class="inv-icon-btn" title="Editar previsão">
+                        <i class="bi bi-pencil"></i>
+                      </a>
+                      <a href="{% url 'marketplace:publish' %}?source=forecast&product={{ stock.product.id }}&forecast={{ row.forecast.id }}" class="inv-icon-btn inv-icon-btn--green" title="Publicar pré-venda">
+                        <i class="bi bi-shop"></i>
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="inv-empty" style="padding:1.25rem .9rem;">
+          <i class="bi bi-calendar-plus"></i>
+          <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem previsões registadas</p>
+          <p style="margin:0;">Registe produção futura para disponibilizar pré-venda sem mexer no stock atual.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
 
   <div class="inv-section-grid">
     <div class="inv-card">
@@ -137,18 +259,18 @@
             <span>Atualizar stock</span>
           </a>
 
-          {% if stock.available_quantity > stock.minimum_threshold %}
-            <a href="/marketplace/?product={{ stock.product.id }}&action=publish" class="inv-btn inv-btn--secondary">
+          {% if stock_state.key == "excess" %}
+            <a href="{% url 'marketplace:publish' %}?source=stock&product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
               <i class="bi bi-storefront"></i>
               <span>Publicar excedente</span>
             </a>
-          {% elif stock.current_quantity <= stock.minimum_threshold %}
+          {% elif stock_state.key == "critical" %}
             <a href="{% url 'recommendations:index' %}?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
               <i class="bi bi-stars"></i>
               <span>Ver recomendações</span>
             </a>
           {% else %}
-            <a href="/marketplace/?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
+            <a href="{% url 'marketplace:index' %}" class="inv-btn inv-btn--secondary">
               <i class="bi bi-shop"></i>
               <span>Abrir marketplace</span>
             </a>
@@ -195,3 +317,5 @@
 </div>
 
 {% endblock %}
+
+

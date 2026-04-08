@@ -131,7 +131,7 @@ def create_order_from_listing_view(request, listing_id):
         return redirect("dashboard:painel")
 
     listing = get_object_or_404(
-        MarketplaceListing.objects.select_related("product", "producer", "stock"),
+        MarketplaceListing.objects.select_related("product", "producer", "stock", "forecast"),
         id=listing_id,
         status=ListingStatus.ACTIVE,
     )

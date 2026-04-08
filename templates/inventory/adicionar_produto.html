@@ -162,7 +162,7 @@
 
         <div class="modal-body" style="padding:1.1rem 1.2rem;">
           <p class="text-muted small mb-3">
-            Define o stock inicial, o limiar mínimo e a tua descrição específica para este produto.
+            Define o stock inicial, o stock de segurança e a tua descrição específica para este produto.
           </p>
 
           <div class="mb-3">
@@ -176,13 +176,26 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold" for="{{ form.minimum_threshold.id_for_label }}">
-              Stock mínimo de alerta <span class="text-muted fw-normal" id="catalogModalUnitThreshold"></span>
+            <label class="form-label fw-semibold" for="{{ form.safety_stock.id_for_label }}">
+              Stock de segurança <span class="text-muted fw-normal" id="catalogModalUnitThreshold"></span>
             </label>
-            {{ form.minimum_threshold }}
-            {% if form.minimum_threshold.errors %}
-              <div class="text-danger small mt-1">{{ form.minimum_threshold.errors.0 }}</div>
+            {{ form.safety_stock }}
+            {% if form.safety_stock.errors %}
+              <div class="text-danger small mt-1">{{ form.safety_stock.errors.0 }}</div>
             {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="{{ form.surplus_threshold.id_for_label }}">
+              {{ form.surplus_threshold.label }} <span class="text-muted fw-normal" id="catalogModalUnitSurplus"></span>
+            </label>
+            {{ form.surplus_threshold }}
+            {% if form.surplus_threshold.errors %}
+              <div class="text-danger small mt-1">{{ form.surplus_threshold.errors.0 }}</div>
+            {% endif %}
+            <div class="text-muted small mt-1">
+              Campo opcional. Se deixar vazio, será gravado como <strong>0</strong>.
+            </div>
           </div>
 
           <div class="mb-3">
@@ -270,13 +283,26 @@
             </div>
 
             <div class="col-md-6">
-              <label class="form-label fw-semibold" for="{{ custom_form.minimum_threshold.id_for_label }}">
-                {{ custom_form.minimum_threshold.label }}
+              <label class="form-label fw-semibold" for="{{ custom_form.safety_stock.id_for_label }}">
+                {{ custom_form.safety_stock.label }}
               </label>
-              {{ custom_form.minimum_threshold }}
-              {% if custom_form.minimum_threshold.errors %}
-                <div class="text-danger small mt-1">{{ custom_form.minimum_threshold.errors.0 }}</div>
+              {{ custom_form.safety_stock }}
+              {% if custom_form.safety_stock.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.safety_stock.errors.0 }}</div>
               {% endif %}
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-semibold" for="{{ custom_form.surplus_threshold.id_for_label }}">
+                {{ custom_form.surplus_threshold.label }}
+              </label>
+              {{ custom_form.surplus_threshold }}
+              {% if custom_form.surplus_threshold.errors %}
+                <div class="text-danger small mt-1">{{ custom_form.surplus_threshold.errors.0 }}</div>
+              {% endif %}
+              <div class="text-muted small mt-1">
+                Campo opcional. Se deixar vazio, será gravado como <strong>0</strong>.
+              </div>
             </div>
 
             <div class="col-12">
@@ -460,6 +486,7 @@
       document.getElementById("catalogModalTitle").textContent = "Adicionar: " + productName;
       document.getElementById("catalogModalUnitInitial").textContent = "(" + productUnit + ")";
       document.getElementById("catalogModalUnitThreshold").textContent = "(" + productUnit + ")";
+      document.getElementById("catalogModalUnitSurplus").textContent = "(" + productUnit + ")";
     });
   });
 
@@ -491,6 +518,7 @@
       document.getElementById("catalogModalTitle").textContent = "Adicionar: {{ selected_product.name|escapejs }}";
       document.getElementById("catalogModalUnitInitial").textContent = "({{ selected_product.unit|escapejs }})";
       document.getElementById("catalogModalUnitThreshold").textContent = "({{ selected_product.unit|escapejs }})";
+      document.getElementById("catalogModalUnitSurplus").textContent = "({{ selected_product.unit|escapejs }})";
 
       const catalogModalElement = document.getElementById("catalogProductModal");
       if (catalogModalElement && window.bootstrap) {
@@ -510,3 +538,5 @@
 </script>
 
 {% endblock %}
+
+

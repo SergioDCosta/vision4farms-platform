@@ -46,15 +46,17 @@ def _get_form_products(producer):
     stock_rows = Stock.objects.filter(
         producer=producer,
         product_id__in=product_ids,
-    ).values_list("product_id", "current_quantity", "minimum_threshold")
+    ).values_list("product_id", "current_quantity", "reserved_quantity", "safety_stock")
 
-    # Sem registo de stock assume crítico (equivalente a 0 atual vs 0 mínimo).
+    # Sem registo de stock assume crítico (equivalente a 0 atual vs 0 de segurança).
     critical_product_ids = {str(product_id) for product_id in product_ids}
 
-    for product_id, current_quantity, minimum_threshold in stock_rows:
+    for product_id, current_quantity, reserved_quantity, safety_stock in stock_rows:
         current_qty = Decimal(str(current_quantity or 0))
-        minimum_qty = Decimal(str(minimum_threshold or 0))
-        if current_qty > minimum_qty:
+        reserved_qty = Decimal(str(reserved_quantity or 0))
+        minimum_qty = Decimal(str(safety_stock or 0))
+        available_qty = current_qty - reserved_qty
+        if available_qty > minimum_qty:
             critical_product_ids.discard(str(product_id))
 
     for product in products:
@@ -431,3 +433,4 @@ def recommendations_replace_item_view(request, recommendation_id):
         "info",
         "A substituição manual de produtores fica para a próxima versão.",
     )
+

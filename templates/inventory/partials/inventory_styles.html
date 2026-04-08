@@ -296,7 +296,7 @@
 }
 .inv-table--stock{
   table-layout:fixed;
-  min-width:980px;
+  min-width:1080px;
 }
 .inv-table th{
   text-align:left;
@@ -376,6 +376,17 @@
   align-items:center;
   justify-content:flex-end;
   gap:.45rem;
+}
+.inv-actions--main{
+  justify-content:flex-end;
+}
+.inv-context-col{
+  text-align:center !important;
+}
+.inv-context-action{
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
 .inv-icon-btn{
@@ -710,6 +721,13 @@
 .inv-field textarea:focus{
   border-color:#16a34a;
   box-shadow:0 0 0 3px rgba(22,163,74,.12);
+}
+.inv-field input.form-check-input{
+  width:auto;
+  padding:0;
+  border:1px solid #cbd5e1;
+  border-radius:.25rem;
+  box-shadow:none;
 }
 .inv-help{
   font-size:.8rem;

@@ -45,7 +45,7 @@
         <span class="pnl-kpi-ico"><i class="bi bi-box-seam-fill"></i></span>
       </div>
       <div class="pnl-kpi-num">{{ critical_stock_count }}</div>
-      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>produto{{ critical_stock_count|pluralize:"s" }} abaixo do mínimo</div>
+      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>produto{{ critical_stock_count|pluralize:"s" }} abaixo do stock de segurança</div>
     </a>
 
     <a href="/encomendas/" class="pnl-kpi pnl-kpi--blue">
@@ -173,7 +173,7 @@
         <div class="pnl-card-head">
           <div>
             <h2 class="pnl-card-title">Stocks críticos</h2>
-            <p class="pnl-card-hint">Abaixo do limiar mínimo.</p>
+            <p class="pnl-card-hint">Abaixo do stock de segurança.</p>
           </div>
           {% if low_stock_preview %}<a href="/stocks/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>{% endif %}
         </div>
@@ -186,10 +186,10 @@
                   <span class="pnl-stock-val">{{ stock.current_quantity }}<small> {{ stock.product.unit }}</small></span>
                 </div>
                 <div class="pnl-stock-track">
-                  {% widthratio stock.current_quantity stock.minimum_threshold 100 as pct %}
+                  {% widthratio stock.current_quantity stock.safety_stock 100 as pct %}
                   <div class="pnl-stock-fill" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
                 </div>
-                <span class="pnl-stock-min">mín. {{ stock.minimum_threshold }} {{ stock.product.unit }}</span>
+                <span class="pnl-stock-min">stock de segurança: {{ stock.safety_stock }} {{ stock.product.unit }}</span>
               </div>
             {% endfor %}
           </div>
@@ -484,3 +484,5 @@
 </script>
 
 {% endblock %}
+
+

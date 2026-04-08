@@ -48,21 +48,23 @@
           <div class="inv-category-table-wrap">
             <table class="inv-table inv-table--stock">
               <colgroup>
-                <col style="width:30%">
+                <col style="width:29%">
                 <col style="width:16%">
-                <col style="width:12%">
-                <col style="width:16%">
-                <col style="width:14%">
-                <col style="width:12%">
+                <col style="width:11%">
+                <col style="width:15%">
+                <col style="width:11%">
+                <col style="width:10%">
+                <col style="width:8%">
               </colgroup>
               <thead>
                 <tr>
                   <th>Produto</th>
                   <th>Stock Atual</th>
                   <th>Reservado</th>
-                  <th>Mín. Recomendado</th>
+                  <th>Stock de segurança</th>
                   <th>Estado</th>
                   <th style="text-align:right;">Ações</th>
+                  <th class="inv-context-col">Sugestão</th>
                 </tr>
               </thead>
               <tbody>
@@ -95,9 +97,12 @@
 
                     <td>
                       <span class="inv-value">
-                        {{ row.stock.minimum_threshold|default:0|floatformat:"-3" }}
+                        {{ row.stock.safety_stock|default:0|floatformat:"-3" }}
                       </span>
                       <span class="inv-unit">{{ row.product.unit }}</span>
+                      <span class="inv-subvalue">
+                        Limiar excedente: {{ row.stock.surplus_threshold|default:0|floatformat:"-3" }} {{ row.product.unit }}
+                      </span>
 
                       {% if row.state.key == "excess" %}
                         <span class="inv-subvalue">
@@ -113,7 +118,7 @@
                     </td>
 
                     <td>
-                      <div class="inv-actions">
+                      <div class="inv-actions inv-actions--main">
                         <a href="{% url 'inventory:stock_detalhe' product_id=row.product_id %}"
                            class="inv-icon-btn"
                            title="Ver detalhe">
@@ -125,7 +130,11 @@
                            title="Atualizar stock">
                           <i class="bi bi-pencil"></i>
                         </a>
+                      </div>
+                    </td>
 
+                    <td class="inv-context-col">
+                      <div class="inv-context-action">
                         {% if row.state.key == "critical" %}
                           <a href="{{ row.state.action_url }}?product={{ row.product_id }}"
                              class="inv-icon-btn inv-icon-btn--red"
@@ -133,13 +142,13 @@
                             <i class="bi bi-stars"></i>
                           </a>
                         {% elif row.state.key == "excess" %}
-                          <a href="{% url 'marketplace:publish' %}?product={{ row.product_id }}"
+                          <a href="{% url 'marketplace:publish' %}?source=stock&product={{ row.product_id }}&from=inventory"
                              class="inv-icon-btn inv-icon-btn--green"
-                             title="Vender">
-                            <i class="bi bi-tag"></i>
+                             title="Vender no marketplace">
+                            <i class="bi bi-cash-coin"></i>
                           </a>
                         {% else %}
-                          <a href="{% url 'marketplace:index' %}"
+                          <a href="{% url 'marketplace:index' %}?tab=todos&q={{ row.product.name|urlencode }}"
                              class="inv-icon-btn inv-icon-btn--amber"
                              title="Comprar">
                             <i class="bi bi-shop"></i>
@@ -168,3 +177,5 @@
     </div>
   {% endif %}
 </div>
+
+

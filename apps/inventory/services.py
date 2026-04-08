@@ -1,4 +1,5 @@
 from datetime import timedelta
+from collections import defaultdict
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -10,12 +11,15 @@ from django.utils import timezone
 
 from apps.catalog.models import Product, ProductCategory
 from apps.inventory.models import (
+    ForecastSourceSystem,
+    ProductionForecast,
     ProducerProduct,
     ProducerProfile,
     Stock,
     StockMovement,
     StockMovementType,
 )
+from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import Order, OrderItem, OrderStatusHistory, OrderStatus
 
 
@@ -65,18 +69,20 @@ def _format_qty(value):
 def _stock_state(stock):
     """
     Estado visual do stock:
-    - critical: current_quantity <= minimum_threshold
-    - excess: available_quantity > minimum_threshold
-    - normal: restante
+    - critical: available_quantity <= safety_stock
+    - normal: available_quantity > safety_stock e real_surplus < surplus_threshold
+    - excess: real_surplus >= surplus_threshold
     """
     current_quantity = stock.current_quantity if stock else ZERO
-    minimum_threshold = stock.minimum_threshold if stock else ZERO
+    safety_stock = stock.safety_stock if stock else ZERO
     reserved_quantity = stock.reserved_quantity if stock else ZERO
-    available_quantity = stock.available_quantity if stock else ZERO
+    surplus_threshold = stock.surplus_threshold if stock and stock.surplus_threshold is not None else ZERO
+    available_quantity = current_quantity - reserved_quantity
 
-    publishable_quantity = max(available_quantity - minimum_threshold, ZERO)
+    real_surplus = max(available_quantity - safety_stock, ZERO)
+    publishable_quantity = real_surplus
 
-    if current_quantity <= minimum_threshold:
+    if available_quantity <= safety_stock:
         return {
             "key": "critical",
             "label": "Crítico",
@@ -84,13 +90,15 @@ def _stock_state(stock):
             "pill_class": "inv-status inv-status--critical",
             "text_class": "inv-value inv-value--critical",
             "publishable_quantity": ZERO,
+            "surplus_threshold": surplus_threshold,
+            "real_surplus": real_surplus,
             "action_type": "recommend",
             "action_label": "Comprar",
             "action_icon": "cart",
             "action_url": "/recomendacoes/",
         }
 
-    if publishable_quantity > ZERO:
+    if real_surplus >= surplus_threshold:
         return {
             "key": "excess",
             "label": "Excedente",
@@ -98,6 +106,8 @@ def _stock_state(stock):
             "pill_class": "inv-status inv-status--excess",
             "text_class": "inv-value inv-value--excess",
             "publishable_quantity": publishable_quantity,
+            "surplus_threshold": surplus_threshold,
+            "real_surplus": real_surplus,
             "action_type": "publish",
             "action_label": "Publicar",
             "action_icon": "storefront",
@@ -111,6 +121,8 @@ def _stock_state(stock):
         "pill_class": "inv-status inv-status--normal",
         "text_class": "inv-value",
         "publishable_quantity": ZERO,
+        "surplus_threshold": surplus_threshold,
+        "real_surplus": real_surplus,
         "action_type": "marketplace",
         "action_label": "Marketplace",
         "action_icon": "shop",
@@ -177,14 +189,22 @@ def _build_category_groups(rows):
     return ordered_groups
 
 
-def _ensure_stock_for_product(producer, product, initial_quantity, minimum_threshold, user):
+def _ensure_stock_for_product(
+    producer,
+    product,
+    initial_quantity,
+    safety_stock,
+    surplus_threshold,
+    user,
+):
     """
     Garante o registo de stock para produtor+produto.
     Se o stock ainda não existir, cria-o.
     Se existir e estiver a zero, pode aplicar stock inicial.
     """
     initial_quantity = initial_quantity or ZERO
-    minimum_threshold = minimum_threshold or ZERO
+    safety_stock = safety_stock or ZERO
+    surplus_threshold = surplus_threshold or ZERO
 
     stock, stock_created = Stock.objects.get_or_create(
         producer=producer,
@@ -192,7 +212,8 @@ def _ensure_stock_for_product(producer, product, initial_quantity, minimum_thres
         defaults={
             "current_quantity": initial_quantity,
             "reserved_quantity": ZERO,
-            "minimum_threshold": minimum_threshold,
+            "safety_stock": safety_stock,
+            "surplus_threshold": surplus_threshold,
             "updated_by": user,
             "last_updated_at": timezone.now(),
         },
@@ -212,9 +233,17 @@ def _ensure_stock_for_product(producer, product, initial_quantity, minimum_thres
 
     changed_fields = []
 
-    if stock.minimum_threshold != minimum_threshold:
-        stock.minimum_threshold = minimum_threshold
-        changed_fields.append("minimum_threshold")
+    if stock.safety_stock != safety_stock:
+        stock.safety_stock = safety_stock
+        changed_fields.append("safety_stock")
+
+    current_surplus_threshold = getattr(stock, "surplus_threshold", ZERO)
+    if current_surplus_threshold is None:
+        current_surplus_threshold = ZERO
+
+    if current_surplus_threshold != surplus_threshold:
+        stock.surplus_threshold = surplus_threshold
+        changed_fields.append("surplus_threshold")
 
     if stock.current_quantity == ZERO and initial_quantity > ZERO:
         stock.current_quantity = initial_quantity
@@ -391,7 +420,8 @@ def add_product_to_producer(
     producer,
     product_id,
     initial_quantity,
-    minimum_threshold,
+    safety_stock,
+    surplus_threshold,
     user,
     producer_description=None,
 ):
@@ -436,7 +466,8 @@ def add_product_to_producer(
         producer=producer,
         product=product,
         initial_quantity=initial_quantity,
-        minimum_threshold=minimum_threshold,
+        safety_stock=safety_stock,
+        surplus_threshold=surplus_threshold,
         user=user,
     )
 
@@ -449,7 +480,8 @@ def create_custom_product_for_producer(
     name,
     unit,
     initial_quantity,
-    minimum_threshold,
+    safety_stock,
+    surplus_threshold,
     user,
     producer_description=None,
 ):
@@ -532,7 +564,8 @@ def create_custom_product_for_producer(
         producer=producer,
         product=product,
         initial_quantity=initial_quantity,
-        minimum_threshold=minimum_threshold,
+        safety_stock=safety_stock,
+        surplus_threshold=surplus_threshold,
         user=user,
     )
 
@@ -583,6 +616,176 @@ def get_stock_for_product(producer, product_id):
         )
     except Stock.DoesNotExist:
         return None
+
+
+def get_stock_state(stock):
+    return _stock_state(stock)
+
+
+def _forecast_saleable_quantity(forecast):
+    forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
+    reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+    available = forecast_quantity - reserved_quantity
+    return max(available, ZERO)
+
+
+def get_product_forecasts(producer, product_id):
+    forecasts = list(
+        ProductionForecast.objects
+        .filter(producer=producer, product_id=product_id)
+        .order_by("-period_start", "-created_at")
+    )
+
+    if not forecasts:
+        return []
+
+    forecast_ids = [forecast.id for forecast in forecasts]
+    listings = (
+        MarketplaceListing.objects
+        .filter(
+            producer=producer,
+            product_id=product_id,
+            forecast_id__in=forecast_ids,
+        )
+        .order_by("-published_at", "-created_at")
+    )
+
+    active_listing_by_forecast = {}
+    latest_listing_by_forecast = {}
+    open_published_by_forecast = defaultdict(lambda: ZERO)
+    for listing in listings:
+        if listing.forecast_id not in latest_listing_by_forecast:
+            latest_listing_by_forecast[listing.forecast_id] = listing
+        if (
+            listing.status == ListingStatus.ACTIVE
+            and listing.forecast_id not in active_listing_by_forecast
+        ):
+            active_listing_by_forecast[listing.forecast_id] = listing
+        if listing.status in {ListingStatus.ACTIVE, ListingStatus.RESERVED}:
+            open_published_by_forecast[listing.forecast_id] += Decimal(
+                str(listing.quantity_available or 0)
+            )
+
+    rows = []
+    for forecast in forecasts:
+        forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
+        reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+        available_quantity = forecast_quantity - reserved_quantity
+        open_published_quantity = open_published_by_forecast.get(forecast.id, ZERO)
+        saleable_quantity = max(available_quantity - open_published_quantity, ZERO)
+
+        linked_listing = (
+            active_listing_by_forecast.get(forecast.id)
+            or latest_listing_by_forecast.get(forecast.id)
+        )
+
+        marketplace_status_label = "Inativa"
+        marketplace_status_class = "inv-status inv-status--normal"
+        if linked_listing:
+            if linked_listing.status == ListingStatus.ACTIVE:
+                marketplace_status_label = "Ativa"
+                marketplace_status_class = "inv-status inv-status--excess"
+            elif linked_listing.status == ListingStatus.RESERVED:
+                marketplace_status_label = "Reservada"
+            elif linked_listing.status == ListingStatus.CANCELLED:
+                marketplace_status_label = "Desativada"
+            elif linked_listing.status == ListingStatus.EXPIRED:
+                marketplace_status_label = "Expirada"
+            elif linked_listing.status == ListingStatus.CLOSED:
+                marketplace_status_label = "Fechada"
+            elif hasattr(linked_listing, "get_status_display"):
+                marketplace_status_label = linked_listing.get_status_display()
+        elif forecast.is_marketplace_enabled and saleable_quantity > ZERO:
+            marketplace_status_label = "Pronta para publicar"
+
+        rows.append({
+            "forecast": forecast,
+            "forecast_quantity": forecast_quantity,
+            "reserved_quantity": reserved_quantity,
+            "forecast_available": available_quantity,
+            "forecast_saleable": saleable_quantity,
+            "open_published_quantity": open_published_quantity,
+            "linked_listing": linked_listing,
+            "marketplace_status_label": marketplace_status_label,
+            "marketplace_status_class": marketplace_status_class,
+        })
+
+    return rows
+
+
+@transaction.atomic
+def save_product_forecast(
+    *,
+    producer,
+    product,
+    forecast_quantity,
+    period_start=None,
+    period_end=None,
+    is_marketplace_enabled=False,
+    user=None,
+    forecast_id=None,
+):
+    quantity = Decimal(str(forecast_quantity or 0))
+    if quantity <= ZERO:
+        raise ValidationError("A quantidade prevista deve ser superior a zero.")
+
+    if period_start and period_end and period_end < period_start:
+        raise ValidationError("O período final não pode ser anterior ao período inicial.")
+
+    created = False
+    if forecast_id:
+        try:
+            forecast = ProductionForecast.objects.select_for_update().get(
+                id=forecast_id,
+                producer=producer,
+                product=product,
+            )
+        except ProductionForecast.DoesNotExist:
+            raise ValidationError("Previsão não encontrada para este produto.")
+    else:
+        forecast = ProductionForecast(
+            producer=producer,
+            product=product,
+            reserved_quantity=ZERO,
+            source_system=ForecastSourceSystem.MANUAL,
+        )
+        created = True
+
+    reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+    if quantity < reserved_quantity:
+        raise ValidationError(
+            (
+                "A quantidade prevista não pode ser inferior à já reservada "
+                f"({reserved_quantity})."
+            )
+        )
+
+    forecast.forecast_quantity = quantity
+    forecast.period_start = period_start
+    forecast.period_end = period_end
+    forecast.is_marketplace_enabled = bool(is_marketplace_enabled)
+    if getattr(forecast, "updated_at", None) is not None:
+        forecast.updated_at = timezone.now()
+
+    saleable_quantity = max(quantity - reserved_quantity, ZERO)
+    if forecast.is_marketplace_enabled and saleable_quantity <= ZERO:
+        raise ValidationError(
+            "Só pode ativar no marketplace quando existir quantidade disponível para pré-venda."
+        )
+
+    if created:
+        forecast.save()
+    else:
+        update_fields = [
+            "forecast_quantity",
+            "period_start",
+            "period_end",
+            "is_marketplace_enabled",
+            "updated_at",
+        ]
+        forecast.save(update_fields=update_fields)
+
+    return forecast, created
 
 
 def get_stock_movements(stock, limit=20):
@@ -640,7 +843,7 @@ def get_stock_activity_feed(stock, limit=20):
             order__items__product=stock.product,
         )
         .select_related("changed_by", "order")
-        .prefetch_related("order__items")
+        .prefetch_related("order__items__listing")
         .order_by("-created_at")
     )
 
@@ -653,7 +856,11 @@ def get_stock_activity_feed(stock, limit=20):
 
         related_items = [
             item for item in event.order.items.all()
-            if item.seller_producer_id == stock.producer_id and item.product_id == stock.product_id
+            if (
+                item.seller_producer_id == stock.producer_id
+                and item.product_id == stock.product_id
+                and getattr(getattr(item, "listing", None), "stock_id", None) == stock.id
+            )
         ]
         if not related_items:
             continue
@@ -705,9 +912,18 @@ def get_stock_activity_feed(stock, limit=20):
     return feed[:limit]
 
 @transaction.atomic
-def update_stock(stock, new_quantity, minimum_threshold, movement_type, user, notes=""):
+def update_stock(
+    stock,
+    new_quantity,
+    safety_stock,
+    surplus_threshold,
+    movement_type,
+    user,
+    notes="",
+):
     new_quantity = new_quantity or ZERO
-    minimum_threshold = minimum_threshold or ZERO
+    safety_stock = safety_stock or ZERO
+    surplus_threshold = surplus_threshold or ZERO
 
     if new_quantity < ZERO:
         raise ValidationError("A quantidade não pode ser negativa.")
@@ -721,22 +937,32 @@ def update_stock(stock, new_quantity, minimum_threshold, movement_type, user, no
         )
 
     quantity_delta = new_quantity - stock.current_quantity
-    threshold_changed = minimum_threshold != stock.minimum_threshold
+    current_surplus_threshold = getattr(stock, "surplus_threshold", ZERO)
+    if current_surplus_threshold is None:
+        current_surplus_threshold = ZERO
+
+    threshold_changed = (
+        safety_stock != stock.safety_stock
+        or surplus_threshold != current_surplus_threshold
+    )
 
     if quantity_delta == ZERO and not threshold_changed:
         raise ValidationError("Não foi detetada nenhuma alteração no stock.")
 
     stock.current_quantity = new_quantity
-    stock.minimum_threshold = minimum_threshold
+    stock.safety_stock = safety_stock
+    stock.surplus_threshold = surplus_threshold
     stock.updated_by = user
     stock.last_updated_at = timezone.now()
-    stock.save(update_fields=[
+    update_fields = [
         "current_quantity",
-        "minimum_threshold",
+        "safety_stock",
+        "surplus_threshold",
         "updated_by",
         "last_updated_at",
         "updated_at",
-    ])
+    ]
+    stock.save(update_fields=update_fields)
 
     movement = None
     if quantity_delta != ZERO:
@@ -895,3 +1121,4 @@ def get_recent_orders_for_export(producer, limit=50):
         "recent_orders": recent_orders,
         "export_total": export_total,
     }
+

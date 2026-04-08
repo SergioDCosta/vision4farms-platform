@@ -4,15 +4,27 @@ from datetime import timedelta
 from django import forms
 from django.utils import timezone
 
+from apps.inventory.models import ProductionForecast
 from apps.marketplace.models import DeliveryMode, ListingStatus
 from apps.marketplace.services import (
+    LISTING_SOURCE_FORECAST,
+    LISTING_SOURCE_STOCK,
+    get_forecast_available_quantity,
+    get_marketplace_eligible_forecasts,
     get_publishable_products,
-    get_stock_for_product,
     get_max_publishable_quantity,
+    get_stock_for_product,
 )
 
 
 class MarketplacePublishForm(forms.Form):
+    LISTING_SOURCE_STOCK = LISTING_SOURCE_STOCK
+    LISTING_SOURCE_FORECAST = LISTING_SOURCE_FORECAST
+    LISTING_SOURCE_CHOICES = (
+        (LISTING_SOURCE_STOCK, "Stock atual (disponível agora)"),
+        (LISTING_SOURCE_FORECAST, "Produção futura (pré-venda)"),
+    )
+
     EXPIRY_MODE_NONE = "none"
     EXPIRY_MODE_TIMER = "timer"
     EXPIRY_MODE_DATE = "date"
@@ -33,10 +45,25 @@ class MarketplacePublishForm(forms.Form):
         (EXPIRY_TIMER_30D, "30 dias"),
     )
 
+    listing_source = forms.ChoiceField(
+        label="Origem da oferta",
+        choices=LISTING_SOURCE_CHOICES,
+        initial=LISTING_SOURCE_STOCK,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
     product = forms.ModelChoiceField(
         label="Produto",
         queryset=None,
         empty_label="Selecione um produto...",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    forecast = forms.ModelChoiceField(
+        label="Previsão de produção",
+        queryset=ProductionForecast.objects.none(),
+        required=False,
+        empty_label="Selecionar previsão...",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
@@ -160,17 +187,36 @@ class MarketplacePublishForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         self.producer = kwargs.pop("producer", None)
+        self.lock_listing_source = kwargs.pop("lock_listing_source", False)
+        self.lock_product = kwargs.pop("lock_product", False)
         super().__init__(*args, **kwargs)
 
         if self.producer:
             self.fields["product"].queryset = get_publishable_products(self.producer)
+            eligible_forecasts = get_marketplace_eligible_forecasts(self.producer)
+            eligible_forecast_ids = [forecast.id for forecast in eligible_forecasts]
+            self.fields["forecast"].queryset = (
+                ProductionForecast.objects
+                .filter(id__in=eligible_forecast_ids)
+                .select_related("product")
+                .order_by("-period_start", "-created_at")
+            )
         else:
             self.fields["product"].queryset = self.fields["product"].queryset.none()
+            self.fields["forecast"].queryset = ProductionForecast.objects.none()
+
+        if self.lock_listing_source:
+            self.fields["listing_source"].disabled = True
+
+        if self.lock_product:
+            self.fields["product"].disabled = True
 
     def clean(self):
         cleaned_data = super().clean()
 
+        listing_source = cleaned_data.get("listing_source") or self.LISTING_SOURCE_STOCK
         product = cleaned_data.get("product")
+        forecast = cleaned_data.get("forecast")
         quantity = cleaned_data.get("quantity")
         delivery_mode = cleaned_data.get("delivery_mode")
         delivery_radius_km = cleaned_data.get("delivery_radius_km")
@@ -180,14 +226,42 @@ class MarketplacePublishForm(forms.Form):
         expires_at = cleaned_data.get("expires_at")
         now = timezone.now()
 
-        if product and quantity and self.producer:
-            stock = get_stock_for_product(self.producer, product)
-            max_publishable = get_max_publishable_quantity(stock)
-            if quantity > max_publishable:
-                self.add_error(
-                    "quantity",
-                    f"A quantidade excede o máximo publicável ({max_publishable} {product.unit})."
-                )
+        if self.producer and product and quantity:
+            if listing_source == self.LISTING_SOURCE_STOCK:
+                cleaned_data["forecast"] = None
+                stock = get_stock_for_product(self.producer, product)
+                max_publishable = get_max_publishable_quantity(stock)
+                if max_publishable <= 0:
+                    self.add_error("product", "Este produto não tem excedente atual para publicar.")
+                elif quantity > max_publishable:
+                    self.add_error(
+                        "quantity",
+                        f"A quantidade excede o máximo publicável ({max_publishable} {product.unit})."
+                    )
+            elif listing_source == self.LISTING_SOURCE_FORECAST:
+                cleaned_data["stock"] = None
+                if not forecast:
+                    self.add_error("forecast", "Seleciona uma previsão de produção.")
+                else:
+                    if forecast.producer_id != self.producer.id:
+                        self.add_error("forecast", "Previsão inválida para este produtor.")
+                    if not forecast.is_marketplace_enabled:
+                        self.add_error("forecast", "Esta previsão não está ativa para marketplace.")
+                    if product and forecast.product_id != product.id:
+                        self.add_error("forecast", "A previsão selecionada não corresponde ao produto.")
+                    max_publishable = get_forecast_available_quantity(forecast)
+                    if max_publishable <= 0:
+                        self.add_error("forecast", "Esta previsão não tem quantidade disponível para pré-venda.")
+                    elif quantity > max_publishable:
+                        self.add_error(
+                            "quantity",
+                            (
+                                "A quantidade excede o máximo disponível desta previsão "
+                                f"({max_publishable} {forecast.product.unit})."
+                            ),
+                        )
+            else:
+                self.add_error("listing_source", "Origem da oferta inválida.")
 
         if delivery_mode in {DeliveryMode.DELIVERY, DeliveryMode.BOTH}:
             if not delivery_radius_km:
@@ -221,6 +295,9 @@ class MarketplacePublishForm(forms.Form):
 
         if status == ListingStatus.EXPIRED and not expires_at_final:
             expires_at_final = now
+
+        if listing_source == self.LISTING_SOURCE_FORECAST and forecast and not self.errors.get("forecast"):
+            cleaned_data["product"] = forecast.product
 
         cleaned_data["expires_at_final"] = expires_at_final
         return cleaned_data
@@ -392,12 +469,40 @@ class MarketplaceEditForm(forms.Form):
         delivery_radius_km = cleaned_data.get("delivery_radius_km")
         now = timezone.now()
 
+        if self.listing:
+            has_stock_source = bool(self.listing.stock_id)
+            has_forecast_source = bool(self.listing.forecast_id)
+            if has_stock_source == has_forecast_source:
+                raise forms.ValidationError(
+                    "Este anúncio está com origem inválida (stock/previsão). Ajuste primeiro os dados da listing."
+                )
+
         if self.listing and quantity_total is not None:
             reserved_quantity = Decimal(str(self.listing.quantity_reserved or 0))
             if quantity_total < reserved_quantity:
                 self.add_error(
                     "quantity_total",
                     f"A quantidade listada não pode ser inferior à reservada ({reserved_quantity}).",
+                )
+
+            if has_stock_source:
+                source_available = get_max_publishable_quantity(self.listing.stock)
+                source_unit = self.listing.product.unit
+            else:
+                source_available = get_forecast_available_quantity(
+                    self.listing.forecast,
+                    exclude_listing_id=self.listing.id,
+                )
+                source_unit = self.listing.product.unit
+
+            max_allowed = max(
+                source_available + reserved_quantity,
+                Decimal(str(self.listing.quantity_total or 0)),
+            )
+            if quantity_total > max_allowed:
+                self.add_error(
+                    "quantity_total",
+                    f"A quantidade excede o máximo disponível para esta origem ({max_allowed} {source_unit}).",
                 )
 
         if delivery_mode in {DeliveryMode.DELIVERY, DeliveryMode.BOTH}:

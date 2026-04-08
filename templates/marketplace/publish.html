@@ -24,6 +24,18 @@
             </div>
           {% endif %}
 
+          <div class="mkp-field{% if form.listing_source.errors %} has-error{% endif %}">
+            <label for="{{ form.listing_source.id_for_label }}">{{ form.listing_source.label }}</label>
+            {{ form.listing_source }}
+            {% if form.listing_source.errors %}
+              <div class="mkp-field-errors">
+                {% for error in form.listing_source.errors %}
+                  <span>{{ error }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
           <div class="mkp-field{% if form.product.errors %} has-error{% endif %}">
             <label for="{{ form.product.id_for_label }}">{{ form.product.label }}</label>
             {{ form.product }}
@@ -36,6 +48,19 @@
             {% endif %}
           </div>
 
+          <div class="mkp-field{% if form.forecast.errors %} has-error{% endif %}" id="mkp-forecast-wrap">
+            <label for="{{ form.forecast.id_for_label }}">{{ form.forecast.label }}</label>
+            {{ form.forecast }}
+            {% if form.forecast.errors %}
+              <div class="mkp-field-errors">
+                {% for error in form.forecast.errors %}
+                  <span>{{ error }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <div class="mkp-help">Escolha a previsão ativa para marketplace que pretende publicar em pré-venda.</div>
+          </div>
+
           <div class="mkp-grid-2">
             <div class="mkp-field{% if form.quantity.errors %} has-error{% endif %}">
               <label for="{{ form.quantity.id_for_label }}">{{ form.quantity.label }}</label>
@@ -43,6 +68,9 @@
                 {{ form.quantity }}
                 <span>Qtd.</span>
               </div>
+              {% if forecast_quantity_limit is not None %}
+                <div class="mkp-help">Máximo para esta pré-venda: {{ forecast_quantity_limit|floatformat:"-3" }} (quantidade prevista disponível).</div>
+              {% endif %}
               {% if form.quantity.errors %}
                 <div class="mkp-field-errors">
                   {% for error in form.quantity.errors %}
@@ -216,17 +244,44 @@
         <section class="mkp-card mkp-card--side">
           <h3>Resumo de produtos publicáveis</h3>
           {% if publishable_summary %}
-            <ul class="mkp-summary-list">
+            <ul class="mkp-summary-list" id="mkp-summary-list">
               {% for row in publishable_summary %}
-                <li class="mkp-summary-item">
+                <li class="mkp-summary-item"
+                    data-summary-product="{{ row.product_id }}"
+                    data-summary-source="{{ row.source }}"
+                    data-product-name="{{ row.product.name }}"
+                    data-product-unit="{{ row.product.unit }}"
+                    data-source-label="{% if row.source == 'forecast' %}Pré-venda{% else %}Disponível agora{% endif %}"
+                    data-market-min="{% if row.market_min_price is not None %}{{ row.market_min_price|floatformat:'2' }}{% endif %}"
+                    data-market-max="{% if row.market_max_price is not None %}{{ row.market_max_price|floatformat:'2' }}{% endif %}"
+                    data-market-count="{{ row.market_count|default:0 }}">
                   <div class="mkp-summary-item__head">
                     <strong>{{ row.product.name }}</strong>
                     <span>{{ row.category_name }}</span>
                   </div>
+                  <div class="mkp-summary-item__type">
+                    {% if row.source == "forecast" %}
+                      <span class="mkp-tag mkp-tag--forecast">Pré-venda</span>
+                    {% else %}
+                      <span class="mkp-tag mkp-tag--stock">Disponível agora</span>
+                    {% endif %}
+                  </div>
                   <div class="mkp-summary-item__meta">
-                    <span>Stock: {{ row.current_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                    {% if row.source == "forecast" %}
+                      <span>Previsto: {{ row.current_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                    {% else %}
+                      <span>Stock: {{ row.current_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                    {% endif %}
                     <span>Reservado: {{ row.reserved_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
                     <span>Publicável: {{ row.publishable_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                    {% if row.period_start or row.period_end %}
+                      <span>
+                        Período:
+                        {% if row.period_start %}{{ row.period_start|date:"d/m/Y" }}{% else %}—{% endif %}
+                        -
+                        {% if row.period_end %}{{ row.period_end|date:"d/m/Y" }}{% else %}—{% endif %}
+                      </span>
+                    {% endif %}
                   </div>
                 </li>
               {% endfor %}
@@ -237,6 +292,54 @@
               <p>Sem excedente publicável neste momento.</p>
             </div>
           {% endif %}
+        </section>
+
+        <section class="mkp-card mkp-card--side mkp-card--trend" id="mkp-trend-card">
+          <h3>Tendência de mercado</h3>
+          <div class="mkp-trend-empty" id="mkp-trend-empty" {% if initial_market_trend %}hidden{% endif %}>
+            <i class="bi bi-graph-up-arrow"></i>
+            <p id="mkp-trend-empty-text">
+              {% if selected_product_id %}
+                Sem dados de mercado para este produto/origem neste momento.
+              {% else %}
+                Selecione um produto para ver tendência.
+              {% endif %}
+            </p>
+          </div>
+          <div class="mkp-trend-content" id="mkp-trend-content" {% if not initial_market_trend %}hidden{% endif %}>
+            <p class="mkp-trend-product" id="mkp-trend-product">
+              {% if initial_market_trend %}
+                {{ initial_market_trend.product_name }} · {{ initial_market_trend.source_label }}
+              {% endif %}
+            </p>
+            <div class="mkp-trend-grid">
+              <div class="mkp-trend-metric">
+                <span>Mínimo</span>
+                <strong id="mkp-trend-min">
+                  {% if initial_market_trend and initial_market_trend.market_min_price is not None %}
+                    {{ initial_market_trend.market_min_price|floatformat:"2" }} €/{{ initial_market_trend.product_unit }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </strong>
+              </div>
+              <div class="mkp-trend-metric">
+                <span>Máximo</span>
+                <strong id="mkp-trend-max">
+                  {% if initial_market_trend and initial_market_trend.market_max_price is not None %}
+                    {{ initial_market_trend.market_max_price|floatformat:"2" }} €/{{ initial_market_trend.product_unit }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </strong>
+              </div>
+            </div>
+            <p class="mkp-trend-count" id="mkp-trend-count">
+              {% if initial_market_trend %}
+                Baseado em {{ initial_market_trend.market_count|default:0 }} anúncio{{ initial_market_trend.market_count|default:0|pluralize }} ativo{{ initial_market_trend.market_count|default:0|pluralize }} de outros produtores.
+              {% endif %}
+            </p>
+          </div>
         </section>
       </aside>
     </div>
@@ -265,9 +368,21 @@
 
 <script>
 (function () {
+  const sourceField = document.getElementById("{{ form.listing_source.id_for_label }}");
+  const productField = document.getElementById("{{ form.product.id_for_label }}");
+  const forecastWrap = document.getElementById("mkp-forecast-wrap");
   const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
   const timerWrap = document.getElementById("mkp-timer-wrap");
   const dateWrap = document.getElementById("mkp-date-wrap");
+  const summaryList = document.getElementById("mkp-summary-list");
+  const summaryItems = summaryList ? Array.from(summaryList.querySelectorAll(".mkp-summary-item")) : [];
+  const trendEmpty = document.getElementById("mkp-trend-empty");
+  const trendEmptyText = document.getElementById("mkp-trend-empty-text");
+  const trendContent = document.getElementById("mkp-trend-content");
+  const trendProduct = document.getElementById("mkp-trend-product");
+  const trendMin = document.getElementById("mkp-trend-min");
+  const trendMax = document.getElementById("mkp-trend-max");
+  const trendCount = document.getElementById("mkp-trend-count");
   if (!modeField || !timerWrap || !dateWrap) return;
 
   function syncExpiryFields() {
@@ -276,8 +391,113 @@
     dateWrap.style.display = mode === "date" ? "" : "none";
   }
 
+  function syncSourceFields() {
+    if (!sourceField || !forecastWrap) return;
+    const source = sourceField.value;
+    forecastWrap.style.display = source === "forecast" ? "" : "none";
+  }
+
+  function selectedProductId() {
+    if (!productField) return "";
+    return (productField.value || "").trim();
+  }
+
+  function selectedSource() {
+    if (!sourceField) return "stock";
+    return (sourceField.value || "stock").trim();
+  }
+
+  function getMatchingSummaryItem() {
+    const productId = selectedProductId();
+    const source = selectedSource();
+    if (!productId) return null;
+    return (
+      summaryItems.find((item) => (
+        (item.dataset.summaryProduct || "") === productId
+        && (item.dataset.summarySource || "") === source
+      )) || null
+    );
+  }
+
+  function syncSummaryItems() {
+    if (!summaryItems.length) return;
+    const productId = selectedProductId();
+    const source = selectedSource();
+
+    summaryItems.forEach((item) => {
+      const itemProduct = item.dataset.summaryProduct || "";
+      const itemSource = item.dataset.summarySource || "";
+      const show = !productId || (itemProduct === productId && itemSource === source);
+      item.style.display = show ? "" : "none";
+    });
+  }
+
+  function showTrendEmpty(message) {
+    if (!trendEmpty || !trendEmptyText || !trendContent) return;
+    trendContent.hidden = true;
+    trendEmpty.hidden = false;
+    trendEmptyText.textContent = message;
+  }
+
+  function showTrendData(item) {
+    if (!trendContent || !trendProduct || !trendMin || !trendMax || !trendCount || !trendEmpty) return;
+
+    const productName = item.dataset.productName || "Produto";
+    const sourceLabel = item.dataset.sourceLabel || "Origem";
+    const productUnit = item.dataset.productUnit || "";
+    const marketMin = item.dataset.marketMin || "";
+    const marketMax = item.dataset.marketMax || "";
+    const marketCount = Number(item.dataset.marketCount || "0");
+
+    trendProduct.textContent = `${productName} · ${sourceLabel}`;
+    trendMin.textContent = marketMin ? `${marketMin} €/${productUnit}` : "—";
+    trendMax.textContent = marketMax ? `${marketMax} €/${productUnit}` : "—";
+    trendCount.textContent = `Baseado em ${marketCount} anúncio${marketCount === 1 ? "" : "s"} ativo${marketCount === 1 ? "" : "s"} de outros produtores.`;
+
+    trendEmpty.hidden = true;
+    trendContent.hidden = false;
+  }
+
+  function syncMarketTrend() {
+    const productId = selectedProductId();
+    if (!productId) {
+      showTrendEmpty("Selecione um produto para ver tendência.");
+      return;
+    }
+
+    const item = getMatchingSummaryItem();
+    if (!item) {
+      showTrendEmpty("Sem dados de mercado para este produto/origem neste momento.");
+      return;
+    }
+
+    const marketCount = Number(item.dataset.marketCount || "0");
+    if (!marketCount) {
+      showTrendEmpty("Sem dados de mercado para este produto/origem neste momento.");
+      return;
+    }
+
+    showTrendData(item);
+  }
+
+  function syncSummaryAndTrend() {
+    syncSummaryItems();
+    syncMarketTrend();
+  }
+
   modeField.addEventListener("change", syncExpiryFields);
   syncExpiryFields();
+  if (sourceField) {
+    sourceField.addEventListener("change", function () {
+      syncSourceFields();
+      syncSummaryAndTrend();
+    });
+  }
+  syncSourceFields();
+  if (productField) {
+    productField.addEventListener("change", syncSummaryAndTrend);
+  }
+  syncSummaryAndTrend();
 
   const photoInput = document.getElementById("{{ form.photo.id_for_label }}");
   const photoCropInput = document.getElementById("{{ form.photo_crop.id_for_label }}");
@@ -601,6 +821,11 @@
   gap: 0.55rem;
 }
 
+.mkp-help {
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
 .mkp-crop-stage {
   position: relative;
   width: min(100%, 460px);
@@ -796,6 +1021,31 @@
   font-size: 0.8rem;
 }
 
+.mkp-summary-item__type {
+  margin-bottom: 0.35rem;
+}
+
+.mkp-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.mkp-tag--stock {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.mkp-tag--forecast {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
 .mkp-summary-empty {
   border: 1px dashed #cbd5e1;
   border-radius: 0.9rem;
@@ -808,6 +1058,75 @@
   font-size: 1.2rem;
   display: block;
   margin-bottom: 0.3rem;
+}
+
+.mkp-card--trend {
+  margin-top: 0.9rem;
+}
+
+.mkp-trend-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.9rem;
+  padding: 0.95rem;
+  text-align: center;
+  color: #64748b;
+}
+
+.mkp-trend-empty i {
+  font-size: 1.1rem;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.mkp-trend-empty p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.mkp-trend-content {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+  padding: 0.9rem;
+}
+
+.mkp-trend-product {
+  margin: 0 0 0.65rem;
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.mkp-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.mkp-trend-metric {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.65rem;
+}
+
+.mkp-trend-metric span {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.mkp-trend-metric strong {
+  font-size: 0.94rem;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.mkp-trend-count {
+  margin: 0.7rem 0 0;
+  color: #64748b;
+  font-size: 0.77rem;
 }
 
 /* -------------------------------------------------------------------------- */
