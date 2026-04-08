@@ -242,12 +242,12 @@ def stock_detalhe(request, product_id):
         product_id=product_id,
     ).first()
 
-    movements = services.get_stock_movements(stock)
+    activity_items = services.get_stock_activity_feed(stock)
 
     context = {
         "stock": stock,
         "producer_product": producer_product,
-        "movements": movements,
+        "activity_items": activity_items,
         "page_title": f"Stock — {stock.product.name}",
     }
     return render(request, "inventory/stock_detalhe.html", context)

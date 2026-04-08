@@ -1,3 +1,4 @@
+from django.urls import reverse
 from django.contrib import messages
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -6,6 +7,7 @@ from decimal import Decimal
 from apps.common.decorators import login_required, client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
+from apps.orders.services import create_order_from_recommendation, OrderServiceError
 from apps.recommendations.forms import RecommendationRequestForm
 from apps.recommendations.models import Recommendation
 from apps.recommendations.services import (
@@ -343,15 +345,36 @@ def recommendations_accept_view(request, recommendation_id):
             "Não existem linhas de recomendação para confirmar.",
         )
 
-    accept_recommendation(recommendation)
+    try:
+        order = create_order_from_recommendation(
+            buyer_producer=producer,
+            recommendation=recommendation,
+            acting_user=request.current_user,
+        )
+    except OrderServiceError as exc:
+        totals = get_recommendation_totals(recommendation)
+        context = {
+            "wizard_step": 3,
+            "recommendation": recommendation,
+            "selected_items": totals["items"],
+            "selected_total_quantity": totals["selected_total_quantity"],
+            "selected_total_amount": totals["selected_total_amount"],
+            "can_accept": True,
+        }
+        response = _render_wizard(request, context)
+        return with_htmx_toast(
+            response,
+            "error",
+            str(exc),
+        )
 
     if _is_htmx(request):
         response = HttpResponse("")
-        response["HX-Redirect"] = "/encomendas/"
+        response["HX-Redirect"] = reverse("orders:detail", args=[order.id])
         return response
 
-    messages.success(request, "Recomendação aceite com sucesso.")
-    return redirect("/encomendas/")
+    messages.success(request, f"Encomenda #{order.order_number} criada com sucesso.")
+    return redirect("orders:detail", order_id=order.id)
 
 
 @login_required

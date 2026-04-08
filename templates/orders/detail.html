@@ -1,0 +1,238 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Detalhe da Encomenda{% endblock %}
+{% block app_content %}
+
+<div class="ordd-page">
+  <nav class="ordd-backbar">
+    <a href="{% url 'orders:index' %}{% if order_role == 'seller' %}?tab=recebidas{% endif %}"
+       class="ordd-backlink">
+      <i class="bi bi-arrow-left"></i>
+      Voltar às encomendas
+    </a>
+  </nav>
+
+  <header class="ordd-header ord-status--{{ order.status|lower }}">
+    <div>
+      <p class="ordd-number">Encomenda #{{ order.order_number }}</p>
+      <h1>{{ order.get_status_display }}</h1>
+      <p class="ordd-meta">
+        Criada em {{ order.created_at|date:"d/m/Y H:i" }}
+        {% if order.source_type %}· Origem: {{ order.get_source_type_display }}{% endif %}
+        {% if order_role == "seller" %}· Vista vendedor{% else %}· Vista comprador{% endif %}
+      </p>
+    </div>
+
+    <div class="ordd-header__right">
+      <div class="ordd-total">
+        <span>Total</span>
+        <strong>{{ order.total_amount|floatformat:2 }} €</strong>
+      </div>
+
+      {% if can_confirm_receipt %}
+        <form method="post" action="{% url 'orders:confirm_receipt' order.id %}">
+          {% csrf_token %}
+          <button type="submit" class="ordd-btn-primary">
+            <i class="bi bi-check2-circle"></i>
+            Confirmar receção
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if order_role == "seller" %}
+    <section class="ordd-actions">
+      {% if can_seller_confirm %}
+        <form method="post" action="{% url 'orders:seller_confirm' order.id %}">
+          {% csrf_token %}
+          <button type="submit" class="ordd-btn-secondary">
+            <i class="bi bi-check2-circle"></i>
+            Aceitar pedido
+          </button>
+        </form>
+      {% endif %}
+
+      {% if can_seller_start %}
+        <form method="post" action="{% url 'orders:seller_in_progress' order.id %}">
+          {% csrf_token %}
+          <button type="submit" class="ordd-btn-secondary">
+            <i class="bi bi-box-seam"></i>
+            Marcar em preparação
+          </button>
+        </form>
+      {% endif %}
+
+      {% if can_seller_deliver %}
+        <form method="post" action="{% url 'orders:seller_delivering' order.id %}">
+          {% csrf_token %}
+          <button type="submit" class="ordd-btn-secondary">
+            <i class="bi bi-truck"></i>
+            Marcar em entrega
+          </button>
+        </form>
+      {% endif %}
+    </section>
+
+    {% if can_seller_cancel %}
+      <section class="ordd-card">
+        <h3>Cancelar pedido</h3>
+        <form method="post" action="{% url 'orders:seller_cancel' order.id %}" class="ordd-cancel-form">
+          {% csrf_token %}
+          <div class="ordd-cancel-grid">
+            <div>
+              <label for="cancelReason">Motivo</label>
+              <select id="cancelReason" name="cancel_reason">
+                <option value="Sem stock disponível">Sem stock disponível</option>
+                <option value="Problema logístico">Problema logístico</option>
+                <option value="Erro no anúncio">Erro no anúncio</option>
+                <option value="Produto indisponível">Produto indisponível</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+            <div>
+              <label for="cancelNotes">Notas adicionais</label>
+              <textarea id="cancelNotes" name="notes" rows="3" placeholder="Detalhes adicionais sobre o cancelamento..."></textarea>
+            </div>
+          </div>
+          <button type="submit" class="ordd-btn-danger">
+            <i class="bi bi-x-circle"></i>
+            Cancelar encomenda
+          </button>
+        </form>
+      </section>
+    {% endif %}
+  {% endif %}
+
+  <section class="ordd-grid">
+    <article class="ordd-card">
+      <h3>Items da encomenda</h3>
+
+      <div class="ordd-table-wrap">
+        <table class="ordd-table">
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>{% if order_role == "seller" %}Comprador{% else %}Vendedor{% endif %}</th>
+              <th>Quantidade</th>
+              <th>Preço</th>
+              <th>Subtotal</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if order_role == "seller" %}
+              {% for item in seller_items %}
+                <tr>
+                  <td>{{ item.product.name }}</td>
+                  <td>{{ order.buyer_producer.display_name|default:order.buyer_producer.company_name|default:order.buyer_producer.user.email }}</td>
+                  <td>{{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}</td>
+                  <td>{{ item.unit_price|floatformat:2 }} €</td>
+                  <td>{{ item.subtotal|floatformat:2 }} €</td>
+                  <td>{{ item.get_item_status_display }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              {% for item in order.items.all %}
+                <tr>
+                  <td>{{ item.product.name }}</td>
+                  <td>{{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:item.seller_producer.user.email }}</td>
+                  <td>{{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}</td>
+                  <td>{{ item.unit_price|floatformat:2 }} €</td>
+                  <td>{{ item.subtotal|floatformat:2 }} €</td>
+                  <td>{{ item.get_item_status_display }}</td>
+                </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="ordd-card">
+      <h3>Timeline</h3>
+
+      <div class="ordd-timeline">
+        {% for event in order.status_history.all %}
+          <div class="ordd-timeline__item ord-status--{{ event.status|lower }}">
+            <div class="ordd-dot"></div>
+            <div>
+              <strong>{{ event.get_status_display }}</strong>
+              <p>{{ event.created_at|date:"d/m/Y H:i" }}</p>
+              {% if event.notes %}
+                <span>{{ event.notes }}</span>
+              {% endif %}
+            </div>
+          </div>
+        {% empty %}
+          <p class="ordd-muted">Sem histórico disponível.</p>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+</div>
+
+<style>
+.ordd-page{display:flex;flex-direction:column;gap:1rem}
+.ordd-backbar{display:flex}
+.ordd-backlink{display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;color:#1d4ed8;font-weight:700}
+.ordd-backlink:hover{color:#1e3a8a}
+
+.ordd-header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-left:6px solid #cbd5e1;border-radius:1rem;padding:1.1rem 1.2rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
+.ord-status--pending{border-left-color:#f59e0b}
+.ord-status--confirmed{border-left-color:#2563eb}
+.ord-status--in_progress{border-left-color:#7c3aed}
+.ord-status--delivering{border-left-color:#0ea5e9}
+.ord-status--completed{border-left-color:#16a34a}
+.ord-status--cancelled{border-left-color:#dc2626}
+
+.ordd-number{margin:0 0 .25rem 0;color:#16a34a;font-size:.82rem;font-weight:800}
+.ordd-header h1{margin:0;color:#0f172a;font-size:1.7rem}
+.ordd-meta{margin:.35rem 0 0 0;color:#64748b}
+.ordd-header__right{display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap}
+.ordd-total{text-align:right}
+.ordd-total span{display:block;color:#64748b;font-size:.82rem}
+.ordd-total strong{font-size:1.35rem;color:#0f172a}
+
+.ordd-actions{display:flex;gap:.75rem;flex-wrap:wrap}
+.ordd-btn-primary,.ordd-btn-secondary,.ordd-btn-danger{border:none;padding:.85rem 1rem;border-radius:.85rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:.5rem}
+.ordd-btn-primary{background:#16a34a;color:#fff}
+.ordd-btn-primary:hover{background:#15803d}
+.ordd-btn-secondary{background:#eff6ff;color:#1d4ed8}
+.ordd-btn-secondary:hover{background:#dbeafe}
+.ordd-btn-danger{background:#fee2e2;color:#b91c1c}
+.ordd-btn-danger:hover{background:#fecaca}
+
+.ordd-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:1rem}
+.ordd-card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
+.ordd-card h3{margin:0 0 1rem 0;color:#0f172a}
+.ordd-table-wrap{overflow:auto}
+.ordd-table{width:100%;border-collapse:collapse}
+.ordd-table th,.ordd-table td{padding:.8rem .7rem;border-bottom:1px solid #f1f5f9;text-align:left;font-size:.88rem}
+.ordd-table th{font-size:.75rem;text-transform:uppercase;color:#64748b}
+
+.ordd-cancel-form{display:flex;flex-direction:column;gap:.85rem}
+.ordd-cancel-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:.85rem}
+.ordd-cancel-form label{display:block;font-size:.8rem;font-weight:700;color:#334155;margin-bottom:.35rem}
+.ordd-cancel-form select,.ordd-cancel-form textarea{width:100%;border:1px solid #cbd5e1;border-radius:.85rem;padding:.85rem .95rem;outline:none;background:#fff}
+.ordd-cancel-form select:focus,.ordd-cancel-form textarea:focus{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12)}
+
+.ordd-timeline{display:flex;flex-direction:column;gap:.9rem}
+.ordd-timeline__item{display:flex;gap:.75rem;padding:.7rem .8rem;border-radius:.85rem;background:#f8fafc;border-left:4px solid #cbd5e1}
+.ordd-dot{width:10px;height:10px;border-radius:999px;background:currentColor;margin-top:.35rem;flex-shrink:0}
+.ordd-timeline__item.ord-status--pending{color:#b45309;border-left-color:#f59e0b}
+.ordd-timeline__item.ord-status--confirmed{color:#1d4ed8;border-left-color:#2563eb}
+.ordd-timeline__item.ord-status--in_progress{color:#6d28d9;border-left-color:#7c3aed}
+.ordd-timeline__item.ord-status--delivering{color:#0369a1;border-left-color:#0ea5e9}
+.ordd-timeline__item.ord-status--completed{color:#166534;border-left-color:#16a34a}
+.ordd-timeline__item.ord-status--cancelled{color:#b91c1c;border-left-color:#dc2626}
+.ordd-timeline__item p{margin:.15rem 0;font-size:.82rem;color:#64748b}
+.ordd-timeline__item span{font-size:.85rem;color:#475569;display:block}
+.ordd-muted{margin:0;color:#64748b}
+
+@media (max-width: 960px){
+  .ordd-grid{grid-template-columns:1fr}
+  .ordd-cancel-grid{grid-template-columns:1fr}
+}
+</style>
+
+{% endblock %}

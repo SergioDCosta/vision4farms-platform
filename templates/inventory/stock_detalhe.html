@@ -87,37 +87,31 @@
         </div>
       </div>
 
-      {% if movements %}
+      {% if activity_items %}
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead>
               <tr>
                 <th>Data</th>
                 <th>Tipo</th>
-                <th>Variação</th>
+                <th>Impacto</th>
                 <th>Notas</th>
                 <th>Registado por</th>
               </tr>
             </thead>
             <tbody>
-              {% for mv in movements %}
+              {% for item in activity_items %}
                 <tr>
-                  <td>{{ mv.created_at|date:"d/m/Y H:i" }}</td>
-                  <td>{{ mv.get_movement_type_display }}</td>
+                  <td>{{ item.created_at|date:"d/m/Y H:i" }}</td>
+                  <td>{{ item.type_label }}</td>
                   <td>
-                    <span class="inv-value" style="{% if mv.quantity_delta >= 0 %}color:#16a34a;{% else %}color:#dc2626;{% endif %}">
-                      {% if mv.quantity_delta >= 0 %}+{% endif %}{{ mv.quantity_delta|floatformat:"-3" }}
+                    <span class="inv-value
+                      {% if item.impact_class == 'is-positive' %}inv-value--success{% elif item.impact_class == 'is-negative' %}inv-value--critical{% elif item.impact_class == 'is-warning' %}inv-value--warning{% endif %}">
+                      {{ item.impact_label }}
                     </span>
-                    <span class="inv-unit">{{ stock.product.unit }}</span>
                   </td>
-                  <td>{{ mv.notes|default:"—" }}</td>
-                  <td>
-                    {% if mv.performed_by %}
-                      {{ mv.performed_by.first_name }} {{ mv.performed_by.last_name }}
-                    {% else %}
-                      Sistema
-                    {% endif %}
-                  </td>
+                  <td>{{ item.notes }}</td>
+                  <td>{{ item.actor_name }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -126,8 +120,8 @@
       {% else %}
         <div class="inv-empty">
           <i class="bi bi-clock-history"></i>
-          <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem movimentos registados</p>
-          <p style="margin:0;">Atualize o stock para começar a criar histórico deste produto.</p>
+          <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem atividade registada</p>
+          <p style="margin:0;">As alterações de stock e o ciclo das encomendas vão aparecer aqui.</p>
         </div>
       {% endif %}
     </div>

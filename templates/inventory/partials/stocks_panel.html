@@ -133,15 +133,15 @@
                             <i class="bi bi-stars"></i>
                           </a>
                         {% elif row.state.key == "excess" %}
-                          <a href="{{ row.state.action_url }}?product={{ row.product_id }}&action=publish"
+                          <a href="{% url 'marketplace:publish' %}?product={{ row.product_id }}"
                              class="inv-icon-btn inv-icon-btn--green"
-                             title="Criar anúncio de excedente">
-                            <i class="bi bi-storefront"></i>
+                             title="Vender">
+                            <i class="bi bi-tag"></i>
                           </a>
                         {% else %}
-                          <a href="{{ row.state.action_url }}?product={{ row.product_id }}"
+                          <a href="{% url 'marketplace:index' %}"
                              class="inv-icon-btn inv-icon-btn--amber"
-                             title="Abrir marketplace">
+                             title="Comprar">
                             <i class="bi bi-shop"></i>
                           </a>
                         {% endif %}

@@ -422,8 +422,18 @@ def marketplace_publish_view(request):
 
     success = request.GET.get("success") == "1"
     created_listing_id = request.GET.get("listing_id")
+    requested_product_id = (request.GET.get("product") or "").strip()
 
-    form = MarketplacePublishForm(request.POST or None, request.FILES or None, producer=producer)
+    form_initial = {}
+    if request.method == "GET" and requested_product_id:
+        form_initial["product"] = requested_product_id
+
+    form = MarketplacePublishForm(
+        request.POST or None,
+        request.FILES or None,
+        producer=producer,
+        initial=form_initial,
+    )
     publishable_summary = get_publishable_products_summary(producer)
 
     if request.method == "POST" and form.is_valid():

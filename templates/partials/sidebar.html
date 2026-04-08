@@ -121,6 +121,11 @@
         <span class="sidebar-link-text">Recomendações</span>
       </a>
       <a href="/encomendas/"
+         hx-get="/encomendas/"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"  
          data-active-mode="prefix"
          data-active-value="/encomendas/"
          class="sidebar-link {% if '/encomendas/' in request.path %}active{% endif %}"

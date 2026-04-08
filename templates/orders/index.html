@@ -1,0 +1,60 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Encomendas{% endblock %}
+{% block app_content %}
+
+<div class="ord-page">
+  <header class="ord-header">
+    <div>
+      <h1>Encomendas</h1>
+      <p>Acompanhe as suas compras e os pedidos recebidos.</p>
+    </div>
+  </header>
+
+  {% include "orders/partials/orders_panel.html" %}
+</div>
+
+<style>
+.ord-page{display:flex;flex-direction:column;gap:1rem}
+.ord-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap}
+.ord-header h1{margin:0;font-size:1.8rem;font-weight:800;color:#0f172a}
+.ord-header p{margin:.35rem 0 0 0;color:#64748b}
+
+.ord-tabs{display:flex;gap:.35rem;padding:.35rem;background:#eef2ff;border:1px solid #c7d2fe;border-radius:1rem;flex-wrap:wrap}
+.ord-tab{display:inline-flex;align-items:center;gap:.5rem;padding:.85rem 1rem;border-radius:.8rem;text-decoration:none;color:#475569;font-weight:700;transition:.15s ease}
+.ord-tab.is-active{background:#fff;color:#1d4ed8;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+
+.ord-filters form{display:flex;gap:.75rem}
+.ord-filters select{padding:.85rem 1rem;border:1px solid #cbd5e1;border-radius:.9rem;background:#fff;color:#0f172a}
+
+.ord-list{display:flex;flex-direction:column;gap:1rem}
+.ord-card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04);border-left:6px solid #cbd5e1}
+.ord-card--pending{border-left-color:#f59e0b}
+.ord-card--confirmed{border-left-color:#2563eb}
+.ord-card--in_progress{border-left-color:#7c3aed}
+.ord-card--delivering{border-left-color:#0ea5e9}
+.ord-card--completed{border-left-color:#16a34a}
+.ord-card--cancelled{border-left-color:#dc2626}
+
+.ord-card__main{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}
+.ord-number{margin:0 0 .25rem 0;color:#16a34a;font-size:.82rem;font-weight:800}
+.ord-card h3{margin:0;color:#0f172a}
+.ord-meta{margin:.25rem 0 0 0;color:#64748b;font-size:.84rem}
+.ord-total{text-align:right}
+.ord-total span{display:block;color:#64748b;font-size:.82rem}
+.ord-total strong{font-size:1.2rem;color:#0f172a}
+
+.ord-card__items{margin-top:.85rem;padding-top:.85rem;border-top:1px solid #f1f5f9}
+.ord-card__items p{margin:.3rem 0;color:#334155;font-size:.88rem}
+.ord-card__items span{color:#64748b}
+.ord-peer{font-weight:700;color:#0f172a}
+
+.ord-card__actions{margin-top:1rem;display:flex;justify-content:flex-end}
+.ord-btn{display:inline-flex;align-items:center;justify-content:center;padding:.8rem 1rem;border-radius:.85rem;background:#16a34a;color:#fff;text-decoration:none;font-weight:700}
+.ord-btn:hover{background:#15803d}
+
+.ord-empty{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:2rem;text-align:center;color:#64748b}
+.ord-empty i{font-size:1.8rem;color:#94a3b8;display:block;margin-bottom:.5rem}
+.ord-empty h3{margin:.25rem 0;color:#0f172a}
+</style>
+
+{% endblock %}

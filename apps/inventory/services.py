@@ -16,7 +16,7 @@ from apps.inventory.models import (
     StockMovement,
     StockMovementType,
 )
-from apps.orders.models import Order, OrderItem
+from apps.orders.models import Order, OrderItem, OrderStatusHistory, OrderStatus
 
 
 ZERO = Decimal("0.00")
@@ -52,6 +52,14 @@ def _shift_month(dt, delta_months):
 
 def _to_decimal(value):
     return value if value is not None else ZERO
+
+
+def _format_qty(value):
+    decimal_value = Decimal(str(value or 0)).quantize(Decimal("0.001"))
+    formatted = format(decimal_value, "f")
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".")
+    return formatted or "0"
 
 
 def _stock_state(stock):
@@ -585,6 +593,116 @@ def get_stock_movements(stock, limit=20):
         .order_by("-created_at")[:limit]
     )
 
+def _user_display_name(user):
+    if not user:
+        return "Sistema"
+
+    full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
+    return full_name or getattr(user, "email", "Sistema")
+
+
+def get_stock_activity_feed(stock, limit=20):
+    feed = []
+
+    movements = (
+        StockMovement.objects
+        .filter(stock=stock)
+        .select_related("performed_by")
+        .order_by("-created_at")[:limit]
+    )
+
+    for mv in movements:
+        delta = Decimal(str(mv.quantity_delta or 0))
+        if delta > 0:
+            impact_label = f"+{_format_qty(delta)} {stock.product.unit}"
+            impact_class = "is-positive"
+        elif delta < 0:
+            impact_label = f"{_format_qty(delta)} {stock.product.unit}"
+            impact_class = "is-negative"
+        else:
+            impact_label = "Sem impacto direto"
+            impact_class = "is-neutral"
+
+        feed.append({
+            "created_at": mv.created_at,
+            "type_label": mv.get_movement_type_display(),
+            "impact_label": impact_label,
+            "impact_class": impact_class,
+            "notes": mv.notes or "—",
+            "actor_name": _user_display_name(mv.performed_by),
+            "source": "movement",
+        })
+
+    history_qs = (
+        OrderStatusHistory.objects
+        .filter(
+            order__items__seller_producer=stock.producer,
+            order__items__product=stock.product,
+        )
+        .select_related("changed_by", "order")
+        .prefetch_related("order__items")
+        .order_by("-created_at")
+    )
+
+    seen_ids = set()
+
+    for event in history_qs:
+        if event.id in seen_ids:
+            continue
+        seen_ids.add(event.id)
+
+        related_items = [
+            item for item in event.order.items.all()
+            if item.seller_producer_id == stock.producer_id and item.product_id == stock.product_id
+        ]
+        if not related_items:
+            continue
+
+        qty = sum(Decimal(str(item.quantity or 0)) for item in related_items)
+        qty = qty.quantize(Decimal("0.001"))
+
+        if event.status == OrderStatus.PENDING:
+            impact_label = f"{_format_qty(qty)} {stock.product.unit} solicitados"
+            impact_class = "is-neutral"
+        elif event.status == OrderStatus.CONFIRMED:
+            impact_label = f"+{_format_qty(qty)} {stock.product.unit} reservados"
+            impact_class = "is-warning"
+        elif event.status == OrderStatus.IN_PROGRESS:
+            impact_label = "Pedido em preparação"
+            impact_class = "is-info"
+        elif event.status == OrderStatus.DELIVERING:
+            impact_label = "Pedido em entrega"
+            impact_class = "is-info"
+        elif event.status == OrderStatus.COMPLETED:
+            impact_label = f"-{_format_qty(qty)} {stock.product.unit} debitados"
+            impact_class = "is-negative"
+        elif event.status == OrderStatus.CANCELLED:
+            had_reservation_before = event.order.status_history.filter(
+                created_at__lt=event.created_at,
+                status__in=[OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING],
+            ).exists()
+
+            if had_reservation_before:
+                impact_label = f"-{_format_qty(qty)} {stock.product.unit} reserva libertada"
+            else:
+                impact_label = "Pedido cancelado sem reserva"
+            impact_class = "is-neutral"
+        else:
+            impact_label = "Sem impacto direto"
+            impact_class = "is-neutral"
+
+        feed.append({
+            "created_at": event.created_at,
+            "type_label": f"Encomenda #{event.order.order_number} — {event.get_status_display()}",
+            "impact_label": impact_label,
+            "impact_class": impact_class,
+            "notes": event.notes or "—",
+            "actor_name": _user_display_name(event.changed_by),
+            "source": "order",
+        })
+
+    feed.sort(key=lambda item: item["created_at"], reverse=True)
+    return feed[:limit]
 
 @transaction.atomic
 def update_stock(stock, new_quantity, minimum_threshold, movement_type, user, notes=""):
