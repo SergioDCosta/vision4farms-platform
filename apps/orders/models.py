@@ -36,6 +36,27 @@ class OrderItemStatus(models.TextChoices):
     CANCELLED = "CANCELLED", "Cancelado"
 
 
+class OrderGroup(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_number = models.BigIntegerField(unique=True)
+    buyer_producer = models.ForeignKey(
+        "inventory.ProducerProfile",
+        on_delete=models.CASCADE,
+        related_name="order_groups_as_buyer",
+    )
+    source_type = models.CharField(max_length=20, choices=OrderSourceType.choices, default=OrderSourceType.MARKETPLACE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False
+        db_table = "order_groups"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Grupo #{self.group_number}"
+
+
 class Order(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order_number = models.BigIntegerField(unique=True)
@@ -43,6 +64,13 @@ class Order(models.Model):
         "inventory.ProducerProfile",
         on_delete=models.CASCADE,
         related_name="orders_as_buyer",
+    )
+    group = models.ForeignKey(
+        "orders.OrderGroup",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="orders",
     )
     source_type = models.CharField(max_length=20, choices=OrderSourceType.choices, default=OrderSourceType.MARKETPLACE)
     recommendation = models.ForeignKey(

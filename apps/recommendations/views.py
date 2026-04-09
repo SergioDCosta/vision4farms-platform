@@ -348,7 +348,7 @@ def recommendations_accept_view(request, recommendation_id):
         )
 
     try:
-        order = create_order_from_recommendation(
+        order_group, created_orders = create_order_from_recommendation(
             buyer_producer=producer,
             recommendation=recommendation,
             acting_user=request.current_user,
@@ -372,11 +372,11 @@ def recommendations_accept_view(request, recommendation_id):
 
     if _is_htmx(request):
         response = HttpResponse("")
-        response["HX-Redirect"] = reverse("orders:detail", args=[order.id])
+        response["HX-Redirect"] = reverse("orders:group_detail", args=[order_group.id])
         return response
 
-    messages.success(request, f"Encomenda #{order.order_number} criada com sucesso.")
-    return redirect("orders:detail", order_id=order.id)
+    messages.success(request, f"Foram criadas {len(created_orders)} encomenda(s) no grupo #{order_group.group_number}.")
+    return redirect("orders:group_detail", group_id=order_group.id)
 
 
 @login_required

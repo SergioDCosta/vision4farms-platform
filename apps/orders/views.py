@@ -2,19 +2,24 @@ from decimal import Decimal, InvalidOperation
 from django.http import Http404
 from django.contrib import messages
 from django.shortcuts import redirect, render, get_object_or_404
+from django.urls import reverse
 
 from apps.common.decorators import login_required, client_only_required
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import OrderStatus, OrderItemStatus
 from apps.orders.services import (
+    compute_order_group_status,
     OrderServiceError,
     confirm_order_receipt,
     create_order_from_listing,
+    get_buyer_purchase_entries,
     get_current_producer_for_user,
+    get_order_group_detail_for_buyer,
+    get_order_group_status_label,
     get_order_detail_for_buyer,
     get_order_detail_for_seller,
-    get_orders_for_buyer,
     get_orders_for_seller,
+    get_order_source_label,
     seller_update_order_status,
 )
 
@@ -36,15 +41,20 @@ def orders_index_view(request):
         tab = "compras"
 
     status = (request.GET.get("status") or "").strip()
+    orders = []
+    purchase_entries = []
 
     if tab == "recebidas":
         orders = get_orders_for_seller(seller_producer=producer, status=status)
+        for order in orders:
+            order.order_source_label = get_order_source_label(order)
     else:
-        orders = get_orders_for_buyer(buyer_producer=producer, status=status)
+        purchase_entries = get_buyer_purchase_entries(buyer_producer=producer, status=status)
 
     context = {
         "page_title": "Encomendas",
         "orders": orders,
+        "purchase_entries": purchase_entries,
         "selected_status": status,
         "selected_tab": tab,
         "status_choices": OrderStatus.choices,
@@ -69,6 +79,10 @@ def order_detail_view(request, order_id):
     except Http404:
         order = get_order_detail_for_seller(seller_producer=producer, order_id=order_id)
         role = "seller"
+
+    force_single = (request.GET.get("force_single") or "").strip() == "1"
+    if role == "buyer" and order.group_id and not force_single:
+        return redirect("orders:group_detail", group_id=order.group_id)
 
     seller_items = list(order.items.filter(seller_producer=producer)) if role == "seller" else []
     active_seller_items = [item for item in seller_items if item.item_status != OrderItemStatus.CANCELLED]
@@ -110,6 +124,12 @@ def order_detail_view(request, order_id):
         "page_title": f"Encomenda #{order.order_number}",
         "order": order,
         "order_role": role,
+        "order_source_label": get_order_source_label(order),
+        "back_to_group_url": (
+            reverse("orders:group_detail", kwargs={"group_id": order.group_id})
+            if role == "buyer" and order.group_id and force_single
+            else None
+        ),
         "seller_items": seller_items,
         "can_confirm_receipt": can_confirm_receipt,
         "can_seller_confirm": can_seller_confirm,
@@ -118,6 +138,61 @@ def order_detail_view(request, order_id):
         "can_seller_cancel": can_seller_cancel,
     }
     return render(request, "orders/detail.html", context)
+
+
+@login_required
+@client_only_required
+def order_group_detail_view(request, group_id):
+    producer = get_current_producer_for_user(request.current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    group = get_order_group_detail_for_buyer(buyer_producer=producer, group_id=group_id)
+    group_orders = list(group.orders.all())
+    aggregated_status = compute_order_group_status([order.status for order in group_orders])
+
+    sub_orders = []
+    for order in group_orders:
+        items = list(order.items.all())
+        first_seller = items[0].seller_producer if items else None
+        seller_label = (
+            first_seller.display_name
+            if first_seller and first_seller.display_name
+            else first_seller.company_name
+            if first_seller and first_seller.company_name
+            else first_seller.user.email
+            if first_seller and first_seller.user
+            else "Vendedor"
+        )
+
+        sub_orders.append(
+            {
+                "order": order,
+                "seller_label": seller_label,
+                "source_label": get_order_source_label(order),
+                "status_label": order.get_status_display(),
+                "item_count": len(items),
+                "total_amount": order.total_amount,
+                "detail_url": f"{reverse('orders:detail', kwargs={'order_id': order.id})}?force_single=1",
+            }
+        )
+
+    total_amount = sum((Decimal(str(order.total_amount or 0)) for order in group_orders), Decimal("0.00"))
+    total_items = sum(sub["item_count"] for sub in sub_orders)
+
+    context = {
+        "page_title": f"Grupo #{group.group_number}",
+        "group": group,
+        "group_orders": group_orders,
+        "group_status": aggregated_status,
+        "group_status_label": get_order_group_status_label(aggregated_status),
+        "group_total_amount": total_amount,
+        "group_total_items": total_items,
+        "sub_orders": sub_orders,
+    }
+    return render(request, "orders/group_detail.html", context)
+
 
 @login_required
 @client_only_required
@@ -146,7 +221,7 @@ def create_order_from_listing_view(request, listing_id):
         return redirect("marketplace:detail", listing_id=listing.id)
 
     try:
-        order = create_order_from_listing(
+        order_group, order = create_order_from_listing(
             buyer_producer=producer,
             listing=listing,
             quantity=quantity,
@@ -157,8 +232,8 @@ def create_order_from_listing_view(request, listing_id):
         messages.error(request, str(exc))
         return redirect("marketplace:detail", listing_id=listing.id)
 
-    messages.success(request, f"Encomenda #{order.order_number} criada com sucesso.")
-    return redirect("orders:detail", order_id=order.id)
+    messages.success(request, f"Encomenda #{order.order_number} criada com sucesso no grupo #{order_group.group_number}.")
+    return redirect("orders:group_detail", group_id=order_group.id)
 
 
 @login_required

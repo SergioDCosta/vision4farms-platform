@@ -46,7 +46,13 @@
               </thead>
               <tbody>
                 {% for row in group.rows %}
-                  <tr>
+                  <tr {% if row.stock %}
+                        class="inv-row-link"
+                        data-detail-url="{% url 'inventory:stock_detalhe' product_id=row.product.id %}"
+                        tabindex="0"
+                        role="link"
+                        aria-label="Ver detalhe de {{ row.product.name }}"
+                      {% endif %}>
                     <td>
                       <p class="inv-product">{{ row.product.name }}</p>
                       <p class="inv-product-meta">
@@ -120,3 +126,41 @@
     </div>
   {% endif %}
 </div>
+
+<script>
+  (function () {
+    if (window.__inventoryRowLinkDelegateBound) return;
+
+    const interactiveSelector = "a, button, input, select, textarea, label, summary, [role='button']";
+
+    function resolveRowFromEvent(event) {
+      const row = event.target.closest("tr.inv-row-link[data-detail-url]");
+      if (!row) return null;
+      if (event.target.closest(interactiveSelector)) return null;
+      return row;
+    }
+
+    document.addEventListener("click", function (event) {
+      const row = resolveRowFromEvent(event);
+      if (!row) return;
+      const detailUrl = row.dataset.detailUrl;
+      if (detailUrl) {
+        window.location.href = detailUrl;
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const row = event.target.closest("tr.inv-row-link[data-detail-url]");
+      if (!row) return;
+      if (event.target.closest(interactiveSelector)) return;
+      event.preventDefault();
+      const detailUrl = row.dataset.detailUrl;
+      if (detailUrl) {
+        window.location.href = detailUrl;
+      }
+    });
+
+    window.__inventoryRowLinkDelegateBound = true;
+  })();
+</script>

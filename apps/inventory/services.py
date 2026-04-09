@@ -732,17 +732,29 @@ def save_product_forecast(
     if period_start and period_end and period_end < period_start:
         raise ValidationError("O período final não pode ser anterior ao período inicial.")
 
-    created = False
-    if forecast_id:
-        try:
-            forecast = ProductionForecast.objects.select_for_update().get(
-                id=forecast_id,
-                producer=producer,
-                product=product,
+    existing_forecasts = list(
+        ProductionForecast.objects
+        .select_for_update()
+        .filter(producer=producer, product=product)
+        .order_by("-created_at")
+    )
+
+    if len(existing_forecasts) > 1:
+        raise ValidationError(
+            (
+                "Foram encontradas múltiplas previsões para este produto. "
+                "Faça a limpeza manual para manter apenas uma previsão e voltar a editar."
             )
-        except ProductionForecast.DoesNotExist:
-            raise ValidationError("Previsão não encontrada para este produto.")
+        )
+
+    created = False
+    if existing_forecasts:
+        forecast = existing_forecasts[0]
+        if forecast_id and str(forecast.id) != str(forecast_id):
+            raise ValidationError("Previsão inválida para este produto.")
     else:
+        if forecast_id:
+            raise ValidationError("Previsão não encontrada para este produto.")
         forecast = ProductionForecast(
             producer=producer,
             product=product,
@@ -752,11 +764,24 @@ def save_product_forecast(
         created = True
 
     reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
-    if quantity < reserved_quantity:
+    open_published_quantity = ZERO
+    if getattr(forecast, "id", None):
+        open_published_quantity = Decimal(
+            str(
+                MarketplaceListing.objects.filter(
+                    forecast_id=forecast.id,
+                    status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+                ).aggregate(total=Sum("quantity_available"))["total"]
+                or ZERO
+            )
+        )
+
+    minimum_allowed_quantity = reserved_quantity + open_published_quantity
+    if quantity < minimum_allowed_quantity:
         raise ValidationError(
             (
-                "A quantidade prevista não pode ser inferior à já reservada "
-                f"({reserved_quantity})."
+                "A quantidade prevista não pode ser inferior à quantidade já comprometida "
+                f"({minimum_allowed_quantity})."
             )
         )
 

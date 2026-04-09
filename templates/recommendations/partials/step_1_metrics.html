@@ -1,11 +1,19 @@
-<div id="step-1-metrics">
-  <div class="rec-stat rec-stat--deficit rec-stat--need-deficit">
-    <p class="rec-stat__label">Défice atual</p>
-    <p class="rec-stat__value">{{ initial_deficit_quantity|default:"0"|floatformat:"-3" }}</p>
-    <div class="rec-stat__meta">
-      <span class="rec-stat__meta-label">Quantidade atual</span>
-      <strong class="rec-stat__meta-value">{{ initial_current_quantity|default:"0"|floatformat:"-3" }}</strong>
-    </div>
-    <p class="rec-stat__hint">Atualiza automaticamente ao selecionar o produto.</p>
-  </div>
+<div id="step-1-metrics" class="rec-step1-metrics" aria-live="polite">
+  <article class="rec-step1-kpi rec-step1-kpi--deficit">
+    <p class="rec-step1-kpi__label">
+      <i class="bi bi-exclamation-octagon"></i>
+      <span>Défice atual</span>
+    </p>
+    <p class="rec-step1-kpi__value">{{ initial_deficit_quantity|default:"0"|floatformat:"-3" }}</p>
+    <p class="rec-step1-kpi__hint">Quantidade em falta para ficar no nível recomendado.</p>
+  </article>
+
+  <article class="rec-step1-kpi rec-step1-kpi--current">
+    <p class="rec-step1-kpi__label">
+      <i class="bi bi-box-seam"></i>
+      <span>Quantidade atual</span>
+    </p>
+    <p class="rec-step1-kpi__value">{{ initial_current_quantity|default:"0"|floatformat:"-3" }}</p>
+    <p class="rec-step1-kpi__hint">Stock disponível neste momento para o produto selecionado.</p>
+  </article>
 </div>

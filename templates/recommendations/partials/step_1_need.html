@@ -1,4 +1,4 @@
-<div class="rec-card">
+<div class="rec-card rec-card--step-1">
   <div class="rec-card__head">
     <h2>Passo 1 — O que precisa?</h2>
     <p>Indique a necessidade atual para que o sistema gere a melhor recomendação.</p>
@@ -15,7 +15,7 @@
     >
       {% csrf_token %}
 
-      <div class="rec-grid-2">
+      <div class="rec-grid-2 rec-grid-2--step-1">
         <div class="rec-field">
           <label for="product_id">Produto</label>
           <select
@@ -42,7 +42,7 @@
 
         {% include "recommendations/partials/step_1_metrics.html" %}
 
-        <div class="rec-field" style="grid-column: 1 / -1;">
+        <div class="rec-field rec-field--quantity" style="grid-column: 1 / -1;">
           <label for="requested_quantity">Quantidade a comprar</label>
           <input type="number" name="requested_quantity" id="requested_quantity" value="{{ initial_requested_quantity|default:initial_deficit_quantity|default:'0' }}" step="0.001" min="0.001" required>
           <div class="rec-help">Podes ajustar manualmente a quantidade, mesmo com défice a 0.</div>

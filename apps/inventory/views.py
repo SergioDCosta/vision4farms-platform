@@ -46,18 +46,50 @@ def _ensure_aware_datetime(value):
     return value
 
 
-def _build_stock_detail_context(*, producer, stock, forecast_form=None, edit_forecast_id=None):
+def _build_stock_detail_context(
+    *,
+    producer,
+    stock,
+    forecast_form=None,
+    edit_forecast_id=None,
+    forecast_mode=None,
+    forecast_rows=None,
+):
     producer_product = ProducerProduct.objects.filter(
         producer=producer,
         product_id=stock.product_id,
     ).first()
+    is_product_active = bool(producer_product and producer_product.is_active)
 
     activity_items = services.get_stock_activity_feed(stock)
-    forecast_rows = services.get_product_forecasts(producer, stock.product_id)
+    if forecast_rows is None:
+        forecast_rows = services.get_product_forecasts(producer, stock.product_id)
+
+    forecast_count = len(forecast_rows)
+    forecast_conflict = forecast_count > 1
+    forecast_primary_row = forecast_rows[0] if forecast_rows else None
+    forecast_primary = forecast_primary_row["forecast"] if forecast_primary_row else None
+
+    if forecast_mode == "new":
+        edit_forecast_id = None
+    elif (
+        forecast_mode == "edit"
+        and not edit_forecast_id
+        and not forecast_conflict
+        and forecast_primary
+    ):
+        edit_forecast_id = str(forecast_primary.id)
+
     stock_state = services.get_stock_state(stock)
 
     if not forecast_form:
         forecast_form = ProductionForecastForm()
+
+    if forecast_conflict:
+        for field_name, field in forecast_form.fields.items():
+            if field_name == "forecast_id":
+                continue
+            field.widget.attrs["disabled"] = "disabled"
 
     editing_forecast = None
     if edit_forecast_id:
@@ -70,8 +102,14 @@ def _build_stock_detail_context(*, producer, stock, forecast_form=None, edit_for
         "stock": stock,
         "stock_state": stock_state,
         "producer_product": producer_product,
+        "is_product_active": is_product_active,
+        "stock_back_tab": "stock" if is_product_active else "desativados",
         "activity_items": activity_items,
         "forecast_rows": forecast_rows,
+        "forecast_count": forecast_count,
+        "forecast_conflict": forecast_conflict,
+        "forecast_primary": forecast_primary,
+        "forecast_mode": "edit" if editing_forecast else "new",
         "forecast_form": forecast_form,
         "editing_forecast": editing_forecast,
         "page_title": f"Stock — {stock.product.name}",
@@ -288,11 +326,23 @@ def stock_detalhe(request, product_id):
         messages.error(request, "Produto não encontrado no teu inventário.")
         return redirect("inventory:meus_produtos")
 
+    forecast_rows = services.get_product_forecasts(producer, product_id)
+    forecast_conflict = len(forecast_rows) > 1
+    forecast_mode = (request.GET.get("forecast_mode") or "").strip().lower()
     edit_forecast_id = (request.GET.get("edit_forecast") or "").strip() or None
 
+    if forecast_mode == "new":
+        edit_forecast_id = None
+    elif (
+        forecast_mode == "edit"
+        and not edit_forecast_id
+        and not forecast_conflict
+        and forecast_rows
+    ):
+        edit_forecast_id = str(forecast_rows[0]["forecast"].id)
+
     initial = {}
-    if edit_forecast_id:
-        forecast_rows = services.get_product_forecasts(producer, product_id)
+    if edit_forecast_id and not forecast_conflict:
         for row in forecast_rows:
             forecast = row["forecast"]
             if str(forecast.id) == edit_forecast_id:
@@ -311,6 +361,8 @@ def stock_detalhe(request, product_id):
         stock=stock,
         forecast_form=forecast_form,
         edit_forecast_id=edit_forecast_id,
+        forecast_mode=forecast_mode,
+        forecast_rows=forecast_rows,
     )
     return render(request, "inventory/stock_detalhe.html", context)
 
@@ -327,6 +379,14 @@ def guardar_previsao(request, product_id):
     if not stock:
         messages.error(request, "Produto não encontrado no teu inventário.")
         return redirect("inventory:meus_produtos")
+
+    producer_product = ProducerProduct.objects.filter(
+        producer=producer,
+        product_id=product_id,
+    ).first()
+    if not producer_product or not producer_product.is_active:
+        messages.warning(request, "Este produto está desativado. Reative-o para gerir produção futura.")
+        return redirect("inventory:stock_detalhe", product_id=product_id)
 
     form = ProductionForecastForm(request.POST)
     if form.is_valid():
@@ -345,8 +405,13 @@ def guardar_previsao(request, product_id):
 
             if created:
                 messages.success(request, "Produção futura registada com sucesso.")
-            else:
+            elif forecast_id:
                 messages.success(request, "Produção futura atualizada com sucesso.")
+            else:
+                messages.success(
+                    request,
+                    "Produção futura substituída com sucesso (mesmo registo).",
+                )
 
             return redirect("inventory:stock_detalhe", product_id=product_id)
         except ValidationError as exc:
@@ -355,11 +420,15 @@ def guardar_previsao(request, product_id):
             form.add_error(None, f"Não foi possível guardar a previsão: {exc}")
 
     edit_forecast_id = form.data.get("forecast_id")
+    forecast_mode = (form.data.get("forecast_mode") or "").strip().lower()
+    forecast_rows = services.get_product_forecasts(producer, product_id)
     context = _build_stock_detail_context(
         producer=producer,
         stock=stock,
         forecast_form=form,
         edit_forecast_id=edit_forecast_id,
+        forecast_mode=forecast_mode,
+        forecast_rows=forecast_rows,
     )
     return render(request, "inventory/stock_detalhe.html", context, status=400)
 
@@ -375,6 +444,14 @@ def atualizar_stock(request, product_id):
     if not stock:
         messages.error(request, "Produto não encontrado no teu inventário.")
         return redirect("inventory:meus_produtos")
+
+    producer_product = ProducerProduct.objects.filter(
+        producer=producer,
+        product_id=product_id,
+    ).first()
+    if not producer_product or not producer_product.is_active:
+        messages.warning(request, "Este produto está desativado. Reative-o para atualizar o stock.")
+        return redirect("inventory:stock_detalhe", product_id=product_id)
 
     if request.method == "POST":
         form = UpdateStockForm(request.POST)

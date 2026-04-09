@@ -1,7 +1,8 @@
+from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db import transaction
-from django.db.models import Max
+from django.db import IntegrityError, transaction
+from django.db.models import Max, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -15,6 +16,7 @@ from apps.inventory.models import (
 )
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import (
+    OrderGroup,
     Order,
     OrderItem,
     OrderStatusHistory,
@@ -52,6 +54,103 @@ def get_current_producer_for_user(user):
 def _next_order_number():
     last_number = Order.objects.aggregate(max_number=Max("order_number")).get("max_number") or 1000
     return int(last_number) + 1
+
+
+def _next_group_number():
+    last_number = OrderGroup.objects.aggregate(max_number=Max("group_number")).get("max_number") or 1000
+    return int(last_number) + 1
+
+
+def _create_order_group_with_retry(*, buyer_producer, source_type, max_retries=3):
+    for _ in range(max_retries):
+        try:
+            return OrderGroup.objects.create(
+                group_number=_next_group_number(),
+                buyer_producer=buyer_producer,
+                source_type=source_type,
+            )
+        except IntegrityError:
+            continue
+    raise OrderServiceError("Não foi possível gerar o número do grupo de encomendas.")
+
+
+def _create_order_with_retry(*, max_retries=3, **kwargs):
+    for _ in range(max_retries):
+        try:
+            kwargs["order_number"] = _next_order_number()
+            return Order.objects.create(**kwargs)
+        except IntegrityError:
+            continue
+    raise OrderServiceError("Não foi possível gerar o número da encomenda.")
+
+
+def _listing_source_kind(listing):
+    has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
+    if has_stock_source:
+        return "stock"
+    if has_forecast_source:
+        return "forecast"
+    raise OrderServiceError("Não foi possível determinar a origem da listing.")
+
+
+def get_order_source_label(order):
+    items = list(getattr(order, "_prefetched_objects_cache", {}).get("items", []) or order.items.all())
+    has_stock_source = False
+    has_forecast_source = False
+
+    for item in items:
+        listing = getattr(item, "listing", None)
+        if not listing:
+            continue
+        if getattr(listing, "stock_id", None):
+            has_stock_source = True
+        if getattr(listing, "forecast_id", None):
+            has_forecast_source = True
+
+    if has_forecast_source and not has_stock_source:
+        return "Pré-venda"
+    if has_stock_source and not has_forecast_source:
+        return "Stock atual"
+    return "Origem mista"
+
+
+ORDER_STATUS_LABELS = dict(OrderStatus.choices)
+
+
+def compute_order_group_status(order_statuses):
+    statuses = [str(status) for status in order_statuses if status]
+    if not statuses:
+        return OrderStatus.PENDING
+
+    if all(status == OrderStatus.COMPLETED for status in statuses):
+        return OrderStatus.COMPLETED
+
+    if all(status == OrderStatus.CANCELLED for status in statuses):
+        return OrderStatus.CANCELLED
+
+    if any(status == OrderStatus.DELIVERING for status in statuses):
+        return OrderStatus.DELIVERING
+
+    if any(status == OrderStatus.IN_PROGRESS for status in statuses):
+        return OrderStatus.IN_PROGRESS
+
+    if any(status == OrderStatus.CONFIRMED for status in statuses):
+        return OrderStatus.CONFIRMED
+
+    if any(status == OrderStatus.PENDING for status in statuses):
+        return OrderStatus.PENDING
+
+    if any(status == OrderStatus.COMPLETED for status in statuses):
+        return OrderStatus.COMPLETED
+
+    if any(status == OrderStatus.CANCELLED for status in statuses):
+        return OrderStatus.CANCELLED
+
+    return OrderStatus.PENDING
+
+
+def get_order_group_status_label(status):
+    return ORDER_STATUS_LABELS.get(str(status), str(status))
 
 
 def _map_delivery_method_from_listing(listing):
@@ -211,8 +310,11 @@ def _reserve_listing_quantity(listing_id, quantity, acting_user):
 
     update_fields = ["quantity_available", "quantity_reserved", "updated_at"]
 
-    if listing.quantity_available <= 0 and listing.quantity_reserved <= 0:
-        listing.status = ListingStatus.CLOSED
+    if listing.quantity_available <= 0 and listing.quantity_reserved > 0:
+        listing.status = ListingStatus.RESERVED
+        update_fields.append("status")
+    elif listing.quantity_available > 0:
+        listing.status = ListingStatus.ACTIVE
         update_fields.append("status")
 
     listing.updated_at = timezone.now()
@@ -254,7 +356,7 @@ def _release_listing_reservation(listing_id, quantity, acting_user):
     listing.quantity_reserved = quantize_qty(max(reserved_quantity - quantity, Decimal("0.000")))
     listing.quantity_available = quantize_qty(available_quantity + quantity)
 
-    if listing.status in {ListingStatus.CLOSED, ListingStatus.CANCELLED} and listing.quantity_available > 0:
+    if listing.status in {ListingStatus.RESERVED, ListingStatus.CLOSED} and listing.quantity_available > 0:
         listing.status = ListingStatus.ACTIVE
 
     listing.updated_at = timezone.now()
@@ -285,7 +387,9 @@ def _consume_listing_reservation(listing_id, quantity, acting_user):
 
     if listing.quantity_available <= 0 and listing.quantity_reserved <= 0:
         listing.status = ListingStatus.CLOSED
-    elif listing.status == ListingStatus.CLOSED and listing.quantity_available > 0:
+    elif listing.quantity_available <= 0 and listing.quantity_reserved > 0:
+        listing.status = ListingStatus.RESERVED
+    elif listing.status in {ListingStatus.CLOSED, ListingStatus.RESERVED} and listing.quantity_available > 0:
         listing.status = ListingStatus.ACTIVE
 
     listing.updated_at = timezone.now()
@@ -492,8 +596,13 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
     unit_price = Decimal(str(listing.unit_price))
     subtotal = quantize_money(quantity * unit_price)
 
-    order = Order.objects.create(
-        order_number=_next_order_number(),
+    order_group = _create_order_group_with_retry(
+        buyer_producer=buyer_producer,
+        source_type=OrderSourceType.MARKETPLACE,
+    )
+
+    order = _create_order_with_retry(
+        group=order_group,
         buyer_producer=buyer_producer,
         source_type=OrderSourceType.MARKETPLACE,
         status=OrderStatus.PENDING,
@@ -521,7 +630,7 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
         notes="Pedido criado a partir de um anúncio do marketplace.",
     )
 
-    return order
+    return order_group, order
 
 
 @transaction.atomic
@@ -537,66 +646,81 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
     if not selected_items:
         raise OrderServiceError("A recomendação não tem itens selecionados.")
 
-    order = Order.objects.create(
-        order_number=_next_order_number(),
-        buyer_producer=buyer_producer,
-        source_type=OrderSourceType.RECOMMENDATION,
-        recommendation=recommendation,
-        status=OrderStatus.PENDING,
-        total_amount=Decimal("0.00"),
-        payment_status=PaymentStatus.PENDING,
-        buyer_notes="Pedido criado a partir de uma recomendação.",
-    )
-
-    total_amount = Decimal("0.00")
-    delivery_method = None
-
+    grouped_items = defaultdict(list)
     for rec_item in selected_items:
         listing = rec_item.listing
         if not listing:
             raise OrderServiceError("A recomendação contém um item sem anúncio associado.")
-        _validate_listing_source_xor(listing)
 
-        quantity = quantize_qty(rec_item.suggested_quantity)
-        unit_price = Decimal(str(rec_item.unit_price))
-        subtotal = quantize_money(quantity * unit_price)
-        total_amount += subtotal
+        source_kind = _listing_source_kind(listing)
+        group_key = (str(rec_item.seller_producer_id), source_kind)
+        grouped_items[group_key].append(rec_item)
 
-        OrderItem.objects.create(
-            order=order,
-            listing=listing,
-            product=rec_item.product,
-            seller_producer=rec_item.seller_producer,
-            quantity=quantity,
-            unit_price=unit_price,
-            subtotal=subtotal,
-            item_status=OrderItemStatus.PENDING,
+    order_group = _create_order_group_with_retry(
+        buyer_producer=buyer_producer,
+        source_type=OrderSourceType.RECOMMENDATION,
+    )
+
+    created_orders = []
+
+    for bucket_items in grouped_items.values():
+        order = _create_order_with_retry(
+            group=order_group,
+            buyer_producer=buyer_producer,
+            source_type=OrderSourceType.RECOMMENDATION,
+            recommendation=recommendation,
+            status=OrderStatus.PENDING,
+            total_amount=Decimal("0.00"),
+            payment_status=PaymentStatus.PENDING,
+            buyer_notes="Pedido criado a partir de uma recomendação.",
         )
 
-        mapped_method = _map_delivery_method_from_listing(listing)
-        if delivery_method is None:
-            delivery_method = mapped_method
-        elif delivery_method != mapped_method:
-            delivery_method = DeliveryMethod.MIXED
+        total_amount = Decimal("0.00")
+        delivery_method = None
 
-    order.total_amount = quantize_money(total_amount)
-    order.delivery_method = delivery_method
-    order.updated_at = timezone.now()
-    order.save(update_fields=["total_amount", "delivery_method", "updated_at"])
+        for rec_item in bucket_items:
+            listing = rec_item.listing
+            quantity = quantize_qty(rec_item.suggested_quantity)
+            unit_price = Decimal(str(rec_item.unit_price))
+            subtotal = quantize_money(quantity * unit_price)
+            total_amount += subtotal
 
-    _create_status_history(
-        order=order,
-        status=OrderStatus.PENDING,
-        changed_by=acting_user,
-        notes="Pedido criado a partir de uma recomendação aceite.",
-    )
+            OrderItem.objects.create(
+                order=order,
+                listing=listing,
+                product=rec_item.product,
+                seller_producer=rec_item.seller_producer,
+                quantity=quantity,
+                unit_price=unit_price,
+                subtotal=subtotal,
+                item_status=OrderItemStatus.PENDING,
+            )
+
+            mapped_method = _map_delivery_method_from_listing(listing)
+            if delivery_method is None:
+                delivery_method = mapped_method
+            elif delivery_method != mapped_method:
+                delivery_method = DeliveryMethod.MIXED
+
+        order.total_amount = quantize_money(total_amount)
+        order.delivery_method = delivery_method
+        order.updated_at = timezone.now()
+        order.save(update_fields=["total_amount", "delivery_method", "updated_at"])
+
+        _create_status_history(
+            order=order,
+            status=OrderStatus.PENDING,
+            changed_by=acting_user,
+            notes="Pedido criado a partir de uma recomendação aceite.",
+        )
+        created_orders.append(order)
 
     recommendation.status = RecommendationStatus.ACCEPTED
     recommendation.accepted_at = timezone.now()
     recommendation.updated_at = timezone.now()
     recommendation.save(update_fields=["status", "accepted_at", "updated_at"])
 
-    return order
+    return order_group, created_orders
 
 
 @transaction.atomic
@@ -655,19 +779,97 @@ def confirm_order_receipt(*, order, acting_user):
     return order
 
 
-def get_orders_for_buyer(*, buyer_producer, status=""):
-    qs = (
+def _sum_order_items_count(orders):
+    total = 0
+    for order in orders:
+        prefetched_items = getattr(order, "_prefetched_objects_cache", {}).get("items", None)
+        if prefetched_items is not None:
+            total += len(prefetched_items)
+        else:
+            total += order.items.count()
+    return total
+
+
+def _sum_total_amount(orders):
+    total = Decimal("0.00")
+    for order in orders:
+        total += Decimal(str(order.total_amount or 0))
+    return quantize_money(total)
+
+
+def _build_group_purchase_entry(group):
+    group_orders = list(group.orders.all())
+    statuses = [order.status for order in group_orders]
+    aggregated_status = compute_order_group_status(statuses)
+    return {
+        "kind": "group",
+        "group": group,
+        "orders": group_orders,
+        "status": aggregated_status,
+        "status_label": get_order_group_status_label(aggregated_status),
+        "total_amount": _sum_total_amount(group_orders),
+        "item_count": _sum_order_items_count(group_orders),
+        "order_count": len(group_orders),
+        "created_at": group.created_at,
+    }
+
+
+def _build_legacy_order_purchase_entry(order):
+    prefetched_items = getattr(order, "_prefetched_objects_cache", {}).get("items", None)
+    item_count = len(prefetched_items) if prefetched_items is not None else order.items.count()
+    return {
+        "kind": "legacy_order",
+        "group": None,
+        "orders": [order],
+        "order": order,
+        "status": order.status,
+        "status_label": order.get_status_display(),
+        "total_amount": order.total_amount,
+        "item_count": item_count,
+        "order_count": 1,
+        "created_at": order.created_at,
+    }
+
+
+def get_buyer_purchase_entries(*, buyer_producer, status=""):
+    group_orders_queryset = (
         Order.objects
-        .select_related("recommendation")
-        .prefetch_related("items__product", "items__seller_producer__user")
+        .select_related("recommendation", "buyer_producer__user")
+        .prefetch_related("items__product", "items__seller_producer__user", "items__listing")
+        .order_by("-created_at")
+    )
+    groups = (
+        OrderGroup.objects
         .filter(buyer_producer=buyer_producer)
+        .prefetch_related(Prefetch("orders", queryset=group_orders_queryset))
         .order_by("-created_at")
     )
 
-    if status:
-        qs = qs.filter(status=status)
+    entries = []
 
-    return qs
+    for group in groups:
+        entry = _build_group_purchase_entry(group)
+        if entry["order_count"] <= 0:
+            continue
+        if status and entry["status"] != status:
+            continue
+        entries.append(entry)
+
+    legacy_orders_queryset = (
+        Order.objects
+        .select_related("recommendation", "buyer_producer__user")
+        .prefetch_related("items__product", "items__seller_producer__user", "items__listing")
+        .filter(buyer_producer=buyer_producer, group_id__isnull=True)
+        .order_by("-created_at")
+    )
+    if status:
+        legacy_orders_queryset = legacy_orders_queryset.filter(status=status)
+
+    for order in legacy_orders_queryset:
+        entries.append(_build_legacy_order_purchase_entry(order))
+
+    entries.sort(key=lambda item: item["created_at"], reverse=True)
+    return entries
 
 
 def get_orders_for_seller(*, seller_producer, status=""):
@@ -686,6 +888,31 @@ def get_orders_for_seller(*, seller_producer, status=""):
     return qs
 
 
+def get_order_group_detail_for_buyer(*, buyer_producer, group_id):
+    group_queryset = (
+        OrderGroup.objects
+        .select_related("buyer_producer__user")
+        .prefetch_related(
+            Prefetch(
+                "orders",
+                queryset=(
+                    Order.objects
+                    .select_related("recommendation", "buyer_producer__user")
+                    .prefetch_related(
+                        "items__product",
+                        "items__seller_producer__user",
+                        "items__listing",
+                        "status_history__changed_by",
+                    )
+                    .order_by("-created_at")
+                ),
+            )
+        )
+        .filter(id=group_id, buyer_producer=buyer_producer)
+    )
+    return get_object_or_404(group_queryset)
+
+
 def get_order_detail_for_buyer(*, buyer_producer, order_id):
     return get_object_or_404(
         Order.objects
@@ -702,7 +929,7 @@ def get_order_detail_for_buyer(*, buyer_producer, order_id):
 
 
 def get_order_detail_for_seller(*, seller_producer, order_id):
-    return get_object_or_404(
+    queryset = (
         Order.objects
         .select_related("recommendation", "buyer_producer__user")
         .prefetch_related(
@@ -710,10 +937,14 @@ def get_order_detail_for_seller(*, seller_producer, order_id):
             "items__seller_producer__user",
             "items__listing",
             "status_history__changed_by",
-        ),
-        id=order_id,
-        items__seller_producer=seller_producer,
+        )
+        .filter(
+            id=order_id,
+            items__seller_producer=seller_producer,
+        )
+        .distinct()
     )
+    return get_object_or_404(queryset)
 
 
 @transaction.atomic
@@ -851,4 +1082,3 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         return order
 
     return order
-

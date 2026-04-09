@@ -1,0 +1,114 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Detalhe do Grupo{% endblock %}
+{% block app_content %}
+
+<div class="ordg-page">
+  <nav class="ordg-backbar">
+    <a href="{% url 'orders:index' %}" class="ordg-backlink">
+      <i class="bi bi-arrow-left"></i>
+      Voltar às encomendas
+    </a>
+  </nav>
+
+  <header class="ordg-header ord-status--{{ group_status|lower }}">
+    <div>
+      <p class="ordg-number">Grupo #{{ group.group_number }}</p>
+      <h1>{{ group_status_label }}</h1>
+      <p class="ordg-meta">
+        Criado em {{ group.created_at|date:"d/m/Y H:i" }} · {{ group.order_count|default:group_orders|length }} sub-encomenda(s)
+      </p>
+    </div>
+    <div class="ordg-total">
+      <span>Total agregado</span>
+      <strong>{{ group_total_amount|floatformat:2 }} €</strong>
+    </div>
+  </header>
+
+  <section class="ordg-grid">
+    <article class="ordg-card">
+      <h3>Sub-encomendas</h3>
+      <div class="ordg-table-wrap">
+        <table class="ordg-table">
+          <thead>
+            <tr>
+              <th>Encomenda</th>
+              <th>Vendedor</th>
+              <th>Origem</th>
+              <th>Estado</th>
+              <th>Total</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for sub in sub_orders %}
+              <tr>
+                <td>#{{ sub.order.order_number }}</td>
+                <td>{{ sub.seller_label }}</td>
+                <td>{{ sub.source_label }}</td>
+                <td>{{ sub.status_label }}</td>
+                <td><strong>{{ sub.total_amount|floatformat:2 }} €</strong></td>
+                <td>
+                  <a class="ordg-link" href="{{ sub.detail_url }}">Ver detalhe</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="ordg-card">
+      <h3>Resumo do grupo</h3>
+      <div class="ordg-summary">
+        <div>
+          <span>Estado agregado</span>
+          <strong>{{ group_status_label }}</strong>
+        </div>
+        <div>
+          <span>Sub-encomendas</span>
+          <strong>{{ sub_orders|length }}</strong>
+        </div>
+        <div>
+          <span>Itens totais</span>
+          <strong>{{ group_total_items }}</strong>
+        </div>
+      </div>
+    </article>
+  </section>
+</div>
+
+<style>
+.ordg-page{display:flex;flex-direction:column;gap:1rem}
+.ordg-backbar{display:flex}
+.ordg-backlink{display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;color:#1d4ed8;font-weight:700}
+.ordg-backlink:hover{color:#1e3a8a}
+.ordg-header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-left:6px solid #cbd5e1;border-radius:1rem;padding:1.1rem 1.2rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
+.ord-status--pending{border-left-color:#f59e0b}
+.ord-status--confirmed{border-left-color:#2563eb}
+.ord-status--in_progress{border-left-color:#7c3aed}
+.ord-status--delivering{border-left-color:#0ea5e9}
+.ord-status--completed{border-left-color:#16a34a}
+.ord-status--cancelled{border-left-color:#dc2626}
+.ordg-number{margin:0 0 .25rem 0;color:#16a34a;font-size:.82rem;font-weight:800}
+.ordg-header h1{margin:0;color:#0f172a;font-size:1.7rem}
+.ordg-meta{margin:.35rem 0 0 0;color:#64748b}
+.ordg-total{text-align:right}
+.ordg-total span{display:block;color:#64748b;font-size:.82rem}
+.ordg-total strong{font-size:1.35rem;color:#0f172a}
+.ordg-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:1rem}
+.ordg-card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
+.ordg-card h3{margin:0 0 1rem 0;color:#0f172a}
+.ordg-table-wrap{overflow:auto}
+.ordg-table{width:100%;border-collapse:collapse}
+.ordg-table th,.ordg-table td{padding:.8rem .7rem;border-bottom:1px solid #f1f5f9;text-align:left;font-size:.88rem}
+.ordg-table th{font-size:.75rem;text-transform:uppercase;color:#64748b}
+.ordg-link{display:inline-flex;padding:.45rem .7rem;border-radius:.75rem;background:#eff6ff;color:#1d4ed8;font-weight:700;text-decoration:none}
+.ordg-link:hover{background:#dbeafe}
+.ordg-summary{display:flex;flex-direction:column;gap:.9rem}
+.ordg-summary div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:.85rem;padding:.75rem .8rem}
+.ordg-summary span{display:block;color:#64748b;font-size:.8rem}
+.ordg-summary strong{color:#0f172a;font-size:1.05rem}
+@media (max-width:960px){.ordg-grid{grid-template-columns:1fr}}
+</style>
+
+{% endblock %}

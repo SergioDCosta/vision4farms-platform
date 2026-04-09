@@ -167,18 +167,6 @@
           </div>
 
           <div class="mkp-grid-2">
-            <div class="mkp-field{% if form.expires_in.errors %} has-error{% endif %}" id="mkp-timer-wrap">
-              <label for="{{ form.expires_in.id_for_label }}">{{ form.expires_in.label }}</label>
-              {{ form.expires_in }}
-              {% if form.expires_in.errors %}
-                <div class="mkp-field-errors">
-                  {% for error in form.expires_in.errors %}
-                    <span>{{ error }}</span>
-                  {% endfor %}
-                </div>
-              {% endif %}
-            </div>
-
             <div class="mkp-field{% if form.expires_at.errors %} has-error{% endif %}" id="mkp-date-wrap">
               <label for="{{ form.expires_at.id_for_label }}">{{ form.expires_at.label }}</label>
               {{ form.expires_at }}
@@ -372,7 +360,6 @@
   const productField = document.getElementById("{{ form.product.id_for_label }}");
   const forecastWrap = document.getElementById("mkp-forecast-wrap");
   const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
-  const timerWrap = document.getElementById("mkp-timer-wrap");
   const dateWrap = document.getElementById("mkp-date-wrap");
   const summaryList = document.getElementById("mkp-summary-list");
   const summaryItems = summaryList ? Array.from(summaryList.querySelectorAll(".mkp-summary-item")) : [];
@@ -383,11 +370,10 @@
   const trendMin = document.getElementById("mkp-trend-min");
   const trendMax = document.getElementById("mkp-trend-max");
   const trendCount = document.getElementById("mkp-trend-count");
-  if (!modeField || !timerWrap || !dateWrap) return;
+  if (!modeField || !dateWrap) return;
 
   function syncExpiryFields() {
     const mode = modeField.value;
-    timerWrap.style.display = mode === "timer" ? "" : "none";
     dateWrap.style.display = mode === "date" ? "" : "none";
   }
 

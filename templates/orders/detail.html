@@ -4,10 +4,10 @@
 
 <div class="ordd-page">
   <nav class="ordd-backbar">
-    <a href="{% url 'orders:index' %}{% if order_role == 'seller' %}?tab=recebidas{% endif %}"
+    <a href="{% if back_to_group_url %}{{ back_to_group_url }}{% else %}{% url 'orders:index' %}{% if order_role == 'seller' %}?tab=recebidas{% endif %}{% endif %}"
        class="ordd-backlink">
       <i class="bi bi-arrow-left"></i>
-      Voltar às encomendas
+      {% if back_to_group_url %}Voltar ao grupo{% else %}Voltar às encomendas{% endif %}
     </a>
   </nav>
 
@@ -20,6 +20,9 @@
         {% if order.source_type %}· Origem: {{ order.get_source_type_display }}{% endif %}
         {% if order_role == "seller" %}· Vista vendedor{% else %}· Vista comprador{% endif %}
       </p>
+      {% if order_role == "seller" %}
+        <p class="ordd-source-chip">Origem operacional: {{ order_source_label|default:"—" }}</p>
+      {% endif %}
     </div>
 
     <div class="ordd-header__right">
@@ -188,6 +191,7 @@
 .ordd-number{margin:0 0 .25rem 0;color:#16a34a;font-size:.82rem;font-weight:800}
 .ordd-header h1{margin:0;color:#0f172a;font-size:1.7rem}
 .ordd-meta{margin:.35rem 0 0 0;color:#64748b}
+.ordd-source-chip{display:inline-flex;align-items:center;margin:.45rem 0 0 0;padding:.25rem .65rem;border-radius:.65rem;background:#e2e8f0;color:#334155;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
 .ordd-header__right{display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap}
 .ordd-total{text-align:right}
 .ordd-total span{display:block;color:#64748b;font-size:.82rem}

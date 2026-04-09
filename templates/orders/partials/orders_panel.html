@@ -1,96 +1,142 @@
 <div id="orders-panel">
-  <div class="ord-tabs">
-    <a href="{% url 'orders:index' %}?tab=compras{% if selected_status %}&status={{ selected_status }}{% endif %}"
-       hx-get="{% url 'orders:index' %}?tab=compras{% if selected_status %}&status={{ selected_status }}{% endif %}"
-       hx-target="#orders-panel"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="ord-tab {% if selected_tab == 'compras' %}is-active{% endif %}">
-      <i class="bi bi-bag-check"></i>
-      Compras
-    </a>
+  <div class="ord-toolbar">
+    <div class="ord-tabs">
+      <a href="{% url 'orders:index' %}?tab=compras{% if selected_status %}&status={{ selected_status }}{% endif %}"
+         hx-get="{% url 'orders:index' %}?tab=compras{% if selected_status %}&status={{ selected_status }}{% endif %}"
+         hx-target="#orders-panel"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="ord-tab {% if selected_tab == 'compras' %}is-active{% endif %}">
+        <i class="bi bi-bag-check"></i>
+        Compras
+      </a>
 
-    <a href="{% url 'orders:index' %}?tab=recebidas{% if selected_status %}&status={{ selected_status }}{% endif %}"
-       hx-get="{% url 'orders:index' %}?tab=recebidas{% if selected_status %}&status={{ selected_status }}{% endif %}"
-       hx-target="#orders-panel"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="ord-tab {% if selected_tab == 'recebidas' %}is-active{% endif %}">
-      <i class="bi bi-inbox"></i>
-      Pedidos recebidos
-    </a>
+      <a href="{% url 'orders:index' %}?tab=recebidas{% if selected_status %}&status={{ selected_status }}{% endif %}"
+         hx-get="{% url 'orders:index' %}?tab=recebidas{% if selected_status %}&status={{ selected_status }}{% endif %}"
+         hx-target="#orders-panel"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="ord-tab {% if selected_tab == 'recebidas' %}is-active{% endif %}">
+        <i class="bi bi-inbox"></i>
+        Pedidos recebidos
+      </a>
+    </div>
+
+    <section class="ord-filters">
+      <form method="get"
+            hx-get="{% url 'orders:index' %}"
+            hx-target="#orders-panel"
+            hx-swap="outerHTML"
+            hx-push-url="true">
+        <input type="hidden" name="tab" value="{{ selected_tab }}">
+        <select name="status" class="ord-select" onchange="this.form.requestSubmit()">
+          <option value="">Todos os estados</option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </section>
   </div>
 
-  <section class="ord-filters">
-    <form method="get"
-          hx-get="{% url 'orders:index' %}"
-          hx-target="#orders-panel"
-          hx-swap="outerHTML"
-          hx-push-url="true">
-      <input type="hidden" name="tab" value="{{ selected_tab }}">
-      <select name="status" onchange="this.form.requestSubmit()">
-        <option value="">Todos os estados</option>
-        {% for value, label in status_choices %}
-          <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </form>
-  </section>
-
   <section class="ord-list">
-    {% for order in orders %}
-      <article class="ord-card ord-card--{{ order.status|lower }}">
-        <div class="ord-card__main">
-          <div>
-            <p class="ord-number">Encomenda #{{ order.order_number }}</p>
-            <h3>{{ order.get_status_display }}</h3>
-            <p class="ord-meta">{{ order.items.count }} item(ns) · {{ order.created_at|date:"d/m/Y H:i" }}</p>
+    {% if selected_tab == "recebidas" %}
+      {% for order in orders %}
+        <article class="ord-card ord-card--{{ order.status|lower }}">
+          <div class="ord-card__main">
+            <div>
+              <p class="ord-number">Encomenda #{{ order.order_number }}</p>
+              <h3>{{ order.get_status_display }}</h3>
+              <p class="ord-source-chip">Origem: {{ order.order_source_label|default:"—" }}</p>
+              <p class="ord-meta">{{ order.items.count }} item(ns) · {{ order.created_at|date:"d/m/Y H:i" }}</p>
+            </div>
+
+            <div class="ord-total">
+              <span>Total</span>
+              <strong>{{ order.total_amount|floatformat:2 }} €</strong>
+            </div>
           </div>
 
-          <div class="ord-total">
-            <span>Total</span>
-            <strong>{{ order.total_amount|floatformat:2 }} €</strong>
-          </div>
-        </div>
-
-        <div class="ord-card__items">
-          {% if selected_tab == "recebidas" %}
+          <div class="ord-card__items">
             <p class="ord-peer">
               Comprador:
               <span>{{ order.buyer_producer.display_name|default:order.buyer_producer.company_name|default:order.buyer_producer.user.email }}</span>
             </p>
-          {% endif %}
 
-          {% for item in order.items.all|slice:":3" %}
-            <p>
-              {{ item.product.name }} — {{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}
-              <span>
-                {% if selected_tab == "recebidas" %}
-                  ({{ item.get_item_status_display }})
-                {% else %}
-                  ({{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:item.seller_producer.user.email }})
-                {% endif %}
-              </span>
-            </p>
-          {% endfor %}
-        </div>
+            {% for item in order.items.all|slice:":3" %}
+              <p>
+                {{ item.product.name }} — {{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}
+                <span>({{ item.get_item_status_display }})</span>
+              </p>
+            {% endfor %}
+          </div>
 
-        <div class="ord-card__actions">
-          <a href="{% url 'orders:detail' order.id %}" class="ord-btn">Ver detalhe</a>
+          <div class="ord-card__actions">
+            <a href="{% url 'orders:detail' order.id %}" class="ord-btn">Ver detalhe</a>
+          </div>
+        </article>
+      {% empty %}
+        <div class="ord-empty">
+          <i class="bi bi-bag"></i>
+          <h3>Ainda não recebeu pedidos</h3>
+          <p>Os pedidos aos seus anúncios do marketplace vão aparecer aqui.</p>
         </div>
-      </article>
-    {% empty %}
-      <div class="ord-empty">
-        <i class="bi bi-bag"></i>
-        <h3>{% if selected_tab == "recebidas" %}Ainda não recebeu pedidos{% else %}Ainda não tem encomendas{% endif %}</h3>
-        <p>
-          {% if selected_tab == "recebidas" %}
-            Os pedidos aos seus anúncios do marketplace vão aparecer aqui.
-          {% else %}
-            As encomendas criadas a partir do marketplace ou das recomendações vão aparecer aqui.
-          {% endif %}
-        </p>
-      </div>
-    {% endfor %}
+      {% endfor %}
+    {% else %}
+      {% for entry in purchase_entries %}
+        <article class="ord-card ord-card--{{ entry.status|lower }}">
+          <div class="ord-card__main">
+            <div>
+              {% if entry.kind == "group" %}
+                <p class="ord-number">Grupo #{{ entry.group.group_number }}</p>
+              {% else %}
+                <p class="ord-number">Encomenda #{{ entry.order.order_number }}</p>
+              {% endif %}
+              <h3>{{ entry.status_label }}</h3>
+              <p class="ord-meta">
+                {{ entry.order_count }} encomenda(s) · {{ entry.item_count }} item(ns) · {{ entry.created_at|date:"d/m/Y H:i" }}
+              </p>
+            </div>
+
+            <div class="ord-total">
+              <span>Total</span>
+              <strong>{{ entry.total_amount|floatformat:2 }} €</strong>
+            </div>
+          </div>
+
+          <div class="ord-card__items">
+            {% if entry.kind == "group" %}
+              {% for grouped_order in entry.orders|slice:":3" %}
+                <p>
+                  Encomenda #{{ grouped_order.order_number }} — {{ grouped_order.items.count }} item(ns)
+                  <span>({{ grouped_order.get_status_display }})</span>
+                </p>
+              {% endfor %}
+            {% else %}
+              {% for item in entry.order.items.all|slice:":3" %}
+                <p>
+                  {{ item.product.name }} — {{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}
+                  <span>({{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:item.seller_producer.user.email }})</span>
+                </p>
+              {% endfor %}
+            {% endif %}
+          </div>
+
+          <div class="ord-card__actions">
+            {% if entry.kind == "group" %}
+              <a href="{% url 'orders:group_detail' entry.group.id %}" class="ord-btn">Ver grupo</a>
+            {% else %}
+              <a href="{% url 'orders:detail' entry.order.id %}" class="ord-btn">Ver detalhe</a>
+            {% endif %}
+          </div>
+        </article>
+      {% empty %}
+        <div class="ord-empty">
+          <i class="bi bi-bag"></i>
+          <h3>Ainda não tem encomendas</h3>
+          <p>As encomendas criadas a partir do marketplace ou das recomendações vão aparecer aqui.</p>
+        </div>
+      {% endfor %}
+    {% endif %}
   </section>
 </div>

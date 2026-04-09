@@ -15,6 +15,17 @@
           <tr>
             <td>
               <strong>{{ listing.producer.display_name|default:listing.producer.company_name|default:"Produtor" }}</strong>
+              {% if listing.forecast_id and not listing.stock_id %}
+                <div class="rec-badges" style="margin-top:.45rem;">
+                  <span class="rec-badge rec-badge--blue">
+                    {% if listing.forecast and listing.forecast.period_start %}
+                      Disponível no dia {{ listing.forecast.period_start|date:"d/m/Y" }}
+                    {% else %}
+                      Disponível mais tarde
+                    {% endif %}
+                  </span>
+                </div>
+              {% endif %}
             </td>
             <td>{{ listing.quantity_available|floatformat:"-3" }} {{ listing.product.unit }}</td>
             <td>{{ listing.unit_price|floatformat:2 }} €/{{ listing.product.unit }}</td>

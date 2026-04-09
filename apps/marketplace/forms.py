@@ -26,23 +26,11 @@ class MarketplacePublishForm(forms.Form):
     )
 
     EXPIRY_MODE_NONE = "none"
-    EXPIRY_MODE_TIMER = "timer"
     EXPIRY_MODE_DATE = "date"
 
     EXPIRY_MODE_CHOICES = (
         (EXPIRY_MODE_NONE, "Sem prazo"),
-        (EXPIRY_MODE_TIMER, "Definir por temporizador"),
         (EXPIRY_MODE_DATE, "Definir data e hora"),
-    )
-
-    EXPIRY_TIMER_24H = "24h"
-    EXPIRY_TIMER_7D = "7d"
-    EXPIRY_TIMER_30D = "30d"
-    EXPIRY_TIMER_CHOICES = (
-        ("", "Selecionar duração..."),
-        (EXPIRY_TIMER_24H, "24 horas"),
-        (EXPIRY_TIMER_7D, "7 dias"),
-        (EXPIRY_TIMER_30D, "30 dias"),
     )
 
     listing_source = forms.ChoiceField(
@@ -165,13 +153,6 @@ class MarketplacePublishForm(forms.Form):
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
-    expires_in = forms.ChoiceField(
-        label="Timer de expiração",
-        required=False,
-        choices=EXPIRY_TIMER_CHOICES,
-        widget=forms.Select(attrs={"class": "form-select"}),
-    )
-
     expires_at = forms.DateTimeField(
         label="Data e hora de expiração",
         required=False,
@@ -222,7 +203,6 @@ class MarketplacePublishForm(forms.Form):
         delivery_radius_km = cleaned_data.get("delivery_radius_km")
         status = cleaned_data.get("status")
         expiration_mode = cleaned_data.get("expiration_mode") or self.EXPIRY_MODE_NONE
-        expires_in = cleaned_data.get("expires_in")
         expires_at = cleaned_data.get("expires_at")
         now = timezone.now()
 
@@ -271,24 +251,15 @@ class MarketplacePublishForm(forms.Form):
             cleaned_data["delivery_fee"] = None
 
         expires_at_final = None
-        if expiration_mode == self.EXPIRY_MODE_TIMER:
-            timer_map = {
-                self.EXPIRY_TIMER_24H: timedelta(hours=24),
-                self.EXPIRY_TIMER_7D: timedelta(days=7),
-                self.EXPIRY_TIMER_30D: timedelta(days=30),
-            }
-            delta = timer_map.get(expires_in)
-            if not delta:
-                self.add_error("expires_in", "Seleciona um timer válido.")
-            else:
-                expires_at_final = now + delta
-        elif expiration_mode == self.EXPIRY_MODE_DATE:
+        if expiration_mode == self.EXPIRY_MODE_DATE:
             if not expires_at:
                 self.add_error("expires_at", "Indica a data/hora de expiração.")
             else:
                 if timezone.is_naive(expires_at):
                     expires_at = timezone.make_aware(expires_at, timezone.get_current_timezone())
                 expires_at_final = expires_at
+        elif expiration_mode != self.EXPIRY_MODE_NONE:
+            self.add_error("expiration_mode", "Modo de expiração inválido.")
 
         if status == ListingStatus.ACTIVE and expires_at_final and expires_at_final <= now:
             self.add_error("expires_at", "Para manter ativo, a expiração tem de ser no futuro.")

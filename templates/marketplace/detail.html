@@ -14,11 +14,11 @@
     <article class="mkd-main__info">
       <header class="mkd-headline">
         <div class="mkd-topline">
-          <span class="mkd-badge {% if listing.status == 'CANCELLED' %}mkd-badge--muted{% elif listing.status == 'EXPIRED' %}mkd-badge--warn{% endif %}">
+          <span class="mkd-badge {% if listing.status == 'CANCELLED' %}mkd-badge--muted{% elif listing.status == 'EXPIRED' %}mkd-badge--warn{% elif listing.status == 'RESERVED' %}mkd-badge--reserved{% elif listing.status == 'CLOSED' %}mkd-badge--closed{% endif %}">
             {{ listing.get_status_display }}
           </span>
           <span class="mkd-badge {{ listing_source_badge_class|default:'mkd-badge--stock' }}">
-            {{ listing_source_label|default:"Disponível agora" }}
+            {{ listing_source_label|default:"Stock atual" }}
           </span>
           <span class="mkd-location">
             <i class="bi bi-geo-alt-fill"></i>
@@ -317,14 +317,24 @@
   color: #92400e;
 }
 
+.mkd-badge--reserved {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.mkd-badge--closed {
+  background: #e2e8f0;
+  color: #475569;
+}
+
 .mkd-badge--stock {
-  background: #dcfce7;
-  color: #166534;
+  background: #e2e8f0;
+  color: #334155;
 }
 
 .mkd-badge--forecast {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e0e7ff;
+  color: #3730a3;
 }
 
 .mkd-location {

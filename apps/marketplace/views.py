@@ -83,7 +83,7 @@ def _attach_listing_photo_urls(listings):
                 listing.source_period = None
         else:
             listing.source_key = LISTING_SOURCE_STOCK
-            listing.source_label = "Disponível agora"
+            listing.source_label = "Stock atual"
             listing.source_badge_class = "mk-badge--stock"
             listing.source_period = None
         attached.append(listing)
@@ -428,7 +428,7 @@ def _build_marketplace_detail_context(request, listing, producer):
                 )
     else:
         listing_source_key = LISTING_SOURCE_STOCK
-        listing_source_label = "Disponível agora"
+        listing_source_label = "Stock atual"
         listing_source_badge_class = "mkd-badge--stock"
         forecast_period_text = None
 
@@ -617,7 +617,7 @@ def marketplace_publish_view(request):
                 "product_unit": selected_row["product"].unit,
                 "source": selected_row["source"],
                 "source_label": (
-                    "Disponível agora"
+                    "Stock atual"
                     if selected_row["source"] == LISTING_SOURCE_STOCK
                     else "Pré-venda"
                 ),
@@ -840,14 +840,52 @@ def marketplace_toggle_status_view(request, listing_id):
     )
 
     now = timezone.now()
+    feedback = None
+    blocked_message = None
+
     if listing.status == ListingStatus.ACTIVE:
         listing.status = ListingStatus.CANCELLED
         feedback = "Anúncio desativado com sucesso."
     else:
-        listing.status = ListingStatus.ACTIVE
-        if listing.expires_at and listing.expires_at <= now:
-            listing.expires_at = None
-        feedback = "Anúncio ativado com sucesso."
+        available_quantity = Decimal(str(listing.quantity_available or 0))
+        reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
+
+        if listing.status == ListingStatus.RESERVED and reserved_quantity > 0:
+            blocked_message = "Este anúncio está com quantidade reservada e não pode ser ativado agora."
+        elif available_quantity <= 0:
+            blocked_message = "Este anúncio não pode ser ativado sem quantidade disponível."
+        else:
+            listing.status = ListingStatus.ACTIVE
+            if listing.expires_at and listing.expires_at <= now:
+                listing.expires_at = None
+            feedback = "Anúncio ativado com sucesso."
+
+    if blocked_message:
+        messages.warning(request, blocked_message)
+        if _is_htmx(request) and (request.POST.get("source") or "") == "detail":
+            detail_listing = get_object_or_404(
+                get_listing_detail_queryset(producer=producer),
+                id=listing_id,
+            )
+            detail_context = _build_marketplace_detail_context(request, detail_listing, producer)
+            return render(request, "marketplace/detail.html", detail_context)
+
+        active_tab, q, category_id = _get_index_filters(request)
+        context = _build_marketplace_index_context(
+            producer,
+            active_tab=active_tab,
+            q=q,
+            category_id=category_id,
+        )
+        if _is_htmx(request):
+            return render(request, "marketplace/index.html", context)
+
+        next_url = (request.POST.get("next") or "").strip()
+        if next_url:
+            return redirect(next_url)
+
+        query = urlencode({"tab": active_tab, "q": q, "category": category_id})
+        return redirect(f"{reverse('marketplace:index')}?{query}")
 
     listing.updated_at = now
     listing.save(update_fields=["status", "expires_at", "updated_at"])

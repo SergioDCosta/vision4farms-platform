@@ -7,6 +7,7 @@ app_name = "orders"
 
 urlpatterns = [
     path("encomendas/", views.orders_index_view, name="index"),
+    path("encomendas/grupo/<uuid:group_id>/", views.order_group_detail_view, name="group_detail"),
     path("encomendas/<uuid:order_id>/", views.order_detail_view, name="detail"),
     path("encomendas/criar/anuncio/<uuid:listing_id>/", views.create_order_from_listing_view, name="create_from_listing"),
     path("encomendas/<uuid:order_id>/confirmar-rececao/", views.confirm_order_receipt_view, name="confirm_receipt"),

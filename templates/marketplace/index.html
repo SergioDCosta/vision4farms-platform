@@ -116,8 +116,8 @@
           <div class="mk-card__body">
             <div class="mk-card__top">
               <div class="mk-card__badges">
-                <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% endif %}">{{ item.get_status_display }}</span>
-                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
+                <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'CLOSED' %}mk-badge--closed{% endif %}">{{ item.get_status_display }}</span>
+                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Stock atual' }}</span>
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
@@ -178,9 +178,19 @@
               <input type="hidden" name="tab" value="{{ active_tab }}">
               <input type="hidden" name="q" value="{{ q }}">
               <input type="hidden" name="category" value="{{ selected_category_id }}">
-              <button type="submit" class="mk-btn-card-soft">
+              <button
+                type="submit"
+                class="mk-btn-card-soft"
+                {% if item.status == "RESERVED" or item.quantity_available <= 0 and item.status != "ACTIVE" %}disabled{% endif %}
+              >
                 {% if item.status == "ACTIVE" %}
                   <i class="bi bi-pause-circle"></i> Desativar anúncio
+                {% elif item.status == "RESERVED" %}
+                  <i class="bi bi-lock"></i> Reservado em encomenda
+                {% elif item.status == "CLOSED" and item.quantity_available <= 0 %}
+                  <i class="bi bi-slash-circle"></i> Sem quantidade disponível
+                {% elif item.status != "ACTIVE" and item.quantity_available <= 0 %}
+                  <i class="bi bi-slash-circle"></i> Sem quantidade disponível
                 {% else %}
                   <i class="bi bi-play-circle"></i> Ativar anúncio
                 {% endif %}
@@ -218,7 +228,7 @@
             <div class="mk-card__top">
               <div class="mk-card__badges">
                 <span class="mk-badge">{{ item.get_status_display }}</span>
-                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
+                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Stock atual' }}</span>
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
@@ -617,14 +627,24 @@
   color: #92400e;
 }
 
+.mk-badge--reserved {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.mk-badge--closed {
+  background: #e2e8f0;
+  color: #475569;
+}
+
 .mk-badge--stock {
-  background: #dcfce7;
-  color: #166534;
+  background: #e2e8f0;
+  color: #334155;
 }
 
 .mk-badge--forecast {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e0e7ff;
+  color: #3730a3;
 }
 
 .mk-price {
@@ -720,6 +740,12 @@
 
 .mk-btn-card-soft:hover {
   border-color: #93c5fd;
+}
+
+.mk-btn-card-soft:disabled {
+  opacity: .7;
+  cursor: not-allowed;
+  border-color: transparent;
 }
 
 .mk-btn-card-muted {

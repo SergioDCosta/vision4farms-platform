@@ -1,5 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.db.models import Q
+from django.db.models import Case, When, Value, IntegerField
 from django.db import transaction
 from django.utils import timezone
 
@@ -73,13 +75,44 @@ def _get_listing_available_quantity(listing) -> Decimal:
 def _build_reason_list(position, listing):
     reasons = []
 
+    has_forecast_source = bool(getattr(listing, "forecast_id", None)) and not bool(
+        getattr(listing, "stock_id", None)
+    )
+    if has_forecast_source:
+        forecast = getattr(listing, "forecast", None)
+        forecast_start = getattr(forecast, "period_start", None) if forecast else None
+        if forecast_start:
+            local_start = (
+                timezone.localtime(forecast_start)
+                if timezone.is_aware(forecast_start)
+                else forecast_start
+            )
+            availability_text = f"Disponível no dia {local_start.strftime('%d/%m/%Y')}"
+        else:
+            availability_text = "Disponível mais tarde"
+
+        reasons.append({
+            "text": availability_text,
+            "tone": "blue",
+        })
+    else:
+        reasons.append({
+            "text": "Disponível agora (prioridade)",
+            "tone": "green",
+        })
+
     if position == 1:
-        reasons.append("Mais barato no total")
-    reasons.append("Disponível agora")
+        reasons.append({
+            "text": "Melhor opção inicial da recomendação",
+            "tone": "amber",
+        })
 
     delivery_mode = getattr(listing, "delivery_mode", None)
     if delivery_mode in {"DELIVERY", "BOTH"}:
-        reasons.append("Entrega disponível")
+        reasons.append({
+            "text": "Entrega disponível",
+            "tone": "amber",
+        })
 
     return reasons
 
@@ -87,16 +120,25 @@ def _build_reason_list(position, listing):
 def _get_candidate_listings(product, buyer_producer):
     return (
         MarketplaceListing.objects
-        .select_related("producer", "product")
+        .select_related("producer", "product", "forecast")
         .filter(
             product=product,
             status=ListingStatus.ACTIVE,
             quantity_available__gt=0,
-            stock_id__isnull=False,
-            forecast_id__isnull=True,
+        )
+        .filter(
+            Q(stock_id__isnull=False, forecast_id__isnull=True)
+            | Q(stock_id__isnull=True, forecast_id__isnull=False)
+        )
+        .annotate(
+            availability_priority=Case(
+                When(stock_id__isnull=False, forecast_id__isnull=True, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
         )
         .exclude(producer=buyer_producer)
-        .order_by("unit_price", "-quantity_available", "created_at")
+        .order_by("availability_priority", "unit_price", "-quantity_available", "created_at")
     )
 
 
@@ -210,6 +252,7 @@ def get_selected_items(recommendation):
         "seller_producer",
         "product",
         "listing",
+        "listing__forecast",
     ).order_by("position", "created_at")
 
 
@@ -217,17 +260,26 @@ def get_market_alternative_listings(recommendation):
     selected_listing_ids = recommendation.items.filter(is_selected=True).values_list("listing_id", flat=True)
     return (
         MarketplaceListing.objects
-        .select_related("producer", "product")
+        .select_related("producer", "product", "forecast")
         .filter(
             product=recommendation.product,
             status=ListingStatus.ACTIVE,
             quantity_available__gt=0,
-            stock_id__isnull=False,
-            forecast_id__isnull=True,
+        )
+        .filter(
+            Q(stock_id__isnull=False, forecast_id__isnull=True)
+            | Q(stock_id__isnull=True, forecast_id__isnull=False)
+        )
+        .annotate(
+            availability_priority=Case(
+                When(stock_id__isnull=False, forecast_id__isnull=True, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
         )
         .exclude(producer=recommendation.producer)
         .exclude(id__in=selected_listing_ids)
-        .order_by("unit_price", "-quantity_available", "created_at")
+        .order_by("availability_priority", "unit_price", "-quantity_available", "created_at")
     )
 
 

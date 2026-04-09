@@ -61,7 +61,15 @@
           {% if item.reasons %}
             <div class="rec-badges">
               {% for reason in item.reasons %}
-                <span class="rec-badge {% cycle 'rec-badge--green' 'rec-badge--blue' 'rec-badge--amber' %}">{{ reason }}</span>
+                {% if reason.text %}
+                  <span class="rec-badge {% if reason.tone == 'blue' %}rec-badge--blue{% elif reason.tone == 'amber' %}rec-badge--amber{% elif reason.tone == 'green' %}rec-badge--green{% endif %}">
+                    {{ reason.text }}
+                  </span>
+                {% else %}
+                  <span class="rec-badge {% if 'Disponível no dia' in reason or 'Disponível mais tarde' in reason %}rec-badge--blue{% elif 'Entrega' in reason %}rec-badge--amber{% elif 'Mais barato' in reason or 'Disponível agora' in reason %}rec-badge--green{% endif %}">
+                    {{ reason }}
+                  </span>
+                {% endif %}
               {% endfor %}
             </div>
           {% endif %}
