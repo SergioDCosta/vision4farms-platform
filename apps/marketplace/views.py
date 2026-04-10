@@ -49,10 +49,20 @@ def _listing_photo_url(photo_path):
     if not photo_path:
         return None
 
-    if photo_path.startswith(("http://", "https://", "/")):
+    if photo_path.startswith(("http://", "https://")):
         return photo_path
 
-    return f"{settings.MEDIA_URL}{photo_path.lstrip('/')}"
+    if photo_path.startswith(settings.MEDIA_URL):
+        photo_path = photo_path[len(settings.MEDIA_URL):]
+
+    normalized_path = photo_path.lstrip("/").strip()
+    if not normalized_path:
+        return None
+
+    try:
+        return default_storage.url(normalized_path)
+    except Exception:
+        return f"{settings.MEDIA_URL}{normalized_path}"
 
 
 def _attach_listing_photo_urls(listings):
@@ -111,6 +121,16 @@ def _save_listing_photo(producer, uploaded_file):
 
 
 def _delete_uploaded_file(file_path):
+    if not file_path:
+        return
+    file_path = str(file_path).strip()
+    if not file_path:
+        return
+    if file_path.startswith(("http://", "https://")):
+        return
+    if file_path.startswith(settings.MEDIA_URL):
+        file_path = file_path[len(settings.MEDIA_URL):]
+    file_path = file_path.lstrip("/").strip()
     if not file_path:
         return
     try:
