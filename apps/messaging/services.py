@@ -387,6 +387,44 @@ def mark_conversation_as_read(*, user, conversation):
     ).update(last_read_at=timezone.now())
 
 
+@transaction.atomic
+def delete_conversation_for_user(*, user, conversation_id):
+    if not user:
+        raise MessagingServiceError("Utilizador inválido.")
+
+    participant = (
+        ConversationParticipant.objects
+        .select_for_update()
+        .select_related("conversation")
+        .filter(
+            conversation_id=conversation_id,
+            user=user,
+            conversation__is_active=True,
+            is_archived=False,
+        )
+        .first()
+    )
+
+    if not participant:
+        raise MessagingServiceError("Conversa não encontrada ou já eliminada.")
+
+    conversation = participant.conversation
+    participant.is_archived = True
+    participant.save(update_fields=["is_archived"])
+
+    has_active_participants = (
+        ConversationParticipant.objects
+        .select_for_update()
+        .filter(conversation=conversation, is_archived=False)
+        .exists()
+    )
+    if not has_active_participants:
+        conversation.delete()
+        return {"purged": True}
+
+    return {"purged": False, "conversation_id": str(conversation.id)}
+
+
 def _find_listing_contact_conversation(*, listing, user_a_id, user_b_id):
     return (
         Conversation.objects

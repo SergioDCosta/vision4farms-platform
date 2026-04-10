@@ -63,24 +63,71 @@
       {% if active_conversation %}
 
         <header class="msg-thread__head">
-          <div class="msg-thread__head-avatar">
-            {{ active_entry.counterpart_name|first|upper }}
-          </div>
-          <div class="msg-thread__head-info">
-            <h2>{{ active_entry.counterpart_name|default:"Conversa" }}</h2>
-            <div class="msg-thread__head-meta">
-              {% if active_conversation.conversation_type == "LISTING_CONTACT" %}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                <span>{{ active_entry.context_label }}</span>
-              {% elif active_conversation.conversation_type == "ORDER_CONTACT" %}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-                <span>{{ active_entry.context_label }}</span>
-              {% else %}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span>Conversa direta</span>
-              {% endif %}
+          {% if active_conversation.listing_id %}
+            <a href="{% url 'marketplace:detail' active_conversation.listing_id %}"
+               hx-get="{% url 'marketplace:detail' active_conversation.listing_id %}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="msg-thread__head-main is-clickable">
+              <div class="msg-thread__head-avatar">
+                {{ active_entry.counterpart_name|first|upper }}
+              </div>
+              <div class="msg-thread__head-info">
+                <h2>{{ active_entry.counterpart_name|default:"Conversa" }}</h2>
+                <div class="msg-thread__head-meta">
+                  {% if active_conversation.conversation_type == "LISTING_CONTACT" %}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    <span>{{ active_entry.context_label }}</span>
+                  {% elif active_conversation.conversation_type == "ORDER_CONTACT" %}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    <span>{{ active_entry.context_label }}</span>
+                  {% else %}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <span>Conversa direta</span>
+                  {% endif %}
+                </div>
+              </div>
+            </a>
+          {% else %}
+            <div class="msg-thread__head-main">
+              <div class="msg-thread__head-avatar">
+                {{ active_entry.counterpart_name|first|upper }}
+              </div>
+              <div class="msg-thread__head-info">
+                <h2>{{ active_entry.counterpart_name|default:"Conversa" }}</h2>
+                <div class="msg-thread__head-meta">
+                  {% if active_conversation.conversation_type == "LISTING_CONTACT" %}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    <span>{{ active_entry.context_label }}</span>
+                  {% elif active_conversation.conversation_type == "ORDER_CONTACT" %}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    <span>{{ active_entry.context_label }}</span>
+                  {% else %}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <span>Conversa direta</span>
+                  {% endif %}
+                </div>
+              </div>
             </div>
-          </div>
+          {% endif %}
+
+          <form method="post"
+                action="{% url 'messaging:delete_conversation' active_conversation.id %}"
+                class="msg-thread__delete-form"
+                hx-post="{% url 'messaging:delete_conversation' active_conversation.id %}"
+                hx-target="#shellMain"
+                hx-select="#shellMain"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                hx-confirm="Tem a certeza que quer eliminar esta conversa?">
+            {% csrf_token %}
+            <button type="submit" class="msg-thread__delete-btn">
+              <i class="bi bi-trash"></i>
+              Eliminar conversa
+            </button>
+          </form>
         </header>
 
         <div class="msg-thread__messages" id="msgMessages">
@@ -351,8 +398,32 @@
   border-bottom: 1px solid #edf0f5;
   display: flex;
   align-items: center;
-  gap: .85rem;
+  justify-content: space-between;
+  gap: .9rem;
   background: #fff;
+}
+
+.msg-thread__head-main {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.msg-thread__head-main.is-clickable {
+  border-radius: .85rem;
+  padding: .35rem .45rem;
+  margin: -.35rem -.45rem;
+  cursor: pointer;
+  transition: background .15s ease, box-shadow .15s ease;
+}
+
+.msg-thread__head-main.is-clickable:hover {
+  background: #f8fafc;
+  box-shadow: inset 0 0 0 1px #e2e8f0;
 }
 
 .msg-thread__head-avatar {
@@ -369,12 +440,19 @@
   justify-content: center;
 }
 
+.msg-thread__head-info {
+  min-width: 0;
+}
+
 .msg-thread__head-info h2 {
   margin: 0;
   font-size: .95rem;
   font-weight: 700;
   color: #0f172a;
   letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .msg-thread__head-meta {
@@ -389,6 +467,31 @@
 .msg-thread__head-meta svg {
   color: #16a34a;
   flex-shrink: 0;
+}
+
+.msg-thread__delete-form {
+  flex-shrink: 0;
+}
+
+.msg-thread__delete-btn {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #be123c;
+  border-radius: .75rem;
+  padding: .45rem .75rem;
+  font-size: .76rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.msg-thread__delete-btn:hover {
+  background: #ffe4e6;
+  border-color: #fda4af;
+  color: #9f1239;
 }
 
 /* ─── MESSAGES ─────────────────────────────────────────────── */
@@ -746,6 +849,20 @@
   .msg-page {
     height: calc(100vh - 80px);
   }
+
+  .msg-thread__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msg-thread__delete-form {
+    width: 100%;
+  }
+
+  .msg-thread__delete-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>
 
@@ -996,7 +1113,11 @@
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      composer.dispatchEvent(new Event("submit"));
+      if (typeof composer.requestSubmit === "function") {
+        composer.requestSubmit();
+      } else {
+        composer.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      }
     }
   });
 

@@ -10,6 +10,7 @@ from apps.marketplace.models import MarketplaceListing
 from apps.messaging.services import (
     MessagingServiceError,
     create_file_message,
+    delete_conversation_for_user,
     get_conversation_for_user,
     get_conversation_messages,
     get_current_producer_for_user,
@@ -155,3 +156,45 @@ def upload_attachment_view(request):
         return JsonResponse({"ok": False, "error": "Anexo guardado, mas falhou o envio em tempo real."}, status=500)
 
     return JsonResponse({"ok": True, "message": message_payload}, status=200)
+
+
+@login_required
+@client_only_required
+def delete_conversation_view(request, conversation_id):
+    if request.method != "POST":
+        return redirect("messaging:index")
+
+    producer = get_current_producer_for_user(request.current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    try:
+        delete_result = delete_conversation_for_user(
+            user=request.current_user,
+            conversation_id=conversation_id,
+        )
+    except MessagingServiceError as exc:
+        messages.error(request, str(exc))
+        target_url = reverse("messaging:index")
+    except Exception:
+        messages.error(request, "Não foi possível eliminar a conversa.")
+        target_url = reverse("messaging:index")
+    else:
+        if delete_result.get("purged"):
+            messages.success(request, "Conversa eliminada para todos os participantes.")
+        else:
+            messages.success(request, "Conversa removida da tua caixa de mensagens.")
+
+        listing_context = list_conversations_for_user(request.current_user)
+        target_url = reverse("messaging:index")
+        if listing_context["conversations"]:
+            first_conversation_id = listing_context["conversations"][0]["conversation"].id
+            target_url = f"{target_url}?c={first_conversation_id}"
+
+    if _is_htmx(request):
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = target_url
+        return response
+
+    return redirect(target_url)
