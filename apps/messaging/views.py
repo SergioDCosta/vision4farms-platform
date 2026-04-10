@@ -1,18 +1,22 @@
 from django.contrib import messages
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from apps.common.decorators import client_only_required, login_required
 from apps.marketplace.models import MarketplaceListing
 from apps.messaging.services import (
     MessagingServiceError,
+    create_file_message,
     get_conversation_for_user,
     get_conversation_messages,
     get_current_producer_for_user,
     get_or_create_listing_contact_conversation,
     list_conversations_for_user,
     mark_conversation_as_read,
+    serialize_message_payload,
 )
 
 
@@ -102,3 +106,52 @@ def start_listing_contact_view(request, listing_id):
         return response
 
     return redirect(target_url)
+
+
+@login_required
+@client_only_required
+def upload_attachment_view(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método inválido."}, status=405)
+
+    conversation_id = (request.POST.get("conversation_id") or "").strip()
+    if not conversation_id:
+        return JsonResponse({"ok": False, "error": "Conversa inválida."}, status=400)
+
+    uploaded_file = request.FILES.get("file")
+    if not uploaded_file:
+        return JsonResponse({"ok": False, "error": "Ficheiro não enviado."}, status=400)
+
+    conversation = get_conversation_for_user(
+        user=request.current_user,
+        conversation_id=conversation_id,
+    )
+    if not conversation:
+        return JsonResponse({"ok": False, "error": "Sem acesso à conversa."}, status=403)
+
+    try:
+        message = create_file_message(
+            conversation=conversation,
+            sender_user=request.current_user,
+            uploaded_file=uploaded_file,
+        )
+        message_payload = serialize_message_payload(message=message)
+    except MessagingServiceError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Não foi possível enviar o anexo."}, status=500)
+
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                f"conversation_{conversation.id}",
+                {
+                    "type": "message_created",
+                    "message": message_payload,
+                },
+            )
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Anexo guardado, mas falhou o envio em tempo real."}, status=500)
+
+    return JsonResponse({"ok": True, "message": message_payload}, status=200)

@@ -11,6 +11,7 @@ class ConversationType(models.TextChoices):
 class MessageType(models.TextChoices):
     TEXT = "TEXT", "Texto"
     SYSTEM_EVENT = "SYSTEM_EVENT", "Evento do Sistema"
+    FILE = "FILE", "Ficheiro"
 
 
 class Conversation(models.Model):
@@ -91,6 +92,9 @@ class Message(models.Model):
     )
     message_type = models.CharField(max_length=20, choices=MessageType.choices, default=MessageType.TEXT)
     content = models.TextField()
+    attachment_url = models.TextField(blank=True, null=True)
+    attachment_name = models.CharField(max_length=255, blank=True, null=True)
+    attachment_type = models.CharField(max_length=50, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

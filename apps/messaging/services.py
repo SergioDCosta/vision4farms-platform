@@ -1,9 +1,15 @@
+import mimetypes
+import uuid
+from pathlib import Path
+
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.db.models import Count, F, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from apps.accounts.models import User
 from apps.inventory.models import ProducerProfile
 from apps.marketplace.models import MarketplaceListing
 from apps.messaging.models import (
@@ -11,11 +17,168 @@ from apps.messaging.models import (
     ConversationParticipant,
     ConversationType,
     Message,
+    MessageType,
 )
 
 
 class MessagingServiceError(Exception):
     pass
+
+
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+ALLOWED_ATTACHMENT_MIME_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+}
+
+
+def _is_allowed_attachment_type(content_type):
+    if not content_type:
+        return False
+    content_type = str(content_type).strip().lower().split(";", 1)[0].strip()
+    if content_type.startswith("image/"):
+        return True
+    return content_type in ALLOWED_ATTACHMENT_MIME_TYPES
+
+
+def _normalize_attachment_name(original_name):
+    filename = Path(original_name or "").name.strip()
+    if not filename:
+        return "anexo"
+    if len(filename) <= 255:
+        return filename
+
+    stem = Path(filename).stem
+    suffix = Path(filename).suffix
+    max_stem = max(1, 255 - len(suffix))
+    return f"{stem[:max_stem]}{suffix}"
+
+
+def _build_attachment_path(conversation_id, attachment_name):
+    return f"messaging/attachments/{conversation_id}/{uuid.uuid4().hex}_{attachment_name}"
+
+
+def _touch_conversation_after_message(*, conversation, message_created_at):
+    now = timezone.now()
+    conversation.last_message_at = message_created_at or now
+    conversation.updated_at = now
+    conversation.save(update_fields=["last_message_at", "updated_at"])
+    return now
+
+
+def _mark_sender_read(*, conversation, sender_user, now):
+    ConversationParticipant.objects.filter(
+        conversation=conversation,
+        user=sender_user,
+        is_archived=False,
+    ).update(last_read_at=now)
+
+
+def serialize_message_payload(*, message):
+    sender_user = getattr(message, "sender_user", None)
+    sender_name = (
+        (sender_user.full_name or sender_user.email)
+        if sender_user else "Utilizador"
+    ) or "Utilizador"
+
+    created_at = message.created_at or timezone.now()
+    created_local = timezone.localtime(created_at)
+
+    payload = {
+        "id": str(message.id),
+        "conversation_id": str(message.conversation_id),
+        "sender_id": str(message.sender_user_id) if message.sender_user_id else None,
+        "sender_name": sender_name,
+        "message_type": message.message_type,
+        "content": message.content or "",
+        "created_at": created_at.isoformat(),
+        "created_at_label": created_local.strftime("%d/%m/%Y %H:%M"),
+    }
+
+    if message.message_type == MessageType.FILE:
+        payload["attachment_url"] = message.attachment_url
+        payload["attachment_name"] = message.attachment_name
+        payload["attachment_type"] = message.attachment_type
+
+    return payload
+
+
+def create_text_message(*, conversation, sender_user, content):
+    content = str(content or "").strip()
+    if not content:
+        raise MessagingServiceError("A mensagem de texto está vazia.")
+
+    message = Message.objects.create(
+        conversation=conversation,
+        sender_user=sender_user,
+        message_type=MessageType.TEXT,
+        content=content,
+    )
+
+    now = _touch_conversation_after_message(
+        conversation=conversation,
+        message_created_at=message.created_at,
+    )
+    _mark_sender_read(conversation=conversation, sender_user=sender_user, now=now)
+    return message
+
+
+@transaction.atomic
+def create_file_message(*, conversation, sender_user, uploaded_file):
+    if not isinstance(uploaded_file, UploadedFile):
+        raise MessagingServiceError("Ficheiro inválido.")
+
+    file_size = getattr(uploaded_file, "size", 0) or 0
+    if file_size <= 0:
+        raise MessagingServiceError("Ficheiro vazio.")
+    if file_size > MAX_ATTACHMENT_BYTES:
+        raise MessagingServiceError("O ficheiro excede o limite de 10MB.")
+
+    attachment_name = _normalize_attachment_name(uploaded_file.name)
+    content_type = (getattr(uploaded_file, "content_type", None) or "").strip().lower().split(";", 1)[0].strip()
+    if not content_type:
+        guessed_type, _ = mimetypes.guess_type(attachment_name)
+        content_type = (guessed_type or "").strip().lower()
+    if not _is_allowed_attachment_type(content_type):
+        raise MessagingServiceError("Tipo de ficheiro não permitido.")
+
+    storage_path = _build_attachment_path(conversation.id, attachment_name)
+    saved_path = default_storage.save(storage_path, uploaded_file)
+    if not saved_path:
+        raise MessagingServiceError("Não foi possível guardar o ficheiro.")
+
+    try:
+        attachment_url = default_storage.url(saved_path)
+    except Exception:
+        attachment_url = f"{settings.MEDIA_URL}{str(saved_path).lstrip('/')}"
+
+    try:
+        message = Message.objects.create(
+            conversation=conversation,
+            sender_user=sender_user,
+            message_type=MessageType.FILE,
+            content=attachment_name,
+            attachment_url=attachment_url,
+            attachment_name=attachment_name,
+            attachment_type=content_type,
+        )
+    except Exception:
+        try:
+            default_storage.delete(saved_path)
+        except Exception:
+            pass
+        raise
+
+    now = _touch_conversation_after_message(
+        conversation=conversation,
+        message_created_at=message.created_at,
+    )
+    _mark_sender_read(conversation=conversation, sender_user=sender_user, now=now)
+    return message
 
 
 def get_current_producer_for_user(user):

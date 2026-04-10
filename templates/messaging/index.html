@@ -4,10 +4,17 @@
 
 <div class="msg-page">
   <section class="msg-layout">
+
+    <!-- SIDEBAR -->
     <aside class="msg-sidebar">
       <header class="msg-sidebar__head">
-        <h1>Mensagens</h1>
-        <span class="msg-unread-total">{{ total_unread }} não lidas</span>
+        <div class="msg-sidebar__head-left">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <h1>Mensagens</h1>
+        </div>
+        {% if total_unread > 0 %}
+          <span class="msg-unread-total">{{ total_unread }}</span>
+        {% endif %}
       </header>
 
       <div class="msg-conversation-list">
@@ -19,349 +26,725 @@
              hx-swap="outerHTML"
              hx-push-url="true"
              class="msg-conversation-item {% if active_conversation and active_conversation.id == entry.conversation.id %}is-active{% endif %}">
-            <div class="msg-conversation-item__top">
-              <strong>{{ entry.title }}</strong>
-              {% if entry.preview_at %}
-                <time>{{ entry.preview_at|date:"d/m H:i" }}</time>
-              {% endif %}
+
+            <div class="msg-conv-avatar">
+              {{ entry.counterpart_name|first|upper }}
             </div>
-            <p class="msg-conversation-item__meta">{{ entry.context_label }}</p>
-            <p class="msg-conversation-item__preview">{{ entry.preview_text }}</p>
+
+            <div class="msg-conv-body">
+              <div class="msg-conv-top">
+                <strong>{{ entry.counterpart_name }}</strong>
+                {% if entry.preview_at %}
+                  <time>{{ entry.preview_at|date:"d/m H:i" }}</time>
+                {% endif %}
+              </div>
+              <span class="msg-conv-label">{{ entry.context_label }}</span>
+              <p class="msg-conv-preview">{{ entry.preview_text }}</p>
+            </div>
+
             {% if entry.unread_count > 0 %}
               <span class="msg-unread-badge">{{ entry.unread_count }}</span>
             {% endif %}
           </a>
         {% empty %}
           <div class="msg-empty msg-empty--side">
-            <i class="bi bi-chat-dots"></i>
-            <p>Ainda não tem conversas.</p>
+            <div class="msg-empty-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <p>Sem conversas ainda.</p>
+            <span>Contacte um produtor no marketplace para começar.</span>
           </div>
         {% endfor %}
       </div>
     </aside>
 
+    <!-- THREAD -->
     <section class="msg-thread">
       {% if active_conversation %}
+
         <header class="msg-thread__head">
-          <div>
-            <h2>{{ active_entry.title|default:"Conversa" }}</h2>
-            <p>{{ active_entry.context_label|default:"Conversa entre produtores" }}</p>
+          <div class="msg-thread__head-avatar">
+            {{ active_entry.counterpart_name|first|upper }}
+          </div>
+          <div class="msg-thread__head-info">
+            <h2>{{ active_entry.counterpart_name|default:"Conversa" }}</h2>
+            <div class="msg-thread__head-meta">
+              {% if active_conversation.conversation_type == "LISTING_CONTACT" %}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                <span>{{ active_entry.context_label }}</span>
+              {% elif active_conversation.conversation_type == "ORDER_CONTACT" %}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                <span>{{ active_entry.context_label }}</span>
+              {% else %}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span>Conversa direta</span>
+              {% endif %}
+            </div>
           </div>
         </header>
 
         <div class="msg-thread__messages" id="msgMessages">
           {% for message in active_messages %}
-            <article class="msg-bubble {% if message.sender_user_id == request.current_user.id %}is-me{% else %}is-other{% endif %}">
-              <p>{{ message.content }}</p>
-              <time>{{ message.created_at|date:"d/m/Y H:i" }}</time>
-            </article>
+            <div class="msg-bubble-wrap {% if message.sender_user_id == request.current_user.id %}is-me{% else %}is-other{% endif %}">
+              {% if not forloop.first %}{% else %}
+                <span class="msg-date-divider">{{ message.created_at|date:"d \d\e F" }}</span>
+              {% endif %}
+              <article class="msg-bubble">
+                {% if message.message_type == "FILE" %}
+                  <div class="msg-bubble--file">
+                    <div class="msg-file-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div class="msg-file-info">
+                      {% if message.attachment_url %}
+                        <a href="{{ message.attachment_url }}" target="_blank" rel="noopener" class="msg-file-name">
+                          {{ message.attachment_name|default:message.content }}
+                        </a>
+                      {% else %}
+                        <div class="msg-file-name">{{ message.attachment_name|default:message.content }}</div>
+                      {% endif %}
+                    </div>
+                  </div>
+                {% else %}
+                  <p>{{ message.content }}</p>
+                {% endif %}
+                <time>{{ message.created_at|date:"H:i" }}</time>
+              </article>
+            </div>
           {% empty %}
-            <div class="msg-empty">
-              <i class="bi bi-chat-square-text"></i>
-              <p>Sem mensagens nesta conversa.</p>
+            <div class="msg-empty msg-empty--thread">
+              <div class="msg-empty-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </div>
+              <p>Ainda sem mensagens</p>
+              <span>Seja o primeiro a escrever!</span>
             </div>
           {% endfor %}
         </div>
 
-        <form id="msgComposer" class="msg-composer" autocomplete="off">
-          <input type="text" id="msgInput" placeholder="Escreva a sua mensagem..." maxlength="2000" required>
-          <button type="submit">
-            <i class="bi bi-send-fill"></i>
-            Enviar
-          </button>
-        </form>
+        <!-- COMPOSER -->
+        <div class="msg-composer-wrap">
+          <!-- File preview area (hidden by default) -->
+          <div class="msg-file-preview" id="msgFilePreview" style="display:none;">
+            <div class="msg-file-preview__inner" id="msgFilePreviewInner"></div>
+          </div>
+
+          <form id="msgComposer" class="msg-composer" autocomplete="off">
+            <label class="msg-attach-btn" title="Anexar ficheiro" for="msgFileInput">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <input type="file" id="msgFileInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" style="display:none;">
+            </label>
+
+            <div class="msg-input-wrap">
+              <input type="text" id="msgInput" placeholder="Escreva uma mensagem..." maxlength="2000">
+            </div>
+
+            <button type="submit" class="msg-send-btn" id="msgSendBtn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </form>
+        </div>
 
         <div id="msgThreadData"
              data-conversation-id="{{ active_conversation.id }}"
              data-current-user-id="{{ request.current_user.id }}">
         </div>
+
       {% else %}
         <div class="msg-empty msg-empty--main">
-          <i class="bi bi-chat-square-text"></i>
+          <div class="msg-empty-icon msg-empty-icon--lg">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
           <h3>Selecione uma conversa</h3>
-          <p>Quando contactar um produtor no marketplace, a conversa aparece aqui.</p>
+          <p>Contacte um produtor no marketplace<br>para iniciar uma conversa.</p>
         </div>
       {% endif %}
     </section>
+
   </section>
 </div>
 
 <style>
+/* ─── LAYOUT ───────────────────────────────────────────────── */
 .msg-page {
+  height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
 }
 
 .msg-layout {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
-  gap: 1rem;
-  min-height: 68vh;
-}
-
-.msg-sidebar,
-.msg-thread {
+  grid-template-columns: 300px 1fr;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #e4e9f0;
+  border-radius: 1.25rem;
+  overflow: hidden;
   background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 2px 8px rgba(15,23,42,.06), 0 12px 32px rgba(15,23,42,.04);
 }
 
+/* ─── SIDEBAR ──────────────────────────────────────────────── */
 .msg-sidebar {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  border-right: 1px solid #edf0f5;
+  background: #fafbfc;
+  min-height: 0;
 }
 
 .msg-sidebar__head {
-  padding: 1rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 1.1rem 1rem;
+  border-bottom: 1px solid #edf0f5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .6rem;
+  background: #fff;
+}
+
+.msg-sidebar__head-left {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  color: #1a6b3c;
 }
 
 .msg-sidebar__head h1 {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 800;
+  font-size: .95rem;
+  font-weight: 700;
   color: #0f172a;
+  letter-spacing: -.01em;
 }
 
 .msg-unread-total {
-  font-size: .76rem;
-  color: #1e40af;
+  font-size: .7rem;
+  color: #fff;
   font-weight: 700;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: .7rem;
-  padding: .2rem .55rem;
+  background: #16a34a;
+  border-radius: 999px;
+  padding: .15rem .5rem;
+  min-width: 1.4rem;
+  text-align: center;
 }
 
 .msg-conversation-list {
+  flex: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
 }
 
 .msg-conversation-item {
-  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: .2rem;
-  padding: .85rem .95rem;
+  align-items: flex-start;
+  gap: .7rem;
+  padding: .85rem 1rem;
   border-bottom: 1px solid #f1f5f9;
   text-decoration: none;
   color: inherit;
-  transition: background .15s ease;
+  transition: background .12s;
+  position: relative;
+  cursor: pointer;
 }
 
-.msg-conversation-item:hover {
-  background: #f8fafc;
-}
-
+.msg-conversation-item:hover { background: #f4f7fb; }
 .msg-conversation-item.is-active {
-  background: #eff6ff;
+  background: #f0faf4;
+  border-left: 3px solid #16a34a;
 }
 
-.msg-conversation-item__top {
+.msg-conv-avatar {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 700;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: .01em;
+}
+
+.msg-conv-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+
+.msg-conv-top {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  gap: .6rem;
+  gap: .4rem;
 }
 
-.msg-conversation-item__top strong {
-  font-size: .9rem;
+.msg-conv-top strong {
+  font-size: .84rem;
+  font-weight: 600;
   color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.msg-conversation-item__top time {
-  font-size: .72rem;
+.msg-conv-top time {
+  font-size: .68rem;
   color: #94a3b8;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.msg-conversation-item__meta {
+.msg-conv-label {
+  font-size: .7rem;
+  color: #16a34a;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-conv-preview {
   margin: 0;
-  font-size: .75rem;
+  font-size: .78rem;
   color: #64748b;
-}
-
-.msg-conversation-item__preview {
-  margin: 0;
-  font-size: .8rem;
-  color: #334155;
   line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .msg-unread-badge {
   position: absolute;
-  right: .8rem;
-  bottom: .75rem;
-  min-width: 1.25rem;
-  height: 1.25rem;
+  right: .75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 1.2rem;
+  height: 1.2rem;
   border-radius: 999px;
-  background: #2563eb;
+  background: #16a34a;
   color: #fff;
-  font-size: .72rem;
+  font-size: .65rem;
   font-weight: 800;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 .3rem;
+  padding: 0 .25rem;
 }
 
+/* ─── THREAD ───────────────────────────────────────────────── */
 .msg-thread {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  background: #fff;
 }
 
 .msg-thread__head {
-  padding: 1rem 1.1rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding: .9rem 1.25rem;
+  border-bottom: 1px solid #edf0f5;
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  background: #fff;
 }
 
-.msg-thread__head h2 {
+.msg-thread__head-avatar {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: #fff;
+  font-size: .9rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.msg-thread__head-info h2 {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 800;
+  font-size: .95rem;
+  font-weight: 700;
   color: #0f172a;
+  letter-spacing: -.01em;
 }
 
-.msg-thread__head p {
-  margin: .3rem 0 0;
-  font-size: .82rem;
+.msg-thread__head-meta {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  margin-top: .2rem;
   color: #64748b;
+  font-size: .75rem;
 }
 
+.msg-thread__head-meta svg {
+  color: #16a34a;
+  flex-shrink: 0;
+}
+
+/* ─── MESSAGES ─────────────────────────────────────────────── */
 .msg-thread__messages {
   flex: 1;
-  min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 1.25rem 1.25rem .75rem;
   display: flex;
   flex-direction: column;
-  gap: .65rem;
+  gap: .4rem;
   background: #f8fafc;
+  background-image: radial-gradient(circle at 1px 1px, #e9eef5 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+.msg-date-divider {
+  display: block;
+  text-align: center;
+  font-size: .7rem;
+  color: #94a3b8;
+  font-weight: 500;
+  margin: .5rem 0;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.msg-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.msg-bubble-wrap.is-me {
+  align-items: flex-end;
+}
+
+.msg-bubble-wrap.is-other {
+  align-items: flex-start;
 }
 
 .msg-bubble {
-  max-width: min(78%, 640px);
-  padding: .7rem .8rem;
-  border-radius: .9rem;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  max-width: min(72%, 520px);
+  padding: .65rem .9rem;
+  border-radius: 1.1rem;
+  position: relative;
 }
 
-.msg-bubble.is-me {
-  margin-left: auto;
-  background: #dcfce7;
-  border-color: #bbf7d0;
+.msg-bubble-wrap.is-me .msg-bubble {
+  background: #16a34a;
+  color: #fff;
+  border-bottom-right-radius: .3rem;
+  box-shadow: 0 2px 8px rgba(22,163,74,.25);
+}
+
+.msg-bubble-wrap.is-other .msg-bubble {
+  background: #fff;
+  border: 1px solid #e4e9f0;
+  border-bottom-left-radius: .3rem;
+  box-shadow: 0 1px 4px rgba(15,23,42,.06);
 }
 
 .msg-bubble p {
   margin: 0;
-  color: #0f172a;
-  font-size: .9rem;
-  line-height: 1.5;
+  font-size: .875rem;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
+.msg-bubble-wrap.is-me .msg-bubble p { color: #fff; }
+.msg-bubble-wrap.is-other .msg-bubble p { color: #1e293b; }
+
 .msg-bubble time {
   display: block;
-  margin-top: .35rem;
-  font-size: .72rem;
-  color: #64748b;
+  margin-top: .3rem;
+  font-size: .65rem;
   text-align: right;
 }
 
-.msg-composer {
-  border-top: 1px solid #e2e8f0;
-  padding: .8rem;
-  display: grid;
-  grid-template-columns: 1fr auto;
+.msg-bubble-wrap.is-me .msg-bubble time { color: rgba(255,255,255,.65); }
+.msg-bubble-wrap.is-other .msg-bubble time { color: #94a3b8; }
+
+/* File bubble */
+.msg-bubble--file {
+  display: flex;
+  align-items: center;
   gap: .6rem;
+  padding: .6rem .85rem;
+}
+
+.msg-bubble--file .msg-file-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: .5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.msg-bubble-wrap.is-me .msg-bubble--file .msg-file-icon {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+}
+
+.msg-bubble-wrap.is-other .msg-bubble--file .msg-file-icon {
+  background: #f0faf4;
+  color: #16a34a;
+}
+
+.msg-bubble--file .msg-file-info { flex: 1; min-width: 0; }
+.msg-bubble--file .msg-file-name {
+  display: inline-block;
+  font-size: .8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+}
+
+.msg-bubble-wrap.is-me .msg-bubble--file .msg-file-name { color: #fff; }
+.msg-bubble-wrap.is-other .msg-bubble--file .msg-file-name { color: #0f172a; }
+
+/* ─── COMPOSER ─────────────────────────────────────────────── */
+.msg-composer-wrap {
+  border-top: 1px solid #edf0f5;
   background: #fff;
 }
 
-.msg-composer input {
+.msg-file-preview {
+  padding: .6rem 1rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.msg-file-preview__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
   width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: .75rem;
-  background: #f8fafc;
-  padding: .78rem .85rem;
-  font-size: .9rem;
-  outline: none;
 }
 
-.msg-composer input:focus {
+.msg-file-chip {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  background: #f0faf4;
+  border: 1px solid #bbf7d0;
+  border-radius: .6rem;
+  padding: .3rem .6rem;
+  font-size: .75rem;
+  color: #15803d;
+  font-weight: 500;
+  max-width: 200px;
+}
+
+.msg-file-chip span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-file-chip button {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: #15803d;
+  display: flex;
+  align-items: center;
+  opacity: .7;
+  flex-shrink: 0;
+}
+
+.msg-file-chip button:hover { opacity: 1; }
+
+.msg-composer {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem 1rem;
+}
+
+.msg-attach-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: .65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  transition: background .12s, color .12s;
+  flex-shrink: 0;
+}
+
+.msg-attach-btn:hover {
+  background: #f0faf4;
+  color: #16a34a;
+}
+
+.msg-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.msg-input-wrap input {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: .85rem;
+  background: #f8fafc;
+  padding: .65rem .95rem;
+  font-size: .875rem;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+  color: #0f172a;
+}
+
+.msg-input-wrap input::placeholder { color: #94a3b8; }
+
+.msg-input-wrap input:focus {
   border-color: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+  box-shadow: 0 0 0 3px rgba(22,163,74,.1);
   background: #fff;
 }
 
-.msg-composer button {
-  border: none;
+.msg-send-btn {
+  width: 38px;
+  height: 38px;
   border-radius: .75rem;
+  border: none;
   background: #16a34a;
   color: #fff;
-  padding: 0 .95rem;
-  font-size: .86rem;
-  font-weight: 800;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: .45rem;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .15s, transform .1s, box-shadow .15s;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(22,163,74,.3);
 }
 
-.msg-composer button:hover {
+.msg-send-btn:hover {
   background: #15803d;
+  box-shadow: 0 4px 12px rgba(22,163,74,.4);
 }
 
+.msg-send-btn:active { transform: scale(.94); }
+
+.msg-send-btn svg {
+  transform: translateX(1px);
+}
+
+/* ─── EMPTY STATES ─────────────────────────────────────────── */
 .msg-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-  color: #64748b;
+  color: #94a3b8;
 }
 
-.msg-empty i {
-  font-size: 1.2rem;
-  margin-bottom: .45rem;
-  display: inline-block;
+.msg-empty-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #f0faf4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #16a34a;
+  margin-bottom: .75rem;
 }
 
-.msg-empty p,
-.msg-empty h3 {
-  margin: 0;
+.msg-empty-icon--lg {
+  width: 72px;
+  height: 72px;
 }
 
 .msg-empty--side {
-  padding: 1.2rem .8rem;
+  padding: 2rem 1rem;
+}
+
+.msg-empty--side p {
+  margin: 0 0 .25rem;
+  font-size: .85rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.msg-empty--side span {
+  font-size: .75rem;
+  color: #94a3b8;
+}
+
+.msg-empty--thread {
+  margin: auto;
+  padding: 2rem;
+}
+
+.msg-empty--thread p {
+  margin: 0 0 .3rem;
+  font-size: .95rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.msg-empty--thread span {
+  font-size: .8rem;
 }
 
 .msg-empty--main {
   margin: auto;
-  max-width: 420px;
-  padding: 1.6rem;
+  padding: 2rem;
+  max-width: 340px;
 }
 
 .msg-empty--main h3 {
-  margin: .2rem 0 .45rem;
-  color: #0f172a;
+  margin: .5rem 0 .4rem;
   font-size: 1rem;
+  font-weight: 700;
+  color: #334155;
 }
 
-@media (max-width: 1080px) {
+.msg-empty--main p {
+  font-size: .82rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ─── SCROLLBAR ────────────────────────────────────────────── */
+.msg-conversation-list::-webkit-scrollbar,
+.msg-thread__messages::-webkit-scrollbar { width: 4px; }
+.msg-conversation-list::-webkit-scrollbar-track,
+.msg-thread__messages::-webkit-scrollbar-track { background: transparent; }
+.msg-conversation-list::-webkit-scrollbar-thumb,
+.msg-thread__messages::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+/* ─── RESPONSIVE ───────────────────────────────────────────── */
+@media (max-width: 900px) {
   .msg-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: 240px 1fr;
   }
 
   .msg-sidebar {
-    max-height: 300px;
+    border-right: none;
+    border-bottom: 1px solid #edf0f5;
+  }
+
+  .msg-page {
+    height: calc(100vh - 80px);
   }
 }
 </style>
@@ -369,51 +752,124 @@
 <script>
 (function () {
   const threadData = document.getElementById("msgThreadData");
-  const composer = document.getElementById("msgComposer");
-  const input = document.getElementById("msgInput");
+  const composer   = document.getElementById("msgComposer");
+  const input      = document.getElementById("msgInput");
   const messagesBox = document.getElementById("msgMessages");
+  const fileInput  = document.getElementById("msgFileInput");
+  const filePreview = document.getElementById("msgFilePreview");
+  const filePreviewInner = document.getElementById("msgFilePreviewInner");
+  const uploadEndpoint = "{% url 'messaging:upload_attachment' %}";
 
   if (!threadData || !composer || !input || !messagesBox) return;
 
   const conversationId = threadData.dataset.conversationId;
-  const currentUserId = threadData.dataset.currentUserId;
+  const currentUserId  = threadData.dataset.currentUserId;
   if (!conversationId) return;
 
+  // ── WebSocket ──────────────────────────────────────────────
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(
     `${protocol}://${window.location.host}/ws/mensagens/${conversationId}/`
   );
 
-  const scrollToBottom = () => {
-    messagesBox.scrollTop = messagesBox.scrollHeight;
+  const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(";").shift();
+    return "";
+  };
+
+  const csrfToken = getCookie("csrftoken");
+
+  const scrollToBottom = (smooth = false) => {
+    messagesBox.scrollTo({
+      top: messagesBox.scrollHeight,
+      behavior: smooth ? "smooth" : "instant"
+    });
+  };
+
+  const hasMessageRendered = (messageId) => {
+    if (!messageId) return false;
+    return Boolean(messagesBox.querySelector(`[data-message-id="${messageId}"]`));
+  };
+
+  const buildFileContent = (message, isMe) => {
+    const fileRow = document.createElement("div");
+    fileRow.className = "msg-bubble--file";
+
+    const iconWrap = document.createElement("div");
+    iconWrap.className = "msg-file-icon";
+    iconWrap.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+
+    const info = document.createElement("div");
+    info.className = "msg-file-info";
+
+    const fileName = message.attachment_name || message.content || "Ficheiro";
+    if (message.attachment_url) {
+      const link = document.createElement("a");
+      link.className = "msg-file-name";
+      link.href = message.attachment_url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = fileName;
+      if (isMe) {
+        link.style.color = "#ffffff";
+      }
+      info.appendChild(link);
+    } else {
+      const name = document.createElement("div");
+      name.className = "msg-file-name";
+      name.textContent = fileName;
+      info.appendChild(name);
+    }
+
+    fileRow.appendChild(iconWrap);
+    fileRow.appendChild(info);
+    return fileRow;
   };
 
   const appendMessage = (message) => {
-    if (!message || !message.content) return;
+    if (!message || !message.id || hasMessageRendered(message.id)) return;
 
     const emptyState = messagesBox.querySelector(".msg-empty");
-    if (emptyState) {
-      emptyState.remove();
-    }
+    if (emptyState) emptyState.remove();
+
+    const isMe = String(message.sender_id) === String(currentUserId);
+
+    const wrap = document.createElement("div");
+    wrap.className = `msg-bubble-wrap ${isMe ? "is-me" : "is-other"}`;
+    wrap.dataset.messageId = String(message.id);
 
     const bubble = document.createElement("article");
     bubble.className = "msg-bubble";
-    if (String(message.sender_id) === String(currentUserId)) {
-      bubble.classList.add("is-me");
-    } else {
-      bubble.classList.add("is-other");
-    }
 
-    const content = document.createElement("p");
-    content.textContent = message.content;
+    const messageType = String(message.message_type || "TEXT").toUpperCase();
+    if (messageType === "FILE") {
+      bubble.appendChild(buildFileContent(message, isMe));
+    } else {
+      const content = document.createElement("p");
+      content.textContent = message.content || "";
+      bubble.appendChild(content);
+    }
 
     const time = document.createElement("time");
     time.textContent = message.created_at_label || "";
 
-    bubble.appendChild(content);
     bubble.appendChild(time);
-    messagesBox.appendChild(bubble);
-    scrollToBottom();
+    wrap.appendChild(bubble);
+
+    // Entry animation
+    wrap.style.opacity = "0";
+    wrap.style.transform = `translateY(8px)`;
+    messagesBox.appendChild(wrap);
+
+    requestAnimationFrame(() => {
+      wrap.style.transition = "opacity .2s ease, transform .2s ease";
+      wrap.style.opacity = "1";
+      wrap.style.transform = "translateY(0)";
+    });
+
+    scrollToBottom(true);
   };
 
   socket.addEventListener("message", (event) => {
@@ -422,24 +878,126 @@
       if (payload.type === "message.created" && payload.message) {
         appendMessage(payload.message);
       }
-    } catch (error) {}
+    } catch (_) {}
   });
 
-  composer.addEventListener("submit", (event) => {
+  // ── File attachment ────────────────────────────────────────
+  let pendingFiles = [];
+
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      const files = Array.from(fileInput.files || []);
+      files.forEach(file => {
+        if (pendingFiles.find(f => f.name === file.name && f.size === file.size)) return;
+        pendingFiles.push(file);
+        renderFileChip(file);
+      });
+      fileInput.value = "";
+      filePreview.style.display = pendingFiles.length ? "block" : "none";
+    });
+  }
+
+  function renderFileChip(file) {
+    const chip = document.createElement("div");
+    chip.className = "msg-file-chip";
+    chip.dataset.name = file.name;
+
+    const icon = document.createElement("svg");
+    icon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+
+    const name = document.createElement("span");
+    name.textContent = file.name;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    remove.addEventListener("click", () => {
+      pendingFiles = pendingFiles.filter(f => !(f.name === file.name && f.size === file.size));
+      chip.remove();
+      if (!pendingFiles.length) filePreview.style.display = "none";
+    });
+
+    chip.appendChild(icon);
+    chip.appendChild(name);
+    chip.appendChild(remove);
+    filePreviewInner.appendChild(chip);
+  }
+
+  async function uploadAttachment(file) {
+    const formData = new FormData();
+    formData.append("conversation_id", conversationId);
+    formData.append("file", file);
+
+    const headers = {};
+    if (csrfToken) headers["X-CSRFToken"] = csrfToken;
+
+    const response = await fetch(uploadEndpoint, {
+      method: "POST",
+      body: formData,
+      headers,
+      credentials: "same-origin",
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = {};
+    }
+
+    if (!response.ok || !payload.ok) {
+      const error = payload.error || "Não foi possível enviar o anexo.";
+      throw new Error(error);
+    }
+
+    return payload.message;
+  }
+
+  // ── Send ───────────────────────────────────────────────────
+  composer.addEventListener("submit", async (event) => {
     event.preventDefault();
     const value = (input.value || "").trim();
-    if (!value) return;
 
-    if (socket.readyState !== WebSocket.OPEN) return;
+    if (!value && !pendingFiles.length) return;
 
-    socket.send(
-      JSON.stringify({
-        type: "message.send",
-        content: value,
-      })
-    );
-    input.value = "";
+    // Send text message
+    if (value) {
+      if (socket.readyState !== WebSocket.OPEN) {
+        window.alert("A ligação de mensagens está offline. Atualiza a página para voltar a enviar texto.");
+        return;
+      }
+      socket.send(JSON.stringify({ type: "message.send", content: value }));
+      input.value = "";
+    }
+
+    // Files via HTTP upload endpoint
+    if (pendingFiles.length) {
+      const filesToUpload = [...pendingFiles];
+      pendingFiles = [];
+      filePreviewInner.innerHTML = "";
+      filePreview.style.display = "none";
+
+      for (const file of filesToUpload) {
+        try {
+          const sentMessage = await uploadAttachment(file);
+          if (socket.readyState !== WebSocket.OPEN && sentMessage) {
+            appendMessage(sentMessage);
+          }
+        } catch (error) {
+          window.alert(error.message || "Falha no envio do anexo.");
+        }
+      }
+    }
+
     input.focus();
+  });
+
+  // Enter to send, Shift+Enter for newline
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      composer.dispatchEvent(new Event("submit"));
+    }
   });
 
   scrollToBottom();

@@ -8,9 +8,8 @@ from apps.accounts.models import User
 from apps.messaging.models import (
     Conversation,
     ConversationParticipant,
-    Message,
-    MessageType,
 )
+from apps.messaging.services import create_text_message, serialize_message_payload
 
 
 class ConversationConsumer(AsyncWebsocketConsumer):
@@ -123,32 +122,9 @@ class ConversationConsumer(AsyncWebsocketConsumer):
     def _create_text_message(self, content):
         conversation = Conversation.objects.get(id=self.conversation_id, is_active=True)
 
-        message = Message.objects.create(
+        message = create_text_message(
             conversation=conversation,
             sender_user=self.current_user,
-            message_type=MessageType.TEXT,
             content=content,
         )
-
-        now = timezone.now()
-        conversation.last_message_at = message.created_at or now
-        conversation.updated_at = now
-        conversation.save(update_fields=["last_message_at", "updated_at"])
-
-        ConversationParticipant.objects.filter(
-            conversation=conversation,
-            user=self.current_user,
-            is_archived=False,
-        ).update(last_read_at=now)
-
-        created_local = timezone.localtime(message.created_at)
-        sender_name = self.current_user.full_name or self.current_user.email or "Utilizador"
-        return {
-            "id": str(message.id),
-            "conversation_id": str(conversation.id),
-            "sender_id": str(self.current_user.id),
-            "sender_name": sender_name,
-            "content": message.content,
-            "created_at": message.created_at.isoformat(),
-            "created_at_label": created_local.strftime("%d/%m/%Y %H:%M"),
-        }
+        return serialize_message_payload(message=message)
