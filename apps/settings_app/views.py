@@ -46,13 +46,24 @@ def _profile_photo_url(preference):
     if not photo_path:
         return None
 
-    if photo_path.startswith(("http://", "https://", "/")):
+    if photo_path.startswith(("http://", "https://")):
         base_url = photo_path
     else:
-        base_url = f"{settings.MEDIA_URL}{photo_path.lstrip('/')}"
+        if photo_path.startswith(settings.MEDIA_URL):
+            photo_path = photo_path[len(settings.MEDIA_URL):]
+
+        normalized_path = photo_path.lstrip("/").strip()
+        if not normalized_path:
+            return None
+
+        try:
+            base_url = default_storage.url(normalized_path)
+        except Exception:
+            base_url = f"{settings.MEDIA_URL}{normalized_path}"
 
     if preference.updated_at:
-        return f"{base_url}?v={int(preference.updated_at.timestamp())}"
+        separator = "&" if "?" in base_url else "?"
+        return f"{base_url}{separator}v={int(preference.updated_at.timestamp())}"
     return base_url
 
 
@@ -83,16 +94,23 @@ def _delete_profile_photo(photo_path):
     if photo_path.startswith(settings.MEDIA_URL):
         photo_path = photo_path[len(settings.MEDIA_URL):]
 
+    if photo_path.startswith(("http://", "https://")):
+        media_marker = f"{settings.MEDIA_URL.rstrip('/')}/"
+        if media_marker in photo_path:
+            photo_path = photo_path.split(media_marker, 1)[1]
+        else:
+            return False
+
     photo_path = photo_path.lstrip("/").strip()
+    if not photo_path:
+        return False
 
     try:
-        if default_storage.exists(photo_path):
-            default_storage.delete(photo_path)
-            return True
+        default_storage.delete(photo_path)
+        return True
     except Exception:
-        pass
+        return False
 
-    return False
 
 @login_required
 def settings_view(request):
@@ -202,6 +220,8 @@ def settings_view(request):
                 is_admin_user = user.role == UserRole.ADMIN
 
                 uploaded_photo = request.FILES.get("profile_photo")
+                old_photo = preference.profile_photo if uploaded_photo else None
+                new_photo_path = None
 
                 updated_preference = preferences_form.save(commit=False)
 
@@ -209,15 +229,11 @@ def settings_view(request):
                     updated_preference.preferred_unit = preference.preferred_unit
 
                 if uploaded_photo:
-                    old_photo = preference.profile_photo
                     new_photo_path = _save_profile_photo(user, uploaded_photo)
 
                     updated_preference.profile_photo = new_photo_path
                     if "profile_photo" not in changed_fields:
                         changed_fields.append("profile_photo")
-
-                    if old_photo and old_photo != new_photo_path:
-                        _delete_profile_photo(old_photo)
 
                 if changed_fields:
                     updated_preference.updated_at = timezone.now()
@@ -227,7 +243,17 @@ def settings_view(request):
                     if is_admin_user and "preferred_unit" in update_fields:
                         update_fields.remove("preferred_unit")
 
-                    updated_preference.save(update_fields=update_fields)
+                    try:
+                        updated_preference.save(update_fields=update_fields)
+                    except Exception:
+                        if new_photo_path:
+                            _delete_profile_photo(new_photo_path)
+                        messages.error(request, "Não foi possível guardar as preferências. Tenta novamente.")
+                        return redirect("settings_app:settings_index")
+
+                    if new_photo_path and old_photo and old_photo != new_photo_path:
+                        _delete_profile_photo(old_photo)
+
                     messages.success(request, "Preferências atualizadas com sucesso.")
                 else:
                     messages.info(request, "Não foram detetadas alterações nas preferências.")
