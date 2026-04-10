@@ -90,6 +90,21 @@
                       <span class="inv-subvalue">
                         Disponível: {{ row.stock.available_quantity|default:0|floatformat:"-3" }} {{ row.product.unit }}
                       </span>
+                      {% if row.incoming_forecast_qty and row.incoming_forecast_qty != 0 %}
+                        <span class="inv-subvalue inv-subvalue--forecast">
+                          Previsto a receber: {{ row.incoming_forecast_qty|floatformat:"-3" }} {{ row.product.unit }}
+                        </span>
+                        <span class="inv-subvalue">
+                          {% if row.incoming_forecast_period_start or row.incoming_forecast_period_end %}
+                            Período previsto:
+                            {% if row.incoming_forecast_period_start %}{{ row.incoming_forecast_period_start|date:"d/m/Y" }}{% else %}—{% endif %}
+                            -
+                            {% if row.incoming_forecast_period_end %}{{ row.incoming_forecast_period_end|date:"d/m/Y" }}{% else %}—{% endif %}
+                          {% else %}
+                            Período previsto: sem período definido
+                          {% endif %}
+                        </span>
+                      {% endif %}
                     </td>
 
                     <td>

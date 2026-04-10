@@ -1,0 +1,449 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Mensagens{% endblock %}
+{% block app_content %}
+
+<div class="msg-page">
+  <section class="msg-layout">
+    <aside class="msg-sidebar">
+      <header class="msg-sidebar__head">
+        <h1>Mensagens</h1>
+        <span class="msg-unread-total">{{ total_unread }} não lidas</span>
+      </header>
+
+      <div class="msg-conversation-list">
+        {% for entry in conversation_entries %}
+          <a href="{% url 'messaging:index' %}?c={{ entry.conversation.id }}"
+             hx-get="{% url 'messaging:index' %}?c={{ entry.conversation.id }}"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="msg-conversation-item {% if active_conversation and active_conversation.id == entry.conversation.id %}is-active{% endif %}">
+            <div class="msg-conversation-item__top">
+              <strong>{{ entry.title }}</strong>
+              {% if entry.preview_at %}
+                <time>{{ entry.preview_at|date:"d/m H:i" }}</time>
+              {% endif %}
+            </div>
+            <p class="msg-conversation-item__meta">{{ entry.context_label }}</p>
+            <p class="msg-conversation-item__preview">{{ entry.preview_text }}</p>
+            {% if entry.unread_count > 0 %}
+              <span class="msg-unread-badge">{{ entry.unread_count }}</span>
+            {% endif %}
+          </a>
+        {% empty %}
+          <div class="msg-empty msg-empty--side">
+            <i class="bi bi-chat-dots"></i>
+            <p>Ainda não tem conversas.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </aside>
+
+    <section class="msg-thread">
+      {% if active_conversation %}
+        <header class="msg-thread__head">
+          <div>
+            <h2>{{ active_entry.title|default:"Conversa" }}</h2>
+            <p>{{ active_entry.context_label|default:"Conversa entre produtores" }}</p>
+          </div>
+        </header>
+
+        <div class="msg-thread__messages" id="msgMessages">
+          {% for message in active_messages %}
+            <article class="msg-bubble {% if message.sender_user_id == request.current_user.id %}is-me{% else %}is-other{% endif %}">
+              <p>{{ message.content }}</p>
+              <time>{{ message.created_at|date:"d/m/Y H:i" }}</time>
+            </article>
+          {% empty %}
+            <div class="msg-empty">
+              <i class="bi bi-chat-square-text"></i>
+              <p>Sem mensagens nesta conversa.</p>
+            </div>
+          {% endfor %}
+        </div>
+
+        <form id="msgComposer" class="msg-composer" autocomplete="off">
+          <input type="text" id="msgInput" placeholder="Escreva a sua mensagem..." maxlength="2000" required>
+          <button type="submit">
+            <i class="bi bi-send-fill"></i>
+            Enviar
+          </button>
+        </form>
+
+        <div id="msgThreadData"
+             data-conversation-id="{{ active_conversation.id }}"
+             data-current-user-id="{{ request.current_user.id }}">
+        </div>
+      {% else %}
+        <div class="msg-empty msg-empty--main">
+          <i class="bi bi-chat-square-text"></i>
+          <h3>Selecione uma conversa</h3>
+          <p>Quando contactar um produtor no marketplace, a conversa aparece aqui.</p>
+        </div>
+      {% endif %}
+    </section>
+  </section>
+</div>
+
+<style>
+.msg-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.msg-layout {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 1rem;
+  min-height: 68vh;
+}
+
+.msg-sidebar,
+.msg-thread {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.04);
+}
+
+.msg-sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.msg-sidebar__head {
+  padding: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+}
+
+.msg-sidebar__head h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.msg-unread-total {
+  font-size: .76rem;
+  color: #1e40af;
+  font-weight: 700;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: .7rem;
+  padding: .2rem .55rem;
+}
+
+.msg-conversation-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.msg-conversation-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  padding: .85rem .95rem;
+  border-bottom: 1px solid #f1f5f9;
+  text-decoration: none;
+  color: inherit;
+  transition: background .15s ease;
+}
+
+.msg-conversation-item:hover {
+  background: #f8fafc;
+}
+
+.msg-conversation-item.is-active {
+  background: #eff6ff;
+}
+
+.msg-conversation-item__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .6rem;
+}
+
+.msg-conversation-item__top strong {
+  font-size: .9rem;
+  color: #0f172a;
+}
+
+.msg-conversation-item__top time {
+  font-size: .72rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.msg-conversation-item__meta {
+  margin: 0;
+  font-size: .75rem;
+  color: #64748b;
+}
+
+.msg-conversation-item__preview {
+  margin: 0;
+  font-size: .8rem;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.msg-unread-badge {
+  position: absolute;
+  right: .8rem;
+  bottom: .75rem;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 .3rem;
+}
+
+.msg-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.msg-thread__head {
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.msg-thread__head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.msg-thread__head p {
+  margin: .3rem 0 0;
+  font-size: .82rem;
+  color: #64748b;
+}
+
+.msg-thread__messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  background: #f8fafc;
+}
+
+.msg-bubble {
+  max-width: min(78%, 640px);
+  padding: .7rem .8rem;
+  border-radius: .9rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.msg-bubble.is-me {
+  margin-left: auto;
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+
+.msg-bubble p {
+  margin: 0;
+  color: #0f172a;
+  font-size: .9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg-bubble time {
+  display: block;
+  margin-top: .35rem;
+  font-size: .72rem;
+  color: #64748b;
+  text-align: right;
+}
+
+.msg-composer {
+  border-top: 1px solid #e2e8f0;
+  padding: .8rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .6rem;
+  background: #fff;
+}
+
+.msg-composer input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: .75rem;
+  background: #f8fafc;
+  padding: .78rem .85rem;
+  font-size: .9rem;
+  outline: none;
+}
+
+.msg-composer input:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+  background: #fff;
+}
+
+.msg-composer button {
+  border: none;
+  border-radius: .75rem;
+  background: #16a34a;
+  color: #fff;
+  padding: 0 .95rem;
+  font-size: .86rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+
+.msg-composer button:hover {
+  background: #15803d;
+}
+
+.msg-empty {
+  text-align: center;
+  color: #64748b;
+}
+
+.msg-empty i {
+  font-size: 1.2rem;
+  margin-bottom: .45rem;
+  display: inline-block;
+}
+
+.msg-empty p,
+.msg-empty h3 {
+  margin: 0;
+}
+
+.msg-empty--side {
+  padding: 1.2rem .8rem;
+}
+
+.msg-empty--main {
+  margin: auto;
+  max-width: 420px;
+  padding: 1.6rem;
+}
+
+.msg-empty--main h3 {
+  margin: .2rem 0 .45rem;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+@media (max-width: 1080px) {
+  .msg-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .msg-sidebar {
+    max-height: 300px;
+  }
+}
+</style>
+
+<script>
+(function () {
+  const threadData = document.getElementById("msgThreadData");
+  const composer = document.getElementById("msgComposer");
+  const input = document.getElementById("msgInput");
+  const messagesBox = document.getElementById("msgMessages");
+
+  if (!threadData || !composer || !input || !messagesBox) return;
+
+  const conversationId = threadData.dataset.conversationId;
+  const currentUserId = threadData.dataset.currentUserId;
+  if (!conversationId) return;
+
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(
+    `${protocol}://${window.location.host}/ws/mensagens/${conversationId}/`
+  );
+
+  const scrollToBottom = () => {
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+  };
+
+  const appendMessage = (message) => {
+    if (!message || !message.content) return;
+
+    const emptyState = messagesBox.querySelector(".msg-empty");
+    if (emptyState) {
+      emptyState.remove();
+    }
+
+    const bubble = document.createElement("article");
+    bubble.className = "msg-bubble";
+    if (String(message.sender_id) === String(currentUserId)) {
+      bubble.classList.add("is-me");
+    } else {
+      bubble.classList.add("is-other");
+    }
+
+    const content = document.createElement("p");
+    content.textContent = message.content;
+
+    const time = document.createElement("time");
+    time.textContent = message.created_at_label || "";
+
+    bubble.appendChild(content);
+    bubble.appendChild(time);
+    messagesBox.appendChild(bubble);
+    scrollToBottom();
+  };
+
+  socket.addEventListener("message", (event) => {
+    try {
+      const payload = JSON.parse(event.data || "{}");
+      if (payload.type === "message.created" && payload.message) {
+        appendMessage(payload.message);
+      }
+    } catch (error) {}
+  });
+
+  composer.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = (input.value || "").trim();
+    if (!value) return;
+
+    if (socket.readyState !== WebSocket.OPEN) return;
+
+    socket.send(
+      JSON.stringify({
+        type: "message.send",
+        content: value,
+      })
+    );
+    input.value = "";
+    input.focus();
+  });
+
+  scrollToBottom();
+})();
+</script>
+
+{% endblock %}

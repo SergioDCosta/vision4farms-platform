@@ -39,6 +39,14 @@
       <p class="inv-metric-value">{{ purchase_in_progress_count }}</p>
       <p class="inv-metric-sub">Estados: confirmada, em preparação ou em entrega</p>
     </div>
+
+    <div class="inv-card inv-metric">
+      <p class="inv-metric-label">Pré-venda a caminho</p>
+      <p class="inv-metric-value">{{ incoming_forecast_total_qty|floatformat:"-3" }}</p>
+      <p class="inv-metric-sub">
+        {{ incoming_forecast_product_count }} produto{{ incoming_forecast_product_count|pluralize }} com receção pendente
+      </p>
+    </div>
   </div>
 
   <div class="inv-card inv-chart">
@@ -124,6 +132,41 @@
       <div class="inv-empty">
         <i class="bi bi-bar-chart"></i>
         <p style="margin:0;">Sem histórico suficiente para análise de produtos.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="inv-card inv-list-card">
+    <div class="inv-list-head">
+      <h3 class="inv-list-title">Pré-vendas a caminho</h3>
+    </div>
+
+    {% if incoming_forecast_products %}
+      <div class="inv-list">
+        {% for item in incoming_forecast_products %}
+          <div class="inv-list-item">
+            <div class="inv-list-item-main">
+              <p class="inv-list-item-title">{{ item.product_name }}</p>
+              <p class="inv-list-item-meta">
+                {% if item.period_start_min or item.period_end_max %}
+                  Janela: {% if item.period_start_min %}{{ item.period_start_min|date:"d/m/Y" }}{% else %}—{% endif %}
+                  -
+                  {% if item.period_end_max %}{{ item.period_end_max|date:"d/m/Y" }}{% else %}—{% endif %}
+                {% else %}
+                  Janela: sem período definido
+                {% endif %}
+              </p>
+            </div>
+            <div class="inv-list-item-val">
+              {{ item.incoming_qty|floatformat:"-3" }} {{ item.product_unit }}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="inv-empty">
+        <i class="bi bi-calendar-check"></i>
+        <p style="margin:0;">Sem pré-vendas comprometidas a caminho.</p>
       </div>
     {% endif %}
   </div>

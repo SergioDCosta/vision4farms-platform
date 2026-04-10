@@ -16,6 +16,7 @@ from apps.inventory.forms import (
     ProductionForecastForm,
     UpdateStockForm,
 )
+from apps.orders.services import get_buyer_incoming_forecast_projection
 
 def _get_producer_or_redirect(request):
     producer = services.get_producer_profile(request.current_user.id)
@@ -50,6 +51,7 @@ def _build_stock_detail_context(
     *,
     producer,
     stock,
+    incoming_forecast=None,
     forecast_form=None,
     edit_forecast_id=None,
     forecast_mode=None,
@@ -81,6 +83,10 @@ def _build_stock_detail_context(
         edit_forecast_id = str(forecast_primary.id)
 
     stock_state = services.get_stock_state(stock)
+    incoming_forecast = incoming_forecast or {}
+    incoming_forecast_qty = Decimal(str(incoming_forecast.get("incoming_qty") or 0))
+    incoming_forecast_period_start = incoming_forecast.get("period_start_min")
+    incoming_forecast_period_end = incoming_forecast.get("period_end_max")
 
     if not forecast_form:
         forecast_form = ProductionForecastForm()
@@ -112,6 +118,9 @@ def _build_stock_detail_context(
         "forecast_mode": "edit" if editing_forecast else "new",
         "forecast_form": forecast_form,
         "editing_forecast": editing_forecast,
+        "incoming_forecast_qty": incoming_forecast_qty,
+        "incoming_forecast_period_start": incoming_forecast_period_start,
+        "incoming_forecast_period_end": incoming_forecast_period_end,
         "page_title": f"Stock — {stock.product.name}",
     }
     return context
@@ -146,15 +155,28 @@ def meus_produtos(request):
         "q": q,
         "sort": sort,
     }
+    incoming_projection = {}
+    incoming_by_product = {}
+    if active_tab in {"stock", "compras"}:
+        incoming_projection = get_buyer_incoming_forecast_projection(buyer_producer=producer)
+        incoming_by_product = incoming_projection.get("by_product", {})
 
     if active_tab == "compras":
         context.update(services.get_purchase_dashboard(producer))
+        context.update(services.build_incoming_forecast_purchase_context(incoming_projection))
         panel_template = "inventory/partials/compras_panel.html"
     elif active_tab == "desativados":
         context.update(services.get_deactivated_products_dashboard(producer, q=q))
         panel_template = "inventory/partials/deactivated_panel.html"
     else:
-        context.update(services.get_stock_dashboard(producer, q=q, sort=sort))
+        context.update(
+            services.get_stock_dashboard(
+                producer,
+                q=q,
+                sort=sort,
+                incoming_forecast_by_product=incoming_by_product,
+            )
+        )
         panel_template = "inventory/partials/stocks_panel.html"
 
     context["panel_template"] = panel_template
@@ -229,10 +251,22 @@ def adicionar_produto(request):
 
             selected_product_id = request.POST.get("product_id")
             if selected_product_id:
-                selected_product = available_products.filter(id=selected_product_id).first()
+                selected_product = next(
+                    (product for product in available_products if str(product.id) == str(selected_product_id)),
+                    None,
+                )
                 show_catalog_modal = True
 
             if form.is_valid():
+                already_active_link = ProducerProduct.objects.filter(
+                    producer=producer,
+                    product_id=form.cleaned_data["product_id"],
+                    is_active=True,
+                ).first()
+                if already_active_link:
+                    messages.warning(request, "Este produto já se encontra no teu inventário.")
+                    return redirect("inventory:adicionar_produto")
+
                 try:
                     producer_product, stock, product_created, link_created = services.add_product_to_producer(
                         producer=producer,
@@ -325,6 +359,8 @@ def stock_detalhe(request, product_id):
     if not stock:
         messages.error(request, "Produto não encontrado no teu inventário.")
         return redirect("inventory:meus_produtos")
+    incoming_projection = get_buyer_incoming_forecast_projection(buyer_producer=producer)
+    incoming_forecast = incoming_projection.get("by_product", {}).get(str(stock.product_id))
 
     forecast_rows = services.get_product_forecasts(producer, product_id)
     forecast_conflict = len(forecast_rows) > 1
@@ -359,6 +395,7 @@ def stock_detalhe(request, product_id):
     context = _build_stock_detail_context(
         producer=producer,
         stock=stock,
+        incoming_forecast=incoming_forecast,
         forecast_form=forecast_form,
         edit_forecast_id=edit_forecast_id,
         forecast_mode=forecast_mode,
@@ -422,9 +459,12 @@ def guardar_previsao(request, product_id):
     edit_forecast_id = form.data.get("forecast_id")
     forecast_mode = (form.data.get("forecast_mode") or "").strip().lower()
     forecast_rows = services.get_product_forecasts(producer, product_id)
+    incoming_projection = get_buyer_incoming_forecast_projection(buyer_producer=producer)
+    incoming_forecast = incoming_projection.get("by_product", {}).get(str(stock.product_id))
     context = _build_stock_detail_context(
         producer=producer,
         stock=stock,
+        incoming_forecast=incoming_forecast,
         forecast_form=form,
         edit_forecast_id=edit_forecast_id,
         forecast_mode=forecast_mode,

@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Prefetch
+from django.db.models import Max, Min, Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -115,6 +115,11 @@ def get_order_source_label(order):
 
 
 ORDER_STATUS_LABELS = dict(OrderStatus.choices)
+INCOMING_FORECAST_ORDER_STATUSES = (
+    OrderStatus.CONFIRMED,
+    OrderStatus.IN_PROGRESS,
+    OrderStatus.DELIVERING,
+)
 
 
 def compute_order_group_status(order_statuses):
@@ -151,6 +156,60 @@ def compute_order_group_status(order_statuses):
 
 def get_order_group_status_label(status):
     return ORDER_STATUS_LABELS.get(str(status), str(status))
+
+
+def get_buyer_incoming_forecast_projection(*, buyer_producer):
+    """
+    Calcula stock previsto do comprador sem persistência:
+    - apenas encomendas já comprometidas (CONFIRMED/IN_PROGRESS/DELIVERING)
+    - apenas itens ainda ativos (exclui COMPLETED/CANCELLED)
+    - apenas itens com prova de origem forecast (listing + forecast_id)
+    """
+    aggregated_rows = (
+        OrderItem.objects
+        .filter(
+            order__buyer_producer=buyer_producer,
+            order__status__in=INCOMING_FORECAST_ORDER_STATUSES,
+            listing__isnull=False,
+            listing__forecast_id__isnull=False,
+        )
+        .exclude(item_status__in=[OrderItemStatus.COMPLETED, OrderItemStatus.CANCELLED])
+        .values("product_id", "product__name", "product__unit")
+        .annotate(
+            incoming_qty=Sum("quantity"),
+            period_start_min=Min("listing__forecast__period_start"),
+            period_end_max=Max("listing__forecast__period_end"),
+        )
+    )
+
+    total_incoming = Decimal("0.000")
+    by_product = {}
+    products = []
+
+    for row in aggregated_rows:
+        incoming_qty = quantize_qty(row.get("incoming_qty") or 0)
+        product_id = str(row["product_id"])
+
+        entry = {
+            "product_id": product_id,
+            "product_name": row.get("product__name") or "Produto",
+            "product_unit": row.get("product__unit") or "",
+            "incoming_qty": incoming_qty,
+            "period_start_min": row.get("period_start_min"),
+            "period_end_max": row.get("period_end_max"),
+        }
+        by_product[product_id] = entry
+        products.append(entry)
+        total_incoming += incoming_qty
+
+    products.sort(key=lambda item: (-item["incoming_qty"], item["product_name"].lower()))
+
+    return {
+        "total_incoming_qty": quantize_qty(total_incoming),
+        "product_count": len(products),
+        "products": products,
+        "by_product": by_product,
+    }
 
 
 def _map_delivery_method_from_listing(listing):

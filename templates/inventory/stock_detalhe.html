@@ -93,6 +93,36 @@
     {% endif %}
   {% endif %}
 
+  <div class="inv-card" style="margin-top:1rem;">
+    <div class="inv-card-head">
+      <div>
+        <h3 class="inv-card-title">Stock previsto</h3>
+        <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
+          Pré-vendas já comprometidas e ainda não recebidas.
+        </p>
+      </div>
+    </div>
+    <div class="inv-card-body" style="display:flex;flex-direction:column;gap:.5rem;">
+      {% if incoming_forecast_qty and incoming_forecast_qty != 0 %}
+        <p class="inv-stat-value" style="font-size:1.35rem;color:#2563eb;margin:0;">
+          {{ incoming_forecast_qty|floatformat:"-3" }} {{ stock.product.unit }}
+        </p>
+        <p class="inv-help" style="margin:0;">
+          {% if incoming_forecast_period_start or incoming_forecast_period_end %}
+            Janela prevista:
+            {% if incoming_forecast_period_start %}{{ incoming_forecast_period_start|date:"d/m/Y" }}{% else %}—{% endif %}
+            -
+            {% if incoming_forecast_period_end %}{{ incoming_forecast_period_end|date:"d/m/Y" }}{% else %}—{% endif %}
+          {% else %}
+            Janela prevista: sem período definido.
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="inv-help" style="margin:0;">Sem pré-vendas comprometidas a caminho para este produto.</p>
+      {% endif %}
+    </div>
+  </div>
+
   {% if is_product_active %}
     <div class="inv-card inv-forecast-card">
       <div class="inv-card-head inv-forecast-card-head">
@@ -289,7 +319,14 @@
                       {{ item.impact_label }}
                     </span>
                   </td>
-                  <td>{{ item.notes }}</td>
+                  <td>
+                    {% if item.note_token and item.order_id %}
+                      {{ item.note_prefix }}
+                      <a href="{% url 'orders:detail' order_id=item.order_id %}?force_single=1">{{ item.note_token }}</a>{{ item.note_suffix }}
+                    {% else %}
+                      {{ item.notes }}
+                    {% endif %}
+                  </td>
                   <td>{{ item.actor_name }}</td>
                 </tr>
               {% endfor %}

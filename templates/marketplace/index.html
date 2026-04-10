@@ -117,7 +117,7 @@
             <div class="mk-card__top">
               <div class="mk-card__badges">
                 <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'CLOSED' %}mk-badge--closed{% endif %}">{{ item.get_status_display }}</span>
-                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Stock atual' }}</span>
+                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
@@ -228,7 +228,7 @@
             <div class="mk-card__top">
               <div class="mk-card__badges">
                 <span class="mk-badge">{{ item.get_status_display }}</span>
-                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Stock atual' }}</span>
+                <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
@@ -268,7 +268,13 @@
                class="mk-btn-card-outline">
               Ver detalhes
             </a>
-            <a href="/mensagens/" class="mk-btn-card-soft">
+            <a href="{% url 'messaging:start_listing_contact' item.id %}"
+               hx-get="{% url 'messaging:start_listing_contact' item.id %}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="mk-btn-card-soft">
               <i class="bi bi-chat-dots"></i>
               Contactar Produtor
             </a>

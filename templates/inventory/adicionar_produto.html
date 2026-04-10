@@ -51,7 +51,7 @@
         <div>
           <h3 class="inv-card-title">Produtos já existentes no catálogo</h3>
           <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
-            Pode associar quantos produtos quiser dentro da mesma categoria.
+            Produtos já associados ao seu inventário aparecem sinalizados.
           </p>
         </div>
 
@@ -76,6 +76,7 @@
             <div class="inv-product-grid">
               {% for product in cat_group.list %}
                 <article class="inv-product-card"
+                         {% if product.is_already_in_inventory %}data-inventory-status="active"{% elif product.is_inactive_in_inventory %}data-inventory-status="inactive"{% endif %}
                          data-product-name="{{ product.name|lower }}"
                          data-category-name="{{ cat_group.grouper.name|default:'Sem categoria'|lower }}">
                   <div class="inv-product-card-top">
@@ -92,6 +93,18 @@
                     <span class="inv-chip">{{ product.unit }}</span>
                   </div>
 
+                  {% if product.is_already_in_inventory %}
+                    <p class="inv-product-card-warning">
+                      <i class="bi bi-check2-circle"></i>
+                      Este produto já se encontra no seu inventário.
+                    </p>
+                  {% elif product.is_inactive_in_inventory %}
+                    <p class="inv-product-card-warning inv-product-card-warning--muted">
+                      <i class="bi bi-exclamation-circle"></i>
+                      Produto associado mas atualmente desativado no inventário.
+                    </p>
+                  {% endif %}
+
                   {% if product.description %}
                     <p class="inv-product-card-desc">
                       <strong>Descrição do catálogo:</strong> {{ product.description|truncatewords:18 }}
@@ -104,16 +117,32 @@
                   </p>
 
                   <div class="inv-product-card-actions">
-                    <button type="button"
-                            class="inv-btn inv-btn--secondary btn-add-product"
-                            data-product-id="{{ product.id }}"
-                            data-product-name="{{ product.name }}"
-                            data-product-unit="{{ product.unit }}"
-                            data-bs-toggle="modal"
-                            data-bs-target="#catalogProductModal">
-                      <i class="bi bi-link-45deg"></i>
-                      <span>Associar ao meu inventário</span>
-                    </button>
+                    {% if product.is_already_in_inventory %}
+                      <button type="button"
+                              class="inv-btn inv-btn--secondary"
+                              disabled>
+                        <i class="bi bi-check2-circle"></i>
+                        <span>Já no inventário</span>
+                      </button>
+                    {% elif product.is_inactive_in_inventory %}
+                      <a href="{% url 'inventory:meus_produtos' %}?tab=desativados"
+                         class="inv-btn inv-btn--ghost"
+                         style="width:100%;justify-content:center;">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        <span>Reativar em desativados</span>
+                      </a>
+                    {% else %}
+                      <button type="button"
+                              class="inv-btn inv-btn--secondary btn-add-product"
+                              data-product-id="{{ product.id }}"
+                              data-product-name="{{ product.name }}"
+                              data-product-unit="{{ product.unit }}"
+                              data-bs-toggle="modal"
+                              data-bs-target="#catalogProductModal">
+                        <i class="bi bi-link-45deg"></i>
+                        <span>Associar ao meu inventário</span>
+                      </button>
+                    {% endif %}
                   </div>
                 </article>
               {% endfor %}
@@ -388,11 +417,23 @@
   background:#fff;
   transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
+.inv-product-card[data-inventory-status="active"]{
+  border-color:#86efac;
+  background:#f8fff9;
+}
+.inv-product-card[data-inventory-status="inactive"]{
+  border-color:#fcd34d;
+  background:#fffdf7;
+}
 
 .inv-product-card:hover{
   border-color:#86efac;
   box-shadow:0 10px 24px rgba(15,23,42,.06);
   transform:translateY(-1px);
+}
+.inv-product-card[data-inventory-status="active"]:hover,
+.inv-product-card[data-inventory-status="inactive"]:hover{
+  transform:none;
 }
 
 .inv-product-card-top{
@@ -424,6 +465,19 @@
 
 .inv-product-card-desc--muted{
   color:#94a3b8;
+}
+
+.inv-product-card-warning{
+  margin:0;
+  display:inline-flex;
+  align-items:center;
+  gap:.4rem;
+  font-size:.8rem;
+  font-weight:700;
+  color:#15803d;
+}
+.inv-product-card-warning--muted{
+  color:#92400e;
 }
 
 .inv-product-card-actions{

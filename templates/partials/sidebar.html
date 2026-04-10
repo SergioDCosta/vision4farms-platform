@@ -100,6 +100,11 @@
         <span class="sidebar-link-text">Marketplace</span>
       </a>
       <a href="/mensagens/"
+         hx-get="/mensagens/"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
          data-active-mode="prefix"
          data-active-value="/mensagens/"
          class="sidebar-link {% if '/mensagens/' in request.path %}active{% endif %}"

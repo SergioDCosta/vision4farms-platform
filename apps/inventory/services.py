@@ -269,24 +269,38 @@ def _ensure_stock_for_product(
 
 def get_available_products_to_add(producer):
     """
-    Devolve produtos do catálogo que o produtor ainda NÃO tem ativos.
-    Produtos já associados mas inativos podem voltar a aparecer para reativação.
+    Devolve produtos ativos do catálogo para o ecrã de associação.
+    Inclui também produtos já ligados ao produtor para permitir feedback visual
+    (ex.: "já no inventário").
     """
-    active_product_ids = ProducerProduct.objects.filter(
-        producer=producer,
-        is_active=True,
-    ).values_list("product_id", flat=True)
-
-    return (
+    products = list(
         Product.objects
         .filter(is_active=True)
-        .exclude(id__in=active_product_ids)
         .select_related("category")
         .order_by("category__name", "name")
     )
 
+    if not products:
+        return products
 
-def get_stock_dashboard(producer, q="", sort="name"):
+    links_by_product_id = {
+        link.product_id: link
+        for link in ProducerProduct.objects.filter(
+            producer=producer,
+            product_id__in=[product.id for product in products],
+        )
+    }
+
+    for product in products:
+        link = links_by_product_id.get(product.id)
+        product.producer_link = link
+        product.is_already_in_inventory = bool(link and link.is_active)
+        product.is_inactive_in_inventory = bool(link and not link.is_active)
+
+    return products
+
+
+def get_stock_dashboard(producer, q="", sort="name", incoming_forecast_by_product=None):
     valid_sort_options = {"name", "stock_desc", "stock_asc", "state"}
     sort = (sort or "name").strip().lower()
     if sort not in valid_sort_options:
@@ -325,6 +339,14 @@ def get_stock_dashboard(producer, q="", sort="name"):
     for pp in producer_products:
         stock = stocks_by_product_id.get(pp.product_id)
         state = _stock_state(stock)
+        incoming_entry = {}
+        if incoming_forecast_by_product:
+            incoming_entry = (
+                incoming_forecast_by_product.get(str(pp.product_id))
+                or incoming_forecast_by_product.get(pp.product_id)
+                or {}
+            )
+        incoming_qty = Decimal(str(incoming_entry.get("incoming_qty") or 0))
 
         if state["key"] == "critical":
             critical_count += 1
@@ -337,6 +359,9 @@ def get_stock_dashboard(producer, q="", sort="name"):
             "product_id": pp.product_id,
             "stock": stock,
             "state": state,
+            "incoming_forecast_qty": incoming_qty,
+            "incoming_forecast_period_start": incoming_entry.get("period_start_min"),
+            "incoming_forecast_period_end": incoming_entry.get("period_end_max"),
         })
 
     def _row_stock_value(row):
@@ -373,6 +398,18 @@ def get_stock_dashboard(producer, q="", sort="name"):
         "excess_count": excess_count,
         "q": q,
         "sort": sort,
+    }
+
+
+def build_incoming_forecast_purchase_context(incoming_projection, limit=6):
+    incoming_projection = incoming_projection or {}
+    products = list(incoming_projection.get("products") or [])
+    total_incoming_qty = Decimal(str(incoming_projection.get("total_incoming_qty") or 0))
+
+    return {
+        "incoming_forecast_total_qty": total_incoming_qty,
+        "incoming_forecast_product_count": len(products),
+        "incoming_forecast_products": products[:limit],
     }
 
 
@@ -829,6 +866,34 @@ def _user_display_name(user):
     return full_name or getattr(user, "email", "Sistema")
 
 
+def _split_note_order_token(notes, order_number):
+    note_text = notes or "—"
+    if not order_number:
+        return {
+            "notes": note_text,
+            "note_prefix": note_text,
+            "note_token": None,
+            "note_suffix": "",
+        }
+
+    token = f"#{order_number}"
+    if token not in note_text:
+        return {
+            "notes": note_text,
+            "note_prefix": note_text,
+            "note_token": None,
+            "note_suffix": "",
+        }
+
+    prefix, suffix = note_text.split(token, 1)
+    return {
+        "notes": note_text,
+        "note_prefix": prefix,
+        "note_token": token,
+        "note_suffix": suffix,
+    }
+
+
 def get_stock_activity_feed(stock, limit=20):
     feed = []
 
@@ -838,8 +903,24 @@ def get_stock_activity_feed(stock, limit=20):
         .select_related("performed_by")
         .order_by("-created_at")[:limit]
     )
+    movement_order_ids = {
+        str(mv.reference_id)
+        for mv in movements
+        if mv.reference_type == "ORDER" and mv.reference_id
+    }
+    movement_orders_by_id = {
+        str(order.id): order
+        for order in Order.objects.filter(id__in=movement_order_ids).only("id", "order_number")
+    }
 
     for mv in movements:
+        linked_order = None
+        if mv.reference_type == "ORDER" and mv.reference_id:
+            linked_order = movement_orders_by_id.get(str(mv.reference_id))
+        linked_order_id = str(linked_order.id) if linked_order else None
+        linked_order_number = linked_order.order_number if linked_order else None
+        note_parts = _split_note_order_token(mv.notes, linked_order_number)
+
         delta = Decimal(str(mv.quantity_delta or 0))
         if delta > 0:
             impact_label = f"+{_format_qty(delta)} {stock.product.unit}"
@@ -856,7 +937,12 @@ def get_stock_activity_feed(stock, limit=20):
             "type_label": mv.get_movement_type_display(),
             "impact_label": impact_label,
             "impact_class": impact_class,
-            "notes": mv.notes or "—",
+            "notes": note_parts["notes"],
+            "note_prefix": note_parts["note_prefix"],
+            "note_token": note_parts["note_token"],
+            "note_suffix": note_parts["note_suffix"],
+            "order_id": linked_order_id,
+            "order_number": linked_order_number,
             "actor_name": _user_display_name(mv.performed_by),
             "source": "movement",
         })
@@ -923,12 +1009,19 @@ def get_stock_activity_feed(stock, limit=20):
             impact_label = "Sem impacto direto"
             impact_class = "is-neutral"
 
+        note_parts = _split_note_order_token(event.notes, event.order.order_number)
+
         feed.append({
             "created_at": event.created_at,
             "type_label": f"Encomenda #{event.order.order_number} — {event.get_status_display()}",
             "impact_label": impact_label,
             "impact_class": impact_class,
-            "notes": event.notes or "—",
+            "notes": note_parts["notes"],
+            "note_prefix": note_parts["note_prefix"],
+            "note_token": note_parts["note_token"],
+            "note_suffix": note_parts["note_suffix"],
+            "order_id": str(event.order.id),
+            "order_number": event.order.order_number,
             "actor_name": _user_display_name(event.changed_by),
             "source": "order",
         })

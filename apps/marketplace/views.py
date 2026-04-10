@@ -83,7 +83,7 @@ def _attach_listing_photo_urls(listings):
                 listing.source_period = None
         else:
             listing.source_key = LISTING_SOURCE_STOCK
-            listing.source_label = "Stock atual"
+            listing.source_label = "Disponível agora"
             listing.source_badge_class = "mk-badge--stock"
             listing.source_period = None
         attached.append(listing)
@@ -428,7 +428,7 @@ def _build_marketplace_detail_context(request, listing, producer):
                 )
     else:
         listing_source_key = LISTING_SOURCE_STOCK
-        listing_source_label = "Stock atual"
+        listing_source_label = "Disponível agora"
         listing_source_badge_class = "mkd-badge--stock"
         forecast_period_text = None
 
@@ -617,7 +617,7 @@ def marketplace_publish_view(request):
                 "product_unit": selected_row["product"].unit,
                 "source": selected_row["source"],
                 "source_label": (
-                    "Stock atual"
+                    "Disponível agora"
                     if selected_row["source"] == LISTING_SOURCE_STOCK
                     else "Pré-venda"
                 ),

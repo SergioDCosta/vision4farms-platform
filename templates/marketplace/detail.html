@@ -18,7 +18,7 @@
             {{ listing.get_status_display }}
           </span>
           <span class="mkd-badge {{ listing_source_badge_class|default:'mkd-badge--stock' }}">
-            {{ listing_source_label|default:"Stock atual" }}
+            {{ listing_source_label|default:"Disponível agora" }}
           </span>
           <span class="mkd-location">
             <i class="bi bi-geo-alt-fill"></i>
@@ -176,7 +176,13 @@
             Adicionar à encomenda
           </button>
 
-          <a href="/mensagens/" class="mkd-btn-secondary">
+          <a href="{% url 'messaging:start_listing_contact' listing.id %}"
+             hx-get="{% url 'messaging:start_listing_contact' listing.id %}"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mkd-btn-secondary">
             <i class="bi bi-chat-dots"></i>
             Contactar produtor
           </a>
