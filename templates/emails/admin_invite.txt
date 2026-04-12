@@ -1,6 +1,6 @@
 Olá {{ first_name }},
 
-Foi criada uma conta para si na plataforma Vision4Farms.
+Foi convidado por um administrador para aceder à plataforma Vision4Farms.
 
 Para ativar a sua conta, clique no link abaixo:
 {{ verify_url }}

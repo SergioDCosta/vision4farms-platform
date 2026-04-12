@@ -7,7 +7,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config("SECRET_KEY")
 DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="127.0.0.1,localhost").split(",")
+
+def _split_csv_env(value):
+    return [part.strip() for part in str(value or "").split(",") if part.strip()]
+
+
+ALLOWED_HOSTS = _split_csv_env(
+    config("ALLOWED_HOSTS", default="127.0.0.1,localhost")
+)
 
 INSTALLED_APPS = [
     "daphne",
@@ -80,7 +87,13 @@ CHANNEL_LAYERS = {
 CSRF_TRUSTED_ORIGINS = config(
     "CSRF_TRUSTED_ORIGINS",
     default="http://127.0.0.1:8000"
-).split(",")
+)
+CSRF_TRUSTED_ORIGINS = _split_csv_env(CSRF_TRUSTED_ORIGINS)
+
+APP_BASE_URL = config("APP_BASE_URL", default="").strip().rstrip("/")
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

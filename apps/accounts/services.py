@@ -2,6 +2,7 @@ import secrets
 import threading
 import logging
 from datetime import timedelta
+from urllib.parse import urljoin
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
@@ -22,6 +23,21 @@ from apps.inventory.models import ProducerProfile
 
 
 logger = logging.getLogger(__name__)
+
+VERIFICATION_EMAIL_TEMPLATES = {
+    VerificationPurpose.SIGNUP_CONFIRMATION: {
+        "subject": "emails/signup_confirmation_subject.txt",
+        "text": "emails/signup_confirmation.txt",
+        "html": "emails/signup_confirmation.html",
+        "label": "signup_confirmation",
+    },
+    VerificationPurpose.ADMIN_INVITE: {
+        "subject": "emails/admin_invite_subject.txt",
+        "text": "emails/admin_invite.txt",
+        "html": "emails/admin_invite.html",
+        "label": "admin_invite",
+    },
+}
 
 
 def _send_email_safely(email):
@@ -48,6 +64,29 @@ def _send_system_email(subject, text_body, html_body, recipient_list, async_send
         return
 
     email.send(fail_silently=False)
+
+
+def _build_public_absolute_url(request, relative_path):
+    path = str(relative_path or "")
+    app_base_url = (getattr(settings, "APP_BASE_URL", "") or "").strip().rstrip("/")
+    if app_base_url:
+        return urljoin(f"{app_base_url}/", path.lstrip("/"))
+    return request.build_absolute_uri(path)
+
+
+def _render_verification_email_bundle(*, purpose, context):
+    bundle = VERIFICATION_EMAIL_TEMPLATES.get(purpose)
+    if not bundle:
+        raise ValueError(f"Verification purpose não suportado: {purpose}")
+    return {
+        "subject_template": bundle["subject"],
+        "text_template": bundle["text"],
+        "html_template": bundle["html"],
+        "template_label": bundle["label"],
+        "subject": render_to_string(bundle["subject"], context).strip(),
+        "text_body": render_to_string(bundle["text"], context),
+        "html_body": render_to_string(bundle["html"], context),
+    }
 
 
 def create_user_and_profile(form_data):
@@ -108,46 +147,62 @@ def create_admin_invite_token(user):
 
 
 def send_signup_confirmation_email(request, user, verification_token, async_send=False):
-    verify_url = request.build_absolute_uri(
-        reverse("accounts:verify_email", kwargs={"token": verification_token.token})
+    purpose = VerificationPurpose.SIGNUP_CONFIRMATION
+    verify_url = _build_public_absolute_url(
+        request,
+        reverse("accounts:verify_email", kwargs={"token": verification_token.token}),
     )
 
     context = {
         "first_name": user.first_name,
         "verify_url": verify_url,
     }
+    email_bundle = _render_verification_email_bundle(purpose=purpose, context=context)
 
-    subject = render_to_string("emails/signup_confirmation_subject.txt", context).strip()
-    text_body = render_to_string("emails/signup_confirmation.txt", context)
-    html_body = render_to_string("emails/signup_confirmation.html", context)
+    logger.info(
+        "Verification email prepared purpose=%s user_id=%s token_id=%s template=%s verify_url=%s",
+        purpose,
+        user.id,
+        verification_token.id,
+        email_bundle["template_label"],
+        verify_url,
+    )
 
     _send_system_email(
-        subject=subject,
-        text_body=text_body,
-        html_body=html_body,
+        subject=email_bundle["subject"],
+        text_body=email_bundle["text_body"],
+        html_body=email_bundle["html_body"],
         recipient_list=[user.email],
         async_send=async_send,
     )
 
 
 def send_admin_invite_email(request, user, verification_token):
-    verify_url = request.build_absolute_uri(
-        reverse("accounts:verify_email", kwargs={"token": verification_token.token})
+    purpose = VerificationPurpose.ADMIN_INVITE
+    verify_url = _build_public_absolute_url(
+        request,
+        reverse("accounts:verify_email", kwargs={"token": verification_token.token}),
     )
 
     context = {
         "first_name": user.first_name or "Utilizador",
         "verify_url": verify_url,
     }
+    email_bundle = _render_verification_email_bundle(purpose=purpose, context=context)
 
-    subject = render_to_string("emails/admin_invite_subject.txt", context).strip()
-    text_body = render_to_string("emails/admin_invite.txt", context)
-    html_body = render_to_string("emails/admin_invite.html", context)
+    logger.info(
+        "Verification email prepared purpose=%s user_id=%s token_id=%s template=%s verify_url=%s",
+        purpose,
+        user.id,
+        verification_token.id,
+        email_bundle["template_label"],
+        verify_url,
+    )
 
     _send_system_email(
-        subject=subject,
-        text_body=text_body,
-        html_body=html_body,
+        subject=email_bundle["subject"],
+        text_body=email_bundle["text_body"],
+        html_body=email_bundle["html_body"],
         recipient_list=[user.email],
     )
 
@@ -290,8 +345,9 @@ def create_password_reset_token(user):
 
 
 def send_password_reset_email(request, user, reset_token):
-    reset_url = request.build_absolute_uri(
-        reverse("accounts:password_reset_confirm", kwargs={"token": reset_token.token})
+    reset_url = _build_public_absolute_url(
+        request,
+        reverse("accounts:password_reset_confirm", kwargs={"token": reset_token.token}),
     )
 
     context = {
@@ -302,6 +358,13 @@ def send_password_reset_email(request, user, reset_token):
     subject = render_to_string("emails/password_reset_subject.txt", context).strip()
     text_body = render_to_string("emails/password_reset.txt", context)
     html_body = render_to_string("emails/password_reset.html", context)
+
+    logger.info(
+        "Password reset email prepared user_id=%s token_id=%s verify_url=%s",
+        user.id,
+        reset_token.id,
+        reset_url,
+    )
 
     _send_system_email(
         subject=subject,
