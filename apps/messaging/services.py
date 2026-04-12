@@ -1,4 +1,3 @@
-import mimetypes
 import uuid
 from pathlib import Path
 
@@ -26,7 +25,24 @@ class MessagingServiceError(Exception):
 
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
-ALLOWED_ATTACHMENT_MIME_TYPES = {
+ALLOWED_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".gif",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".txt",
+}
+ALLOWED_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -34,15 +50,6 @@ ALLOWED_ATTACHMENT_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "text/plain",
 }
-
-
-def _is_allowed_attachment_type(content_type):
-    if not content_type:
-        return False
-    content_type = str(content_type).strip().lower().split(";", 1)[0].strip()
-    if content_type.startswith("image/"):
-        return True
-    return content_type in ALLOWED_ATTACHMENT_MIME_TYPES
 
 
 def _normalize_attachment_name(original_name):
@@ -60,6 +67,35 @@ def _normalize_attachment_name(original_name):
 
 def _build_attachment_path(conversation_id, attachment_name):
     return f"messaging/attachments/{conversation_id}/{uuid.uuid4().hex}_{attachment_name}"
+
+
+def validate_attachment(uploaded_file):
+    if not isinstance(uploaded_file, UploadedFile):
+        raise MessagingServiceError("Ficheiro inválido.")
+
+    file_size = getattr(uploaded_file, "size", 0) or 0
+    if file_size <= 0:
+        raise MessagingServiceError("Ficheiro vazio.")
+    if file_size > MAX_ATTACHMENT_BYTES:
+        raise MessagingServiceError("Ficheiro demasiado grande. Máximo 10MB.")
+
+    attachment_name = _normalize_attachment_name(uploaded_file.name)
+    extension = Path(attachment_name).suffix.lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        extension_label = extension or "(sem extensão)"
+        raise MessagingServiceError(f"Extensão '{extension_label}' não permitida.")
+
+    content_type = (
+        (getattr(uploaded_file, "content_type", None) or "")
+        .strip()
+        .lower()
+        .split(";", 1)[0]
+        .strip()
+    )
+    if not content_type or content_type not in ALLOWED_MIME_TYPES:
+        raise MessagingServiceError("Tipo de ficheiro não permitido.")
+
+    return attachment_name, content_type
 
 
 def _touch_conversation_after_message(*, conversation, message_created_at):
@@ -129,22 +165,7 @@ def create_text_message(*, conversation, sender_user, content):
 
 @transaction.atomic
 def create_file_message(*, conversation, sender_user, uploaded_file):
-    if not isinstance(uploaded_file, UploadedFile):
-        raise MessagingServiceError("Ficheiro inválido.")
-
-    file_size = getattr(uploaded_file, "size", 0) or 0
-    if file_size <= 0:
-        raise MessagingServiceError("Ficheiro vazio.")
-    if file_size > MAX_ATTACHMENT_BYTES:
-        raise MessagingServiceError("O ficheiro excede o limite de 10MB.")
-
-    attachment_name = _normalize_attachment_name(uploaded_file.name)
-    content_type = (getattr(uploaded_file, "content_type", None) or "").strip().lower().split(";", 1)[0].strip()
-    if not content_type:
-        guessed_type, _ = mimetypes.guess_type(attachment_name)
-        content_type = (guessed_type or "").strip().lower()
-    if not _is_allowed_attachment_type(content_type):
-        raise MessagingServiceError("Tipo de ficheiro não permitido.")
+    attachment_name, content_type = validate_attachment(uploaded_file)
 
     storage_path = _build_attachment_path(conversation.id, attachment_name)
     saved_path = default_storage.save(storage_path, uploaded_file)

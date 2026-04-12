@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.hashers import make_password
 from django.shortcuts import render, redirect
 from django.utils import timezone
+from django_ratelimit.decorators import ratelimit
 
 from apps.accounts.forms import (
     LoginForm,
@@ -28,6 +29,8 @@ from apps.accounts.services import (
 )
 
 
+@ratelimit(key="ip", rate="10/5m", method="POST", block=False)
+@ratelimit(key="post:email", rate="5/5m", method="POST", block=False)
 def login_view(request):
     if request.current_user:
         if request.current_user.role == "ADMIN":
@@ -35,6 +38,13 @@ def login_view(request):
         return redirect("dashboard:painel")
 
     form = LoginForm(request.POST or None)
+
+    if request.method == "POST" and getattr(request, "limited", False):
+        messages.error(
+            request,
+            "Demasiadas tentativas de login. Tente novamente dentro de alguns minutos.",
+        )
+        return render(request, "accounts/login.html", {"form": form})
 
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"]
@@ -60,8 +70,16 @@ def login_view(request):
     return render(request, "accounts/login.html", {"form": form})
 
 
+@ratelimit(key="ip", rate="5/30m", method="POST", block=False)
 def register_view(request):
     form = RegisterForm(request.POST or None)
+
+    if request.method == "POST" and getattr(request, "limited", False):
+        messages.error(
+            request,
+            "Muitas tentativas de registo. Tente novamente dentro de alguns minutos.",
+        )
+        return render(request, "accounts/register.html", {"form": form})
 
     if request.method == "POST" and form.is_valid():
         user = create_user_and_profile(form.cleaned_data)
