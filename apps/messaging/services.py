@@ -24,8 +24,8 @@ class MessagingServiceError(Exception):
     pass
 
 
-MESSAGE_TAB_ACTIVE = "ativas"
-MESSAGE_TAB_ARCHIVED = "arquivadas"
+MESSAGE_TAB_ACTIVE = "active"
+MESSAGE_TAB_ARCHIVED = "archived"
 
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -75,8 +75,10 @@ def _build_attachment_path(conversation_id, attachment_name):
 
 def normalize_messages_tab(tab):
     value = str(tab or "").strip().lower()
-    if value == MESSAGE_TAB_ARCHIVED:
+    if value in {MESSAGE_TAB_ARCHIVED, "arquivadas"}:
         return MESSAGE_TAB_ARCHIVED
+    if value in {MESSAGE_TAB_ACTIVE, "ativas"}:
+        return MESSAGE_TAB_ACTIVE
     return MESSAGE_TAB_ACTIVE
 
 
@@ -331,38 +333,67 @@ def get_unread_totals_for_user(user):
             "archived_unread_total": 0,
         }
 
-    user_id = user.id
-    active_unread_total = (
-        Message.objects
-        .exclude(sender_user_id=user_id)
-        .filter(
-            conversation__participants__user_id=user_id,
-            conversation__participants__is_archived=False,
-        )
-        .filter(
-            Q(conversation__participants__last_read_at__isnull=True)
-            | Q(created_at__gt=F("conversation__participants__last_read_at"))
-        )
-        .count()
-    )
-    archived_unread_total = (
-        Message.objects
-        .exclude(sender_user_id=user_id)
-        .filter(
-            conversation__participants__user_id=user_id,
-            conversation__participants__is_archived=True,
-        )
-        .filter(
-            Q(conversation__participants__last_read_at__isnull=True)
-            | Q(created_at__gt=F("conversation__participants__last_read_at"))
-        )
-        .count()
+    totals_by_user = get_unread_totals_for_user_ids([user.id])
+    return totals_by_user.get(
+        str(user.id),
+        {"active_unread_total": 0, "archived_unread_total": 0},
     )
 
+
+def _get_unread_totals_grouped_by_user(*, user_ids, archived):
+    if not user_ids:
+        return {}
+
+    rows = (
+        Message.objects
+        .filter(
+            conversation__participants__user_id__in=user_ids,
+            conversation__participants__is_archived=bool(archived),
+        )
+        .exclude(sender_user_id=F("conversation__participants__user_id"))
+        .filter(
+            Q(conversation__participants__last_read_at__isnull=True)
+            | Q(created_at__gt=F("conversation__participants__last_read_at"))
+        )
+        .values("conversation__participants__user_id")
+        .annotate(unread_count=Count("id"))
+    )
     return {
-        "active_unread_total": active_unread_total,
-        "archived_unread_total": archived_unread_total,
+        str(row["conversation__participants__user_id"]): int(row["unread_count"] or 0)
+        for row in rows
     }
+
+
+def get_unread_totals_for_user_ids(user_ids):
+    normalized_ids = []
+    seen = set()
+    for user_id in user_ids or []:
+        key = str(user_id)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        normalized_ids.append(user_id)
+
+    if not normalized_ids:
+        return {}
+
+    active_map = _get_unread_totals_grouped_by_user(
+        user_ids=normalized_ids,
+        archived=False,
+    )
+    archived_map = _get_unread_totals_grouped_by_user(
+        user_ids=normalized_ids,
+        archived=True,
+    )
+
+    totals = {}
+    for user_id in normalized_ids:
+        key = str(user_id)
+        totals[key] = {
+            "active_unread_total": int(active_map.get(key, 0)),
+            "archived_unread_total": int(archived_map.get(key, 0)),
+        }
+    return totals
 
 
 def list_conversations_for_user(user, *, archived=False):
@@ -437,7 +468,7 @@ def list_conversations_for_user(user, *, archived=False):
     }
 
 
-def get_conversation_for_user(*, user, conversation_id, include_archived=False):
+def get_conversation_for_user(*, user, conversation_id, archived=None):
     queryset = (
         Conversation.objects
         .filter(
@@ -454,8 +485,8 @@ def get_conversation_for_user(*, user, conversation_id, include_archived=False):
         )
         .distinct()
     )
-    if not include_archived:
-        queryset = queryset.filter(participants__is_archived=False)
+    if archived is not None:
+        queryset = queryset.filter(participants__is_archived=bool(archived))
     return queryset.first()
 
 
@@ -555,20 +586,23 @@ def get_unread_totals_for_conversation_participants(*, conversation):
     if not conversation:
         return []
 
-    participants = list(
+    participant_ids = list(
         ConversationParticipant.objects
-        .filter(conversation=conversation)
-        .select_related("user")
+        .filter(conversation=conversation, user_id__isnull=False)
+        .values_list("user_id", flat=True)
+        .distinct()
     )
+    totals_by_user = get_unread_totals_for_user_ids(participant_ids)
     results = []
-    for participant in participants:
-        user = participant.user
-        if not user:
-            continue
-        totals = get_unread_totals_for_user(user)
+    for user_id in participant_ids:
+        user_key = str(user_id)
+        totals = totals_by_user.get(
+            user_key,
+            {"active_unread_total": 0, "archived_unread_total": 0},
+        )
         results.append(
             {
-                "user_id": str(user.id),
+                "user_id": user_key,
                 "active_unread_total": totals["active_unread_total"],
                 "archived_unread_total": totals["archived_unread_total"],
             }

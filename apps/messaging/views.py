@@ -54,7 +54,7 @@ def messages_index_view(request):
         active_conversation = get_conversation_for_user(
             user=request.current_user,
             conversation_id=requested_conversation_id,
-            include_archived=True,
+            archived=None,
         )
         if active_conversation:
             archived_state = is_conversation_archived_for_user(
@@ -79,7 +79,7 @@ def messages_index_view(request):
         active_conversation = get_conversation_for_user(
             user=request.current_user,
             conversation_id=conversation_entries[0]["conversation"].id,
-            include_archived=True,
+            archived=is_archived_tab,
         )
 
     active_messages = []
@@ -159,7 +159,7 @@ def upload_attachment_view(request):
     conversation = get_conversation_for_user(
         user=request.current_user,
         conversation_id=conversation_id,
-        include_archived=True,
+        archived=None,
     )
     if not conversation:
         return JsonResponse({"ok": False, "error": "Sem acesso à conversa."}, status=403)

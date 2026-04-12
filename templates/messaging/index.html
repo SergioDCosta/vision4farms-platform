@@ -22,22 +22,22 @@
       </header>
 
       <div class="msg-tabs">
-        <a href="{% url 'messaging:index' %}?tab=ativas"
-           hx-get="{% url 'messaging:index' %}?tab=ativas"
+        <a href="{% url 'messaging:index' %}?tab=active"
+           hx-get="{% url 'messaging:index' %}?tab=active"
            hx-target="#shellMain"
            hx-select="#shellMain"
            hx-swap="outerHTML"
            hx-push-url="true"
-           class="msg-tab {% if selected_tab != 'arquivadas' %}is-active{% endif %}">
+           class="msg-tab {% if selected_tab != 'archived' %}is-active{% endif %}">
           Ativas
         </a>
-        <a href="{% url 'messaging:index' %}?tab=arquivadas"
-           hx-get="{% url 'messaging:index' %}?tab=arquivadas"
+        <a href="{% url 'messaging:index' %}?tab=archived"
+           hx-get="{% url 'messaging:index' %}?tab=archived"
            hx-target="#shellMain"
            hx-select="#shellMain"
            hx-swap="outerHTML"
            hx-push-url="true"
-           class="msg-tab {% if selected_tab == 'arquivadas' %}is-active{% endif %}">
+           class="msg-tab {% if selected_tab == 'archived' %}is-active{% endif %}">
           Arquivadas
           <span id="msgArchivedTabBadge"
                 class="msg-tab__badge {% if not archived_unread_total %}is-hidden{% endif %}">
@@ -143,18 +143,18 @@
           {% endif %}
 
           <form method="post"
-                action="{% if selected_tab == 'arquivadas' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
+                action="{% if selected_tab == 'archived' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
                 class="msg-thread__archive-form"
-                hx-post="{% if selected_tab == 'arquivadas' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
+                hx-post="{% if selected_tab == 'archived' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
                 hx-target="#shellMain"
                 hx-select="#shellMain"
                 hx-swap="outerHTML"
                 hx-push-url="true"
-                hx-confirm="{% if selected_tab == 'arquivadas' %}Deseja desarquivar esta conversa?{% else %}Deseja arquivar esta conversa?{% endif %}">
+                hx-confirm="{% if selected_tab == 'archived' %}Deseja desarquivar esta conversa?{% else %}Deseja arquivar esta conversa?{% endif %}">
             {% csrf_token %}
             <button type="submit" class="msg-thread__archive-btn">
-              <i class="bi {% if selected_tab == 'arquivadas' %}bi-inbox{% else %}bi-archive{% endif %}"></i>
-              {% if selected_tab == 'arquivadas' %}Desarquivar{% else %}Arquivar{% endif %}
+              <i class="bi {% if selected_tab == 'archived' %}bi-inbox{% else %}bi-archive{% endif %}"></i>
+              {% if selected_tab == 'archived' %}Desarquivar{% else %}Arquivar{% endif %}
             </button>
           </form>
         </header>
@@ -960,7 +960,7 @@
   const uploadEndpoint = "{% url 'messaging:upload_attachment' %}";
   const currentUserId = pageData ? pageData.dataset.currentUserId : null;
   const selectedTab = String(
-    (pageData && pageData.dataset && pageData.dataset.selectedTab) || "ativas"
+    (pageData && pageData.dataset && pageData.dataset.selectedTab) || "active"
   ).toLowerCase();
   const archivedTabBadge = document.getElementById("msgArchivedTabBadge");
 
@@ -1029,7 +1029,7 @@
   };
 
   const redirectToActiveThread = () => {
-    const targetUrl = `/mensagens/?tab=ativas&c=${conversationId}`;
+    const targetUrl = `/mensagens/?tab=active&c=${conversationId}`;
     window.location.assign(targetUrl);
   };
 
@@ -1214,7 +1214,7 @@
       }
       socket.send(JSON.stringify({ type: "message.send", content: value }));
       input.value = "";
-      if (selectedTab === "arquivadas") {
+      if (selectedTab === "archived") {
         shouldRedirectToActive = true;
       }
     }
@@ -1233,7 +1233,7 @@
           if (socket.readyState !== WebSocket.OPEN && sentMessage) {
             appendMessage(sentMessage);
           }
-          if (String(uploadResult.target_tab || "").toLowerCase() === "ativas" && selectedTab === "arquivadas") {
+          if (String(uploadResult.target_tab || "").toLowerCase() === "active" && selectedTab === "archived") {
             shouldRedirectToActive = true;
           }
         } catch (error) {
