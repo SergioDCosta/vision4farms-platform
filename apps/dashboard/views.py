@@ -17,6 +17,8 @@ from apps.accounts.models import (
     UserRole,
     RegistrationSource,
     AccountStatus,
+    AccountVerificationToken,
+    VerificationPurpose,
 )
 from apps.accounts.services import send_admin_invite_email, create_admin_invite_token
 from apps.inventory.models import ProducerProfile, ProducerProduct, Stock
@@ -892,6 +894,58 @@ def admin_user_detail_view(request, user_id):
         "related_logs": related_logs,
     }
     return render(request, "dashboard/admin/user_detail.html", context)
+
+
+@admin_required
+@require_POST
+def admin_user_confirm_email_view(request, user_id):
+    user_obj = get_object_or_404(User, id=user_id)
+
+    if request.current_user and request.current_user.id == user_obj.id:
+        messages.error(request, "Não pode confirmar manualmente a sua própria conta.")
+        return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
+
+    if user_obj.account_status != AccountStatus.PENDING_EMAIL_CONFIRMATION:
+        messages.info(request, "Esta conta já não está pendente de confirmação por email.")
+        return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
+
+    old_snapshot = _user_snapshot(user_obj, ProducerProfile.objects.filter(user=user_obj).first())
+    now = timezone.now()
+
+    with transaction.atomic():
+        user_obj.email_verified_at = now
+        user_obj.account_status = AccountStatus.ACTIVE
+        user_obj.is_active = True
+        user_obj.updated_at = now
+        user_obj.save(
+            update_fields=["email_verified_at", "account_status", "is_active", "updated_at"]
+        )
+
+        AccountVerificationToken.objects.filter(
+            user=user_obj,
+            purpose__in=[
+                VerificationPurpose.SIGNUP_CONFIRMATION,
+                VerificationPurpose.ADMIN_INVITE,
+            ],
+            used_at__isnull=True,
+        ).update(used_at=now)
+
+    new_snapshot = _user_snapshot(user_obj, ProducerProfile.objects.filter(user=user_obj).first())
+    _log_admin_action(
+        request=request,
+        action="USER_EMAIL_CONFIRMED_BY_ADMIN",
+        entity_type="users",
+        entity_id=user_obj.id,
+        notes=f"Administrador confirmou manualmente a conta de {user_obj.email}.",
+        old_values=old_snapshot,
+        new_values=new_snapshot,
+    )
+
+    messages.success(request, "Conta confirmada manualmente com sucesso.")
+    next_url = request.POST.get("next")
+    if next_url:
+        return redirect(next_url)
+    return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
 
 
 @admin_required
