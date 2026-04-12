@@ -84,7 +84,7 @@ def register_view(request):
     if request.method == "POST" and form.is_valid():
         user = create_user_and_profile(form.cleaned_data)
         token = create_signup_verification_token(user)
-        send_signup_confirmation_email(request, user, token)
+        send_signup_confirmation_email(request, user, token, async_send=True)
 
         request.session["registration_email"] = user.email
         return redirect("accounts:register_success")

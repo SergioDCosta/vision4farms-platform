@@ -1,4 +1,6 @@
 import secrets
+import threading
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -19,7 +21,17 @@ from apps.accounts.models import (
 from apps.inventory.models import ProducerProfile
 
 
-def _send_system_email(subject, text_body, html_body, recipient_list):
+logger = logging.getLogger(__name__)
+
+
+def _send_email_safely(email):
+    try:
+        email.send(fail_silently=False)
+    except Exception:
+        logger.exception("Falha no envio de email em background.")
+
+
+def _send_system_email(subject, text_body, html_body, recipient_list, async_send=False):
     email = EmailMultiAlternatives(
         subject=subject,
         body=text_body,
@@ -30,6 +42,10 @@ def _send_system_email(subject, text_body, html_body, recipient_list):
 
     if html_body:
         email.attach_alternative(html_body, "text/html")
+
+    if async_send:
+        threading.Thread(target=_send_email_safely, args=(email,), daemon=True).start()
+        return
 
     email.send(fail_silently=False)
 
@@ -91,7 +107,7 @@ def create_admin_invite_token(user):
     return verification
 
 
-def send_signup_confirmation_email(request, user, verification_token):
+def send_signup_confirmation_email(request, user, verification_token, async_send=False):
     verify_url = request.build_absolute_uri(
         reverse("accounts:verify_email", kwargs={"token": verification_token.token})
     )
@@ -110,6 +126,7 @@ def send_signup_confirmation_email(request, user, verification_token):
         text_body=text_body,
         html_body=html_body,
         recipient_list=[user.email],
+        async_send=async_send,
     )
 
 
