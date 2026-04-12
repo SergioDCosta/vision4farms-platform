@@ -177,7 +177,7 @@ def send_signup_confirmation_email(request, user, verification_token, async_send
     )
 
 
-def send_admin_invite_email(request, user, verification_token):
+def send_admin_invite_email(request, user, verification_token, async_send=False):
     purpose = VerificationPurpose.ADMIN_INVITE
     verify_url = _build_public_absolute_url(
         request,
@@ -204,6 +204,7 @@ def send_admin_invite_email(request, user, verification_token):
         text_body=email_bundle["text_body"],
         html_body=email_bundle["html_body"],
         recipient_list=[user.email],
+        async_send=async_send,
     )
 
 
@@ -344,7 +345,7 @@ def create_password_reset_token(user):
     return reset_token
 
 
-def send_password_reset_email(request, user, reset_token):
+def send_password_reset_email(request, user, reset_token, async_send=False):
     reset_url = _build_public_absolute_url(
         request,
         reverse("accounts:password_reset_confirm", kwargs={"token": reset_token.token}),
@@ -371,6 +372,7 @@ def send_password_reset_email(request, user, reset_token):
         text_body=text_body,
         html_body=html_body,
         recipient_list=[user.email],
+        async_send=async_send,
     )
 
 

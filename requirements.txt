@@ -13,6 +13,7 @@ constantly==23.10.4
 cryptography==46.0.7
 daphne==4.2.1
 Django==6.0.3
+django-anymail==14.0
 django-cloudinary-storage==0.3.0
 django-htmx==1.27.0
 django-ratelimit==4.1.0

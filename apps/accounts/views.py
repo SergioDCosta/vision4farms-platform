@@ -160,7 +160,7 @@ def password_reset_request_view(request):
         user = User.objects.filter(email=email, is_active=True).first()
         if user:
             token = create_password_reset_token(user)
-            send_password_reset_email(request, user, token)
+            send_password_reset_email(request, user, token, async_send=True)
 
         messages.success(
             request,
