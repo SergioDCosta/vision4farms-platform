@@ -24,6 +24,10 @@ class MessagingServiceError(Exception):
     pass
 
 
+MESSAGE_TAB_ACTIVE = "ativas"
+MESSAGE_TAB_ARCHIVED = "arquivadas"
+
+
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {
     ".jpg",
@@ -69,6 +73,13 @@ def _build_attachment_path(conversation_id, attachment_name):
     return f"messaging/attachments/{conversation_id}/{uuid.uuid4().hex}_{attachment_name}"
 
 
+def normalize_messages_tab(tab):
+    value = str(tab or "").strip().lower()
+    if value == MESSAGE_TAB_ARCHIVED:
+        return MESSAGE_TAB_ARCHIVED
+    return MESSAGE_TAB_ACTIVE
+
+
 def validate_attachment(uploaded_file):
     if not isinstance(uploaded_file, UploadedFile):
         raise MessagingServiceError("Ficheiro inválido.")
@@ -110,8 +121,20 @@ def _mark_sender_read(*, conversation, sender_user, now):
     ConversationParticipant.objects.filter(
         conversation=conversation,
         user=sender_user,
-        is_archived=False,
     ).update(last_read_at=now)
+
+
+def _ensure_sender_active_participation(*, conversation, sender_user):
+    participant = ConversationParticipant.objects.filter(
+        conversation=conversation,
+        user=sender_user,
+    ).first()
+    if not participant:
+        raise MessagingServiceError("Sem acesso à conversa.")
+
+    if participant.is_archived:
+        participant.is_archived = False
+        participant.save(update_fields=["is_archived"])
 
 
 def serialize_message_payload(*, message):
@@ -147,6 +170,7 @@ def create_text_message(*, conversation, sender_user, content):
     content = str(content or "").strip()
     if not content:
         raise MessagingServiceError("A mensagem de texto está vazia.")
+    _ensure_sender_active_participation(conversation=conversation, sender_user=sender_user)
 
     message = Message.objects.create(
         conversation=conversation,
@@ -166,6 +190,7 @@ def create_text_message(*, conversation, sender_user, content):
 @transaction.atomic
 def create_file_message(*, conversation, sender_user, uploaded_file):
     attachment_name, content_type = validate_attachment(uploaded_file)
+    _ensure_sender_active_participation(conversation=conversation, sender_user=sender_user)
 
     storage_path = _build_attachment_path(conversation.id, attachment_name)
     saved_path = default_storage.save(storage_path, uploaded_file)
@@ -277,15 +302,18 @@ def _get_last_messages_by_conversation(conversations):
     }
 
 
-def _get_unread_counts_for_user(*, user, conversation_ids):
+def _get_unread_counts_for_user(*, user_id, conversation_ids, archived):
     if not conversation_ids:
         return {}
 
     unread_rows = (
         Message.objects
         .filter(conversation_id__in=conversation_ids)
-        .exclude(sender_user=user)
-        .filter(conversation__participants__user=user, conversation__participants__is_archived=False)
+        .exclude(sender_user_id=user_id)
+        .filter(
+            conversation__participants__user_id=user_id,
+            conversation__participants__is_archived=bool(archived),
+        )
         .filter(
             Q(conversation__participants__last_read_at__isnull=True)
             | Q(created_at__gt=F("conversation__participants__last_read_at"))
@@ -296,7 +324,48 @@ def _get_unread_counts_for_user(*, user, conversation_ids):
     return {str(row["conversation_id"]): row["unread_count"] for row in unread_rows}
 
 
-def list_conversations_for_user(user):
+def get_unread_totals_for_user(user):
+    if not user:
+        return {
+            "active_unread_total": 0,
+            "archived_unread_total": 0,
+        }
+
+    user_id = user.id
+    active_unread_total = (
+        Message.objects
+        .exclude(sender_user_id=user_id)
+        .filter(
+            conversation__participants__user_id=user_id,
+            conversation__participants__is_archived=False,
+        )
+        .filter(
+            Q(conversation__participants__last_read_at__isnull=True)
+            | Q(created_at__gt=F("conversation__participants__last_read_at"))
+        )
+        .count()
+    )
+    archived_unread_total = (
+        Message.objects
+        .exclude(sender_user_id=user_id)
+        .filter(
+            conversation__participants__user_id=user_id,
+            conversation__participants__is_archived=True,
+        )
+        .filter(
+            Q(conversation__participants__last_read_at__isnull=True)
+            | Q(created_at__gt=F("conversation__participants__last_read_at"))
+        )
+        .count()
+    )
+
+    return {
+        "active_unread_total": active_unread_total,
+        "archived_unread_total": archived_unread_total,
+    }
+
+
+def list_conversations_for_user(user, *, archived=False):
     latest_message_id_subquery = (
         Message.objects
         .filter(conversation_id=OuterRef("pk"))
@@ -309,7 +378,7 @@ def list_conversations_for_user(user):
         .filter(
             is_active=True,
             participants__user=user,
-            participants__is_archived=False,
+            participants__is_archived=bool(archived),
         )
         .select_related("listing__product")
         .prefetch_related(
@@ -328,7 +397,11 @@ def list_conversations_for_user(user):
 
     conversations = list(conversation_queryset)
     conversation_ids = [conversation.id for conversation in conversations]
-    unread_map = _get_unread_counts_for_user(user=user, conversation_ids=conversation_ids)
+    unread_map = _get_unread_counts_for_user(
+        user_id=user.id,
+        conversation_ids=conversation_ids,
+        archived=archived,
+    )
     last_message_map = _get_last_messages_by_conversation(conversations)
 
     entries = []
@@ -364,14 +437,13 @@ def list_conversations_for_user(user):
     }
 
 
-def get_conversation_for_user(*, user, conversation_id):
+def get_conversation_for_user(*, user, conversation_id, include_archived=False):
     queryset = (
         Conversation.objects
         .filter(
             id=conversation_id,
             is_active=True,
             participants__user=user,
-            participants__is_archived=False,
         )
         .select_related("listing__product")
         .prefetch_related(
@@ -382,7 +454,25 @@ def get_conversation_for_user(*, user, conversation_id):
         )
         .distinct()
     )
+    if not include_archived:
+        queryset = queryset.filter(participants__is_archived=False)
     return queryset.first()
+
+
+def is_conversation_archived_for_user(*, user, conversation_id):
+    participant = (
+        ConversationParticipant.objects
+        .filter(
+            conversation_id=conversation_id,
+            conversation__is_active=True,
+            user=user,
+        )
+        .values("is_archived")
+        .first()
+    )
+    if not participant:
+        return None
+    return bool(participant["is_archived"])
 
 
 def get_conversation_messages(*, conversation, limit=150):
@@ -404,12 +494,11 @@ def mark_conversation_as_read(*, user, conversation):
     ConversationParticipant.objects.filter(
         conversation=conversation,
         user=user,
-        is_archived=False,
     ).update(last_read_at=timezone.now())
 
 
 @transaction.atomic
-def delete_conversation_for_user(*, user, conversation_id):
+def archive_conversation_for_user(*, user, conversation_id):
     if not user:
         raise MessagingServiceError("Utilizador inválido.")
 
@@ -421,29 +510,70 @@ def delete_conversation_for_user(*, user, conversation_id):
             conversation_id=conversation_id,
             user=user,
             conversation__is_active=True,
-            is_archived=False,
         )
         .first()
     )
 
     if not participant:
-        raise MessagingServiceError("Conversa não encontrada ou já eliminada.")
+        raise MessagingServiceError("Conversa não encontrada.")
 
-    conversation = participant.conversation
+    if participant.is_archived:
+        return {"archived": True, "conversation_id": str(participant.conversation_id)}
+
     participant.is_archived = True
     participant.save(update_fields=["is_archived"])
+    return {"archived": True, "conversation_id": str(participant.conversation_id)}
 
-    has_active_participants = (
+
+@transaction.atomic
+def unarchive_conversation_for_user(*, user, conversation_id):
+    if not user:
+        raise MessagingServiceError("Utilizador inválido.")
+
+    participant = (
         ConversationParticipant.objects
         .select_for_update()
-        .filter(conversation=conversation, is_archived=False)
-        .exists()
+        .filter(
+            conversation_id=conversation_id,
+            user=user,
+            conversation__is_active=True,
+        )
+        .first()
     )
-    if not has_active_participants:
-        conversation.delete()
-        return {"purged": True}
+    if not participant:
+        raise MessagingServiceError("Conversa não encontrada.")
 
-    return {"purged": False, "conversation_id": str(conversation.id)}
+    if not participant.is_archived:
+        return {"unarchived": True, "conversation_id": str(participant.conversation_id)}
+
+    participant.is_archived = False
+    participant.save(update_fields=["is_archived"])
+    return {"unarchived": True, "conversation_id": str(participant.conversation_id)}
+
+
+def get_unread_totals_for_conversation_participants(*, conversation):
+    if not conversation:
+        return []
+
+    participants = list(
+        ConversationParticipant.objects
+        .filter(conversation=conversation)
+        .select_related("user")
+    )
+    results = []
+    for participant in participants:
+        user = participant.user
+        if not user:
+            continue
+        totals = get_unread_totals_for_user(user)
+        results.append(
+            {
+                "user_id": str(user.id),
+                "active_unread_total": totals["active_unread_total"],
+                "archived_unread_total": totals["archived_unread_total"],
+            }
+        )
+    return results
 
 
 def _find_listing_contact_conversation(*, listing, user_a_id, user_b_id):

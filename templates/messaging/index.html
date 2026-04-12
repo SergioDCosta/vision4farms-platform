@@ -3,6 +3,10 @@
 {% block app_content %}
 
 <div class="msg-page">
+  <div id="msgPageData"
+       data-current-user-id="{{ request.current_user.id }}"
+       data-selected-tab="{{ selected_tab }}">
+  </div>
   <section class="msg-layout">
 
     <!-- SIDEBAR -->
@@ -17,10 +21,35 @@
         {% endif %}
       </header>
 
+      <div class="msg-tabs">
+        <a href="{% url 'messaging:index' %}?tab=ativas"
+           hx-get="{% url 'messaging:index' %}?tab=ativas"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="msg-tab {% if selected_tab != 'arquivadas' %}is-active{% endif %}">
+          Ativas
+        </a>
+        <a href="{% url 'messaging:index' %}?tab=arquivadas"
+           hx-get="{% url 'messaging:index' %}?tab=arquivadas"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="msg-tab {% if selected_tab == 'arquivadas' %}is-active{% endif %}">
+          Arquivadas
+          <span id="msgArchivedTabBadge"
+                class="msg-tab__badge {% if not archived_unread_total %}is-hidden{% endif %}">
+            {{ archived_unread_total|default:0 }}
+          </span>
+        </a>
+      </div>
+
       <div class="msg-conversation-list">
         {% for entry in conversation_entries %}
-          <a href="{% url 'messaging:index' %}?c={{ entry.conversation.id }}"
-             hx-get="{% url 'messaging:index' %}?c={{ entry.conversation.id }}"
+          <a href="{% url 'messaging:index' %}?tab={{ selected_tab }}&c={{ entry.conversation.id }}"
+             hx-get="{% url 'messaging:index' %}?tab={{ selected_tab }}&c={{ entry.conversation.id }}"
              hx-target="#shellMain"
              hx-select="#shellMain"
              hx-swap="outerHTML"
@@ -114,18 +143,18 @@
           {% endif %}
 
           <form method="post"
-                action="{% url 'messaging:delete_conversation' active_conversation.id %}"
-                class="msg-thread__delete-form"
-                hx-post="{% url 'messaging:delete_conversation' active_conversation.id %}"
+                action="{% if selected_tab == 'arquivadas' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
+                class="msg-thread__archive-form"
+                hx-post="{% if selected_tab == 'arquivadas' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
                 hx-target="#shellMain"
                 hx-select="#shellMain"
                 hx-swap="outerHTML"
                 hx-push-url="true"
-                hx-confirm="Tem a certeza que quer eliminar esta conversa?">
+                hx-confirm="{% if selected_tab == 'arquivadas' %}Deseja desarquivar esta conversa?{% else %}Deseja arquivar esta conversa?{% endif %}">
             {% csrf_token %}
-            <button type="submit" class="msg-thread__delete-btn">
-              <i class="bi bi-trash"></i>
-              Eliminar conversa
+            <button type="submit" class="msg-thread__archive-btn">
+              <i class="bi {% if selected_tab == 'arquivadas' %}bi-inbox{% else %}bi-archive{% endif %}"></i>
+              {% if selected_tab == 'arquivadas' %}Desarquivar{% else %}Arquivar{% endif %}
             </button>
           </form>
         </header>
@@ -194,7 +223,8 @@
 
         <div id="msgThreadData"
              data-conversation-id="{{ active_conversation.id }}"
-             data-current-user-id="{{ request.current_user.id }}">
+             data-current-user-id="{{ request.current_user.id }}"
+             data-selected-tab="{{ selected_tab }}">
         </div>
 
       {% else %}
@@ -274,6 +304,57 @@
   padding: .15rem .5rem;
   min-width: 1.4rem;
   text-align: center;
+}
+
+.msg-tabs {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .65rem .75rem;
+  border-bottom: 1px solid #edf0f5;
+  background: #fff;
+}
+
+.msg-tab {
+  text-decoration: none;
+  color: #64748b;
+  font-size: .78rem;
+  font-weight: 700;
+  padding: .45rem .65rem;
+  border-radius: .65rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  border: 1px solid transparent;
+}
+
+.msg-tab:hover {
+  color: #1e293b;
+  background: #f8fafc;
+}
+
+.msg-tab.is-active {
+  color: #166534;
+  background: #f0faf4;
+  border-color: #bbf7d0;
+}
+
+.msg-tab__badge {
+  min-width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: .63rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 .25rem;
+}
+
+.msg-tab__badge.is-hidden {
+  display: none;
 }
 
 .msg-conversation-list {
@@ -469,14 +550,14 @@
   flex-shrink: 0;
 }
 
-.msg-thread__delete-form {
+.msg-thread__archive-form {
   flex-shrink: 0;
 }
 
-.msg-thread__delete-btn {
-  border: 1px solid #fecaca;
-  background: #fff1f2;
-  color: #be123c;
+.msg-thread__archive-btn {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
   border-radius: .75rem;
   padding: .45rem .75rem;
   font-size: .76rem;
@@ -488,10 +569,10 @@
   transition: background .15s ease, border-color .15s ease, color .15s ease;
 }
 
-.msg-thread__delete-btn:hover {
-  background: #ffe4e6;
-  border-color: #fda4af;
-  color: #9f1239;
+.msg-thread__archive-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
 }
 
 /* ─── MESSAGES ─────────────────────────────────────────────── */
@@ -855,11 +936,11 @@
     align-items: stretch;
   }
 
-  .msg-thread__delete-form {
+  .msg-thread__archive-form {
     width: 100%;
   }
 
-  .msg-thread__delete-btn {
+  .msg-thread__archive-btn {
     width: 100%;
     justify-content: center;
   }
@@ -868,6 +949,7 @@
 
 <script>
 (function () {
+  const pageData = document.getElementById("msgPageData");
   const threadData = document.getElementById("msgThreadData");
   const composer   = document.getElementById("msgComposer");
   const input      = document.getElementById("msgInput");
@@ -876,18 +958,59 @@
   const filePreview = document.getElementById("msgFilePreview");
   const filePreviewInner = document.getElementById("msgFilePreviewInner");
   const uploadEndpoint = "{% url 'messaging:upload_attachment' %}";
+  const currentUserId = pageData ? pageData.dataset.currentUserId : null;
+  const selectedTab = String(
+    (pageData && pageData.dataset && pageData.dataset.selectedTab) || "ativas"
+  ).toLowerCase();
+  const archivedTabBadge = document.getElementById("msgArchivedTabBadge");
 
-  if (!threadData || !composer || !input || !messagesBox) return;
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const updateArchivedBadge = (value) => {
+    if (!archivedTabBadge) return;
+    const unreadValue = Number(value || 0);
+    archivedTabBadge.textContent = String(unreadValue);
+    if (unreadValue > 0) {
+      archivedTabBadge.classList.remove("is-hidden");
+    } else {
+      archivedTabBadge.classList.add("is-hidden");
+    }
+  };
+
+  if (window.__msgUnreadSocket && window.__msgUnreadSocket.readyState <= 1) {
+    try { window.__msgUnreadSocket.close(); } catch (_) {}
+  }
+  const unreadSocket = new WebSocket(
+    `${protocol}://${window.location.host}/ws/mensagens/unread/`
+  );
+  window.__msgUnreadSocket = unreadSocket;
+  unreadSocket.addEventListener("message", (event) => {
+    try {
+      const payload = JSON.parse(event.data || "{}");
+      if (payload.type === "unread.totals") {
+        updateArchivedBadge(payload.archived_unread_total || 0);
+      }
+    } catch (_) {}
+  });
+
+  if (!threadData || !composer || !input || !messagesBox) {
+    if (window.__msgThreadSocket && window.__msgThreadSocket.readyState <= 1) {
+      try { window.__msgThreadSocket.close(); } catch (_) {}
+    }
+    window.__msgThreadSocket = null;
+    return;
+  }
 
   const conversationId = threadData.dataset.conversationId;
-  const currentUserId  = threadData.dataset.currentUserId;
   if (!conversationId) return;
 
   // ── WebSocket ──────────────────────────────────────────────
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  if (window.__msgThreadSocket && window.__msgThreadSocket.readyState <= 1) {
+    try { window.__msgThreadSocket.close(); } catch (_) {}
+  }
   const socket = new WebSocket(
     `${protocol}://${window.location.host}/ws/mensagens/${conversationId}/`
   );
+  window.__msgThreadSocket = socket;
 
   const getCookie = (name) => {
     const value = `; ${document.cookie}`;
@@ -903,6 +1026,11 @@
       top: messagesBox.scrollHeight,
       behavior: smooth ? "smooth" : "instant"
     });
+  };
+
+  const redirectToActiveThread = () => {
+    const targetUrl = `/mensagens/?tab=ativas&c=${conversationId}`;
+    window.location.assign(targetUrl);
   };
 
   const hasMessageRendered = (messageId) => {
@@ -1067,13 +1195,14 @@
       throw new Error(error);
     }
 
-    return payload.message;
+    return payload;
   }
 
   // ── Send ───────────────────────────────────────────────────
   composer.addEventListener("submit", async (event) => {
     event.preventDefault();
     const value = (input.value || "").trim();
+    let shouldRedirectToActive = false;
 
     if (!value && !pendingFiles.length) return;
 
@@ -1085,6 +1214,9 @@
       }
       socket.send(JSON.stringify({ type: "message.send", content: value }));
       input.value = "";
+      if (selectedTab === "arquivadas") {
+        shouldRedirectToActive = true;
+      }
     }
 
     // Files via HTTP upload endpoint
@@ -1096,14 +1228,23 @@
 
       for (const file of filesToUpload) {
         try {
-          const sentMessage = await uploadAttachment(file);
+          const uploadResult = await uploadAttachment(file);
+          const sentMessage = uploadResult.message;
           if (socket.readyState !== WebSocket.OPEN && sentMessage) {
             appendMessage(sentMessage);
+          }
+          if (String(uploadResult.target_tab || "").toLowerCase() === "ativas" && selectedTab === "arquivadas") {
+            shouldRedirectToActive = true;
           }
         } catch (error) {
           window.alert(error.message || "Falha no envio do anexo.");
         }
       }
+    }
+
+    if (shouldRedirectToActive) {
+      redirectToActiveThread();
+      return;
     }
 
     input.focus();
