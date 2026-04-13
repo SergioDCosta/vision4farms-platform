@@ -17,6 +17,7 @@
               <strong>{{ listing.producer.display_name|default:listing.producer.company_name|default:"Produtor" }}</strong>
               {% if listing.forecast_id and not listing.stock_id %}
                 <div class="rec-badges" style="margin-top:.45rem;">
+                  <span class="rec-badge rec-badge--blue">Pré-venda</span>
                   <span class="rec-badge rec-badge--blue">
                     {% if listing.forecast and listing.forecast.period_start %}
                       Disponível no dia {{ listing.forecast.period_start|date:"d/m/Y" }}

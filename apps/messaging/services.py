@@ -1,5 +1,6 @@
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse, unquote
 
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -71,6 +72,63 @@ def _normalize_attachment_name(original_name):
 
 def _build_attachment_path(conversation_id, attachment_name):
     return f"messaging/attachments/{conversation_id}/{uuid.uuid4().hex}_{attachment_name}"
+
+
+def _extract_cloudinary_storage_path(url_value):
+    parsed = urlparse(str(url_value or "").strip())
+    if "res.cloudinary.com" not in (parsed.netloc or "").lower():
+        return None
+    if "/upload/" not in parsed.path:
+        return None
+
+    suffix = parsed.path.split("/upload/", 1)[1]
+    segments = [segment for segment in suffix.split("/") if segment]
+    if not segments:
+        return None
+
+    # Expected Cloudinary pattern: /upload/<transformations?>/v123456/<public_id>
+    public_id_start = 0
+    for idx, segment in enumerate(segments):
+        if segment.startswith("v") and segment[1:].isdigit():
+            public_id_start = idx + 1
+            break
+    public_id_segments = segments[public_id_start:] if public_id_start < len(segments) else segments
+    if not public_id_segments:
+        return None
+    return unquote("/".join(public_id_segments)).lstrip("/")
+
+
+def _normalize_attachment_storage_value(stored_value):
+    raw = str(stored_value or "").strip()
+    if not raw:
+        return ""
+
+    lower_raw = raw.lower()
+    if lower_raw.startswith("http://") or lower_raw.startswith("https://"):
+        extracted = _extract_cloudinary_storage_path(raw)
+        return extracted or raw
+
+    media_url = str(getattr(settings, "MEDIA_URL", "") or "").strip()
+    if media_url and raw.startswith(media_url):
+        raw = raw[len(media_url):]
+
+    return raw.lstrip("/")
+
+
+def _resolve_attachment_url(stored_value):
+    normalized = _normalize_attachment_storage_value(stored_value)
+    if not normalized:
+        return ""
+
+    lower = normalized.lower()
+    if lower.startswith("http://") or lower.startswith("https://"):
+        return normalized
+
+    try:
+        return default_storage.url(normalized)
+    except Exception:
+        media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+        return f"{media_url.rstrip('/')}/{normalized.lstrip('/')}"
 
 
 def normalize_messages_tab(tab):
@@ -161,7 +219,7 @@ def serialize_message_payload(*, message):
     }
 
     if message.message_type == MessageType.FILE:
-        payload["attachment_url"] = message.attachment_url
+        payload["attachment_url"] = _resolve_attachment_url(message.attachment_url)
         payload["attachment_name"] = message.attachment_name
         payload["attachment_type"] = message.attachment_type
 
@@ -200,17 +258,12 @@ def create_file_message(*, conversation, sender_user, uploaded_file):
         raise MessagingServiceError("Não foi possível guardar o ficheiro.")
 
     try:
-        attachment_url = default_storage.url(saved_path)
-    except Exception:
-        attachment_url = f"{settings.MEDIA_URL}{str(saved_path).lstrip('/')}"
-
-    try:
         message = Message.objects.create(
             conversation=conversation,
             sender_user=sender_user,
             message_type=MessageType.FILE,
             content=attachment_name,
-            attachment_url=attachment_url,
+            attachment_url=str(saved_path).lstrip("/"),
             attachment_name=attachment_name,
             attachment_type=content_type,
         )
@@ -516,7 +569,13 @@ def get_conversation_messages(*, conversation, limit=150):
         .filter(conversation=conversation)
         .order_by("-created_at")[:limit]
     )
-    return list(reversed(list(message_queryset)))
+    messages = list(reversed(list(message_queryset)))
+    for message in messages:
+        if message.message_type == MessageType.FILE:
+            message.resolved_attachment_url = _resolve_attachment_url(message.attachment_url)
+        else:
+            message.resolved_attachment_url = ""
+    return messages
 
 
 def mark_conversation_as_read(*, user, conversation):

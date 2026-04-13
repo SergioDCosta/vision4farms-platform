@@ -58,8 +58,11 @@
             </div>
           </div>
 
-          {% if item.reasons %}
+          {% if item.reasons or item.listing.forecast_id %}
             <div class="rec-badges">
+              {% if item.listing.forecast_id and not item.listing.stock_id %}
+                <span class="rec-badge rec-badge--blue">Pré-venda</span>
+              {% endif %}
               {% for reason in item.reasons %}
                 {% if reason.text %}
                   <span class="rec-badge {% if reason.tone == 'blue' %}rec-badge--blue{% elif reason.tone == 'amber' %}rec-badge--amber{% elif reason.tone == 'green' %}rec-badge--green{% endif %}">

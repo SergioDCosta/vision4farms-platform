@@ -26,8 +26,9 @@
             hx-target="#step-1-metrics"
             hx-swap="outerHTML"
             hx-trigger="change"
+            hx-sync="this:replace"
           >
-            <option value="">Selecionar produto</option>
+            <option value="" disabled {% if not initial_product_id %}selected{% endif %}>Selecionar produto</option>
             {% for product_id, product_name in products %}
               <option value="{{ product_id }}" {% if initial_product_id == product_id %}selected{% endif %}>
                 {{ product_name }}

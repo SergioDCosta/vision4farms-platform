@@ -586,4 +586,53 @@
 }
 </style>
 
+<script>
+  (function () {
+    function syncRequestedQuantity(metricsElement) {
+      var metrics = metricsElement || document.getElementById("step-1-metrics");
+      var requestedInput = document.getElementById("requested_quantity");
+      if (!metrics || !requestedInput) return;
+
+      var raw = (metrics.dataset.deficitQuantity || "0").replace(",", ".");
+      var deficit = parseFloat(raw);
+      requestedInput.value = Number.isFinite(deficit) ? deficit : 0;
+    }
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event && event.detail ? event.detail.target : null;
+      if (!target) return;
+
+      if (target.id === "step-1-metrics") {
+        var select = document.getElementById("product_id");
+        var xhr = event.detail ? event.detail.xhr : null;
+        if (select && xhr && xhr.responseURL) {
+          try {
+            var responseUrl = new URL(xhr.responseURL, window.location.origin);
+            var responseProductId = (responseUrl.searchParams.get("product_id") || "").trim();
+            var selectedProductId = (select.value || "").trim();
+            if (responseProductId && selectedProductId && responseProductId !== selectedProductId) {
+              return;
+            }
+          } catch (e) {
+            // Se não conseguir analisar URL, aplica fallback normal.
+          }
+        }
+        requestAnimationFrame(function () {
+          syncRequestedQuantity();
+        });
+        return;
+      }
+
+      if (target.querySelector) {
+        var nestedMetrics = target.querySelector("#step-1-metrics");
+        if (nestedMetrics) {
+          requestAnimationFrame(function () {
+            syncRequestedQuantity();
+          });
+        }
+      }
+    });
+  })();
+</script>
+
 {% endblock %}
