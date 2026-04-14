@@ -87,6 +87,15 @@ def order_detail_view(request, order_id):
     seller_items = list(order.items.filter(seller_producer=producer)) if role == "seller" else []
     active_seller_items = [item for item in seller_items if item.item_status != OrderItemStatus.CANCELLED]
     active_order_items = list(order.items.exclude(item_status=OrderItemStatus.CANCELLED))
+    has_pending_seller_items = any(item.item_status == OrderItemStatus.PENDING for item in active_seller_items)
+    has_confirmed_seller_items = any(item.item_status == OrderItemStatus.CONFIRMED for item in active_seller_items)
+    seller_has_started = (
+        role == "seller"
+        and any(
+            event.status == OrderStatus.IN_PROGRESS and event.changed_by_id == request.current_user.id
+            for event in order.status_history.all()
+        )
+    )
 
     can_confirm_receipt = (
         role == "buyer"
@@ -104,15 +113,16 @@ def order_detail_view(request, order_id):
         role == "seller"
         and order.status in {OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS}
         and active_seller_items
-        and not any(item.item_status == OrderItemStatus.PENDING for item in active_seller_items)
-        and any(item.item_status == OrderItemStatus.CONFIRMED for item in active_seller_items)
+        and not has_pending_seller_items
+        and has_confirmed_seller_items
+        and not seller_has_started
     )
     can_seller_deliver = (
         role == "seller"
-        and order.status in {OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING}
         and active_seller_items
-        and not any(item.item_status == OrderItemStatus.PENDING for item in active_seller_items)
-        and any(item.item_status == OrderItemStatus.CONFIRMED for item in active_seller_items)
+        and not has_pending_seller_items
+        and has_confirmed_seller_items
+        and (seller_has_started or order.status in {OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING})
     )
     can_seller_cancel = (
         role == "seller"
@@ -155,6 +165,12 @@ def order_group_detail_view(request, group_id):
     sub_orders = []
     for order in group_orders:
         items = list(order.items.all())
+        active_order_items = [item for item in items if item.item_status != OrderItemStatus.CANCELLED]
+        can_confirm_receipt = (
+            order.status == OrderStatus.DELIVERING
+            and active_order_items
+            and all(item.item_status in {OrderItemStatus.IN_DELIVERY, OrderItemStatus.COMPLETED} for item in active_order_items)
+        )
         first_seller = items[0].seller_producer if items else None
         seller_label = (
             first_seller.display_name
@@ -171,10 +187,12 @@ def order_group_detail_view(request, group_id):
                 "order": order,
                 "seller_label": seller_label,
                 "source_label": get_order_source_label(order),
+                "status_key": str(order.status).lower(),
                 "status_label": order.get_status_display(),
                 "item_count": len(items),
                 "total_amount": order.total_amount,
                 "detail_url": f"{reverse('orders:detail', kwargs={'order_id': order.id})}?force_single=1",
+                "can_confirm_receipt": can_confirm_receipt,
             }
         )
 
@@ -248,15 +266,21 @@ def confirm_order_receipt_view(request, order_id):
         return redirect("dashboard:painel")
 
     order = get_order_detail_for_buyer(buyer_producer=producer, order_id=order_id)
+    next_url = (request.POST.get("next") or "").strip()
+
+    def _redirect_after_action():
+        if next_url.startswith("/") and not next_url.startswith("//"):
+            return redirect(next_url)
+        return redirect("orders:detail", order_id=order.id)
 
     try:
         confirm_order_receipt(order=order, acting_user=request.current_user)
     except OrderServiceError as exc:
         messages.error(request, str(exc))
-        return redirect("orders:detail", order_id=order.id)
+        return _redirect_after_action()
 
     messages.success(request, "Receção da encomenda confirmada com sucesso.")
-    return redirect("orders:detail", order_id=order.id)
+    return _redirect_after_action()
 
 
 @login_required

@@ -1055,19 +1055,19 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         return order
 
     if new_status == OrderStatus.IN_PROGRESS:
-        if order.status not in {OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS}:
-            raise OrderServiceError("Tem de aceitar o pedido antes de o marcar em preparação.")
-
-        already_started = OrderStatusHistory.objects.filter(
+        seller_has_started = OrderStatusHistory.objects.filter(
             order_id=order.id,
             status=OrderStatus.IN_PROGRESS,
             changed_by=acting_user,
         ).exists()
-        if already_started:
-            raise OrderServiceError("Esta encomenda já está em preparação.")
+        if seller_has_started:
+            return order
 
-        if any(item.item_status == OrderItemStatus.PENDING for item in active_seller_items):
-            raise OrderServiceError("Tem de aceitar o pedido antes de o marcar em preparação.")
+        if (
+            order.status not in {OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS}
+            or any(item.item_status == OrderItemStatus.PENDING for item in active_seller_items)
+        ):
+            raise OrderServiceError("Tem de aceitar o pedido antes de avançar o estado da encomenda.")
         if not any(item.item_status == OrderItemStatus.CONFIRMED for item in active_seller_items):
             raise OrderServiceError("Não existem items confirmados para marcar em preparação.")
 
@@ -1082,24 +1082,28 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         return order
 
     if new_status == OrderStatus.DELIVERING:
-        if order.status not in {OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING}:
+        seller_has_started = OrderStatusHistory.objects.filter(
+            order_id=order.id,
+            status=OrderStatus.IN_PROGRESS,
+            changed_by=acting_user,
+        ).exists()
+        if not seller_has_started and order.status not in {OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING}:
             raise OrderServiceError("Só pode marcar em entrega depois de preparação.")
 
         if any(item.item_status == OrderItemStatus.PENDING for item in active_seller_items):
-            raise OrderServiceError("Tem de aceitar o pedido antes de o marcar em entrega.")
+            raise OrderServiceError("Tem de aceitar o pedido antes de avançar o estado da encomenda.")
 
         deliverable_items = [
             item for item in active_seller_items
             if item.item_status == OrderItemStatus.CONFIRMED
         ]
-        if not deliverable_items and not any(
+        has_items_in_delivery = any(
             item.item_status == OrderItemStatus.IN_DELIVERY for item in active_seller_items
-        ):
+        )
+        if not deliverable_items and not has_items_in_delivery:
             raise OrderServiceError("Não existem items elegíveis para marcar em entrega.")
-        if not deliverable_items and any(
-            item.item_status == OrderItemStatus.IN_DELIVERY for item in active_seller_items
-        ):
-            raise OrderServiceError("Esta encomenda já está em entrega.")
+        if not deliverable_items and has_items_in_delivery:
+            return order
 
         for item in active_seller_items:
             if item.item_status == OrderItemStatus.CONFIRMED:

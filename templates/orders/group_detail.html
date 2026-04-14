@@ -36,7 +36,7 @@
               <th>Origem</th>
               <th>Estado</th>
               <th>Total</th>
-              <th>Ação</th>
+              <th class="ordg-col-action">Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -45,10 +45,25 @@
                 <td>#{{ sub.order.order_number }}</td>
                 <td>{{ sub.seller_label }}</td>
                 <td>{{ sub.source_label }}</td>
-                <td>{{ sub.status_label }}</td>
-                <td><strong>{{ sub.total_amount|floatformat:2 }} €</strong></td>
                 <td>
-                  <a class="ordg-link" href="{{ sub.detail_url }}">Ver detalhe</a>
+                  <span class="ordg-status ordg-status--{{ sub.status_key }}">
+                    {{ sub.status_label }}
+                  </span>
+                </td>
+                <td><strong>{{ sub.total_amount|floatformat:2 }} €</strong></td>
+                <td class="ordg-col-action">
+                  <div class="ordg-actions">
+                    <a class="ordg-link" href="{{ sub.detail_url }}">Ver detalhe</a>
+                    {% if sub.can_confirm_receipt %}
+                      <form method="post" action="{% url 'orders:confirm_receipt' sub.order.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{% url 'orders:group_detail' group.id %}">
+                        <button type="submit" class="ordg-link ordg-link--confirm">
+                          Confirmar receção
+                        </button>
+                      </form>
+                    {% endif %}
+                  </div>
                 </td>
               </tr>
             {% endfor %}
@@ -102,8 +117,20 @@
 .ordg-table{width:100%;border-collapse:collapse}
 .ordg-table th,.ordg-table td{padding:.8rem .7rem;border-bottom:1px solid #f1f5f9;text-align:left;font-size:.88rem}
 .ordg-table th{font-size:.75rem;text-transform:uppercase;color:#64748b}
+.ordg-table th.ordg-col-action,.ordg-table td.ordg-col-action{text-align:center}
+.ordg-status{display:inline-flex;align-items:center;padding:.25rem .62rem;border-radius:999px;font-size:.75rem;font-weight:800;background:transparent;border:1px solid #cbd5e1;color:#475569}
+.ordg-status--pending{border-color:#f59e0b;color:#b45309}
+.ordg-status--confirmed{border-color:#2563eb;color:#1d4ed8}
+.ordg-status--in_progress{border-color:#7c3aed;color:#6d28d9}
+.ordg-status--delivering{border-color:#0ea5e9;color:#0369a1}
+.ordg-status--completed{border-color:#16a34a;color:#166534}
+.ordg-status--cancelled{border-color:#dc2626;color:#b91c1c}
 .ordg-link{display:inline-flex;padding:.45rem .7rem;border-radius:.75rem;background:#eff6ff;color:#1d4ed8;font-weight:700;text-decoration:none}
 .ordg-link:hover{background:#dbeafe}
+.ordg-link--confirm{border:none;cursor:pointer;background:#dcfce7;color:#166534}
+.ordg-link--confirm:hover{background:#bbf7d0}
+.ordg-actions{display:flex;align-items:center;justify-content:center;gap:.45rem;flex-wrap:wrap}
+.ordg-actions form{margin:0}
 .ordg-summary{display:flex;flex-direction:column;gap:.9rem}
 .ordg-summary div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:.85rem;padding:.75rem .8rem}
 .ordg-summary span{display:block;color:#64748b;font-size:.8rem}

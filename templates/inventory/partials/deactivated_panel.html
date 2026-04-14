@@ -12,119 +12,129 @@
       class="inv-toolbar-form"
       hx-get="{% url 'inventory:meus_produtos' %}"
       hx-trigger="keyup changed delay:300ms from:input[name='q']"
-      hx-target="#inventory-panel"
-      hx-swap="innerHTML"
+      hx-target="#inv-deactivated-results"
+      hx-select="#inv-deactivated-results"
+      hx-swap="outerHTML"
       hx-push-url="true"
     >
       <input type="hidden" name="tab" value="desativados">
       <input type="hidden" name="sort" value="{{ sort|default:'name' }}">
       <div class="inv-search">
         <i class="bi bi-search"></i>
-        <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar produto desativado...">
+        <input
+          type="text"
+          id="deactivated-search-q"
+          name="q"
+          value="{{ q }}"
+          placeholder="Pesquisar produto desativado..."
+          hx-preserve="true"
+        >
       </div>
     </form>
   </div>
 
-  {% if category_groups %}
-    <div class="inv-category-stack">
-      {% for group in category_groups %}
-        <section class="inv-category-block">
-          <div class="inv-category-head">
-            <h4 class="inv-category-title">{{ group.name }}</h4>
-            <span class="inv-category-count">{{ group.count }} produto{{ group.count|pluralize }}</span>
-          </div>
+  <div id="inv-deactivated-results">
+    {% if category_groups %}
+      <div class="inv-category-stack">
+        {% for group in category_groups %}
+          <section class="inv-category-block">
+            <div class="inv-category-head">
+              <h4 class="inv-category-title">{{ group.name }}</h4>
+              <span class="inv-category-count">{{ group.count }} produto{{ group.count|pluralize }}</span>
+            </div>
 
-          <div class="inv-category-table-wrap">
-            <table class="inv-table">
-              <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th>Stock registado</th>
-                  <th>Última alteração</th>
-                  <th style="text-align:right;">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in group.rows %}
-                  <tr {% if row.stock %}
-                        class="inv-row-link"
-                        data-detail-url="{% url 'inventory:stock_detalhe' product_id=row.product.id %}"
-                        tabindex="0"
-                        role="link"
-                        aria-label="Ver detalhe de {{ row.product.name }}"
-                      {% endif %}>
-                    <td>
-                      <p class="inv-product">{{ row.product.name }}</p>
-                      <p class="inv-product-meta">
-                        {{ row.product.category.name|default:"Sem categoria" }} · {{ row.product.unit }}
-                      </p>
-                    </td>
-
-                    <td>
-                      {% if row.stock %}
-                        <span class="inv-value">{{ row.stock.current_quantity|default:0|floatformat:"-3" }}</span>
-                        <span class="inv-unit">{{ row.product.unit }}</span>
-                        <span class="inv-subvalue">
-                          Reservado: {{ row.stock.reserved_quantity|default:0|floatformat:"-3" }} {{ row.product.unit }}
-                        </span>
-                      {% else %}
-                        <span class="inv-subvalue">Sem registo de stock</span>
-                      {% endif %}
-                    </td>
-
-                    <td style="font-size:.82rem;color:#64748b;">
-                      {{ row.producer_product.updated_at|date:"d/m/Y H:i"|default:"—" }}
-                    </td>
-
-                    <td>
-                      <div class="inv-actions">
-                        {% if row.stock %}
-                          <a href="{% url 'inventory:stock_detalhe' product_id=row.product.id %}"
-                             class="inv-icon-btn"
-                             title="Inspecionar produto">
-                            <i class="bi bi-eye"></i>
-                          </a>
-                        {% else %}
-                          <button type="button"
-                                  class="inv-icon-btn"
-                                  title="Sem detalhe disponível"
-                                  style="opacity:.45;cursor:not-allowed;"
-                                  disabled>
-                            <i class="bi bi-eye"></i>
-                          </button>
-                        {% endif %}
-
-                        <form method="post" action="{% url 'inventory:reativar_produto' producer_product_id=row.producer_product.id %}" style="display:inline;">
-                          {% csrf_token %}
-                          <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                          <button type="submit"
-                                  class="inv-icon-btn inv-icon-btn--green"
-                                  title="Reativar produto">
-                            <i class="bi bi-arrow-clockwise"></i>
-                          </button>
-                        </form>
-                      </div>
-                    </td>
+            <div class="inv-category-table-wrap">
+              <table class="inv-table">
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Stock registado</th>
+                    <th>Última alteração</th>
+                    <th style="text-align:right;">Ações</th>
                   </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="inv-empty">
-      <i class="bi bi-check2-circle"></i>
-      {% if q %}
-        <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem resultados para a pesquisa</p>
-        <p style="margin:0;">Não encontrámos produtos desativados com os critérios aplicados.</p>
-      {% else %}
-        <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem produtos desativados</p>
-        <p style="margin:0;">Quando desativar um produto, ele aparecerá aqui.</p>
-      {% endif %}
-    </div>
-  {% endif %}
+                </thead>
+                <tbody>
+                  {% for row in group.rows %}
+                    <tr {% if row.stock %}
+                          class="inv-row-link"
+                          data-detail-url="{% url 'inventory:stock_detalhe' product_id=row.product.id %}"
+                          tabindex="0"
+                          role="link"
+                          aria-label="Ver detalhe de {{ row.product.name }}"
+                        {% endif %}>
+                      <td>
+                        <p class="inv-product">{{ row.product.name }}</p>
+                        <p class="inv-product-meta">
+                          {{ row.product.category.name|default:"Sem categoria" }} · {{ row.product.unit }}
+                        </p>
+                      </td>
+
+                      <td>
+                        {% if row.stock %}
+                          <span class="inv-value">{{ row.stock.current_quantity|default:0|floatformat:"-3" }}</span>
+                          <span class="inv-unit">{{ row.product.unit }}</span>
+                          <span class="inv-subvalue">
+                            Reservado: {{ row.stock.reserved_quantity|default:0|floatformat:"-3" }} {{ row.product.unit }}
+                          </span>
+                        {% else %}
+                          <span class="inv-subvalue">Sem registo de stock</span>
+                        {% endif %}
+                      </td>
+
+                      <td style="font-size:.82rem;color:#64748b;">
+                        {{ row.producer_product.updated_at|date:"d/m/Y H:i"|default:"—" }}
+                      </td>
+
+                      <td>
+                        <div class="inv-actions">
+                          {% if row.stock %}
+                            <a href="{% url 'inventory:stock_detalhe' product_id=row.product.id %}"
+                               class="inv-icon-btn"
+                               title="Inspecionar produto">
+                              <i class="bi bi-eye"></i>
+                            </a>
+                          {% else %}
+                            <button type="button"
+                                    class="inv-icon-btn"
+                                    title="Sem detalhe disponível"
+                                    style="opacity:.45;cursor:not-allowed;"
+                                    disabled>
+                              <i class="bi bi-eye"></i>
+                            </button>
+                          {% endif %}
+
+                          <form method="post" action="{% url 'inventory:reativar_produto' producer_product_id=row.producer_product.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button type="submit"
+                                    class="inv-icon-btn inv-icon-btn--green"
+                                    title="Reativar produto">
+                              <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="inv-empty">
+        <i class="bi bi-check2-circle"></i>
+        {% if q %}
+          <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem resultados para a pesquisa</p>
+          <p style="margin:0;">Não encontrámos produtos desativados com os critérios aplicados.</p>
+        {% else %}
+          <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem produtos desativados</p>
+          <p style="margin:0;">Quando desativar um produto, ele aparecerá aqui.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
 </div>
 
 <script>

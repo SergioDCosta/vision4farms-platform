@@ -22,7 +22,7 @@
       <a href="/recomendacoes/" class="pnl-hero-btn pnl-hero-btn--white">
         <i class="bi bi-magic"></i> Recomendações
       </a>
-      <a href="/marketplace/" class="pnl-hero-btn pnl-hero-btn--ghost">
+      <a href="/marketplace/publicar/" class="pnl-hero-btn pnl-hero-btn--ghost">
         <i class="bi bi-plus-lg"></i> Publicar excedente
       </a>
     </div>
@@ -57,7 +57,7 @@
       <div class="pnl-kpi-foot"><span class="pnl-dot"></span>em aberto</div>
     </a>
 
-    <a href="/marketplace/" class="pnl-kpi pnl-kpi--green">
+    <a href="{% url 'marketplace:index' %}?tab=meus" class="pnl-kpi pnl-kpi--green">
       <div class="pnl-kpi-header">
         <span class="pnl-kpi-label">Excedentes</span>
         <span class="pnl-kpi-ico"><i class="bi bi-shop"></i></span>

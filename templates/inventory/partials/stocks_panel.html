@@ -14,14 +14,22 @@
       class="inv-toolbar-form"
       hx-get="{% url 'inventory:meus_produtos' %}"
       hx-trigger="keyup changed delay:300ms from:input[name='q'], change from:select[name='sort']"
-      hx-target="#inventory-panel"
-      hx-swap="innerHTML"
+      hx-target="#inv-stock-results"
+      hx-select="#inv-stock-results"
+      hx-swap="outerHTML"
       hx-push-url="true"
     >
       <input type="hidden" name="tab" value="stock">
       <div class="inv-search">
         <i class="bi bi-search"></i>
-        <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar produto, categoria ou unidade...">
+        <input
+          type="text"
+          id="stock-search-q"
+          name="q"
+          value="{{ q }}"
+          placeholder="Pesquisar produto, categoria ou unidade..."
+          hx-preserve="true"
+        >
       </div>
 
       <div class="inv-sort">
@@ -36,165 +44,167 @@
     </form>
   </div>
 
-  {% if category_groups %}
-    <div class="inv-category-stack">
-      {% for group in category_groups %}
-        <section class="inv-category-block">
-          <div class="inv-category-head">
-            <h4 class="inv-category-title">{{ group.name }}</h4>
-            <span class="inv-category-count">{{ group.count }} produto{{ group.count|pluralize }}</span>
-          </div>
+  <div id="inv-stock-results">
+    {% if category_groups %}
+      <div class="inv-category-stack">
+        {% for group in category_groups %}
+          <section class="inv-category-block">
+            <div class="inv-category-head">
+              <h4 class="inv-category-title">{{ group.name }}</h4>
+              <span class="inv-category-count">{{ group.count }} produto{{ group.count|pluralize }}</span>
+            </div>
 
-          <div class="inv-category-table-wrap">
-            <table class="inv-table inv-table--stock">
-              <colgroup>
-                <col style="width:29%">
-                <col style="width:16%">
-                <col style="width:11%">
-                <col style="width:15%">
-                <col style="width:11%">
-                <col style="width:10%">
-                <col style="width:8%">
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th>Stock Atual</th>
-                  <th>Reservado</th>
-                  <th>Stock de segurança</th>
-                  <th>Estado</th>
-                  <th style="text-align:right;">Ações</th>
-                  <th class="inv-context-col">Sugestão</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in group.rows %}
-                  <tr class="{{ row.state.row_class }} inv-row-link"
-                      data-detail-url="{% url 'inventory:stock_detalhe' product_id=row.product_id %}"
-                      tabindex="0"
-                      role="link"
-                      aria-label="Ver detalhe de {{ row.product.name }}">
-                    <td>
-                      <p class="inv-product">{{ row.product.name }}</p>
-                      <p class="inv-product-meta">
-                        {{ row.product.category.name|default:"Sem categoria" }} · {{ row.product.unit }}
-                      </p>
-                    </td>
-
-                    <td>
-                      <span class="{{ row.state.text_class }}">
-                        {{ row.stock.current_quantity|default:0|floatformat:"-3" }}
-                      </span>
-                      <span class="inv-unit">{{ row.product.unit }}</span>
-
-                      <span class="inv-subvalue">
-                        Disponível: {{ row.stock.available_quantity|default:0|floatformat:"-3" }} {{ row.product.unit }}
-                      </span>
-                      {% if row.incoming_forecast_qty and row.incoming_forecast_qty != 0 %}
-                        <span class="inv-subvalue inv-subvalue--forecast">
-                          Previsto a receber: {{ row.incoming_forecast_qty|floatformat:"-3" }} {{ row.product.unit }}
-                        </span>
-                        <span class="inv-subvalue">
-                          {% if row.incoming_forecast_period_start or row.incoming_forecast_period_end %}
-                            Período previsto:
-                            {% if row.incoming_forecast_period_start %}{{ row.incoming_forecast_period_start|date:"d/m/Y" }}{% else %}—{% endif %}
-                            -
-                            {% if row.incoming_forecast_period_end %}{{ row.incoming_forecast_period_end|date:"d/m/Y" }}{% else %}—{% endif %}
-                          {% else %}
-                            Período previsto: sem período definido
-                          {% endif %}
-                        </span>
-                      {% endif %}
-                    </td>
-
-                    <td>
-                      <span class="inv-value">
-                        {{ row.stock.reserved_quantity|default:0|floatformat:"-3" }}
-                      </span>
-                      <span class="inv-unit">{{ row.product.unit }}</span>
-                    </td>
-
-                    <td>
-                      <span class="inv-value">
-                        {{ row.stock.safety_stock|default:0|floatformat:"-3" }}
-                      </span>
-                      <span class="inv-unit">{{ row.product.unit }}</span>
-                      <span class="inv-subvalue">
-                        Limiar excedente: {{ row.stock.surplus_threshold|default:0|floatformat:"-3" }} {{ row.product.unit }}
-                      </span>
-
-                      {% if row.state.key == "excess" %}
-                        <span class="inv-subvalue">
-                          Publicável: {{ row.state.publishable_quantity|floatformat:"-3" }} {{ row.product.unit }}
-                        </span>
-                      {% endif %}
-                    </td>
-
-                    <td>
-                      <span class="{{ row.state.pill_class }}">
-                        {{ row.state.label }}
-                      </span>
-                    </td>
-
-                    <td>
-                      <div class="inv-actions inv-actions--main">
-                        <a href="{% url 'inventory:stock_detalhe' product_id=row.product_id %}"
-                           class="inv-icon-btn"
-                           title="Ver detalhe">
-                          <i class="bi bi-eye"></i>
-                        </a>
-
-                        <a href="{% url 'inventory:atualizar_stock' product_id=row.product_id %}"
-                           class="inv-icon-btn"
-                           title="Atualizar stock">
-                          <i class="bi bi-pencil"></i>
-                        </a>
-                      </div>
-                    </td>
-
-                    <td class="inv-context-col">
-                      <div class="inv-context-action">
-                        {% if row.state.key == "critical" %}
-                          <a href="{{ row.state.action_url }}?product={{ row.product_id }}"
-                             class="inv-icon-btn inv-icon-btn--red"
-                             title="Ver recomendação de compra">
-                            <i class="bi bi-stars"></i>
-                          </a>
-                        {% elif row.state.key == "excess" %}
-                          <a href="{% url 'marketplace:publish' %}?source=stock&product={{ row.product_id }}&from=inventory"
-                             class="inv-icon-btn inv-icon-btn--green"
-                             title="Vender no marketplace">
-                            <i class="bi bi-cash-coin"></i>
-                          </a>
-                        {% else %}
-                          <a href="{% url 'marketplace:index' %}?tab=todos&q={{ row.product.name|urlencode }}"
-                             class="inv-icon-btn inv-icon-btn--amber"
-                             title="Comprar">
-                            <i class="bi bi-shop"></i>
-                          </a>
-                        {% endif %}
-                      </div>
-                    </td>
+            <div class="inv-category-table-wrap">
+              <table class="inv-table inv-table--stock">
+                <colgroup>
+                  <col style="width:29%">
+                  <col style="width:16%">
+                  <col style="width:11%">
+                  <col style="width:15%">
+                  <col style="width:11%">
+                  <col style="width:10%">
+                  <col style="width:8%">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Stock Atual</th>
+                    <th>Reservado</th>
+                    <th>Stock de segurança</th>
+                    <th>Estado</th>
+                    <th style="text-align:right;">Ações</th>
+                    <th class="inv-context-col">Sugestão</th>
                   </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="inv-empty">
-      <i class="bi bi-box-seam"></i>
-      {% if q %}
-        <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem resultados para a pesquisa</p>
-        <p style="margin:0;">Não encontrámos produtos com os critérios aplicados.</p>
-      {% else %}
-        <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem produtos no inventário</p>
-        <p style="margin:0;">Adicione um produto para começar a gerir stock e compras.</p>
-      {% endif %}
-    </div>
-  {% endif %}
+                </thead>
+                <tbody>
+                  {% for row in group.rows %}
+                    <tr class="{{ row.state.row_class }} inv-row-link"
+                        data-detail-url="{% url 'inventory:stock_detalhe' product_id=row.product_id %}"
+                        tabindex="0"
+                        role="link"
+                        aria-label="Ver detalhe de {{ row.product.name }}">
+                      <td>
+                        <p class="inv-product">{{ row.product.name }}</p>
+                        <p class="inv-product-meta">
+                          {{ row.product.category.name|default:"Sem categoria" }} · {{ row.product.unit }}
+                        </p>
+                      </td>
+
+                      <td>
+                        <span class="{{ row.state.text_class }}">
+                          {{ row.stock.current_quantity|default:0|floatformat:"-3" }}
+                        </span>
+                        <span class="inv-unit">{{ row.product.unit }}</span>
+
+                        <span class="inv-subvalue">
+                          Disponível: {{ row.stock.available_quantity|default:0|floatformat:"-3" }} {{ row.product.unit }}
+                        </span>
+                        {% if row.incoming_forecast_qty and row.incoming_forecast_qty != 0 %}
+                          <span class="inv-subvalue inv-subvalue--forecast">
+                            Previsto a receber: {{ row.incoming_forecast_qty|floatformat:"-3" }} {{ row.product.unit }}
+                          </span>
+                          <span class="inv-subvalue">
+                            {% if row.incoming_forecast_period_start or row.incoming_forecast_period_end %}
+                              Período previsto:
+                              {% if row.incoming_forecast_period_start %}{{ row.incoming_forecast_period_start|date:"d/m/Y" }}{% else %}—{% endif %}
+                              -
+                              {% if row.incoming_forecast_period_end %}{{ row.incoming_forecast_period_end|date:"d/m/Y" }}{% else %}—{% endif %}
+                            {% else %}
+                              Período previsto: sem período definido
+                            {% endif %}
+                          </span>
+                        {% endif %}
+                      </td>
+
+                      <td>
+                        <span class="inv-value">
+                          {{ row.stock.reserved_quantity|default:0|floatformat:"-3" }}
+                        </span>
+                        <span class="inv-unit">{{ row.product.unit }}</span>
+                      </td>
+
+                      <td>
+                        <span class="inv-value">
+                          {{ row.stock.safety_stock|default:0|floatformat:"-3" }}
+                        </span>
+                        <span class="inv-unit">{{ row.product.unit }}</span>
+                        <span class="inv-subvalue">
+                          Limiar excedente: {{ row.stock.surplus_threshold|default:0|floatformat:"-3" }} {{ row.product.unit }}
+                        </span>
+
+                        {% if row.state.key == "excess" %}
+                          <span class="inv-subvalue">
+                            Publicável: {{ row.state.publishable_quantity|floatformat:"-3" }} {{ row.product.unit }}
+                          </span>
+                        {% endif %}
+                      </td>
+
+                      <td>
+                        <span class="{{ row.state.pill_class }}">
+                          {{ row.state.label }}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div class="inv-actions inv-actions--main">
+                          <a href="{% url 'inventory:stock_detalhe' product_id=row.product_id %}"
+                             class="inv-icon-btn"
+                             title="Ver detalhe">
+                            <i class="bi bi-eye"></i>
+                          </a>
+
+                          <a href="{% url 'inventory:atualizar_stock' product_id=row.product_id %}"
+                             class="inv-icon-btn"
+                             title="Atualizar stock">
+                            <i class="bi bi-pencil"></i>
+                          </a>
+                        </div>
+                      </td>
+
+                      <td class="inv-context-col">
+                        <div class="inv-context-action">
+                          {% if row.state.key == "critical" %}
+                            <a href="{{ row.state.action_url }}?product={{ row.product_id }}"
+                               class="inv-icon-btn inv-icon-btn--red"
+                               title="Ver recomendação de compra">
+                              <i class="bi bi-stars"></i>
+                            </a>
+                          {% elif row.state.key == "excess" %}
+                            <a href="{% url 'marketplace:publish' %}?source=stock&product={{ row.product_id }}&from=inventory"
+                               class="inv-icon-btn inv-icon-btn--green"
+                               title="Vender no marketplace">
+                              <i class="bi bi-cash-coin"></i>
+                            </a>
+                          {% else %}
+                            <a href="{% url 'marketplace:index' %}?tab=todos&q={{ row.product.name|urlencode }}"
+                               class="inv-icon-btn inv-icon-btn--amber"
+                               title="Comprar">
+                              <i class="bi bi-shop"></i>
+                            </a>
+                          {% endif %}
+                        </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="inv-empty">
+        <i class="bi bi-box-seam"></i>
+        {% if q %}
+          <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem resultados para a pesquisa</p>
+          <p style="margin:0;">Não encontrámos produtos com os critérios aplicados.</p>
+        {% else %}
+          <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem produtos no inventário</p>
+          <p style="margin:0;">Adicione um produto para começar a gerir stock e compras.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
 </div>
 
 <script>
