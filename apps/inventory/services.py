@@ -544,11 +544,7 @@ def create_custom_product_for_producer(
     if not unit:
         raise ValidationError("Indica a unidade do produto.")
 
-    base_slug = slugify(name)
-    if not base_slug:
-        raise ValidationError("Não foi possível gerar um identificador válido para o produto.")
-
-    existing_product = Product.objects.filter(slug=base_slug).first()
+    existing_product = Product.objects.filter(name__iexact=name).first()
 
     product_created = False
     if existing_product:
@@ -558,6 +554,10 @@ def create_custom_product_for_producer(
             )
         product = existing_product
     else:
+        base_slug = slugify(name)
+        if not base_slug:
+            raise ValidationError("Não foi possível gerar um identificador válido para o produto.")
+
         product = Product.objects.create(
             category=category,
             name=name,

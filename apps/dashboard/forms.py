@@ -35,13 +35,6 @@ class AdminCategoryForm(forms.Form):
         }),
     )
 
-    is_active = forms.BooleanField(
-        label="Categoria ativa",
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-    )
-
     def clean_name(self):
         value = " ".join((self.cleaned_data.get("name") or "").split()).strip()
         if not value:
@@ -94,9 +87,7 @@ class AdminProductForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["category"].queryset = ProductCategory.objects.filter(
-            is_active=True
-        ).order_by("name")
+        self.fields["category"].queryset = ProductCategory.objects.order_by("name")
 
     def clean_name(self):
         value = " ".join((self.cleaned_data.get("name") or "").split()).strip()

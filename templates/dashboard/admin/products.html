@@ -17,17 +17,11 @@
     </form>
 
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:.5rem;padding:.55rem .95rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.85rem;font-size:.8rem;color:#64748b;">
-        <i class="bi bi-info-circle" style="color:#2563eb;"></i>
-        Os produtos são geridos pelo administrador
-      </div>
-
       <a href="{% url 'dashboard:gestor_produto_novo' %}" class="adm-btn-primary">
         <i class="bi bi-plus-lg"></i> Novo produto
       </a>
     </div>
   </div>
-
   {% include "dashboard/admin/partials/products_table.html" %}
 </div>
 

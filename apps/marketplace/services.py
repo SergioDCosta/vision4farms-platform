@@ -172,6 +172,7 @@ def get_public_listings(*, producer=None, q="", category_id=""):
     qs = get_base_listing_queryset().filter(
         status=ListingStatus.ACTIVE,
         quantity_available__gt=0,
+        product__is_active=True,
     )
 
     if producer:
@@ -223,9 +224,9 @@ def get_listing_detail_queryset(*, producer=None):
     qs = get_base_listing_queryset()
 
     if producer:
-        return qs.filter(Q(status=ListingStatus.ACTIVE) | Q(producer=producer))
+        return qs.filter(Q(status=ListingStatus.ACTIVE, product__is_active=True) | Q(producer=producer))
 
-    return qs.filter(status=ListingStatus.ACTIVE)
+    return qs.filter(status=ListingStatus.ACTIVE, product__is_active=True)
 
 
 def get_producer_products(producer):

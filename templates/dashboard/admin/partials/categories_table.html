@@ -5,7 +5,6 @@
         <tr>
           <th>Categoria</th>
           <th>Slug</th>
-          <th>Estado</th>
           <th>Criado</th>
           <th></th>
         </tr>
@@ -15,44 +14,18 @@
         <tr>
           <td style="font-weight:600;color:#0f172a;">{{ cat.name }}</td>
           <td style="font-size:.8rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ cat.slug }}</td>
-          <td>
-            {% if cat.is_active %}
-              <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativa</span>
-            {% else %}
-              <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Inativa</span>
-            {% endif %}
-          </td>
           <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">{{ cat.created_at|date:"d/m/Y" }}</td>
           <td>
             <div style="display:flex;justify-content:flex-end;gap:.35rem;">
               <a href="{% url 'dashboard:gestor_categoria_editar' cat.id %}" class="adm-act-btn" title="Editar">
                 <i class="bi bi-pencil"></i>
               </a>
-              <form
-                method="post"
-                action="{% url 'dashboard:gestor_categoria_estado' cat.id %}"
-                style="display:inline"
-                hx-post="{% url 'dashboard:gestor_categoria_estado' cat.id %}"
-                hx-target="#categories-table"
-                hx-swap="outerHTML"
-              >
-                {% csrf_token %}
-                <input type="hidden" name="q" value="{{ q }}">
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <button
-                  type="submit"
-                  class="adm-act-btn {% if cat.is_active %}adm-act-btn--warn{% endif %}"
-                  title="{% if cat.is_active %}Desativar{% else %}Reativar{% endif %}"
-                >
-                  <i class="bi bi-{% if cat.is_active %}slash-circle{% else %}check-circle{% endif %}"></i>
-                </button>
-              </form>
             </div>
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="5">
+          <td colspan="4">
             <div class="adm-empty">
               <i class="bi bi-tags"></i>
               <p>Sem categorias registadas.</p>

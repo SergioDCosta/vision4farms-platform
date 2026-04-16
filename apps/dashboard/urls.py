@@ -17,7 +17,6 @@ urlpatterns = [
     path("gestor/categorias/", views.admin_categories_view, name="gestor_categorias"),
     path("gestor/categorias/nova/", views.admin_category_create_view, name="gestor_categoria_nova"),
     path("gestor/categorias/<uuid:category_id>/editar/", views.admin_category_update_view, name="gestor_categoria_editar"),
-    path("gestor/categorias/<uuid:category_id>/estado/", views.admin_category_toggle_status_view, name="gestor_categoria_estado"),
 
     path("gestor/utilizadores/", views.admin_users_view, name="gestor_utilizadores"),
     path("gestor/utilizadores/novo/", views.admin_user_create_view, name="gestor_utilizador_novo"),

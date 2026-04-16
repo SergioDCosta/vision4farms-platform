@@ -31,12 +31,64 @@
          hx-select="#shellMain"
          hx-swap="outerHTML"
          hx-push-url="true"
-         data-active-mode="prefix"
+         data-active-mode="exact"
          data-active-value="/gestor/"
-         class="sidebar-link {% if '/gestor/' in request.path %}active{% endif %}"
-         data-tooltip="Painel Admin">
+         class="sidebar-link {% if request.path == '/gestor/' %}active{% endif %}"
+         data-tooltip="Dashboard Admin">
         <span class="sidebar-link-icon"><i class="bi bi-grid-fill"></i></span>
-        <span class="sidebar-link-text">Painel Admin</span>
+        <span class="sidebar-link-text">Dashboard Admin</span>
+      </a>
+      <a href="{% url 'dashboard:gestor_produtos' %}"
+         hx-get="{% url 'dashboard:gestor_produtos' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/gestor/produtos/"
+         class="sidebar-link {% if '/gestor/produtos/' in request.path %}active{% endif %}"
+         data-tooltip="Produtos">
+        <span class="sidebar-link-icon"><i class="bi bi-box-seam-fill"></i></span>
+        <span class="sidebar-link-text">Produtos</span>
+      </a>
+      <a href="{% url 'dashboard:gestor_categorias' %}"
+         hx-get="{% url 'dashboard:gestor_categorias' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/gestor/categorias/"
+         class="sidebar-link {% if '/gestor/categorias/' in request.path %}active{% endif %}"
+         data-tooltip="Categorias">
+        <span class="sidebar-link-icon"><i class="bi bi-tags-fill"></i></span>
+        <span class="sidebar-link-text">Categorias</span>
+      </a>
+      <a href="{% url 'dashboard:gestor_utilizadores' %}"
+         hx-get="{% url 'dashboard:gestor_utilizadores' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/gestor/utilizadores/"
+         class="sidebar-link {% if '/gestor/utilizadores/' in request.path %}active{% endif %}"
+         data-tooltip="Utilizadores">
+        <span class="sidebar-link-icon"><i class="bi bi-people-fill"></i></span>
+        <span class="sidebar-link-text">Utilizadores</span>
+      </a>
+      <a href="{% url 'dashboard:gestor_auditoria' %}"
+         hx-get="{% url 'dashboard:gestor_auditoria' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/gestor/auditoria/"
+         class="sidebar-link {% if '/gestor/auditoria/' in request.path %}active{% endif %}"
+         data-tooltip="Auditoria">
+        <span class="sidebar-link-icon"><i class="bi bi-journal-text"></i></span>
+        <span class="sidebar-link-text">Auditoria</span>
       </a>
       <a href="/marketplace/"
          hx-get="/marketplace/"

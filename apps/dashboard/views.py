@@ -1,9 +1,11 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import models, transaction, IntegrityError
 from django.db.models import Q, Sum, Count
+from django.db.models.functions import TruncWeek
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -24,7 +26,7 @@ from apps.accounts.services import send_admin_invite_email, create_admin_invite_
 from apps.inventory.models import ProducerProfile, ProducerProduct, Stock
 from apps.alerts.models import Alert, AlertStatus, AlertSeverity
 from apps.marketplace.models import MarketplaceListing, ListingStatus
-from apps.orders.models import Order, OrderStatus
+from apps.orders.models import Order, OrderStatus, OrderItem, OrderItemStatus, OrderSourceType
 from apps.catalog.models import Product, ProductCategory
 from apps.dashboard.models import AuditLog
 from apps.dashboard.forms import AdminUserCreateForm, AdminCategoryForm, AdminProductForm
@@ -322,21 +324,162 @@ def dashboard_view(request):
 def admin_dashboard_view(request):
     now = timezone.now()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    chart_start = week_start - timedelta(weeks=11)
+    source_types = [OrderSourceType.MARKETPLACE, OrderSourceType.RECOMMENDATION]
 
     active_listings_count = MarketplaceListing.objects.filter(
         status=ListingStatus.ACTIVE
     ).count()
 
-    monthly_orders_qs = Order.objects.filter(created_at__gte=month_start)
+    monthly_orders_qs = Order.objects.filter(
+        created_at__gte=month_start,
+        source_type__in=source_types,
+    )
     monthly_orders_count = monthly_orders_qs.count()
     monthly_volume = monthly_orders_qs.aggregate(
         total=Sum("total_amount")
     )["total"] or Decimal("0.00")
 
+    active_users_qs = User.objects.filter(
+        is_active=True,
+        account_status=AccountStatus.ACTIVE,
+    )
+    active_users_count = active_users_qs.count()
+    online_threshold = now - timedelta(minutes=15)
+    online_users_count = active_users_qs.filter(last_login__gte=online_threshold).count()
+    offline_users_count = max(active_users_count - online_users_count, 0)
+
     critical_alerts_count = Alert.objects.filter(
         severity=AlertSeverity.CRITICAL,
         status__in=[AlertStatus.ACTIVE, AlertStatus.READ],
     ).count()
+
+    completed_items_qs = OrderItem.objects.filter(
+        order__source_type__in=source_types,
+        item_status=OrderItemStatus.COMPLETED,
+        updated_at__gte=chart_start,
+    )
+    category_rows = list(
+        completed_items_qs
+        .values("product__category_id", "product__category__name")
+        .annotate(total_qty=Sum("quantity"))
+        .order_by("-total_qty")
+    )
+
+    palette = ["#16a34a", "#2563eb", "#d97706", "#7c3aed", "#0ea5e9", "#94a3b8"]
+    category_pie_slices = []
+    max_pie_slices = 5
+    top_rows = category_rows[:max_pie_slices]
+    remaining_rows = category_rows[max_pie_slices:]
+    if remaining_rows:
+        others_qty = sum((Decimal(str(row.get("total_qty") or 0)) for row in remaining_rows), Decimal("0"))
+        if others_qty > 0:
+            top_rows.append(
+                {
+                    "product__category_id": None,
+                    "product__category__name": "Outras categorias",
+                    "total_qty": others_qty,
+                }
+            )
+
+    pie_total = sum((Decimal(str(row.get("total_qty") or 0)) for row in top_rows), Decimal("0"))
+    pie_cursor = Decimal("0")
+    pie_segments = []
+    for idx, row in enumerate(top_rows):
+        quantity = Decimal(str(row.get("total_qty") or 0))
+        if quantity <= 0:
+            continue
+
+        category_label = row.get("product__category__name") or "Sem categoria"
+        percentage = (quantity / pie_total * Decimal("100")) if pie_total > 0 else Decimal("0")
+        start_pct = pie_cursor
+        end_pct = pie_cursor + percentage
+        color = palette[idx % len(palette)]
+        pie_segments.append(f"{color} {start_pct:.2f}% {end_pct:.2f}%")
+        pie_cursor = end_pct
+
+        category_pie_slices.append(
+            {
+                "label": category_label,
+                "quantity": quantity,
+                "percentage": float(percentage),
+                "color": color,
+            }
+        )
+
+    category_pie_gradient = f"conic-gradient({', '.join(pie_segments)})" if pie_segments else None
+    top_category_row = category_rows[0] if category_rows else None
+    top_category_label = (top_category_row.get("product__category__name") or "Sem categoria") if top_category_row else None
+    top_category_total_qty = Decimal(str(top_category_row.get("total_qty") or 0)) if top_category_row else Decimal("0")
+    top_category_id = top_category_row.get("product__category_id") if top_category_row else None
+
+    top_category_products = []
+    if top_category_row is not None:
+        top_products_qs = completed_items_qs
+        if top_category_id:
+            top_products_qs = top_products_qs.filter(product__category_id=top_category_id)
+        else:
+            top_products_qs = top_products_qs.filter(product__category__isnull=True)
+
+        top_category_products = list(
+            top_products_qs
+            .values("product_id", "product__name", "product__unit")
+            .annotate(total_qty=Sum("quantity"))
+            .order_by("-total_qty", "product__name")[:5]
+        )
+
+    purchases_by_week = {
+        row["week"]: row["total"]
+        for row in (
+            Order.objects
+            .filter(created_at__gte=chart_start, source_type__in=source_types)
+            .annotate(week=TruncWeek("created_at"))
+            .values("week")
+            .annotate(total=Count("id"))
+        )
+    }
+    sales_by_week = {
+        row["week"]: row["total"]
+        for row in (
+            OrderItem.objects
+            .filter(
+                updated_at__gte=chart_start,
+                item_status=OrderItemStatus.COMPLETED,
+                order__source_type__in=source_types,
+            )
+            .annotate(week=TruncWeek("updated_at"))
+            .values("week")
+            .annotate(total=Count("id"))
+        )
+    }
+
+    weekly_market_points = []
+    for idx in range(12):
+        week_ref = chart_start + timedelta(weeks=idx)
+        purchase_count = int(purchases_by_week.get(week_ref, 0) or 0)
+        sales_count = int(sales_by_week.get(week_ref, 0) or 0)
+        weekly_market_points.append(
+            {
+                "label": week_ref.strftime("%d/%m"),
+                "purchases": purchase_count,
+                "sales": sales_count,
+            }
+        )
+
+    max_weekly_value = max(
+        [max(point["purchases"], point["sales"]) for point in weekly_market_points] or [0]
+    )
+    for point in weekly_market_points:
+        if max_weekly_value > 0:
+            point["purchases_height"] = round((point["purchases"] / max_weekly_value) * 100, 2)
+            point["sales_height"] = round((point["sales"] / max_weekly_value) * 100, 2)
+        else:
+            point["purchases_height"] = 0
+            point["sales_height"] = 0
+
+    weekly_purchases_total = sum(point["purchases"] for point in weekly_market_points)
+    weekly_sales_total = sum(point["sales"] for point in weekly_market_points)
 
     recent_alerts = Alert.objects.select_related("producer", "product").order_by("-created_at")[:5]
     recent_users = User.objects.order_by("-created_at")[:5]
@@ -347,6 +490,17 @@ def admin_dashboard_view(request):
         "monthly_orders_count": monthly_orders_count,
         "monthly_volume": monthly_volume,
         "critical_alerts_count": critical_alerts_count,
+        "active_users_count": active_users_count,
+        "online_users_count": online_users_count,
+        "offline_users_count": offline_users_count,
+        "category_pie_slices": category_pie_slices,
+        "category_pie_gradient": category_pie_gradient,
+        "top_category_label": top_category_label,
+        "top_category_total_qty": top_category_total_qty,
+        "top_category_products": top_category_products,
+        "weekly_market_points": weekly_market_points,
+        "weekly_purchases_total": weekly_purchases_total,
+        "weekly_sales_total": weekly_sales_total,
         "recent_alerts": recent_alerts,
         "recent_users": recent_users,
     }
@@ -648,7 +802,6 @@ def admin_category_create_view(request):
 
     if request.method == "POST" and form.is_valid():
         name = _normalize_text(form.cleaned_data["name"])
-        is_active = form.cleaned_data["is_active"]
 
         existing_by_name = ProductCategory.objects.filter(name__iexact=name).first()
         if existing_by_name:
@@ -659,7 +812,7 @@ def admin_category_create_view(request):
             category = ProductCategory.objects.create(
                 name=name,
                 slug=slug,
-                is_active=is_active,
+                is_active=True,
             )
 
             _log_admin_action(
@@ -692,7 +845,6 @@ def admin_category_update_view(request, category_id):
         form = AdminCategoryForm(request.POST)
         if form.is_valid():
             name = _normalize_text(form.cleaned_data["name"])
-            is_active = form.cleaned_data["is_active"]
 
             existing_by_name = ProductCategory.objects.filter(name__iexact=name).exclude(id=category.id).first()
             if existing_by_name:
@@ -709,10 +861,6 @@ def admin_category_update_view(request, category_id):
                     if category.slug != new_slug:
                         category.slug = new_slug
                         changed_fields.append("slug")
-
-                if category.is_active != is_active:
-                    category.is_active = is_active
-                    changed_fields.append("is_active")
 
                 if changed_fields:
                     category.save(update_fields=changed_fields + ["updated_at"])
@@ -735,7 +883,6 @@ def admin_category_update_view(request, category_id):
     else:
         form = AdminCategoryForm(initial={
             "name": category.name,
-            "is_active": category.is_active,
         })
 
     context = {
@@ -747,62 +894,6 @@ def admin_category_update_view(request, category_id):
         "is_create": False,
     }
     return render(request, "dashboard/admin/category_form.html", context)
-
-
-@admin_required
-@require_POST
-def admin_category_toggle_status_view(request, category_id):
-    category = get_object_or_404(ProductCategory, id=category_id)
-    q = request.POST.get("q", "").strip()
-    old_snapshot = _category_snapshot(category)
-
-    if category.is_active:
-        category.is_active = False
-        action = "CATEGORY_DEACTIVATED"
-        note = f"Administrador desativou a categoria {category.name}."
-        success_msg = "Categoria desativada com sucesso."
-    else:
-        category.is_active = True
-        action = "CATEGORY_REACTIVATED"
-        note = f"Administrador reativou a categoria {category.name}."
-        success_msg = "Categoria reativada com sucesso."
-
-    category.updated_at = timezone.now()
-    category.save(update_fields=["is_active", "updated_at"])
-
-    _log_admin_action(
-        request=request,
-        action=action,
-        entity_type="categories",
-        entity_id=category.id,
-        notes=note,
-        old_values=old_snapshot,
-        new_values=_category_snapshot(category),
-    )
-
-    if request.htmx:
-        categories = ProductCategory.objects.order_by("name")
-        if q:
-            categories = categories.filter(
-                Q(name__icontains=q)
-                | Q(slug__icontains=q)
-            )
-
-        context = {
-            "admin_tab": "categorias",
-            "categories": categories,
-            "q": q,
-        }
-        response = render(request, "dashboard/admin/partials/categories_table.html", context)
-        return with_htmx_toast(response, "success", success_msg)
-
-    messages.success(request, success_msg)
-
-    next_url = request.POST.get("next")
-    if next_url:
-        return redirect(next_url)
-
-    return redirect("dashboard:gestor_categorias")
 
 
 @admin_required

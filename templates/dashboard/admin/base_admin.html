@@ -10,64 +10,6 @@
     </div>
   </div>
 
-  <nav class="adm-tabs">
-    <a
-      href="{% url 'dashboard:gestor' %}"
-      hx-get="{% url 'dashboard:gestor' %}"
-      hx-target="#admin-shell"
-      hx-select="#admin-shell"
-      hx-swap="outerHTML"
-      hx-push-url="true"
-      class="adm-tab {% if admin_tab == 'dashboard' %}adm-tab--active{% endif %}"
-    >
-      <i class="bi bi-grid-fill"></i><span>Dashboard</span>
-    </a>
-    <a
-      href="{% url 'dashboard:gestor_produtos' %}"
-      hx-get="{% url 'dashboard:gestor_produtos' %}"
-      hx-target="#admin-shell"
-      hx-select="#admin-shell"
-      hx-swap="outerHTML"
-      hx-push-url="true"
-      class="adm-tab {% if admin_tab == 'produtos' %}adm-tab--active{% endif %}"
-    >
-      <i class="bi bi-box-seam-fill"></i><span>Produtos</span>
-    </a>
-    <a
-      href="{% url 'dashboard:gestor_categorias' %}"
-      hx-get="{% url 'dashboard:gestor_categorias' %}"
-      hx-target="#admin-shell"
-      hx-select="#admin-shell"
-      hx-swap="outerHTML"
-      hx-push-url="true"
-      class="adm-tab {% if admin_tab == 'categorias' %}adm-tab--active{% endif %}"
-    >
-      <i class="bi bi-tags-fill"></i><span>Categorias</span>
-    </a>
-    <a
-      href="{% url 'dashboard:gestor_utilizadores' %}"
-      hx-get="{% url 'dashboard:gestor_utilizadores' %}"
-      hx-target="#admin-shell"
-      hx-select="#admin-shell"
-      hx-swap="outerHTML"
-      hx-push-url="true"
-      class="adm-tab {% if admin_tab == 'utilizadores' %}adm-tab--active{% endif %}"
-    >
-      <i class="bi bi-people-fill"></i><span>Utilizadores</span>
-    </a>
-    <a
-      href="{% url 'dashboard:gestor_auditoria' %}"
-      hx-get="{% url 'dashboard:gestor_auditoria' %}"
-      hx-target="#admin-shell"
-      hx-select="#admin-shell"
-      hx-swap="outerHTML"
-      hx-push-url="true"
-      class="adm-tab {% if admin_tab == 'auditoria' %}adm-tab--active{% endif %}"
-    >
-      <i class="bi bi-journal-text"></i><span>Auditoria</span>
-    </a>
-  </nav>
-
   <div class="adm-content">
     {% block admin_content %}{% endblock %}
   </div>
@@ -78,22 +20,6 @@
 .adm-header{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:1rem;}
 .adm-title{font-size:1.6rem;font-weight:800;color:#0f172a;margin:0 0 .2rem;letter-spacing:-.02em;}
 .adm-sub{font-size:.85rem;color:#64748b;margin:0;}
-
-.adm-tabs{
-  display:flex;gap:.25rem;
-  background:#f1f5f3;border-radius:.85rem;
-  padding:.3rem;border:1px solid #e2e8f0;
-  flex-wrap:wrap;
-}
-.adm-tab{
-  display:inline-flex;align-items:center;gap:.5rem;
-  padding:.55rem 1rem;border-radius:.6rem;
-  font-size:.84rem;font-weight:500;color:#64748b;
-  text-decoration:none;transition:background .15s,color .15s;white-space:nowrap;
-}
-.adm-tab:hover{background:#fff;color:#0f172a;}
-.adm-tab--active{background:#fff;color:#15803d;font-weight:700;box-shadow:0 1px 3px rgba(15,23,42,.08);}
-.adm-tab i{font-size:.9rem;}
 
 .adm-content{
   display:flex;

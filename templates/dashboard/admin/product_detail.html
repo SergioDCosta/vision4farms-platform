@@ -19,16 +19,23 @@
         </p>
       </div>
 
-      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;">
+      <div style="display:flex;align-items:flex-start;gap:.5rem;flex-wrap:wrap;margin-left:auto;">
         {% if product_obj.is_active %}
           <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Ativo</span>
         {% else %}
           <span class="adm-pill adm-pill--grey"><span class="adm-pill-dot"></span>Inativo</span>
         {% endif %}
 
-        <a href="{% url 'dashboard:gestor_produto_editar' product_obj.id %}" class="adm-btn-primary">
-          <i class="bi bi-pencil"></i> Editar produto
-        </a>
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;">
+          <a href="{% url 'dashboard:gestor_produto_editar' product_obj.id %}" class="adm-btn-primary">
+            <i class="bi bi-pencil"></i> Editar produto
+          </a>
+          {% if not can_hard_delete %}
+            <span style="font-size:.78rem;color:#64748b;max-width:260px;line-height:1.35;">
+              Produto associado a produtores: só pode desativar na edição.
+            </span>
+          {% endif %}
+        </div>
 
         {% if can_hard_delete %}
           <button type="button"
@@ -38,10 +45,6 @@
                   data-bs-target="#deleteProductDetailModal">
             <i class="bi bi-trash"></i> Remover produto
           </button>
-        {% else %}
-          <span style="font-size:.78rem;color:#64748b;">
-            Produto associado a produtores: só pode desativar na edição.
-          </span>
         {% endif %}
       </div>
     </div>
