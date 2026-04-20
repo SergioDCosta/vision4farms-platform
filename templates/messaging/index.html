@@ -149,8 +149,7 @@
                 hx-target="#shellMain"
                 hx-select="#shellMain"
                 hx-swap="outerHTML"
-                hx-push-url="true"
-                hx-confirm="{% if selected_tab == 'archived' %}Deseja desarquivar esta conversa?{% else %}Deseja arquivar esta conversa?{% endif %}">
+                hx-push-url="true">
             {% csrf_token %}
             <button type="submit" class="msg-thread__archive-btn">
               <i class="bi {% if selected_tab == 'archived' %}bi-inbox{% else %}bi-archive{% endif %}"></i>
