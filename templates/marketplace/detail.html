@@ -20,6 +20,11 @@
           <span class="mkd-badge {{ listing_source_badge_class|default:'mkd-badge--stock' }}">
             {{ listing_source_label|default:"Disponível agora" }}
           </span>
+          {% if is_need_response_listing %}
+            <span class="mkd-badge mkd-badge--need">
+              Resposta privada à necessidade
+            </span>
+          {% endif %}
           <span class="mkd-location">
             <i class="bi bi-geo-alt-fill"></i>
             {{ producer_location }}
@@ -32,6 +37,12 @@
           <p class="mkd-forecast-period">
             <i class="bi bi-calendar-event"></i>
             Período previsto: {{ forecast_period_text }}
+          </p>
+        {% endif %}
+        {% if is_need_response_listing and listing.need %}
+          <p class="mkd-need-context">
+            <i class="bi bi-megaphone"></i>
+            Oferta dirigida ao produtor da necessidade #{{ listing.need.id }}.
           </p>
         {% endif %}
       </header>
@@ -142,12 +153,15 @@
           </form>
         </div>
       </aside>
-   {% elif not is_admin_user %}
+   {% elif can_purchase_listing %}
     <aside class="mkd-buybox">
       <h3>Comprar</h3>
 
       <form method="post" action="{% url 'orders:create_from_listing' listing.id %}">
         {% csrf_token %}
+        {% if selected_need_id %}
+          <input type="hidden" name="need_id" value="{{ selected_need_id }}">
+        {% endif %}
 
         <div class="mkd-field">
           <label for="quantityInput">Quantidade a comprar ({{ listing.product.unit }})</label>
@@ -169,6 +183,12 @@
         </div>
 
         {% include "marketplace/partials/detail_total.html" %}
+
+        {% if linked_need and linked_need_remaining %}
+          <div class="mkd-total-hint" style="text-align:left;margin-top:.2rem;">
+            Compra associada à necessidade anunciada (em falta {{ linked_need_remaining|floatformat:"-3" }} {{ listing.product.unit }}).
+          </div>
+        {% endif %}
 
         <div class="mkd-actions-stack">
           <button type="submit" class="mkd-btn-primary">
@@ -343,6 +363,11 @@
   color: #3730a3;
 }
 
+.mkd-badge--need {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
 .mkd-location {
   display: inline-flex;
   align-items: center;
@@ -374,6 +399,15 @@
 .mkd-forecast-period {
   margin: 0;
   color: #475569;
+  font-size: 0.86rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mkd-need-context {
+  margin: 0;
+  color: #6d28d9;
   font-size: 0.86rem;
   display: inline-flex;
   align-items: center;

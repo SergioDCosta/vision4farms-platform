@@ -42,6 +42,15 @@
        class="mk-tab {% if active_tab == 'meus' %}is-active{% endif %}">
       Meus Anúncios
     </a>
+    <a href="{% url 'marketplace:index' %}?tab=necessidades&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+       hx-get="{% url 'marketplace:index' %}?tab=necessidades&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+       hx-target="#shellMain"
+       hx-select="#shellMain"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="mk-tab {% if active_tab == 'necessidades' %}is-active{% endif %}">
+      Necessidades
+    </a>
   </div>
 
   <section class="mk-help" id="mk-help">
@@ -75,6 +84,12 @@
         hx-swap="outerHTML"
         hx-push-url="true">
     <input type="hidden" name="tab" value="{{ active_tab }}">
+    {% if selected_need_id %}
+      <input type="hidden" name="need" value="{{ selected_need_id }}">
+    {% endif %}
+    {% if show_need_form %}
+      <input type="hidden" name="show_need_form" value="1">
+    {% endif %}
 
     <div class="mk-search">
       <i class="bi bi-search"></i>
@@ -99,8 +114,301 @@
   </form>
 
   <div id="mk-listings-region">
-  <section class="mk-grid">
-    {% if active_tab == "meus" %}
+  {% if active_tab == "necessidades" %}
+    {% if can_publish %}
+      <section class="mk-needs-toolbar">
+        {% if show_need_form %}
+          <a href="{% url 'marketplace:index' %}?tab=necessidades{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+             hx-get="{% url 'marketplace:index' %}?tab=necessidades{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mk-btn-card-muted">
+            <i class="bi bi-x-lg"></i>
+            Fechar formulário
+          </a>
+        {% else %}
+          <a href="{% url 'marketplace:index' %}?tab=necessidades{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&show_need_form=1"
+             hx-get="{% url 'marketplace:index' %}?tab=necessidades{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&show_need_form=1"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mk-btn-primary">
+            <i class="bi bi-megaphone"></i>
+            Anunciar necessidade
+          </a>
+        {% endif %}
+      </section>
+    {% endif %}
+    <section class="mk-needs-layout">
+      {% if show_need_form %}
+        <article class="mk-needs-card mk-needs-card--announce">
+          <div class="mk-needs-card__head">
+            <h3>Anunciar necessidade</h3>
+            <p>Registe procura de produto para que outros produtores possam responder.</p>
+          </div>
+          {% if can_publish %}
+            <form method="post"
+                  action="{% url 'marketplace:need_create' %}"
+                  hx-post="{% url 'marketplace:need_create' %}"
+                  hx-target="#shellMain"
+                  hx-select="#shellMain"
+                  hx-swap="outerHTML"
+                  hx-push-url="true"
+                  class="mk-needs-form">
+              {% csrf_token %}
+              <input type="hidden" name="tab" value="necessidades">
+              <input type="hidden" name="q" value="{{ q }}">
+              <input type="hidden" name="category" value="{{ selected_category_id }}">
+              {% if selected_need_id %}<input type="hidden" name="need" value="{{ selected_need_id }}">{% endif %}
+              <input type="hidden" name="show_need_form" value="1">
+              <input type="hidden" name="source_context" value="marketplace">
+              <div class="mk-needs-form-grid">
+                <label>
+                  Produto
+                  <select name="product_id" required>
+                    <option value="">Selecionar produto</option>
+                    {% for product in need_products %}
+                      <option value="{{ product.id }}" {% if need_prefill_product_id == product.id|stringformat:"s" %}selected{% endif %}>
+                        {{ product.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Quantidade necessária
+                  <input type="number" name="required_quantity" min="0.001" step="0.001" required value="{{ need_prefill_quantity|default:'' }}">
+                </label>
+                <label>
+                  Data limite (opcional)
+                  <input type="datetime-local" name="needed_by_date">
+                </label>
+                <label style="grid-column:1 / -1;">
+                  Observações (opcional)
+                  <textarea name="notes" rows="2" placeholder="Ex: preciso desta quantidade até à próxima semana."></textarea>
+                </label>
+              </div>
+              <button type="submit" class="mk-btn-primary">
+                <i class="bi bi-megaphone"></i>
+                Anunciar necessidade
+              </button>
+            </form>
+          {% else %}
+            <div class="mk-summary-empty">
+              <i class="bi bi-info-circle"></i>
+              <p>É necessário ter perfil de produtor para anunciar necessidades.</p>
+            </div>
+          {% endif %}
+        </article>
+      {% endif %}
+
+      <article class="mk-needs-card">
+        <div class="mk-needs-card__head">
+          <h3>Minhas necessidades</h3>
+          <p>Gestão das necessidades abertas e parcialmente cobertas.</p>
+        </div>
+
+        <div class="mk-needs-list">
+          {% for row in need_my_rows %}
+            <div class="mk-needs-item{% if selected_need_id == row.need.id|stringformat:'s' %} is-selected{% endif %}">
+              <div class="mk-needs-item__top">
+                <div>
+                  <h4>{{ row.need.product.name }}</h4>
+                  <p>{{ row.status_label }}</p>
+                </div>
+                <span class="mk-badge {% if row.status == 'COVERED' %}mk-badge--stock{% elif row.status == 'PARTIALLY_COVERED' %}mk-badge--forecast{% elif row.status == 'OPEN' %}mk-badge--warn{% endif %}">
+                  {{ row.status_label }}
+                </span>
+              </div>
+              <div class="mk-needs-metrics">
+                <span>Necessário: <strong>{{ row.required_quantity|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+                <span>Planeado: <strong>{{ row.planned_qty|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+                <span>Recebido: <strong>{{ row.completed_qty|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+                <span>Em falta: <strong>{{ row.remaining_to_plan|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+              </div>
+              <div class="mk-needs-actions">
+                <a href="{% url 'marketplace:index' %}?tab=necessidades&need={{ row.need.id }}"
+                   hx-get="{% url 'marketplace:index' %}?tab=necessidades&need={{ row.need.id }}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="mk-btn-card-outline">
+                  Ver respostas
+                </a>
+                {% if row.status == 'COVERED' %}
+                  <form method="post"
+                        action="{% url 'marketplace:need_ignore' row.need.id %}"
+                        hx-post="{% url 'marketplace:need_ignore' row.need.id %}"
+                        hx-target="#shellMain"
+                        hx-select="#shellMain"
+                        hx-swap="outerHTML"
+                        hx-push-url="true"
+                        onsubmit="return confirm('Eliminar necessidade (soft delete)?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="tab" value="necessidades">
+                    <input type="hidden" name="q" value="{{ q }}">
+                    <input type="hidden" name="category" value="{{ selected_category_id }}">
+                    {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
+                    <button type="submit" class="mk-btn-card-muted">
+                      Eliminar
+                    </button>
+                  </form>
+                {% else %}
+                  <form method="post"
+                        action="{% url 'marketplace:need_ignore' row.need.id %}"
+                        hx-post="{% url 'marketplace:need_ignore' row.need.id %}"
+                        hx-target="#shellMain"
+                        hx-select="#shellMain"
+                        hx-swap="outerHTML"
+                        hx-push-url="true"
+                        onsubmit="return confirm('Ignorar esta necessidade?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="tab" value="necessidades">
+                    <input type="hidden" name="q" value="{{ q }}">
+                    <input type="hidden" name="category" value="{{ selected_category_id }}">
+                    {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
+                    <button type="submit" class="mk-btn-card-muted">
+                      Ignorar
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+            </div>
+          {% empty %}
+            <article class="mk-empty">
+              <i class="bi bi-inbox"></i>
+              <h3>Sem necessidades próprias</h3>
+              <p>Ainda não anunciou necessidades no marketplace.</p>
+            </article>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="mk-needs-card">
+        <div class="mk-needs-card__head">
+          {% if selected_need_row %}
+            <h3>Respostas recebidas para {{ selected_need_row.need.product.name }} (#{{ selected_need_row.need.id }})</h3>
+            <p>{{ need_response_rows|length }} resposta(s) encontrada(s) para a necessidade selecionada.</p>
+          {% else %}
+            <h3>Respostas recebidas</h3>
+            <p>Ofertas dirigidas às suas necessidades.</p>
+          {% endif %}
+        </div>
+
+        <div class="mk-needs-list">
+          {% for item in need_response_rows %}
+            <div class="mk-needs-item">
+              <div class="mk-needs-item__top">
+                <div>
+                  <h4>{{ item.product.name }}</h4>
+                  <p>
+                    Respondido por:
+                    {% if item.producer.display_name %}
+                      {{ item.producer.display_name }}
+                    {% elif item.producer.company_name %}
+                      {{ item.producer.company_name }}
+                    {% elif item.producer.user.full_name %}
+                      {{ item.producer.user.full_name }}
+                    {% elif item.producer.user.email %}
+                      {{ item.producer.user.email }}
+                    {% else %}
+                      Produtor
+                    {% endif %}
+                  </p>
+                </div>
+                <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'CLOSED' %}mk-badge--closed{% endif %}">
+                  {{ item.get_status_display }}
+                </span>
+              </div>
+              <div class="mk-needs-metrics">
+                <span>Tipo: <strong>{{ item.source_label|default:"Disponível agora" }}</strong></span>
+                <span>Preço: <strong>{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</strong></span>
+                <span>Disponível: <strong>{{ item.quantity_available|floatformat:"-3" }} {{ item.product.unit }}</strong></span>
+                <span>Need: <strong>#{{ item.need.id }}</strong></span>
+              </div>
+              <div class="mk-needs-actions">
+                <a href="{% url 'marketplace:detail' item.id %}?need={{ item.need.id }}"
+                   hx-get="{% url 'marketplace:detail' item.id %}?need={{ item.need.id }}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="mk-btn-card-soft">
+                  Ver detalhe
+                </a>
+              </div>
+            </div>
+          {% empty %}
+            {% if selected_need_row %}
+              <article class="mk-empty">
+                <i class="bi bi-chat-square-text"></i>
+                <h3>Sem respostas para esta necessidade</h3>
+                <p>Ainda não existem ofertas dirigidas para {{ selected_need_row.need.product.name }}.</p>
+              </article>
+            {% else %}
+              <article class="mk-empty">
+                <i class="bi bi-chat-square-text"></i>
+                <h3>Sem respostas recebidas</h3>
+                <p>As ofertas dirigidas às suas necessidades aparecerão aqui.</p>
+              </article>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="mk-needs-card">
+        <div class="mk-needs-card__head">
+          <h3>Necessidades abertas</h3>
+          <p>Pedidos de outros produtores que ainda precisam de cobertura.</p>
+        </div>
+
+        <div class="mk-needs-list">
+          {% for row in need_public_rows %}
+            <div class="mk-needs-item">
+              <div class="mk-needs-item__top">
+                <div>
+                  <h4>{{ row.need.product.name }}</h4>
+                  <p>{{ row.producer_label }}</p>
+                </div>
+                <span class="mk-badge {% if row.status == 'PARTIALLY_COVERED' %}mk-badge--forecast{% else %}mk-badge--warn{% endif %}">
+                  {{ row.status_label }}
+                </span>
+              </div>
+              <div class="mk-needs-metrics">
+                <span>Necessário: <strong>{{ row.required_quantity|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+                <span>Planeado: <strong>{{ row.planned_qty|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+                <span>Em falta: <strong>{{ row.remaining_to_plan|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+                <span>Recebido: <strong>{{ row.completed_qty|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+              </div>
+              <div class="mk-needs-actions">
+                <a href="{% url 'marketplace:publish' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
+                   hx-get="{% url 'marketplace:publish' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="mk-btn-card-soft">
+                  <i class="bi bi-reply"></i>
+                  Responder
+                </a>
+              </div>
+            </div>
+          {% empty %}
+            <article class="mk-empty">
+              <i class="bi bi-search"></i>
+              <h3>Sem necessidades abertas</h3>
+              <p>Não existem necessidades públicas compatíveis com os filtros atuais.</p>
+            </article>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+  {% else %}
+    <section class="mk-grid">
+      {% if active_tab == "meus" %}
       {% for item in my_listings %}
         <article class="mk-card">
           <div class="mk-card__media">
@@ -118,6 +426,9 @@
               <div class="mk-card__badges">
                 <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'CLOSED' %}mk-badge--closed{% endif %}">{{ item.get_status_display }}</span>
                 <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
+                {% if item.need_id %}
+                  <span class="mk-badge mk-badge--private">Resposta privada</span>
+                {% endif %}
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
@@ -211,7 +522,7 @@
           </p>
         </article>
       {% endfor %}
-    {% else %}
+      {% else %}
       {% for item in listings %}
         <article class="mk-card">
           <div class="mk-card__media">
@@ -259,8 +570,8 @@
           </div>
 
           <div class="mk-card__footer">
-            <a href="{% url 'marketplace:detail' item.id %}"
-               hx-get="{% url 'marketplace:detail' item.id %}"
+            <a href="{% url 'marketplace:detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+               hx-get="{% url 'marketplace:detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
                hx-target="#shellMain"
                hx-select="#shellMain"
                hx-swap="outerHTML"
@@ -291,10 +602,22 @@
               Não existem anúncios ativos no marketplace neste momento.
             {% endif %}
           </p>
+          <div style="margin-top:.9rem;">
+            <a href="{% url 'marketplace:index' %}?tab=necessidades&q={{ q|urlencode }}"
+               hx-get="{% url 'marketplace:index' %}?tab=necessidades&q={{ q|urlencode }}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="mk-btn-card-soft">
+              Anunciar necessidade
+            </a>
+          </div>
         </article>
       {% endfor %}
-    {% endif %}
-  </section>
+      {% endif %}
+    </section>
+  {% endif %}
   </div>
 </div>
 
@@ -553,6 +876,159 @@
   gap: 1rem;
 }
 
+.mk-needs-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.mk-needs-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.mk-needs-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.04);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.mk-needs-card--announce {
+  grid-column: 1 / -1;
+}
+
+.mk-needs-card__head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.mk-needs-card__head p {
+  margin: 0.3rem 0 0;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.mk-needs-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.mk-needs-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.mk-needs-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #334155;
+  font-weight: 700;
+}
+
+.mk-needs-form-grid input,
+.mk-needs-form-grid select,
+.mk-needs-form-grid textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.8rem;
+  background: #f8fafc;
+  padding: 0.78rem 0.85rem;
+  font-size: 0.86rem;
+  outline: none;
+}
+
+.mk-needs-form-grid input:focus,
+.mk-needs-form-grid select:focus,
+.mk-needs-form-grid textarea:focus {
+  border-color: #16a34a;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+}
+
+.mk-needs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mk-needs-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.mk-needs-item.is-selected {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.18);
+}
+
+.mk-needs-item__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mk-needs-item__top h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.mk-needs-item__top p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.mk-needs-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.mk-needs-metrics strong {
+  color: #0f172a;
+}
+
+.mk-needs-actions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.mk-needs-actions > * {
+  flex: 1;
+}
+
+.mk-needs-actions form {
+  margin: 0;
+}
+
+.mk-needs-actions .mk-btn-card-outline,
+.mk-needs-actions .mk-btn-card-soft,
+.mk-needs-actions .mk-btn-card-muted {
+  width: 100%;
+}
+
 .mk-card {
   background: #fff;
   border: 1px solid #e2e8f0;
@@ -651,6 +1127,11 @@
 .mk-badge--forecast {
   background: #e0e7ff;
   color: #3730a3;
+}
+
+.mk-badge--private {
+  background: #f3e8ff;
+  color: #6b21a8;
 }
 
 .mk-price {
@@ -811,10 +1292,19 @@
   .mk-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .mk-needs-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
   .mk-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-needs-form-grid,
+  .mk-needs-metrics {
     grid-template-columns: 1fr;
   }
 }

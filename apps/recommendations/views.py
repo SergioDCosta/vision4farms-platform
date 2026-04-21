@@ -3,10 +3,14 @@ from django.contrib import messages
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from decimal import Decimal
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from apps.common.decorators import login_required, client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
+from apps.inventory.models import NeedSourceSystem
+from apps.inventory.services import create_or_update_need
 from apps.orders.services import create_order_from_recommendation, OrderServiceError
 from apps.recommendations.forms import RecommendationRequestForm
 from apps.recommendations.models import Recommendation
@@ -89,6 +93,20 @@ def _remaining_deficit_from_recommendation(recommendation):
     if deficit is None:
         return Decimal("0.000")
     return max(Decimal(str(deficit)), Decimal("0.000"))
+
+
+def _build_step_2_context(recommendation, *, market_options_expanded=False, alternative_items=None):
+    selected_items = get_selected_items(recommendation)
+    remaining_deficit = _remaining_deficit_from_recommendation(recommendation)
+    return {
+        "wizard_step": 2,
+        "recommendation": recommendation,
+        "selected_items": selected_items,
+        "remaining_deficit": remaining_deficit,
+        "market_options_expanded": market_options_expanded,
+        "alternative_items": alternative_items or [],
+        "can_accept": selected_items.exists(),
+    }
 
 
 @login_required
@@ -232,19 +250,7 @@ def recommendations_generate_view(request):
         )
         return _render_wizard(request, context)
 
-    selected_items = get_selected_items(recommendation)
-    can_accept = selected_items.exists()
-    remaining_deficit = _remaining_deficit_from_recommendation(recommendation)
-
-    context = {
-        "wizard_step": 2,
-        "recommendation": recommendation,
-        "selected_items": selected_items,
-        "remaining_deficit": remaining_deficit,
-        "market_options_expanded": False,
-        "alternative_items": [],
-        "can_accept": can_accept,
-    }
+    context = _build_step_2_context(recommendation)
     return _render_wizard(request, context)
 
 
@@ -279,6 +285,62 @@ def recommendations_back_to_need_view(request, recommendation_id):
         initial_current_quantity=deficit_data["current_stock"],
     )
     return _render_wizard(request, context)
+
+
+@login_required
+@client_only_required
+def recommendations_create_need_view(request, recommendation_id):
+    if request.method != "POST":
+        return redirect("recommendations:index")
+
+    producer = _get_current_producer(request)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    recommendation = get_object_or_404(
+        Recommendation.objects.select_related("product", "producer"),
+        id=recommendation_id,
+        producer=producer,
+    )
+
+    remaining_deficit = _remaining_deficit_from_recommendation(recommendation)
+    context = _build_step_2_context(recommendation)
+
+    if remaining_deficit <= 0:
+        response = _render_wizard(request, context)
+        return with_htmx_toast(
+            response,
+            "info",
+            "Não existe défice remanescente para anunciar como necessidade.",
+        )
+
+    try:
+        need, _, created = create_or_update_need(
+            producer=producer,
+            product=recommendation.product,
+            required_quantity=remaining_deficit,
+            source_system=NeedSourceSystem.VISION4FARMS,
+            external_id=str(recommendation.id),
+            notes=f"Necessidade criada a partir da recomendação #{recommendation.id}.",
+        )
+    except ValidationError as exc:
+        response = _render_wizard(request, context)
+        return with_htmx_toast(response, "error", str(exc))
+
+    recommendation.need = need
+    recommendation.updated_at = timezone.now()
+    recommendation.save(update_fields=["need", "updated_at"])
+
+    updated_context = _build_step_2_context(recommendation)
+    response = _render_wizard(request, updated_context)
+    return with_htmx_toast(
+        response,
+        "success",
+        "Necessidade anunciada com sucesso."
+        if created
+        else "Necessidade existente atualizada com o novo défice.",
+    )
 
 
 @login_required
@@ -416,17 +478,7 @@ def recommendations_replace_item_view(request, recommendation_id):
         producer=producer,
     )
 
-    selected_items = get_selected_items(recommendation)
-    remaining_deficit = _remaining_deficit_from_recommendation(recommendation)
-    context = {
-        "wizard_step": 2,
-        "recommendation": recommendation,
-        "selected_items": selected_items,
-        "remaining_deficit": remaining_deficit,
-        "market_options_expanded": False,
-        "alternative_items": [],
-        "can_accept": selected_items.exists(),
-    }
+    context = _build_step_2_context(recommendation)
     response = _render_wizard(request, context)
     return with_htmx_toast(
         response,

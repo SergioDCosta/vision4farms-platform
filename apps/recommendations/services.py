@@ -125,6 +125,7 @@ def _get_candidate_listings(product, buyer_producer):
             product=product,
             status=ListingStatus.ACTIVE,
             quantity_available__gt=0,
+            need_id__isnull=True,
         )
         .filter(
             Q(stock_id__isnull=False, forecast_id__isnull=True)
@@ -265,6 +266,7 @@ def get_market_alternative_listings(recommendation):
             product=recommendation.product,
             status=ListingStatus.ACTIVE,
             quantity_available__gt=0,
+            need_id__isnull=True,
         )
         .filter(
             Q(stock_id__isnull=False, forecast_id__isnull=True)

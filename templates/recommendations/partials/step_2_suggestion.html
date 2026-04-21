@@ -38,6 +38,12 @@
       </div>
     {% endif %}
 
+    {% if recommendation.need_id %}
+      <div class="rec-info">
+        Esta recomendação já está associada a uma necessidade anunciada.
+      </div>
+    {% endif %}
+
     <div class="rec-list">
       {% for item in selected_items %}
         <div class="rec-item">
@@ -97,6 +103,22 @@
       >
         <i class="bi bi-arrow-left"></i> Ajustar quantidades
       </button>
+
+      {% if remaining_deficit and remaining_deficit > 0 %}
+        <form
+          method="post"
+          hx-post="{% url 'recommendations:step_create_need' recommendation.id %}"
+          hx-target="#recommendation-wizard"
+          hx-swap="innerHTML"
+          style="margin:0;"
+        >
+          {% csrf_token %}
+          <button type="submit" class="rec-btn-ghost">
+            <i class="bi bi-megaphone"></i>
+            {% if recommendation.need_id %}Atualizar necessidade{% else %}Criar necessidade{% endif %}
+          </button>
+        </form>
+      {% endif %}
 
       <button
         type="button"

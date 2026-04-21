@@ -14,6 +14,7 @@ from apps.inventory.models import (
     StockMovement,
     StockMovementType,
 )
+from apps.inventory.services import recalculate_needs_for_order
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import (
     OrderGroup,
@@ -636,7 +637,7 @@ def _recalculate_order_status(order, preferred_status=None):
 
 
 @transaction.atomic
-def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user, buyer_notes=None):
+def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user, buyer_notes=None, need=None):
     if listing.producer_id == buyer_producer.id:
         raise OrderServiceError("Não pode criar uma encomenda a partir do seu próprio anúncio.")
     _validate_listing_source_xor(listing)
@@ -674,6 +675,7 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
     OrderItem.objects.create(
         order=order,
         listing=listing,
+        need=need,
         product=listing.product,
         seller_producer=listing.producer,
         quantity=quantity,
@@ -688,6 +690,8 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
         changed_by=acting_user,
         notes="Pedido criado a partir de um anúncio do marketplace.",
     )
+
+    recalculate_needs_for_order(order, acting_user=acting_user)
 
     return order_group, order
 
@@ -747,6 +751,7 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
             OrderItem.objects.create(
                 order=order,
                 listing=listing,
+                need_id=recommendation.need_id,
                 product=rec_item.product,
                 seller_producer=rec_item.seller_producer,
                 quantity=quantity,
@@ -772,6 +777,7 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
             changed_by=acting_user,
             notes="Pedido criado a partir de uma recomendação aceite.",
         )
+        recalculate_needs_for_order(order, acting_user=acting_user)
         created_orders.append(order)
 
     recommendation.status = RecommendationStatus.ACCEPTED
@@ -834,6 +840,8 @@ def confirm_order_receipt(*, order, acting_user):
         changed_by=acting_user,
         notes="Receção confirmada pelo comprador.",
     )
+
+    recalculate_needs_for_order(order, acting_user=acting_user)
 
     return order
 
@@ -1052,6 +1060,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             changed_by=acting_user,
             notes=notes or "Pedido aceite pelo vendedor.",
         )
+        recalculate_needs_for_order(order, acting_user=acting_user)
         return order
 
     if new_status == OrderStatus.IN_PROGRESS:
@@ -1079,6 +1088,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             changed_by=acting_user,
             notes=notes or "Pedido marcado em preparação.",
         )
+        recalculate_needs_for_order(order, acting_user=acting_user)
         return order
 
     if new_status == OrderStatus.DELIVERING:
@@ -1119,6 +1129,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             changed_by=acting_user,
             notes=notes or "Pedido marcado em entrega.",
         )
+        recalculate_needs_for_order(order, acting_user=acting_user)
         return order
 
     if new_status == OrderStatus.CANCELLED:
@@ -1142,6 +1153,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             changed_by=acting_user,
             notes=notes or "Pedido cancelado pelo vendedor.",
         )
+        recalculate_needs_for_order(order, acting_user=acting_user)
         return order
 
     return order

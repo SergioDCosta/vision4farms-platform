@@ -5,6 +5,8 @@ from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 
 from apps.common.decorators import login_required, client_only_required
+from apps.inventory.models import NeedStatus
+from apps.inventory.services import get_need_for_producer
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import OrderStatus, OrderItemStatus
 from apps.orders.services import (
@@ -224,13 +226,32 @@ def create_order_from_listing_view(request, listing_id):
         return redirect("dashboard:painel")
 
     listing = get_object_or_404(
-        MarketplaceListing.objects.select_related("product", "producer", "stock", "forecast"),
+        MarketplaceListing.objects.select_related("product", "producer", "stock", "forecast", "need", "need__producer"),
         id=listing_id,
         status=ListingStatus.ACTIVE,
     )
 
     quantity_raw = (request.POST.get("quantity") or request.POST.get("qty") or "").strip()
     buyer_notes = (request.POST.get("buyer_notes") or "").strip()
+    need_id = (request.POST.get("need_id") or "").strip()
+
+    need = None
+    if listing.need_id:
+        if not listing.need or listing.need.producer_id != producer.id:
+            messages.error(request, "Esta oferta é dirigida ao produtor da necessidade e não está disponível para esta conta.")
+            return redirect("marketplace:index")
+        need = listing.need
+    elif need_id:
+        need = get_need_for_producer(producer=producer, need_id=need_id)
+        if not need:
+            messages.error(request, "Necessidade inválida para associar a esta compra.")
+            return redirect("marketplace:detail", listing_id=listing.id)
+        if need.status == NeedStatus.IGNORED:
+            messages.error(request, "Esta necessidade já foi ignorada e não pode ser associada.")
+            return redirect("marketplace:detail", listing_id=listing.id)
+        if need.product_id != listing.product_id:
+            messages.error(request, "A necessidade selecionada não corresponde ao produto deste anúncio.")
+            return redirect("marketplace:detail", listing_id=listing.id)
 
     try:
         quantity = Decimal(quantity_raw)
@@ -245,6 +266,7 @@ def create_order_from_listing_view(request, listing_id):
             quantity=quantity,
             acting_user=request.current_user,
             buyer_notes=buyer_notes,
+            need=need,
         )
     except OrderServiceError as exc:
         messages.error(request, str(exc))

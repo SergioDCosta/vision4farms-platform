@@ -42,6 +42,13 @@ class MarketplaceListing(models.Model):
         null=True,
         related_name="listings",
     )
+    need = models.ForeignKey(
+        "inventory.Need",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="response_listings",
+    )
     quantity_total = models.DecimalField(max_digits=14, decimal_places=3)
     quantity_available = models.DecimalField(max_digits=14, decimal_places=3)
     quantity_reserved = models.DecimalField(max_digits=14, decimal_places=3, default=0)

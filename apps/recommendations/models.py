@@ -28,6 +28,13 @@ class Recommendation(models.Model):
         on_delete=models.CASCADE,
         related_name="recommendations",
     )
+    need = models.ForeignKey(
+        "inventory.Need",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="recommendations",
+    )
     generated_from_alert = models.ForeignKey(
         "alerts.Alert",
         on_delete=models.SET_NULL,

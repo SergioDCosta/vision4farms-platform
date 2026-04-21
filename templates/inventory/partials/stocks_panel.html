@@ -1,3 +1,4 @@
+{% load l10n %}
 <div class="inv-card">
   <div class="inv-card-head">
     <div>
@@ -168,6 +169,11 @@
                                class="inv-icon-btn inv-icon-btn--red"
                                title="Ver recomendação de compra">
                               <i class="bi bi-stars"></i>
+                            </a>
+                            <a href="{% url 'marketplace:index' %}?tab=necessidades&product={{ row.product_id }}&qty={{ row.state.deficit_quantity|unlocalize }}"
+                               class="inv-icon-btn inv-icon-btn--amber"
+                               title="Anunciar necessidade">
+                              <i class="bi bi-megaphone"></i>
                             </a>
                           {% elif row.state.key == "excess" %}
                             <a href="{% url 'marketplace:publish' %}?source=stock&product={{ row.product_id }}&from=inventory"

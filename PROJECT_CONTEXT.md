@@ -71,20 +71,43 @@
 - Previsão futura (`production_forecasts`) separada do stock real.
 - Previsão por produto/produtor funciona com unicidade funcional (update do mesmo registo quando existe 1).
 - “Stock previsto” do comprador calculado em runtime via orders (não persistido em coluna).
+- Needs (`needs`) como procura anunciada:
+  - estados: `OPEN`, `PARTIALLY_COVERED`, `COVERED`, `IGNORED`;
+  - cobertura conservadora:
+    - `planned_qty`: itens `CONFIRMED/IN_DELIVERY/COMPLETED` com order elegível (`CONFIRMED/IN_PROGRESS/DELIVERING`);
+    - `completed_qty`: apenas itens `COMPLETED`;
+    - `PENDING` não conta para cobertura.
+- Recalculo de need é idempotente e, quando há cobertura planeada/em curso, sincroniza projeção no stock do comprador com log:
+  - `StockMovement.reference_type="NEED"` + `reference_id=<need.id>`;
+  - notas explicam origem do ajuste por necessidade.
 
 ### 5.3 Marketplace
 - `marketplace_listings` suporta 2 origens:
   - stock atual (`stock_id`);
   - pré-venda (`forecast_id`).
+- Listings também podem estar ligadas a necessidade:
+  - `need_id IS NULL` => anúncio público normal;
+  - `need_id IS NOT NULL` => resposta privada dirigida à need.
 - Regra XOR de origem aplicada no fluxo (stock XOR forecast).
 - Publicação:
   - validações por origem;
   - lock de origem/produto quando vem do inventário em flows guiados;
+  - no fluxo `from=need`, produto bloqueado e origem editável; anúncio é criado com `need_id`.
   - recorte de imagem no publish/edit;
   - tendência de preço por produto+origem (min/max/count de outros produtores).
 - Estados de listing:
   - `ACTIVE`, `RESERVED`, `CLOSED`, `EXPIRED`, `CANCELLED`.
 - URLs de foto resolvidas por storage (Cloudinary/local) via `default_storage.url(...)`.
+- Visibilidade/autorização para respostas a need:
+  - não aparecem no feed público (`tab=todos`) nem entram em recomendações;
+  - aparecem em `tab=meus` para o criador;
+  - aparecem em “Respostas recebidas” para o dono da need;
+  - detalhe acessível apenas a criador e dono da need;
+  - compra permitida apenas ao dono da need.
+- UX atual da tab `necessidades`:
+  - botão “Ver respostas” filtra por `need=<id>` com destaque visual da need selecionada;
+  - para need `COVERED`, ação “Eliminar” faz soft delete via `IGNORED`;
+  - formulário “Anunciar necessidade” abre apenas por botão (`show_need_form=1`).
 
 ### 5.4 Recommendations
 - Wizard HTMX em 3 passos.
@@ -92,6 +115,7 @@
 - Passo 2 já considera listings de pré-venda.
 - Priorização: recomenda primeiro “disponível agora”, depois pré-venda para completar défice.
 - Badges distinguem disponibilidade imediata vs futura (data/período quando disponível).
+- Motor de recomendações exclui respostas privadas a needs (`need_id IS NULL` obrigatório nas candidatas).
 
 ### 5.5 Orders
 - Modelos: `order_groups`, `orders`, `order_items`, `order_status_history`.
@@ -105,6 +129,10 @@
   - `CONFIRMED`: reserva na origem correta (stock ou forecast);
   - `IN_PROGRESS` / `DELIVERING`: transições com guardas e idempotência;
   - `COMPLETED` (confirm_receipt): consome reserva, debita stock do vendedor e dá entrada no inventário do comprador.
+- Integração com needs:
+  - `order_items.need_id` é propagado no fluxo por listing e por recommendation;
+  - recálculo de need ocorre em eventos de criação/transição/receção;
+  - compra de listing privada (`listing.need_id`) só pode ser feita pelo produtor dono da need.
 - Listings sincronizadas com reservas:
   - esgotado em reserva pode ir para `RESERVED`;
   - sem disponível e sem reservado fecha para `CLOSED`.
@@ -135,7 +163,7 @@
 - Identidade: `users`, `producer_profiles`, `user_preferences`, `account_verification_tokens`.
 - Catálogo global: `product_categories`, `products`.
 - Inventário do produtor: `producer_products`, `stocks`, `stock_movements`, `production_forecasts`, `needs`.
-- Marketplace: `marketplace_listings`.
+- Marketplace: `marketplace_listings` (inclui `need_id` nullable para resposta privada).
 - Recomendações: `recommendations`, `recommendation_items`.
 - Encomendas: `order_groups`, `orders`, `order_items`, `order_status_history`.
 - Mensagens: `conversations`, `conversation_participants`, `messages`.
@@ -146,6 +174,8 @@
 - `producer_profiles` N-N `products` via `producer_products`.
 - `stocks` e `production_forecasts` são por `(producer, product)`.
 - `marketplace_listings` referencia sempre uma origem operacional (stock ou forecast).
+- `marketplace_listings.need_id` liga oferta privada ao dono de uma need.
+- `order_items.need_id` e `recommendations.need_id` suportam rastreio de cobertura da need.
 - `orders` pode ter `group_id` nulo (legado suportado).
 - `messages` pertence a `conversation`; acesso só para participantes não arquivados.
 

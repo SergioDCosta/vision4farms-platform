@@ -4,7 +4,7 @@ from django.db.models import Q, Min, Max, Count, Case, When, Value, CharField
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductCategory
-from apps.inventory.models import ProducerProfile, ProducerProduct, ProductionForecast, Stock
+from apps.inventory.models import NeedStatus, ProducerProfile, ProducerProduct, ProductionForecast, Stock
 from apps.marketplace.models import MarketplaceListing, ListingStatus, DeliveryMode
 
 
@@ -150,7 +150,16 @@ def get_forecast_available_quantity(forecast, *, exclude_listing_id=None):
 def get_base_listing_queryset():
     return (
         MarketplaceListing.objects
-        .select_related("producer", "producer__user", "product", "stock", "forecast")
+        .select_related(
+            "producer",
+            "producer__user",
+            "product",
+            "stock",
+            "forecast",
+            "need",
+            "need__producer",
+            "need__producer__user",
+        )
         .filter(_valid_listing_source_filter())
         .order_by("-published_at", "-created_at")
     )
@@ -172,6 +181,7 @@ def get_public_listings(*, producer=None, q="", category_id=""):
     qs = get_base_listing_queryset().filter(
         status=ListingStatus.ACTIVE,
         quantity_available__gt=0,
+        need_id__isnull=True,
         product__is_active=True,
     )
 
@@ -224,9 +234,49 @@ def get_listing_detail_queryset(*, producer=None):
     qs = get_base_listing_queryset()
 
     if producer:
-        return qs.filter(Q(status=ListingStatus.ACTIVE, product__is_active=True) | Q(producer=producer))
+        return qs.filter(
+            Q(
+                need_id__isnull=True,
+                status=ListingStatus.ACTIVE,
+                quantity_available__gt=0,
+                product__is_active=True,
+            )
+            | Q(producer=producer)
+            | Q(need__producer=producer)
+        )
 
-    return qs.filter(status=ListingStatus.ACTIVE, product__is_active=True)
+    return qs.filter(
+        need_id__isnull=True,
+        status=ListingStatus.ACTIVE,
+        quantity_available__gt=0,
+        product__is_active=True,
+    )
+
+
+def get_need_response_listings_for_owner(*, owner_producer, q="", category_id="", need_id=""):
+    qs = get_base_listing_queryset().filter(
+        need_id__isnull=False,
+        need__producer=owner_producer,
+    )
+
+    if need_id:
+        qs = qs.filter(need_id=need_id)
+
+    if q:
+        q = q.strip()
+        qs = qs.filter(
+            Q(product__name__icontains=q)
+            | Q(producer__display_name__icontains=q)
+            | Q(producer__company_name__icontains=q)
+            | Q(producer__user__first_name__icontains=q)
+            | Q(producer__user__last_name__icontains=q)
+            | Q(notes__icontains=q)
+        )
+
+    if category_id:
+        qs = qs.filter(product__category_id=category_id)
+
+    return qs
 
 
 def get_producer_products(producer):
@@ -325,6 +375,7 @@ def get_market_price_trends_for_product_sources(producer, *, product_ids=None):
         .filter(
             status=ListingStatus.ACTIVE,
             quantity_available__gt=0,
+            need_id__isnull=True,
         )
         .exclude(producer=producer)
         .filter(_valid_listing_source_filter())
@@ -467,6 +518,7 @@ def create_listing(
     expires_at=None,
     listing_source=LISTING_SOURCE_STOCK,
     forecast=None,
+    need=None,
 ):
     stock = None
     selected_forecast = None
@@ -509,6 +561,20 @@ def create_listing(
             f"A quantidade excede o máximo publicável ({max_publishable} {product.unit})."
         )
 
+    if need:
+        if need.status not in {NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED}:
+            raise MarketplaceServiceError(
+                "A necessidade já não está aberta para receber respostas."
+            )
+        if need.product_id != product.id:
+            raise MarketplaceServiceError(
+                "O produto da resposta não corresponde ao produto da necessidade."
+            )
+        if need.producer_id == producer.id:
+            raise MarketplaceServiceError(
+                "Não pode responder à sua própria necessidade."
+            )
+
     if delivery_mode == DeliveryMode.PICKUP:
         delivery_radius_km = None
         delivery_fee = None
@@ -521,6 +587,7 @@ def create_listing(
         product=product,
         stock=stock,
         forecast=selected_forecast,
+        need=need,
         quantity_total=quantity,
         quantity_available=quantity,
         quantity_reserved=Decimal("0.000"),

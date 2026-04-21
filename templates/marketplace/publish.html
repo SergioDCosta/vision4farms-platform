@@ -15,12 +15,23 @@
       <section class="mkp-card">
         <form method="post" enctype="multipart/form-data" class="mkp-form" novalidate>
           {% csrf_token %}
+          {% if is_need_prefill_flow and requested_need_id %}
+            <input type="hidden" name="need_id" value="{{ requested_need_id }}">
+            <input type="hidden" name="from" value="need">
+          {% endif %}
 
           {% if form.non_field_errors %}
             <div class="mkp-form-error">
               {% for error in form.non_field_errors %}
                 <p>{{ error }}</p>
               {% endfor %}
+            </div>
+          {% endif %}
+          {% if is_need_prefill_flow and publish_need %}
+            <div class="mkp-form-error" style="border-color:#bfdbfe;background:#eff6ff;color:#1e3a8a;">
+              <p>
+                Oferta dirigida ao produtor da necessidade: <strong>{{ publish_need.producer.display_name|default:publish_need.producer.company_name|default:publish_need.producer.user.email }}</strong>.
+              </p>
             </div>
           {% endif %}
 

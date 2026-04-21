@@ -118,6 +118,13 @@ class OrderItem(models.Model):
         null=True,
         related_name="order_items",
     )
+    need = models.ForeignKey(
+        "inventory.Need",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="order_items",
+    )
     product = models.ForeignKey(
         "catalog.Product",
         on_delete=models.RESTRICT,
