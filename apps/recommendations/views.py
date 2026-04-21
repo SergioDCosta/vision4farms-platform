@@ -26,6 +26,14 @@ from apps.recommendations.services import (
 )
 
 
+def _sync_alerts_after_need_change(producer, acting_user):
+    try:
+        from apps.alerts.services import sync_alerts_for_producer
+        sync_alerts_for_producer(producer, acting_user=acting_user)
+    except Exception:
+        return
+
+
 def _is_htmx(request):
     return request.headers.get("HX-Request") == "true"
 
@@ -331,6 +339,7 @@ def recommendations_create_need_view(request, recommendation_id):
     recommendation.need = need
     recommendation.updated_at = timezone.now()
     recommendation.save(update_fields=["need", "updated_at"])
+    _sync_alerts_after_need_change(producer, request.current_user)
 
     updated_context = _build_step_2_context(recommendation)
     response = _render_wizard(request, updated_context)

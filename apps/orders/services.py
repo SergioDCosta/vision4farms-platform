@@ -52,6 +52,24 @@ def get_current_producer_for_user(user):
     return ProducerProfile.objects.filter(user=user).first()
 
 
+def _sync_alerts_for_producers(*producers, acting_user=None):
+    try:
+        from apps.alerts.services import sync_alerts_for_producer
+    except Exception:
+        return
+
+    seen_ids = set()
+    for producer in producers:
+        producer_id = getattr(producer, "id", None)
+        if not producer or producer_id in seen_ids:
+            continue
+        seen_ids.add(producer_id)
+        try:
+            sync_alerts_for_producer(producer, acting_user=acting_user)
+        except Exception:
+            continue
+
+
 def _next_order_number():
     last_number = Order.objects.aggregate(max_number=Max("order_number")).get("max_number") or 1000
     return int(last_number) + 1
@@ -692,6 +710,7 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
     )
 
     recalculate_needs_for_order(order, acting_user=acting_user)
+    _sync_alerts_for_producers(buyer_producer, listing.producer, acting_user=acting_user)
 
     return order_group, order
 
@@ -784,6 +803,8 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
     recommendation.accepted_at = timezone.now()
     recommendation.updated_at = timezone.now()
     recommendation.save(update_fields=["status", "accepted_at", "updated_at"])
+    sellers = [rec_item.seller_producer for rec_item in selected_items]
+    _sync_alerts_for_producers(buyer_producer, *sellers, acting_user=acting_user)
 
     return order_group, created_orders
 
@@ -842,6 +863,8 @@ def confirm_order_receipt(*, order, acting_user):
     )
 
     recalculate_needs_for_order(order, acting_user=acting_user)
+    seller_producers = [item.seller_producer for item in active_items]
+    _sync_alerts_for_producers(buyer_producer, *seller_producers, acting_user=acting_user)
 
     return order
 
@@ -1061,6 +1084,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             notes=notes or "Pedido aceite pelo vendedor.",
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
+        _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
         return order
 
     if new_status == OrderStatus.IN_PROGRESS:
@@ -1089,6 +1113,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             notes=notes or "Pedido marcado em preparação.",
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
+        _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
         return order
 
     if new_status == OrderStatus.DELIVERING:
@@ -1130,6 +1155,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             notes=notes or "Pedido marcado em entrega.",
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
+        _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
         return order
 
     if new_status == OrderStatus.CANCELLED:
@@ -1154,6 +1180,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             notes=notes or "Pedido cancelado pelo vendedor.",
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
+        _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
         return order
 
     return order

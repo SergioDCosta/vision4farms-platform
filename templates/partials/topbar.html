@@ -22,7 +22,13 @@
     </a>
 
     {% if request.session.user_role != "ADMIN" %}
-      <a href="/alertas/" class="topbar-icon-btn" title="Alertas" aria-label="Alertas">
+      <a href="{% url 'alerts:index' %}"
+         hx-get="{% url 'alerts:index' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="topbar-icon-btn" title="Alertas" aria-label="Alertas">
         <i class="bi bi-bell"></i>
         <span class="topbar-notif-dot"></span>
       </a>

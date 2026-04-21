@@ -169,7 +169,7 @@ def dashboard_view(request):
 
     active_alerts_qs = Alert.objects.filter(
         producer=producer,
-        status__in=[AlertStatus.ACTIVE, AlertStatus.READ],
+        status=AlertStatus.ACTIVE,
     )
 
     active_alerts_count = active_alerts_qs.count()
@@ -352,7 +352,7 @@ def admin_dashboard_view(request):
 
     critical_alerts_count = Alert.objects.filter(
         severity=AlertSeverity.CRITICAL,
-        status__in=[AlertStatus.ACTIVE, AlertStatus.READ],
+        status=AlertStatus.ACTIVE,
     ).count()
 
     completed_items_qs = OrderItem.objects.filter(

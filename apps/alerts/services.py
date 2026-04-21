@@ -1,0 +1,526 @@
+from decimal import Decimal
+
+from django.db import transaction
+from django.utils import timezone
+
+from apps.alerts.models import (
+    Alert,
+    AlertEvent,
+    AlertEventType,
+    AlertSeverity,
+    AlertSourceSystem,
+    AlertStatus,
+    AlertType,
+)
+from apps.inventory.models import Need, NeedStatus, ProductionForecast, Stock
+from apps.inventory.services import calculate_need_coverage
+from apps.marketplace.services import get_forecast_available_quantity
+
+
+ACTIVE_LIKE_ALERT_STATUSES = [AlertStatus.ACTIVE, AlertStatus.READ]
+UI_TAB_STATUS_MAP = {
+    "active": AlertStatus.ACTIVE,
+    "ignored": AlertStatus.IGNORED,
+    "resolved": AlertStatus.RESOLVED,
+}
+MANAGED_ALERT_TYPES = {
+    AlertType.CRITICAL_STOCK,
+    AlertType.SURPLUS_AVAILABLE,
+    AlertType.EXTERNAL_DEFICIT,
+    AlertType.SELL_SUGGESTION,
+}
+AUTO_RESOLVED_NOTE = "Resolução automática por fim da condição"
+
+
+def _as_decimal(value, default="0.000"):
+    return Decimal(str(value if value is not None else default))
+
+
+def get_alert_type_label(alert_type):
+    labels = {
+        AlertType.CRITICAL_STOCK: "Stock crítico",
+        AlertType.SURPLUS_AVAILABLE: "Excedente / oportunidade de venda",
+        AlertType.EXTERNAL_DEFICIT: "Need sem cobertura suficiente",
+        AlertType.SELL_SUGGESTION: "Pré-venda disponível para publicar",
+    }
+    return labels.get(str(alert_type), str(alert_type))
+
+
+def _build_context_key(alert_type, *, product_id=None, need_id=None, forecast_id=None, listing_id=None):
+    if need_id:
+        return f"{alert_type}:need:{need_id}"
+    if forecast_id:
+        return f"{alert_type}:forecast:{forecast_id}"
+    if listing_id:
+        return f"{alert_type}:listing:{listing_id}"
+    if product_id:
+        return f"{alert_type}:product:{product_id}"
+    return f"{alert_type}:global"
+
+
+def _alert_context_key(alert):
+    return _build_context_key(
+        alert.type,
+        product_id=getattr(alert, "product_id", None),
+        need_id=getattr(alert, "need_id", None),
+        forecast_id=getattr(alert, "forecast_id", None),
+        listing_id=getattr(alert, "listing_id", None),
+    )
+
+
+def record_alert_event(alert, event_type, performed_by=None, notes=None):
+    return AlertEvent.objects.create(
+        alert=alert,
+        event_type=event_type,
+        performed_by=performed_by,
+        notes=notes or None,
+    )
+
+
+def _critical_stock_candidates(producer):
+    rows = []
+    stocks = (
+        Stock.objects
+        .select_related("product")
+        .filter(
+            producer=producer,
+            product__is_active=True,
+            product__producer_links__producer=producer,
+            product__producer_links__is_active=True,
+        )
+        .distinct()
+    )
+
+    for stock in stocks:
+        available_quantity = _as_decimal(stock.current_quantity) - _as_decimal(stock.reserved_quantity)
+        safety_stock = _as_decimal(stock.safety_stock)
+        if available_quantity > safety_stock:
+            continue
+
+        unit = getattr(stock.product, "unit", "") or ""
+        rows.append(
+            {
+                "key": _build_context_key(AlertType.CRITICAL_STOCK, product_id=stock.product_id),
+                "type": AlertType.CRITICAL_STOCK,
+                "severity": AlertSeverity.CRITICAL,
+                "product": stock.product,
+                "need": None,
+                "forecast": None,
+                "listing": None,
+                "title": f"Stock crítico: {stock.product.name}",
+                "description": (
+                    f"Disponível: {available_quantity} {unit} · "
+                    f"Stock de segurança: {safety_stock} {unit}."
+                ),
+                "payload": {
+                    "available_quantity": str(available_quantity),
+                    "safety_stock": str(safety_stock),
+                    "action_url": f"/inventario/stock/{stock.product_id}/",
+                    "action_label": "Ver detalhe do stock",
+                    "secondary_action_url": f"/recomendacoes/?product={stock.product_id}",
+                    "secondary_action_label": "Abrir recomendações",
+                },
+            }
+        )
+    return rows
+
+
+def _surplus_candidates(producer):
+    rows = []
+    stocks = (
+        Stock.objects
+        .select_related("product")
+        .filter(
+            producer=producer,
+            product__is_active=True,
+            product__producer_links__producer=producer,
+            product__producer_links__is_active=True,
+        )
+        .distinct()
+    )
+
+    for stock in stocks:
+        available_quantity = _as_decimal(stock.current_quantity) - _as_decimal(stock.reserved_quantity)
+        safety_stock = _as_decimal(stock.safety_stock)
+        if available_quantity <= safety_stock:
+            continue
+
+        surplus_threshold = _as_decimal(stock.surplus_threshold)
+        real_surplus = max(available_quantity - safety_stock, Decimal("0.000"))
+        if real_surplus < surplus_threshold:
+            continue
+
+        unit = getattr(stock.product, "unit", "") or ""
+        rows.append(
+            {
+                "key": _build_context_key(AlertType.SURPLUS_AVAILABLE, product_id=stock.product_id),
+                "type": AlertType.SURPLUS_AVAILABLE,
+                "severity": AlertSeverity.INFO,
+                "product": stock.product,
+                "need": None,
+                "forecast": None,
+                "listing": None,
+                "title": f"Excedente disponível: {stock.product.name}",
+                "description": (
+                    f"Excedente real: {real_surplus} {unit} "
+                    f"(limiar: {surplus_threshold} {unit})."
+                ),
+                "payload": {
+                    "real_surplus": str(real_surplus),
+                    "surplus_threshold": str(surplus_threshold),
+                    "action_url": (
+                        f"/marketplace/publicar/?source=stock&product={stock.product_id}&from=inventory"
+                    ),
+                    "action_label": "Publicar no marketplace",
+                },
+            }
+        )
+    return rows
+
+
+def _need_candidates(producer):
+    rows = []
+    needs = (
+        Need.objects
+        .select_related("product")
+        .filter(
+            producer=producer,
+            status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED],
+            product__is_active=True,
+        )
+        .order_by("-updated_at", "-created_at")
+    )
+
+    for need in needs:
+        coverage = calculate_need_coverage(need)
+        remaining_to_plan = _as_decimal(coverage.get("remaining_to_plan"))
+
+        if need.status == NeedStatus.PARTIALLY_COVERED and remaining_to_plan <= Decimal("0.000"):
+            continue
+
+        unit = getattr(need.product, "unit", "") or ""
+        rows.append(
+            {
+                "key": _build_context_key(AlertType.EXTERNAL_DEFICIT, need_id=need.id),
+                "type": AlertType.EXTERNAL_DEFICIT,
+                "severity": AlertSeverity.WARNING,
+                "product": need.product,
+                "need": need,
+                "forecast": None,
+                "listing": None,
+                "title": f"Need sem cobertura suficiente: {need.product.name}",
+                "description": (
+                    f"Em falta para planear: {remaining_to_plan} {unit}."
+                ),
+                "payload": {
+                    "required_quantity": str(coverage.get("required_quantity")),
+                    "planned_qty": str(coverage.get("planned_qty")),
+                    "completed_qty": str(coverage.get("completed_qty")),
+                    "remaining_to_plan": str(remaining_to_plan),
+                    "action_url": f"/marketplace/?tab=necessidades&need={need.id}",
+                    "action_label": "Ver necessidade",
+                    "secondary_action_url": f"/recomendacoes/?product={need.product_id}",
+                    "secondary_action_label": "Abrir recomendações",
+                },
+            }
+        )
+    return rows
+
+
+def _sell_suggestion_candidates(producer):
+    rows = []
+    forecasts = (
+        ProductionForecast.objects
+        .select_related("product")
+        .filter(
+            producer=producer,
+            is_marketplace_enabled=True,
+            product__is_active=True,
+        )
+        .order_by("-updated_at", "-created_at")
+    )
+
+    for forecast in forecasts:
+        saleable = _as_decimal(get_forecast_available_quantity(forecast))
+        if saleable <= Decimal("0.000"):
+            continue
+
+        unit = getattr(forecast.product, "unit", "") or ""
+        rows.append(
+            {
+                "key": _build_context_key(AlertType.SELL_SUGGESTION, forecast_id=forecast.id),
+                "type": AlertType.SELL_SUGGESTION,
+                "severity": AlertSeverity.INFO,
+                "product": forecast.product,
+                "need": None,
+                "forecast": forecast,
+                "listing": None,
+                "title": "Pré-venda disponível para publicar",
+                "description": (
+                    f"{forecast.product.name}: {saleable} {unit} disponíveis para pré-venda."
+                ),
+                "payload": {
+                    "saleable_quantity": str(saleable),
+                    "action_url": (
+                        f"/marketplace/publicar/?source=forecast&product={forecast.product_id}&forecast={forecast.id}"
+                    ),
+                    "action_label": "Publicar pré-venda",
+                },
+            }
+        )
+    return rows
+
+
+def _candidate_rows(producer):
+    rows = []
+    rows.extend(_critical_stock_candidates(producer))
+    rows.extend(_surplus_candidates(producer))
+    rows.extend(_need_candidates(producer))
+    rows.extend(_sell_suggestion_candidates(producer))
+    return rows
+
+
+def _apply_candidate_to_alert(alert, candidate, *, now, force_active=False):
+    update_fields = []
+
+    field_values = {
+        "severity": candidate["severity"],
+        "title": candidate["title"],
+        "description": candidate["description"],
+        "source_system": AlertSourceSystem.INTERNAL,
+        "payload": candidate["payload"],
+        "product": candidate["product"],
+        "need": candidate["need"],
+        "forecast": candidate["forecast"],
+        "listing": candidate["listing"],
+    }
+
+    for field_name, value in field_values.items():
+        if getattr(alert, field_name) != value:
+            setattr(alert, field_name, value)
+            update_fields.append(field_name)
+
+    if force_active and alert.status != AlertStatus.ACTIVE:
+        alert.status = AlertStatus.ACTIVE
+        update_fields.append("status")
+
+    if update_fields:
+        alert.updated_at = now
+        update_fields.append("updated_at")
+        alert.save(update_fields=list(dict.fromkeys(update_fields)))
+        return True
+    return False
+
+
+@transaction.atomic
+def sync_alerts_for_producer(producer, acting_user=None):
+    now = timezone.now()
+    candidates = _candidate_rows(producer)
+    candidate_map = {row["key"]: row for row in candidates}
+
+    existing_alerts = list(
+        Alert.objects
+        .select_for_update()
+        .filter(
+            producer=producer,
+            type__in=MANAGED_ALERT_TYPES,
+            status__in=ACTIVE_LIKE_ALERT_STATUSES,
+        )
+        .order_by("-created_at")
+    )
+
+    existing_map = {}
+    duplicate_alerts = []
+    for alert in existing_alerts:
+        key = _alert_context_key(alert)
+        if key not in existing_map:
+            existing_map[key] = alert
+        else:
+            duplicate_alerts.append(alert)
+
+    for duplicate in duplicate_alerts:
+        duplicate.status = AlertStatus.RESOLVED
+        duplicate.cleared_at = now
+        duplicate.updated_at = now
+        duplicate.save(update_fields=["status", "cleared_at", "updated_at"])
+        record_alert_event(
+            duplicate,
+            AlertEventType.RESOLVED,
+            performed_by=acting_user,
+            notes="Resolução automática por deduplicação de contexto",
+        )
+
+    ignored_alerts = list(
+        Alert.objects
+        .select_for_update()
+        .filter(
+            producer=producer,
+            type__in=MANAGED_ALERT_TYPES,
+            status=AlertStatus.IGNORED,
+        )
+        .order_by("-updated_at", "-created_at")
+    )
+    ignored_map = {}
+    for alert in ignored_alerts:
+        key = _alert_context_key(alert)
+        if key not in ignored_map:
+            ignored_map[key] = alert
+
+    created_count = 0
+    updated_count = 0
+    resolved_count = len(duplicate_alerts)
+
+    for key, candidate in candidate_map.items():
+        existing = existing_map.get(key)
+        if existing:
+            changed = _apply_candidate_to_alert(
+                existing,
+                candidate,
+                now=now,
+                force_active=True,
+            )
+            if changed:
+                updated_count += 1
+            continue
+
+        ignored_alert = ignored_map.get(key)
+        if ignored_alert and ignored_alert.cleared_at is None:
+            continue
+
+        alert = Alert.objects.create(
+            producer=producer,
+            product=candidate["product"],
+            need=candidate["need"],
+            forecast=candidate["forecast"],
+            listing=candidate["listing"],
+            type=candidate["type"],
+            severity=candidate["severity"],
+            title=candidate["title"],
+            description=candidate["description"],
+            source_system=AlertSourceSystem.INTERNAL,
+            status=AlertStatus.ACTIVE,
+            payload=candidate["payload"],
+            assumed_loss=False,
+        )
+        record_alert_event(
+            alert,
+            AlertEventType.CREATED,
+            performed_by=acting_user,
+            notes="Alerta criado automaticamente",
+        )
+        created_count += 1
+
+    for key, alert in existing_map.items():
+        if key in candidate_map:
+            continue
+        if alert.status not in ACTIVE_LIKE_ALERT_STATUSES:
+            continue
+        alert.status = AlertStatus.RESOLVED
+        alert.cleared_at = now
+        alert.updated_at = now
+        alert.save(update_fields=["status", "cleared_at", "updated_at"])
+        record_alert_event(
+            alert,
+            AlertEventType.RESOLVED,
+            performed_by=acting_user,
+            notes=AUTO_RESOLVED_NOTE,
+        )
+        resolved_count += 1
+
+    for key, ignored_alert in ignored_map.items():
+        if key in candidate_map:
+            continue
+        if ignored_alert.cleared_at is not None:
+            continue
+        ignored_alert.cleared_at = now
+        ignored_alert.updated_at = now
+        ignored_alert.save(update_fields=["cleared_at", "updated_at"])
+
+    return {
+        "created": created_count,
+        "updated": updated_count,
+        "resolved": resolved_count,
+    }
+
+
+@transaction.atomic
+def ignore_alert(alert, user, reason=None):
+    if alert.status == AlertStatus.IGNORED:
+        return False
+
+    now = timezone.now()
+    alert.status = AlertStatus.IGNORED
+    alert.ignored_at = now
+    alert.cleared_at = None
+    alert.ignored_reason = (reason or "").strip() or None
+    alert.updated_at = now
+    alert.save(update_fields=["status", "ignored_at", "cleared_at", "ignored_reason", "updated_at"])
+    record_alert_event(
+        alert,
+        AlertEventType.IGNORED,
+        performed_by=user,
+        notes=alert.ignored_reason or "Ignorado manualmente pelo utilizador",
+    )
+    return True
+
+
+@transaction.atomic
+def resolve_alert(alert, user, notes=None):
+    if alert.status == AlertStatus.RESOLVED:
+        return False
+
+    now = timezone.now()
+    alert.status = AlertStatus.RESOLVED
+    alert.cleared_at = now
+    alert.updated_at = now
+    alert.save(update_fields=["status", "cleared_at", "updated_at"])
+    record_alert_event(
+        alert,
+        AlertEventType.RESOLVED,
+        performed_by=user,
+        notes=(notes or "").strip() or "Resolução manual pelo utilizador",
+    )
+    return True
+
+
+def get_alert_for_producer(*, producer, alert_id):
+    return (
+        Alert.objects
+        .select_related("product", "need", "forecast", "listing")
+        .filter(id=alert_id, producer=producer)
+        .first()
+    )
+
+
+def get_alert_tab_counts(*, producer):
+    return {
+        "active": Alert.objects.filter(producer=producer, status=AlertStatus.ACTIVE).count(),
+        "ignored": Alert.objects.filter(producer=producer, status=AlertStatus.IGNORED).count(),
+        "resolved": Alert.objects.filter(producer=producer, status=AlertStatus.RESOLVED).count(),
+    }
+
+
+def list_alerts_for_producer(*, producer, tab="active"):
+    selected_status = UI_TAB_STATUS_MAP.get(tab, AlertStatus.ACTIVE)
+    alerts = list(
+        Alert.objects
+        .select_related("product", "need", "forecast", "listing")
+        .filter(producer=producer, status=selected_status)
+        .order_by("-updated_at", "-created_at")
+    )
+
+    severity_labels = dict(AlertSeverity.choices)
+    for alert in alerts:
+        payload = alert.payload or {}
+        alert.type_label = get_alert_type_label(alert.type)
+        alert.severity_label = severity_labels.get(alert.severity, alert.severity)
+        alert.action_url = payload.get("action_url")
+        alert.action_label = payload.get("action_label") or "Abrir contexto"
+        alert.secondary_action_url = payload.get("secondary_action_url")
+        alert.secondary_action_label = payload.get("secondary_action_label")
+        alert.related_product_name = (
+            alert.product.name
+            if alert.product
+            else payload.get("product_name")
+        )
+    return alerts

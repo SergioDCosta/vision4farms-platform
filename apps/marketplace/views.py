@@ -53,6 +53,14 @@ from apps.marketplace.services import (
 )
 
 
+def _sync_alerts_after_marketplace_change(producer, acting_user):
+    try:
+        from apps.alerts.services import sync_alerts_for_producer
+        sync_alerts_for_producer(producer, acting_user=acting_user)
+    except Exception:
+        return
+
+
 def _listing_photo_url(photo_path):
     if not photo_path:
         return None
@@ -708,6 +716,7 @@ def marketplace_need_create_view(request):
                 if created
                 else "Necessidade existente atualizada com sucesso.",
             )
+            _sync_alerts_after_marketplace_change(producer, request.current_user)
             show_need_form = False
 
     if _is_htmx(request):
@@ -758,6 +767,7 @@ def marketplace_need_ignore_view(request, need_id):
                 messages.success(request, "Necessidade removida da lista (soft delete).")
             else:
                 messages.success(request, "Necessidade ignorada com sucesso.")
+            _sync_alerts_after_marketplace_change(producer, request.current_user)
         else:
             messages.info(request, "A necessidade já estava ignorada.")
 
@@ -865,7 +875,10 @@ def marketplace_publish_view(request):
             .first()
         )
         if not linked_need:
-            need_context_error = "Necessidade inválida para responder no marketplace."
+            need_context_error = (
+                "A necessidade já não está disponível para resposta "
+                "(pode ter sido coberta ou ignorada)."
+            )
             is_need_prefill_flow = False
         elif linked_need.producer_id == producer.id:
             need_context_error = "Não pode responder à sua própria necessidade."
@@ -1017,6 +1030,7 @@ def marketplace_publish_view(request):
             form.add_error(None, "Não foi possível guardar a foto do anúncio.")
         else:
             messages.success(request, "Anúncio publicado com sucesso.")
+            _sync_alerts_after_marketplace_change(producer, request.current_user)
             url = reverse("marketplace:publish")
             return redirect(f"{url}?success=1&listing_id={listing.id}")
 
@@ -1100,6 +1114,7 @@ def marketplace_edit_view(request, listing_id):
             if new_photo_path and old_photo_path and old_photo_path != new_photo_path:
                 _delete_uploaded_file(old_photo_path)
             messages.success(request, "Anúncio atualizado com sucesso.")
+            _sync_alerts_after_marketplace_change(producer, request.current_user)
             return redirect(f"{reverse('marketplace:index')}?tab=meus")
 
     context = {
@@ -1162,6 +1177,7 @@ def marketplace_delete_view(request, listing_id):
     _delete_uploaded_file(photo_path)
 
     messages.success(request, "Anúncio eliminado com sucesso.")
+    _sync_alerts_after_marketplace_change(producer, request.current_user)
     if _is_htmx(request):
         context = _build_marketplace_index_context(
             producer,
@@ -1252,6 +1268,7 @@ def marketplace_toggle_status_view(request, listing_id):
     listing.updated_at = now
     listing.save(update_fields=["status", "expires_at", "updated_at"])
     messages.success(request, feedback)
+    _sync_alerts_after_marketplace_change(producer, request.current_user)
 
     next_url = (request.POST.get("next") or "").strip()
     if next_url and not _is_htmx(request):

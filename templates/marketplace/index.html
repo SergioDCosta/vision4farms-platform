@@ -246,14 +246,14 @@
                         hx-select="#shellMain"
                         hx-swap="outerHTML"
                         hx-push-url="true"
-                        onsubmit="return confirm('Eliminar necessidade (soft delete)?');">
+                        onsubmit="return confirm('Remover esta necessidade da lista? (soft delete)');">
                     {% csrf_token %}
                     <input type="hidden" name="tab" value="necessidades">
                     <input type="hidden" name="q" value="{{ q }}">
                     <input type="hidden" name="category" value="{{ selected_category_id }}">
                     {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
                     <button type="submit" class="mk-btn-card-muted">
-                      Eliminar
+                      Remover da lista
                     </button>
                   </form>
                 {% else %}

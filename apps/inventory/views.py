@@ -18,6 +18,15 @@ from apps.inventory.forms import (
 )
 from apps.orders.services import get_buyer_incoming_forecast_projection
 
+
+def _sync_alerts_after_inventory_change(producer, acting_user):
+    try:
+        from apps.alerts.services import sync_alerts_for_producer
+        sync_alerts_for_producer(producer, acting_user=acting_user)
+    except Exception:
+        return
+
+
 def _get_producer_or_redirect(request):
     producer = services.get_producer_profile(request.current_user.id)
     if not producer:
@@ -238,6 +247,7 @@ def adicionar_produto(request):
                             f"O produto {producer_product.product.name} já existia e foi associado ao teu inventário."
                         )
 
+                    _sync_alerts_after_inventory_change(producer, request.current_user)
                     return redirect("inventory:stock_detalhe", product_id=producer_product.product_id)
 
                 except ValidationError as exc:
@@ -282,6 +292,7 @@ def adicionar_produto(request):
                         request,
                         f"{producer_product.product.name} foi adicionado com sucesso ao teu inventário."
                     )
+                    _sync_alerts_after_inventory_change(producer, request.current_user)
                     return redirect("inventory:stock_detalhe", product_id=producer_product.product_id)
 
                 except ValidationError as exc:
@@ -316,6 +327,7 @@ def remover_produto(request, producer_product_id):
 
     if success:
         messages.success(request, "Produto desativado com sucesso. Pode reativá-lo na aba de produtos desativados.")
+        _sync_alerts_after_inventory_change(producer, request.current_user)
     else:
         messages.error(request, error)
 
@@ -338,6 +350,7 @@ def reativar_produto(request, producer_product_id):
 
     if success:
         messages.success(request, "Produto reativado com sucesso.")
+        _sync_alerts_after_inventory_change(producer, request.current_user)
     else:
         messages.error(request, error)
 
@@ -450,6 +463,7 @@ def guardar_previsao(request, product_id):
                     "Produção futura substituída com sucesso (mesmo registo).",
                 )
 
+            _sync_alerts_after_inventory_change(producer, request.current_user)
             return redirect("inventory:stock_detalhe", product_id=product_id)
         except ValidationError as exc:
             form.add_error(None, str(exc))
@@ -510,6 +524,7 @@ def atualizar_stock(request, product_id):
                     notes=form.cleaned_data.get("notes", ""),
                 )
                 messages.success(request, "Stock atualizado com sucesso.")
+                _sync_alerts_after_inventory_change(producer, request.current_user)
                 return redirect("inventory:stock_detalhe", product_id=product_id)
 
             except ValidationError as exc:

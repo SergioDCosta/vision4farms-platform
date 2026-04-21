@@ -130,7 +130,12 @@
         <span class="sidebar-link-icon"><i class="bi bi-grid-fill"></i></span>
         <span class="sidebar-link-text">Painel</span>
       </a>
-      <a href="/alertas/"
+      <a href="{% url 'alerts:index' %}"
+         hx-get="{% url 'alerts:index' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
          data-active-mode="prefix"
          data-active-value="/alertas/"
          class="sidebar-link {% if '/alertas/' in request.path %}active{% endif %}"

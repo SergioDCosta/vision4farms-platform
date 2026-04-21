@@ -37,7 +37,6 @@ IN_PROGRESS_ORDER_STATUSES = ["CONFIRMED", "IN_PROGRESS", "DELIVERING"]
 COMPLETED_ORDER_STATUS = "COMPLETED"
 ACTIVE_NEED_STATUSES = [NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED]
 PLANNED_NEED_ORDER_STATUSES = [OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING]
-NEED_STOCK_REFERENCE_TYPE = "NEED"
 
 
 # ---------------------------------------------------------------------------
@@ -230,84 +229,9 @@ def _resolve_need_status(need, coverage):
     return NeedStatus.OPEN
 
 
-def _sync_need_stock_projection(need, coverage, *, acting_user=None):
-    """
-    Sincroniza stock "a caminho" associado à need sem duplicações:
-    - target = planned_qty - completed_qty
-      (o que já entrou fisicamente por receção confirmada não é duplicado aqui)
-    - aplicado é rastreado por StockMovement reference_type="NEED" + reference_id=need.id
-    """
-    planned_qty = _quantize_need_quantity(coverage.get("planned_qty"))
-    completed_qty = _quantize_need_quantity(coverage.get("completed_qty"))
-    target_qty = _quantize_need_quantity(max(planned_qty - completed_qty, Decimal("0.000")))
-    now = timezone.now()
-
-    stock, _ = (
-        Stock.objects
-        .select_for_update()
-        .get_or_create(
-            producer=need.producer,
-            product=need.product,
-            defaults={
-                "current_quantity": Decimal("0.000"),
-                "reserved_quantity": Decimal("0.000"),
-                "safety_stock": Decimal("0.000"),
-                "surplus_threshold": Decimal("0.000"),
-                "updated_by": acting_user,
-                "last_updated_at": now,
-            },
-        )
-    )
-
-    applied_qty = _quantize_need_quantity(
-        StockMovement.objects.filter(
-            stock=stock,
-            reference_type=NEED_STOCK_REFERENCE_TYPE,
-            reference_id=need.id,
-        ).aggregate(total=Sum("quantity_delta"))["total"]
-        or Decimal("0.000")
-    )
-
-    delta = _quantize_need_quantity(target_qty - applied_qty)
-    if delta == Decimal("0.000"):
-        return False
-
-    current_quantity = _quantize_need_quantity(stock.current_quantity)
-    reserved_quantity = _quantize_need_quantity(stock.reserved_quantity)
-    if current_quantity + delta < reserved_quantity:
-        delta = _quantize_need_quantity(reserved_quantity - current_quantity)
-
-    if delta == Decimal("0.000"):
-        return False
-
-    stock.current_quantity = _quantize_need_quantity(current_quantity + delta)
-    stock.last_updated_at = now
-
-    update_fields = ["current_quantity", "last_updated_at", "updated_at"]
-    if hasattr(stock, "updated_by"):
-        stock.updated_by = acting_user
-        update_fields.append("updated_by")
-    stock.save(update_fields=update_fields)
-
-    direction_label = "aumento" if delta > 0 else "ajuste"
-    movement_type = StockMovementType.ORDER_IN if delta > 0 else StockMovementType.CORRECTION
-    StockMovement.objects.create(
-        stock=stock,
-        movement_type=movement_type,
-        quantity_delta=delta,
-        reference_type=NEED_STOCK_REFERENCE_TYPE,
-        reference_id=need.id,
-        notes=(
-            f"{direction_label.capitalize()} automático por cobertura da necessidade "
-            f"#{need.id} ({planned_qty} planeado, {completed_qty} recebido)."
-        ),
-        performed_by=acting_user,
-    )
-    return True
-
-
 @transaction.atomic
 def recalculate_need_status(need, *, acting_user=None):
+    need = Need.objects.select_for_update().get(id=need.id)
     if need.status == NeedStatus.IGNORED:
         return need, calculate_need_coverage(need), False
 
@@ -324,12 +248,7 @@ def recalculate_need_status(need, *, acting_user=None):
             need.save(update_fields=["status"])
         status_changed = True
 
-    stock_changed = _sync_need_stock_projection(
-        need,
-        coverage,
-        acting_user=acting_user,
-    )
-    return need, coverage, (status_changed or stock_changed)
+    return need, coverage, status_changed
 
 
 @transaction.atomic

@@ -10,7 +10,7 @@ class UserPreference(models.Model):
         related_name="preferences",
     )
     alerts_in_app = models.BooleanField(default=True)
-    alerts_email = models.BooleanField(default=True)
+    alerts_email = models.BooleanField(default=False)
     alerts_sms = models.BooleanField(default=False)
     preferred_unit = models.CharField(max_length=20, default="kg")
     profile_photo = models.CharField(max_length=255, blank=True, null=True)

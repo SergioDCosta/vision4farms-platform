@@ -30,7 +30,7 @@ def _ensure_user_preference(user):
         id=uuid.uuid4(),
         user=user,
         alerts_in_app=True,
-        alerts_email=True,
+        alerts_email=False,
         alerts_sms=False,
         preferred_unit="kg",
         created_at=timezone.now(),
