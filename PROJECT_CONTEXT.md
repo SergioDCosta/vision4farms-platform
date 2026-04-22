@@ -197,6 +197,11 @@
   - fila em `/gestor/suporte/` + detalhe em `/gestor/suporte/<uuid>/`;
   - claim por `POST /gestor/suporte/<uuid>/claim/` com lock transacional;
   - resposta por `POST /gestor/suporte/<uuid>/reply/` (fecha automaticamente na 1.ª resposta).
+- Badge realtime na sidebar admin:
+  - WebSocket dedicado em `/ws/suporte/sidebar/` (Channels);
+  - consumer de suporte adiciona admins ao grupo `support_admin_badge`;
+  - eventos emitidos em criação/claim/fecho de ticket fazem refresh imediato do estado do badge;
+  - polling contínuo removido do frontend (mantido refresh por navegação HTMX + evento realtime).
 - Auditoria obrigatória implementada:
   - `SUPPORT_TICKET_CREATED`
   - `SUPPORT_TICKET_CLAIMED`

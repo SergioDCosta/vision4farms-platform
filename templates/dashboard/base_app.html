@@ -221,6 +221,35 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   white-space: nowrap;
 }
 
+.sidebar-support-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .68rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(15,31,19,.22);
+  flex-shrink: 0;
+}
+
+.sidebar-support-badge.is-red {
+  background: #dc2626;
+}
+
+.sidebar-support-badge.is-orange {
+  background: #f59e0b;
+}
+
+.sidebar-support-badge.is-hidden {
+  display: none;
+}
+
 /* footer */
 .sidebar-footer {
   padding: .625rem;
@@ -244,6 +273,16 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   align-items: center;
   gap: 0;
   padding: 0;
+}
+.shell.sidebar-collapsed .sidebar-support-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  margin-left: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: .62rem;
 }
 .shell.sidebar-collapsed .sidebar-link::after {
   content: attr(data-tooltip);
@@ -461,6 +500,13 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 
   const overlay = document.getElementById('shellOverlay');
   const COLLAPSED_KEY = 'sidebar_collapsed';
+  const SUPPORT_BADGE_MIN_REFRESH_GAP_MS = 800;
+  let supportBadgeFetchInFlight = false;
+  let supportBadgeLastRefreshAt = 0;
+  let supportBadgeSocket = null;
+  let supportBadgeSocketReconnectTimer = null;
+  let supportBadgeSocketBackoffIndex = 0;
+  const SUPPORT_BADGE_SOCKET_BACKOFF_MS = [1000, 2000, 5000, 10000];
 
   const isMobile = () => window.innerWidth < 768;
   const isAutoCollapse = () => window.innerWidth < 1280 && window.innerWidth >= 768;
@@ -520,6 +566,132 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     shell.classList.remove("sidebar-mobile-open");
   };
 
+  const getSupportBadgeElements = () => {
+    const supportLink = document.querySelector('.sidebar-link[data-support-badge-url]');
+    if (!supportLink) return null;
+    const badge = supportLink.querySelector("[data-support-badge]");
+    if (!badge) return null;
+    const url = (supportLink.dataset.supportBadgeUrl || "").trim();
+    if (!url) return null;
+    return { supportLink, badge, url };
+  };
+
+  const applySupportBadgeState = (state) => {
+    const elements = getSupportBadgeElements();
+    if (!elements) return;
+    const { badge } = elements;
+
+    const count = Number(state && state.count ? state.count : 0);
+    const visible = Boolean(state && state.visible && count > 0);
+    const tone = state && state.tone === "red" ? "red" : "orange";
+
+    badge.classList.remove("is-red", "is-orange", "is-hidden");
+    if (!visible) {
+      badge.classList.add("is-hidden");
+      return;
+    }
+
+    badge.classList.add(tone === "red" ? "is-red" : "is-orange");
+    badge.textContent = count > 99 ? "99+" : String(count);
+  };
+
+  const refreshSupportBadge = ({ force = false } = {}) => {
+    const elements = getSupportBadgeElements();
+    if (!elements) return;
+    if (supportBadgeFetchInFlight) return;
+
+    const now = Date.now();
+    if (!force && now - supportBadgeLastRefreshAt < SUPPORT_BADGE_MIN_REFRESH_GAP_MS) {
+      return;
+    }
+
+    supportBadgeFetchInFlight = true;
+    supportBadgeLastRefreshAt = now;
+
+    fetch(elements.url, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!payload) return;
+        applySupportBadgeState(payload);
+      })
+      .catch(() => {})
+      .finally(() => {
+        supportBadgeFetchInFlight = false;
+      });
+  };
+
+  const closeSupportBadgeSocket = () => {
+    if (supportBadgeSocketReconnectTimer) {
+      clearTimeout(supportBadgeSocketReconnectTimer);
+      supportBadgeSocketReconnectTimer = null;
+    }
+    if (supportBadgeSocket) {
+      supportBadgeSocket.onopen = null;
+      supportBadgeSocket.onmessage = null;
+      supportBadgeSocket.onerror = null;
+      supportBadgeSocket.onclose = null;
+      supportBadgeSocket.close();
+      supportBadgeSocket = null;
+    }
+  };
+
+  const scheduleSupportBadgeReconnect = () => {
+    if (supportBadgeSocketReconnectTimer) return;
+    const waitMs = SUPPORT_BADGE_SOCKET_BACKOFF_MS[
+      Math.min(supportBadgeSocketBackoffIndex, SUPPORT_BADGE_SOCKET_BACKOFF_MS.length - 1)
+    ];
+    supportBadgeSocketReconnectTimer = window.setTimeout(() => {
+      supportBadgeSocketReconnectTimer = null;
+      connectSupportBadgeSocket();
+    }, waitMs);
+    supportBadgeSocketBackoffIndex += 1;
+  };
+
+  const connectSupportBadgeSocket = () => {
+    const elements = getSupportBadgeElements();
+    if (!elements || supportBadgeSocket) return;
+
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const socketUrl = `${scheme}://${window.location.host}/ws/suporte/sidebar/`;
+
+    try {
+      supportBadgeSocket = new WebSocket(socketUrl);
+    } catch (error) {
+      supportBadgeSocket = null;
+      scheduleSupportBadgeReconnect();
+      return;
+    }
+
+    supportBadgeSocket.onopen = () => {
+      supportBadgeSocketBackoffIndex = 0;
+      refreshSupportBadge({ force: true });
+    };
+
+    supportBadgeSocket.onmessage = (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || "{}");
+      } catch (error) {
+        return;
+      }
+      if (payload && payload.type === "support.badge.changed") {
+        refreshSupportBadge({ force: true });
+      }
+    };
+
+    supportBadgeSocket.onerror = () => {};
+
+    supportBadgeSocket.onclose = () => {
+      supportBadgeSocket = null;
+      scheduleSupportBadgeReconnect();
+    };
+  };
+
   const toggleMainSidebar = () => {
     if (isMobile()) {
       shell.classList.toggle("sidebar-mobile-open");
@@ -550,6 +722,8 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   }
 
   syncSidebarActive();
+  refreshSupportBadge({ force: true });
+  connectSupportBadgeSocket();
 
   if (!window.__appShellHandlersBound) {
     document.addEventListener("click", (event) => {
@@ -580,11 +754,27 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
       const target = event.detail && event.detail.target;
       if (target && target.id === "shellMain") {
         syncSidebarActive();
+        refreshSupportBadge({ force: true });
+        if (!getSupportBadgeElements()) {
+          closeSupportBadgeSocket();
+        } else if (!supportBadgeSocket) {
+          connectSupportBadgeSocket();
+        }
       }
     });
 
-    document.body.addEventListener("htmx:historyRestore", syncSidebarActive);
-    window.addEventListener("popstate", syncSidebarActive);
+    document.body.addEventListener("htmx:historyRestore", () => {
+      syncSidebarActive();
+      refreshSupportBadge({ force: true });
+    });
+    window.addEventListener("popstate", () => {
+      syncSidebarActive();
+      refreshSupportBadge({ force: true });
+    });
+
+    window.addEventListener("beforeunload", () => {
+      closeSupportBadgeSocket();
+    });
 
     // handle resize
     let lastWidth = window.innerWidth;

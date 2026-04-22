@@ -365,17 +365,20 @@
                     <thead>
                       <tr>
                         <th>Ticket</th>
+                        <th>Assunto</th>
                         <th>Estado</th>
                         <th>Criado</th>
                         <th>Claimed</th>
                         <th>Fechado</th>
                         <th>Admin</th>
+                        <th>Resposta admin</th>
                       </tr>
                     </thead>
                     <tbody>
                       {% for ticket in support_tickets %}
                         <tr>
                           <td>#{{ ticket.ticket_number }}</td>
+                          <td>{{ ticket.subject }}</td>
                           <td>{{ ticket.get_status_display }}</td>
                           <td>{{ ticket.created_at|date:"d/m/Y H:i" }}</td>
                           <td>{{ ticket.claimed_at|date:"d/m/Y H:i"|default:"—" }}</td>
@@ -387,11 +390,31 @@
                               —
                             {% endif %}
                           </td>
+                          <td class="stg-ticket-reply-cell">
+                            {% if ticket.admin_reply_message %}
+                              <div class="stg-ticket-reply-content">{{ ticket.admin_reply_message }}</div>
+                            {% else %}
+                              <span class="stg-ticket-reply-empty">Sem resposta do admin ainda.</span>
+                            {% endif %}
+                          </td>
                         </tr>
                       {% endfor %}
                     </tbody>
                   </table>
                 </div>
+                {% if support_tickets_has_more %}
+                  <div class="stg-actions stg-actions--support-history">
+                    {% if support_tickets_show_all %}
+                      <a href="{% url 'settings_app:settings_index' %}#suporte" class="stg-btn-ghost">
+                        <i class="bi bi-eye-slash"></i> Mostrar apenas os últimos 3
+                      </a>
+                    {% else %}
+                      <a href="{% url 'settings_app:settings_index' %}?support_all=1#suporte" class="stg-btn-ghost">
+                        <i class="bi bi-eye"></i> Mostrar todos os tickets
+                      </a>
+                    {% endif %}
+                  </div>
+                {% endif %}
               {% else %}
                 <p class="stg-help" style="margin:0;">Ainda não tens pedidos de suporte enviados.</p>
               {% endif %}
@@ -542,10 +565,14 @@
 .stg-support-meta-item span{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
 .stg-support-meta-item strong{font-size:.84rem;color:#0f172a;word-break:break-word;}
 .stg-support-history-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:.75rem;}
-.stg-support-history{width:100%;border-collapse:collapse;min-width:760px;}
+.stg-support-history{width:100%;border-collapse:collapse;min-width:980px;}
 .stg-support-history thead th{background:#f8fafc;font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:.6rem .75rem;border-bottom:1px solid #e2e8f0;}
 .stg-support-history tbody td{padding:.6rem .75rem;font-size:.82rem;color:#334155;border-bottom:1px solid #f1f5f9;}
 .stg-support-history tbody tr:last-child td{border-bottom:none;}
+.stg-actions--support-history{margin-top:.8rem;padding-top:0;border-top:none;justify-content:flex-start;}
+.stg-ticket-reply-cell{max-width:360px;}
+.stg-ticket-reply-content{white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.stg-ticket-reply-empty{color:#64748b;font-size:.78rem;}
 
 @media (max-width: 1080px){
   .stg-layout{grid-template-columns:1fr;}

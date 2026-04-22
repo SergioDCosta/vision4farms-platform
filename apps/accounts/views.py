@@ -1,3 +1,6 @@
+import logging
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import make_password
 from django.shortcuts import render, redirect
@@ -16,7 +19,10 @@ from apps.accounts.services import (
     create_user_and_profile,
     create_signup_verification_token,
     send_signup_confirmation_email,
-    authenticate_user_by_email,
+    authenticate_user_with_reason,
+    LOGIN_DENIAL_ACCOUNT_DISABLED,
+    LOGIN_DENIAL_ACCOUNT_NOT_ACTIVE,
+    LOGIN_DENIAL_EMAIL_NOT_CONFIRMED,
     login_user_manual,
     logout_user_manual,
     validate_verification_token,
@@ -28,6 +34,20 @@ from apps.accounts.services import (
     complete_invited_user_account,
     invalidate_pending_admin_invite_tokens,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _support_contact_email():
+    return (
+        (getattr(settings, "SUPPORT_CONTACT_EMAIL", "") or "").strip()
+        or (getattr(settings, "DEFAULT_REPLY_TO_EMAIL", "") or "").strip()
+        or "support@farm.vision4you.pt"
+    )
+
+
+def _support_contact_message(prefix):
+    return f"{prefix} Se precisares de ajuda, contacta o suporte em {_support_contact_email()}."
 
 
 @ratelimit(key="ip", rate="10/5m", method="POST", block=False)
@@ -48,25 +68,49 @@ def login_view(request):
         return render(request, "accounts/login.html", {"form": form})
 
     if request.method == "POST" and form.is_valid():
-        email = form.cleaned_data["email"]
-        password = form.cleaned_data["password"]
-        remember_me = form.cleaned_data["remember_me"]
+        try:
+            email = form.cleaned_data["email"]
+            password = form.cleaned_data["password"]
+            remember_me = form.cleaned_data["remember_me"]
 
-        user = authenticate_user_by_email(email, password)
+            user, denial_reason = authenticate_user_with_reason(email, password)
 
-        if user is None:
-            messages.error(request, "Credenciais inválidas ou conta ainda não ativa.")
-        else:
-            now = timezone.now()
-            user.last_login = now
-            user.updated_at = now
-            user.save(update_fields=["last_login", "updated_at"])
+            if user is None:
+                if denial_reason == LOGIN_DENIAL_EMAIL_NOT_CONFIRMED:
+                    messages.error(
+                        request,
+                        _support_contact_message(
+                            "A conta ainda não tem o email confirmado."
+                        ),
+                    )
+                elif denial_reason in {LOGIN_DENIAL_ACCOUNT_DISABLED, LOGIN_DENIAL_ACCOUNT_NOT_ACTIVE}:
+                    messages.error(
+                        request,
+                        _support_contact_message(
+                            "A conta encontra-se desativada ou indisponível para login."
+                        ),
+                    )
+                else:
+                    messages.error(request, "Credenciais inválidas.")
+            else:
+                now = timezone.now()
+                user.last_login = now
+                user.updated_at = now
+                user.save(update_fields=["last_login", "updated_at"])
 
-            login_user_manual(request, user, remember_me=remember_me)
+                login_user_manual(request, user, remember_me=remember_me)
 
-            if user.role == "ADMIN":
-                return redirect("dashboard:gestor")
-            return redirect("dashboard:painel")
+                if user.role == "ADMIN":
+                    return redirect("dashboard:gestor")
+                return redirect("dashboard:painel")
+        except Exception:
+            logger.exception("Erro inesperado durante o login.")
+            messages.error(
+                request,
+                _support_contact_message(
+                    "Não foi possível iniciar sessão de momento por um erro inesperado."
+                ),
+            )
 
     return render(request, "accounts/login.html", {"form": form})
 

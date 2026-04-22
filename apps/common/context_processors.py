@@ -1,7 +1,9 @@
 from django.conf import settings
 from django.core.files.storage import default_storage
 
+from apps.accounts.models import UserRole
 from apps.settings_app.models import UserPreference
+from apps.support.services import get_admin_support_badge_state
 
 
 def _resolve_media_url(photo_path):
@@ -46,3 +48,10 @@ def topbar_user_profile(request):
     return {
         "topbar_profile_photo_url": _resolve_media_url(preference.profile_photo),
     }
+
+
+def admin_support_sidebar_badge(request):
+    user = getattr(request, "current_user", None)
+    if not user or getattr(user, "role", None) != UserRole.ADMIN:
+        return {"admin_support_badge": {"visible": False, "count": 0, "tone": "orange"}}
+    return {"admin_support_badge": get_admin_support_badge_state(request)}

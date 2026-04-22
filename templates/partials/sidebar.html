@@ -85,10 +85,18 @@
          hx-push-url="true"
          data-active-mode="prefix"
          data-active-value="/gestor/suporte/"
+         data-support-badge-url="{% url 'support:admin_ticket_sidebar_state' %}"
          class="sidebar-link {% if '/gestor/suporte/' in request.path %}active{% endif %}"
          data-tooltip="Suporte">
         <span class="sidebar-link-icon"><i class="bi bi-life-preserver"></i></span>
         <span class="sidebar-link-text">Suporte</span>
+        <span
+          class="sidebar-support-badge {% if admin_support_badge.tone == 'red' %}is-red{% else %}is-orange{% endif %}{% if not admin_support_badge.visible or not admin_support_badge.count %} is-hidden{% endif %}"
+          data-support-badge
+          aria-label="Tickets de suporte por resolver"
+        >
+          {{ admin_support_badge.count }}
+        </span>
       </a>
       <a href="{% url 'dashboard:gestor_auditoria' %}"
          hx-get="{% url 'dashboard:gestor_auditoria' %}"

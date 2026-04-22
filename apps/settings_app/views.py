@@ -140,15 +140,27 @@ def settings_view(request):
     security_form = ChangePasswordForm()
     support_form = SupportTicketCreateForm() if not is_admin_user else None
     support_tickets = []
+    support_tickets_show_all = False
+    support_tickets_has_more = False
     if not is_admin_user:
         try:
-            support_tickets = list(
+            support_tickets_show_all = (request.GET.get("support_all") or "").strip() == "1"
+            support_tickets_qs = (
                 SupportTicket.objects.filter(requester_user=user)
                 .select_related("assigned_admin")
-                .order_by("-created_at")[:10]
+                .order_by("-created_at")
             )
+            support_tickets_total = support_tickets_qs.count()
+            support_tickets_has_more = support_tickets_total > 3
+
+            if support_tickets_show_all:
+                support_tickets = list(support_tickets_qs)
+            else:
+                support_tickets = list(support_tickets_qs[:3])
         except Exception:
             support_tickets = []
+            support_tickets_show_all = False
+            support_tickets_has_more = False
 
     if request.method == "POST":
         form_type = (request.POST.get("form_type") or "").strip()
@@ -295,6 +307,8 @@ def settings_view(request):
         "security_form": security_form,
         "support_form": support_form,
         "support_tickets": support_tickets,
+        "support_tickets_show_all": support_tickets_show_all,
+        "support_tickets_has_more": support_tickets_has_more,
         "support_company_snapshot": getattr(producer_profile, "company_name", None) if producer_profile else None,
         "support_phone_snapshot": getattr(producer_profile, "phone", None) if producer_profile else None,
         "is_admin_user": is_admin_user,

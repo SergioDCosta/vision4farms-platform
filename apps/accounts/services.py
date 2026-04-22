@@ -25,6 +25,11 @@ from apps.inventory.models import ProducerProfile
 
 logger = logging.getLogger(__name__)
 
+LOGIN_DENIAL_INVALID_CREDENTIALS = "invalid_credentials"
+LOGIN_DENIAL_ACCOUNT_DISABLED = "account_disabled"
+LOGIN_DENIAL_EMAIL_NOT_CONFIRMED = "email_not_confirmed"
+LOGIN_DENIAL_ACCOUNT_NOT_ACTIVE = "account_not_active"
+
 VERIFICATION_EMAIL_TEMPLATES = {
     VerificationPurpose.SIGNUP_CONFIRMATION: {
         "subject": "emails/signup_confirmation_subject.txt",
@@ -214,23 +219,31 @@ def send_admin_invite_email(request, user, verification_token, async_send=False)
     )
 
 
-def authenticate_user_by_email(email, password):
+def authenticate_user_with_reason(email, password):
     email = email.strip().lower()
 
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
-        return None
+        return None, LOGIN_DENIAL_INVALID_CREDENTIALS
 
-    if not user.is_active:
-        return None
+    if user.account_status == AccountStatus.PENDING_EMAIL_CONFIRMATION:
+        return None, LOGIN_DENIAL_EMAIL_NOT_CONFIRMED
+
+    if user.account_status == AccountStatus.SUSPENDED or not user.is_active:
+        return None, LOGIN_DENIAL_ACCOUNT_DISABLED
 
     if user.account_status != AccountStatus.ACTIVE:
-        return None
+        return None, LOGIN_DENIAL_ACCOUNT_NOT_ACTIVE
 
     if not check_password(password, user.password):
-        return None
+        return None, LOGIN_DENIAL_INVALID_CREDENTIALS
 
+    return user, None
+
+
+def authenticate_user_by_email(email, password):
+    user, _ = authenticate_user_with_reason(email, password)
     return user
 
 

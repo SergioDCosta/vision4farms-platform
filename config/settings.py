@@ -72,6 +72,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.common.context_processors.topbar_user_profile",
+                "apps.common.context_processors.admin_support_sidebar_badge",
             ],
         },
     },

@@ -1,7 +1,10 @@
 import logging
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.contrib import messages
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
@@ -15,11 +18,14 @@ from apps.support.services import (
     build_ticket_snapshot,
     claim_support_ticket,
     create_support_ticket,
+    get_admin_support_badge_state,
+    mark_admin_support_seen,
     reply_support_ticket,
     send_support_ticket_acknowledgement,
     send_support_ticket_created_to_admins,
     send_support_ticket_reply_to_requester,
 )
+from apps.support.consumers import SUPPORT_ADMIN_BADGE_GROUP
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +74,19 @@ def _redirect_to_settings(request):
     return redirect("settings_app:settings_index")
 
 
+def _broadcast_support_badge_changed():
+    try:
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            return
+        async_to_sync(channel_layer.group_send)(
+            SUPPORT_ADMIN_BADGE_GROUP,
+            {"type": "support_badge_changed"},
+        )
+    except Exception:
+        logger.exception("Falha ao emitir atualização realtime do badge de suporte.")
+
+
 @login_required
 @require_POST
 @ratelimit(key=_support_rate_limit_key, rate="5/30m", method="POST", block=False)
@@ -105,6 +124,7 @@ def support_ticket_create_view(request):
         notes=f"Pedido de suporte #{ticket.ticket_number} criado por {ticket.requester_email_snapshot}.",
         new_values=build_ticket_snapshot(ticket),
     )
+    _broadcast_support_badge_changed()
 
     email_failures = []
     try:
@@ -128,6 +148,9 @@ def support_ticket_create_view(request):
 
 @admin_required
 def admin_support_tickets_view(request):
+    if request.method == "GET":
+        mark_admin_support_seen(request)
+
     q = (request.GET.get("q") or "").strip()
     status_filter = (request.GET.get("status") or "").strip().upper()
     allowed_statuses = {SupportTicketStatus.OPEN, SupportTicketStatus.CLAIMED, SupportTicketStatus.CLOSED}
@@ -157,11 +180,16 @@ def admin_support_tickets_view(request):
         "selected_status": status_filter,
         "status_choices": SupportTicketStatus.choices,
     }
+    if request.htmx and request.headers.get("HX-Target") == "support-tickets-table":
+        return render(request, "dashboard/admin/partials/support_tickets_table.html", context)
     return render(request, "dashboard/admin/support_tickets.html", context)
 
 
 @admin_required
 def admin_support_ticket_detail_view(request, ticket_id):
+    if request.method == "GET":
+        mark_admin_support_seen(request)
+
     ticket = get_object_or_404(
         SupportTicket.objects.select_related("requester_user", "assigned_admin"),
         id=ticket_id,
@@ -172,6 +200,11 @@ def admin_support_ticket_detail_view(request, ticket_id):
         "reply_form": SupportTicketReplyForm(),
     }
     return render(request, "dashboard/admin/support_ticket_detail.html", context)
+
+
+@admin_required
+def admin_support_sidebar_state_view(request):
+    return JsonResponse(get_admin_support_badge_state(request))
 
 
 @admin_required
@@ -194,6 +227,7 @@ def admin_support_ticket_claim_view(request, ticket_id):
         old_values=old_values,
         new_values=build_ticket_snapshot(ticket),
     )
+    _broadcast_support_badge_changed()
     messages.success(request, f"Ticket #{ticket.ticket_number} aceite com sucesso.")
     return redirect("support:admin_ticket_detail", ticket_id=ticket.id)
 
@@ -254,5 +288,6 @@ def admin_support_ticket_reply_view(request, ticket_id):
     else:
         messages.success(request, f"Resposta enviada e ticket #{ticket.ticket_number} fechado.")
 
-    return redirect("support:admin_ticket_detail", ticket_id=ticket.id)
+    _broadcast_support_badge_changed()
 
+    return redirect("support:admin_ticket_detail", ticket_id=ticket.id)

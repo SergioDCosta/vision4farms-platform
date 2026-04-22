@@ -5,8 +5,10 @@ from urllib.parse import urljoin
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import connection, transaction
+from django.db.models import Count, Max
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
 from apps.accounts.models import AccountStatus, User, UserRole
@@ -15,10 +17,23 @@ from apps.support.models import SupportTicket, SupportTicketStatus
 
 
 logger = logging.getLogger(__name__)
+SUPPORT_ADMIN_LAST_SEEN_SESSION_KEY = "support_admin_last_seen_at"
 
 
 class SupportServiceError(Exception):
     pass
+
+
+def _parse_session_datetime(value):
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    parsed = parse_datetime(raw)
+    if not parsed:
+        return None
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
 
 
 def _build_public_absolute_url(request, relative_path):
@@ -89,6 +104,47 @@ def _ticket_snapshot(ticket):
         "admin_replied_at": ticket.admin_replied_at.isoformat() if ticket.admin_replied_at else None,
         "closed_at": ticket.closed_at.isoformat() if ticket.closed_at else None,
     }
+
+
+def get_admin_support_badge_state(request):
+    user = getattr(request, "current_user", None)
+    if not user or getattr(user, "role", None) != UserRole.ADMIN:
+        return {"visible": False, "count": 0, "tone": "orange"}
+
+    aggregate = (
+        SupportTicket.objects
+        .filter(status=SupportTicketStatus.OPEN)
+        .aggregate(
+            open_count=Count("id"),
+            latest_open_created_at=Max("created_at"),
+        )
+    )
+    open_count = int(aggregate.get("open_count") or 0)
+    if open_count <= 0:
+        return {"visible": False, "count": 0, "tone": "orange"}
+
+    latest_open_created_at = aggregate.get("latest_open_created_at")
+    last_seen_at = _parse_session_datetime(
+        request.session.get(SUPPORT_ADMIN_LAST_SEEN_SESSION_KEY)
+    )
+    has_unseen_new = bool(
+        latest_open_created_at and (
+            not last_seen_at or latest_open_created_at > last_seen_at
+        )
+    )
+    return {
+        "visible": True,
+        "count": open_count,
+        "tone": "red" if has_unseen_new else "orange",
+    }
+
+
+def mark_admin_support_seen(request):
+    user = getattr(request, "current_user", None)
+    if not user or getattr(user, "role", None) != UserRole.ADMIN:
+        return
+    request.session[SUPPORT_ADMIN_LAST_SEEN_SESSION_KEY] = timezone.now().isoformat()
+    request.session.modified = True
 
 
 def create_support_ticket(*, requester_user, subject, message):
