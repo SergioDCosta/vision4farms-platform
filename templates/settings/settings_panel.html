@@ -16,7 +16,9 @@
         <div class="stg-side-title">Navegação</div>
         <a href="#perfil" class="stg-side-link"><i class="bi bi-person"></i> Perfil</a>
         <a href="#notificacoes" class="stg-side-link"><i class="bi bi-bell"></i> Notificações</a>
-        <a href="#preferencias" class="stg-side-link"><i class="bi bi-sliders"></i> Preferências</a>
+        {% if not is_admin_user %}
+          <a href="#suporte" class="stg-side-link"><i class="bi bi-life-preserver"></i> Suporte</a>
+        {% endif %}
         <a href="#seguranca" class="stg-side-link"><i class="bi bi-shield-lock"></i> Segurança</a>
       </div>
     </aside>
@@ -110,19 +112,6 @@
 
             {% if preferences_form.alerts_in_app.errors or preferences_form.alerts_email.errors or preferences_form.alerts_sms.errors %}
               <div class="stg-error">Verifica as opções de alertas selecionadas.</div>
-            {% endif %}
-
-            {% if is_client_user and preferences_form.preferred_unit %}
-            <div id="preferencias" class="stg-subsection">
-              <h3>Preferências</h3>
-              <div class="stg-field stg-field-sm">
-                <label for="{{ preferences_form.preferred_unit.id_for_label }}">{{ preferences_form.preferred_unit.label }}</label>
-                {{ preferences_form.preferred_unit }}
-                {% if preferences_form.preferred_unit.errors %}
-                  <div class="stg-error">{{ preferences_form.preferred_unit.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-            </div>
             {% endif %}
 
             <div class="stg-actions">
@@ -315,6 +304,102 @@
       </section>
       {% endif %}
 
+      {% if not is_admin_user %}
+        <section id="suporte" class="stg-section">
+          <div class="stg-card">
+            <div class="stg-card-head">
+              <h2>Contactar suporte</h2>
+              <p>Envia um pedido para a equipa de administração da plataforma.</p>
+            </div>
+
+            <form method="post" action="{% url 'support:ticket_create' %}" novalidate>
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'settings_app:settings_index' %}#suporte">
+
+              <div class="stg-support-meta">
+                <div class="stg-support-meta-item">
+                  <span>Nome</span>
+                  <strong>{{ request.current_user.full_name|default:request.current_user.email }}</strong>
+                </div>
+                <div class="stg-support-meta-item">
+                  <span>Email</span>
+                  <strong>{{ request.current_user.email }}</strong>
+                </div>
+                <div class="stg-support-meta-item">
+                  <span>Role</span>
+                  <strong>{{ request.current_user.role }}</strong>
+                </div>
+                <div class="stg-support-meta-item">
+                  <span>Empresa</span>
+                  <strong>{{ support_company_snapshot|default:"—" }}</strong>
+                </div>
+                <div class="stg-support-meta-item">
+                  <span>Telefone</span>
+                  <strong>{{ support_phone_snapshot|default:"—" }}</strong>
+                </div>
+              </div>
+
+              <div class="stg-grid-1" style="margin-top:1rem;">
+                <div class="stg-field">
+                  <label for="{{ support_form.subject.id_for_label }}">{{ support_form.subject.label }}</label>
+                  {{ support_form.subject }}
+                </div>
+                <div class="stg-field">
+                  <label for="{{ support_form.message.id_for_label }}">{{ support_form.message.label }}</label>
+                  {{ support_form.message }}
+                </div>
+              </div>
+
+              <div class="stg-actions">
+                <button type="submit" class="stg-btn-primary">
+                  <i class="bi bi-send"></i> Enviar pedido
+                </button>
+              </div>
+            </form>
+
+            <div class="stg-subsection">
+              <h3>Histórico de suporte</h3>
+              {% if support_tickets %}
+                <div class="stg-support-history-wrap">
+                  <table class="stg-support-history">
+                    <thead>
+                      <tr>
+                        <th>Ticket</th>
+                        <th>Estado</th>
+                        <th>Criado</th>
+                        <th>Claimed</th>
+                        <th>Fechado</th>
+                        <th>Admin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for ticket in support_tickets %}
+                        <tr>
+                          <td>#{{ ticket.ticket_number }}</td>
+                          <td>{{ ticket.get_status_display }}</td>
+                          <td>{{ ticket.created_at|date:"d/m/Y H:i" }}</td>
+                          <td>{{ ticket.claimed_at|date:"d/m/Y H:i"|default:"—" }}</td>
+                          <td>{{ ticket.closed_at|date:"d/m/Y H:i"|default:"—" }}</td>
+                          <td>
+                            {% if ticket.assigned_admin %}
+                              {{ ticket.assigned_admin.full_name|default:ticket.assigned_admin.email }}
+                            {% else %}
+                              —
+                            {% endif %}
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <p class="stg-help" style="margin:0;">Ainda não tens pedidos de suporte enviados.</p>
+              {% endif %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
       <section id="seguranca" class="stg-section">
         <div class="stg-card">
           <div class="stg-card-head">
@@ -452,18 +537,29 @@
 .stg-geo-status--success{color:#166534;}
 .stg-geo-status--error{color:#b91c1c;}
 .stg-geo-status--info{color:#1d4ed8;}
+.stg-support-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;}
+.stg-support-meta-item{padding:.65rem .75rem;border:1px solid #e2e8f0;background:#f8fafc;border-radius:.65rem;display:flex;flex-direction:column;gap:.25rem;}
+.stg-support-meta-item span{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
+.stg-support-meta-item strong{font-size:.84rem;color:#0f172a;word-break:break-word;}
+.stg-support-history-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:.75rem;}
+.stg-support-history{width:100%;border-collapse:collapse;min-width:760px;}
+.stg-support-history thead th{background:#f8fafc;font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:.6rem .75rem;border-bottom:1px solid #e2e8f0;}
+.stg-support-history tbody td{padding:.6rem .75rem;font-size:.82rem;color:#334155;border-bottom:1px solid #f1f5f9;}
+.stg-support-history tbody tr:last-child td{border-bottom:none;}
 
 @media (max-width: 1080px){
   .stg-layout{grid-template-columns:1fr;}
   .stg-side{position:static;}
   .stg-side-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;}
   .stg-side-title{grid-column:1/-1;}
+  .stg-support-meta{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 
 @media (max-width: 780px){
   .stg-grid-2,.stg-checkbox-grid{grid-template-columns:1fr;}
   .stg-span-2{grid-column:span 1;}
   .stg-card{padding:1rem;}
+  .stg-support-meta{grid-template-columns:1fr;}
 }
 </style>
 

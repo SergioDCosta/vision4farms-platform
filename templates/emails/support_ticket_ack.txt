@@ -1,0 +1,9 @@
+Olá {{ ticket.requester_name_snapshot }},
+
+Recebemos o teu pedido de suporte e já foi registado com o número #{{ ticket.ticket_number }}.
+
+Assunto: {{ ticket.subject }}
+
+Podes acompanhar o estado em:
+{{ settings_url }}
+

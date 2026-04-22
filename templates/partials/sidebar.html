@@ -77,6 +77,19 @@
         <span class="sidebar-link-icon"><i class="bi bi-people-fill"></i></span>
         <span class="sidebar-link-text">Utilizadores</span>
       </a>
+      <a href="{% url 'support:admin_ticket_list' %}"
+         hx-get="{% url 'support:admin_ticket_list' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/gestor/suporte/"
+         class="sidebar-link {% if '/gestor/suporte/' in request.path %}active{% endif %}"
+         data-tooltip="Suporte">
+        <span class="sidebar-link-icon"><i class="bi bi-life-preserver"></i></span>
+        <span class="sidebar-link-text">Suporte</span>
+      </a>
       <a href="{% url 'dashboard:gestor_auditoria' %}"
          hx-get="{% url 'dashboard:gestor_auditoria' %}"
          hx-target="#shellMain"

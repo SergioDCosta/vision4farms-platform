@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="pt">
+<body style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <h2 style="margin:0 0 12px;">Resposta ao ticket #{{ ticket.ticket_number }}</h2>
+  <p style="margin:0 0 12px;">O teu pedido foi respondido e fechado.</p>
+  <p style="margin:0 0 8px;"><strong>Assunto:</strong> {{ ticket.subject }}</p>
+  <p style="margin:0 0 8px;"><strong>Resposta do administrador:</strong></p>
+  <p style="margin:0 0 12px;">{{ ticket.admin_reply_message|linebreaksbr }}</p>
+  <p style="margin:0;">
+    <a href="{{ settings_url }}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">
+      Ver histórico de suporte
+    </a>
+  </p>
+</body>
+</html>
+

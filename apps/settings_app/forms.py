@@ -1,7 +1,7 @@
 from django import forms
 import re
 
-from apps.accounts.models import User, UserRole
+from apps.accounts.models import User
 from apps.inventory.models import ProducerProfile, ProducerUserType
 from apps.settings_app.models import UserPreference
 
@@ -189,11 +189,6 @@ class ProducerProfileSettingsForm(forms.ModelForm):
 
 
 class UserPreferencesForm(forms.ModelForm):
-    UNIT_CHOICES = [
-        ("kg", "kg"),
-        ("t", "t"),
-    ]
-
     alerts_in_app = forms.BooleanField(
         label="Alertas na app",
         required=False,
@@ -208,11 +203,6 @@ class UserPreferencesForm(forms.ModelForm):
         label="Alertas por SMS",
         required=False,
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-    )
-    preferred_unit = forms.ChoiceField(
-        label="Unidade preferida",
-        choices=UNIT_CHOICES,
-        widget=forms.Select(attrs={"class": "form-select"}),
     )
     profile_photo = forms.ImageField(
         label="Foto de perfil",
@@ -229,23 +219,12 @@ class UserPreferencesForm(forms.ModelForm):
             "alerts_in_app",
             "alerts_email",
             "alerts_sms",
-            "preferred_unit",
             "profile_photo",
         ]
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
-
-        is_admin = bool(self.user and self.user.role == UserRole.ADMIN)
-        if is_admin:
-            self.fields.pop("preferred_unit", None)
-
-    def clean_preferred_unit(self):
-        value = (self.cleaned_data.get("preferred_unit") or "").strip().lower()
-        if value not in {"kg", "t"}:
-            raise forms.ValidationError("Seleciona uma unidade válida.")
-        return value
 
 
 class ChangePasswordForm(forms.Form):

@@ -1,0 +1,2 @@
+Recebemos o teu pedido de suporte #{{ ticket.ticket_number }}
+

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="pt">
+<body style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <h2 style="margin:0 0 12px;">Novo ticket de suporte #{{ ticket.ticket_number }}</h2>
+  <p style="margin:0 0 12px;"><strong>Assunto:</strong> {{ ticket.subject }}</p>
+  <p style="margin:0 0 12px;"><strong>Mensagem:</strong><br>{{ ticket.message|linebreaksbr }}</p>
+
+  <p style="margin:0 0 8px;"><strong>Requerente</strong></p>
+  <ul style="margin:0 0 12px 18px;padding:0;">
+    <li>Nome: {{ ticket.requester_name_snapshot }}</li>
+    <li>Email: {{ ticket.requester_email_snapshot }}</li>
+    <li>Role: {{ ticket.requester_role_snapshot|default:"—" }}</li>
+    <li>Empresa: {{ ticket.requester_company_snapshot|default:"—" }}</li>
+    <li>Telefone: {{ ticket.requester_phone_snapshot|default:"—" }}</li>
+  </ul>
+
+  <p style="margin:0;">
+    <a href="{{ admin_detail_url }}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">
+      Abrir ticket no painel
+    </a>
+  </p>
+</body>
+</html>
+

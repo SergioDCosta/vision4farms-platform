@@ -188,7 +188,9 @@
           </div>
         </div>
 
-        {% include "marketplace/partials/detail_total.html" %}
+        <div class="mkd-total-wrap">
+          {% include "marketplace/partials/detail_total.html" %}
+        </div>
 
         {% if linked_need and linked_need_remaining %}
           <div class="mkd-total-hint" style="text-align:left;margin-top:.2rem;">
@@ -223,7 +225,13 @@
       <h3><i class="bi bi-star-fill"></i> Histórico do produtor</h3>
 
       <div class="mkd-producer-box">
-        <div class="mkd-avatar">{{ producer_initials }}</div>
+        <div class="mkd-avatar">
+          {% if producer_profile_photo_url %}
+            <img src="{{ producer_profile_photo_url }}" alt="Foto de perfil de {{ producer_name }}">
+          {% else %}
+            {{ producer_initials }}
+          {% endif %}
+        </div>
         <div>
           <p class="mkd-producer-name">{{ producer_name }}</p>
           <p class="mkd-producer-meta">
@@ -242,8 +250,8 @@
           <strong>Produtor ativo</strong>
         </div>
         <div>
-          <p>Anúncio</p>
-          <strong>{{ listing.get_status_display }}</strong>
+          <p>Anúncios publicados</p>
+          <strong>{{ producer_published_listings_count }}</strong>
         </div>
       </div>
     </article>
@@ -255,12 +263,15 @@
 
     <article class="mkd-card mkd-card--map">
       <h3><i class="bi bi-geo-alt"></i> Área de entrega</h3>
-      {% if can_show_delivery_map %}
+      {% if map_mode == "exact" or map_mode == "approximate" %}
         <div
           id="mkd-delivery-map"
           class="mkd-delivery-map"
-          data-lat="{{ map_latitude|unlocalize }}"
-          data-lng="{{ map_longitude|unlocalize }}"
+          data-map-mode="{{ map_mode }}"
+          data-lat="{% if map_latitude is not None %}{{ map_latitude|unlocalize }}{% endif %}"
+          data-lng="{% if map_longitude is not None %}{{ map_longitude|unlocalize }}{% endif %}"
+          data-location-query="{{ map_location_query|default:'' }}"
+          data-location-label="{{ map_location_label|default:'' }}"
           data-delivery-radius-km="{% if map_delivery_radius_km is not None %}{{ map_delivery_radius_km|unlocalize }}{% endif %}"
           data-producer-name="{{ producer_name }}"
           data-product-name="{{ listing.product.name }}"
@@ -268,14 +279,34 @@
           data-buyer-lng="{% if buyer_map_longitude is not None %}{{ buyer_map_longitude|unlocalize }}{% endif %}"
           data-buyer-name="{{ buyer_map_name|default:'' }}"
         ></div>
+        <div class="mkd-map-toolbar">
+          <div class="mkd-map-toolbar-text">
+            {% if map_privacy_message %}
+              <p class="mkd-map-privacy">{{ map_privacy_message }}</p>
+            {% endif %}
+            <p class="mkd-map-hint">
+              {% if map_mode == "approximate" %}
+                Mapa com localização aproximada por cidade/distrito{% if map_location_label %} ({{ map_location_label }}){% endif %}.
+              {% elif map_delivery_radius_km is not None %}
+                O marcador indica a exploração e o círculo azul representa o raio de entrega ({{ map_delivery_radius_km|floatformat:"-2" }} km).
+              {% else %}
+                O marcador indica a localização aproximada da exploração do vendedor.
+              {% endif %}
+            </p>
+          </div>
+          <div class="mkd-map-actions">
+            <button type="button" id="mkd-map-recenter-btn" class="mkd-map-btn">
+              <i class="bi bi-crosshair"></i>
+              Recentrar na exploração
+            </button>
+          </div>
+        </div>
         <p id="mkd-map-runtime-status" class="mkd-map-runtime-status" hidden></p>
-        <p class="mkd-map-hint">
-          {% if map_delivery_radius_km is not None %}
-            O marcador indica a exploração e o círculo azul representa o raio de entrega ({{ map_delivery_radius_km|floatformat:"-2" }} km).
-          {% else %}
-            O marcador indica a localização aproximada da exploração do vendedor.
-          {% endif %}
-        </p>
+      {% elif map_mode == "hidden" %}
+        <div class="mkd-map-empty mkd-map-empty--privacy">
+          <i class="bi bi-shield-lock"></i>
+          <p>{{ map_privacy_message }}</p>
+        </div>
       {% else %}
         <div class="mkd-map-empty">
           <i class="bi bi-map"></i>
@@ -286,54 +317,72 @@
   </section>
 </div>
 
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-  crossorigin=""
-></script>
 <script>
 (function () {
-  function initDeliveryMap() {
-    const mapElement = document.getElementById("mkd-delivery-map");
-    const runtimeStatusElement = document.getElementById("mkd-map-runtime-status");
-    if (!mapElement || typeof L === "undefined") return;
+  const PORTUGAL_CENTER = [39.6, -8.0];
+  const PORTUGAL_ZOOM = 7;
+  const LEAFLET_SCRIPT_ID = "mkd-leaflet-js";
+  const LEAFLET_SCRIPT_SRC = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  const LEAFLET_SCRIPT_INTEGRITY = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
 
-    if (mapElement._leaflet_id) return;
+  function parseCoordinate(value) {
+    const parsed = Number(value || "");
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
 
-    const latitude = Number(mapElement.dataset.lat || "");
-    const longitude = Number(mapElement.dataset.lng || "");
-    const deliveryRadiusKm = Number(mapElement.dataset.deliveryRadiusKm || "");
-    const producerName = String(mapElement.dataset.producerName || "").trim();
-    const productName = String(mapElement.dataset.productName || "").trim();
-    const buyerLatitudeRaw = String(mapElement.dataset.buyerLat || "").trim();
-    const buyerLongitudeRaw = String(mapElement.dataset.buyerLng || "").trim();
-    const buyerLatitude = buyerLatitudeRaw ? Number(buyerLatitudeRaw) : NaN;
-    const buyerLongitude = buyerLongitudeRaw ? Number(buyerLongitudeRaw) : NaN;
-    const buyerName = String(mapElement.dataset.buyerName || "").trim();
-
-    const hasValidCoordinates =
+  function isValidLatLng(latitude, longitude) {
+    return (
       Number.isFinite(latitude) &&
       Number.isFinite(longitude) &&
       latitude >= -90 &&
       latitude <= 90 &&
       longitude >= -180 &&
-      longitude <= 180;
+      longitude <= 180
+    );
+  }
 
-    if (!hasValidCoordinates) {
-      if (runtimeStatusElement) {
-        runtimeStatusElement.hidden = false;
-        runtimeStatusElement.textContent = "Não foi possível carregar o mapa: coordenadas inválidas.";
-      }
-      return;
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function showRuntimeStatus(element, message) {
+    if (!element) return;
+    element.hidden = false;
+    element.textContent = message;
+  }
+
+  function ensureLeafletLoaded() {
+    if (typeof window.L !== "undefined") {
+      return Promise.resolve();
     }
 
-    const map = L.map(mapElement, {
-      zoomControl: true,
-      scrollWheelZoom: false,
-    });
-    map.setView([latitude, longitude], 12);
+    return new Promise(function (resolve, reject) {
+      const existingScript = document.getElementById(LEAFLET_SCRIPT_ID);
+      if (existingScript) {
+        existingScript.addEventListener("load", function () { resolve(); }, { once: true });
+        existingScript.addEventListener("error", function () { reject(new Error("leaflet-load-error")); }, { once: true });
+        return;
+      }
 
-    const tileProviders = [
+      const script = document.createElement("script");
+      script.id = LEAFLET_SCRIPT_ID;
+      script.src = LEAFLET_SCRIPT_SRC;
+      script.integrity = LEAFLET_SCRIPT_INTEGRITY;
+      script.crossOrigin = "";
+      script.async = false;
+      script.onload = function () { resolve(); };
+      script.onerror = function () { reject(new Error("leaflet-load-error")); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function buildTileProviders() {
+    return [
       {
         url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
         options: {
@@ -351,14 +400,16 @@
         },
       },
     ];
+  }
 
+  function mountTileLayer(map, providers, runtimeStatusElement) {
     let activeLayer = null;
     let currentProviderIndex = 0;
     let tileErrorCount = 0;
     let providerSwitched = false;
 
     function mountProvider(index) {
-      const provider = tileProviders[index];
+      const provider = providers[index];
       if (!provider) return;
       if (activeLayer) map.removeLayer(activeLayer);
       activeLayer = L.tileLayer(provider.url, provider.options).addTo(map);
@@ -368,7 +419,7 @@
       activeLayer.on("tileerror", function () {
         tileErrorCount += 1;
         if (tileErrorCount < 3) return;
-        if (!providerSwitched && currentProviderIndex < tileProviders.length - 1) {
+        if (!providerSwitched && currentProviderIndex < providers.length - 1) {
           providerSwitched = true;
           mountProvider(currentProviderIndex + 1);
           return;
@@ -381,25 +432,125 @@
     }
 
     mountProvider(0);
-    const locationMarker = L.marker([latitude, longitude]).addTo(map);
+  }
 
-    function escapeHtml(value) {
-      return String(value || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+  async function geocodeApproximateLocation(locationQuery) {
+    const query = String(locationQuery || "").trim();
+    if (!query) return null;
+
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      q: query,
+      countrycodes: "pt",
+      limit: "1",
+      "accept-language": "pt-PT",
+    });
+
+    const response = await fetch("https://nominatim.openstreetmap.org/search?" + params.toString(), {
+      method: "GET",
+    });
+    if (!response.ok) return null;
+
+    const payload = await response.json();
+    if (!Array.isArray(payload) || !payload.length) return null;
+
+    const first = payload[0] || {};
+    const latitude = Number(first.lat);
+    const longitude = Number(first.lon);
+    if (!isValidLatLng(latitude, longitude)) return null;
+    return [latitude, longitude];
+  }
+
+  async function initDeliveryMap() {
+    const mapElement = document.getElementById("mkd-delivery-map");
+    const runtimeStatusElement = document.getElementById("mkd-map-runtime-status");
+    const recenterButton = document.getElementById("mkd-map-recenter-btn");
+    if (!mapElement) return;
+
+    try {
+      await ensureLeafletLoaded();
+    } catch (error) {
+      showRuntimeStatus(runtimeStatusElement, "Não foi possível carregar o motor do mapa.");
+      return;
     }
 
+    if (typeof L === "undefined") {
+      showRuntimeStatus(runtimeStatusElement, "Não foi possível carregar o mapa.");
+      return;
+    }
+
+    if (mapElement._leaflet_id) return;
+
+    const mapMode = String(mapElement.dataset.mapMode || "exact").trim().toLowerCase();
+    const latitude = parseCoordinate(mapElement.dataset.lat);
+    const longitude = parseCoordinate(mapElement.dataset.lng);
+    const deliveryRadiusKm = Number(mapElement.dataset.deliveryRadiusKm || "");
+    const locationQuery = String(mapElement.dataset.locationQuery || "").trim();
+    const locationLabel = String(mapElement.dataset.locationLabel || "").trim();
+    const producerName = String(mapElement.dataset.producerName || "").trim();
+    const productName = String(mapElement.dataset.productName || "").trim();
+    const buyerLatitudeRaw = String(mapElement.dataset.buyerLat || "").trim();
+    const buyerLongitudeRaw = String(mapElement.dataset.buyerLng || "").trim();
+    const buyerLatitude = buyerLatitudeRaw ? Number(buyerLatitudeRaw) : NaN;
+    const buyerLongitude = buyerLongitudeRaw ? Number(buyerLongitudeRaw) : NaN;
+    const buyerName = String(mapElement.dataset.buyerName || "").trim();
     const safeProducerName = escapeHtml(producerName) || "Produtor";
     const safeProductName = escapeHtml(productName) || "Produto";
     const safeBuyerName = escapeHtml(buyerName) || "Comprador";
-    locationMarker.bindPopup(
-      "<strong>" + safeProducerName + "</strong><br>" +
-      "Localização aproximada da exploração.<br>" +
-      "Produto do anúncio: " + safeProductName
-    );
+
+    const map = L.map(mapElement, {
+      zoomControl: true,
+      scrollWheelZoom: false,
+    });
+    const hasValidSellerCoordinates = isValidLatLng(latitude, longitude);
+    const hasApproximateMode = mapMode === "approximate";
+    const fallbackCenter = hasValidSellerCoordinates ? [latitude, longitude] : PORTUGAL_CENTER;
+    const fallbackZoom = hasValidSellerCoordinates ? 12 : PORTUGAL_ZOOM;
+    map.setView(fallbackCenter, fallbackZoom);
+
+    mountTileLayer(map, buildTileProviders(), runtimeStatusElement);
+
+    let sellerCoordinates = null;
+    let sellerMarker = null;
+    let sellerMarkerDescription = "Localização aproximada da exploração.";
+
+    if (mapMode === "exact" && hasValidSellerCoordinates) {
+      sellerCoordinates = [latitude, longitude];
+    } else if (mapMode === "exact" && runtimeStatusElement) {
+      runtimeStatusElement.hidden = false;
+      runtimeStatusElement.textContent = "Não foi possível carregar o mapa: coordenadas inválidas.";
+    } else if (hasApproximateMode) {
+      try {
+        sellerCoordinates = await geocodeApproximateLocation(locationQuery);
+      } catch (error) {
+        sellerCoordinates = null;
+      }
+
+      if (sellerCoordinates) {
+        sellerMarkerDescription = "Localização aproximada por cidade/distrito.";
+      } else if (runtimeStatusElement) {
+        runtimeStatusElement.hidden = false;
+        runtimeStatusElement.textContent = (
+          "Não foi possível posicionar a localização aproximada no mapa. "
+          + "A localização exata não foi divulgada."
+        );
+      }
+    }
+
+    if (sellerCoordinates) {
+      sellerMarker = L.marker(sellerCoordinates).addTo(map);
+      const isExactLocation = mapMode === "exact" && hasValidSellerCoordinates;
+      const mapsLink = isExactLocation
+        ? ("https://www.google.com/maps?q=" + encodeURIComponent(sellerCoordinates[0] + "," + sellerCoordinates[1]))
+        : ("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(locationQuery || locationLabel));
+
+      sellerMarker.bindPopup(
+        "<strong>" + safeProducerName + "</strong><br>" +
+        sellerMarkerDescription + "<br>" +
+        "Produto do anúncio: " + safeProductName + "<br>" +
+        "<a href='" + mapsLink + "' target='_blank' rel='noopener noreferrer'>Abrir no Google Maps</a>"
+      );
+    }
 
     const hasValidBuyerCoordinates =
       Number.isFinite(buyerLatitude) &&
@@ -408,6 +559,7 @@
       buyerLatitude <= 90 &&
       buyerLongitude >= -180 &&
       buyerLongitude <= 180;
+    let buyerMarker = null;
     if (hasValidBuyerCoordinates) {
       const buyerMarkerIcon = L.divIcon({
         className: "mkd-map-pin-wrap",
@@ -416,7 +568,7 @@
         iconAnchor: [9, 9],
         popupAnchor: [0, -8],
       });
-      const buyerMarker = L.marker([buyerLatitude, buyerLongitude], { icon: buyerMarkerIcon }).addTo(map);
+      buyerMarker = L.marker([buyerLatitude, buyerLongitude], { icon: buyerMarkerIcon }).addTo(map);
       buyerMarker.bindPopup(
         "<strong>" + safeBuyerName + "</strong><br>" +
         "Localização aproximada do comprador."
@@ -424,9 +576,17 @@
     }
 
     const hasDeliveryRadius = Number.isFinite(deliveryRadiusKm) && deliveryRadiusKm > 0;
-    let viewportBounds = L.latLngBounds([L.latLng(latitude, longitude), L.latLng(latitude, longitude)]);
-    if (hasDeliveryRadius) {
-      const deliveryCircle = L.circle([latitude, longitude], {
+    let deliveryCircle = null;
+    let viewportBounds = null;
+
+    if (sellerCoordinates) {
+      viewportBounds = L.latLngBounds([L.latLng(sellerCoordinates[0], sellerCoordinates[1])]);
+    } else if (hasValidBuyerCoordinates) {
+      viewportBounds = L.latLngBounds([L.latLng(buyerLatitude, buyerLongitude)]);
+    }
+
+    if (hasDeliveryRadius && sellerCoordinates) {
+      deliveryCircle = L.circle(sellerCoordinates, {
         radius: deliveryRadiusKm * 1000,
         color: "#2563eb",
         weight: 2,
@@ -441,22 +601,70 @@
       );
     }
 
-    if (hasValidBuyerCoordinates) {
+    if (viewportBounds && hasValidBuyerCoordinates) {
       viewportBounds.extend(L.latLng(buyerLatitude, buyerLongitude));
+    }
+
+    function recenterToSellerArea() {
+      map.invalidateSize();
+      if (hasDeliveryRadius && viewportBounds && viewportBounds.isValid()) {
+        map.fitBounds(viewportBounds, { padding: [24, 24], maxZoom: 13 });
+        return;
+      }
+      if (sellerCoordinates) {
+        map.setView(sellerCoordinates, hasApproximateMode ? 10 : 13);
+        return;
+      }
+      map.setView(PORTUGAL_CENTER, PORTUGAL_ZOOM);
+    }
+
+    if (recenterButton) {
+      recenterButton.addEventListener("click", function () {
+        recenterToSellerArea();
+      });
+      if (!sellerCoordinates && !buyerMarker && !deliveryCircle) {
+        recenterButton.disabled = true;
+      }
     }
 
     function applyViewport() {
       map.invalidateSize();
-      map.setView([latitude, longitude], 12);
       if (viewportBounds && viewportBounds.isValid()) {
         map.fitBounds(viewportBounds, { padding: [24, 24], maxZoom: 13 });
+        return;
       }
+      if (sellerCoordinates) {
+        map.setView(sellerCoordinates, hasApproximateMode ? 10 : 12);
+        return;
+      }
+      map.setView(PORTUGAL_CENTER, PORTUGAL_ZOOM);
     }
+
+    mapElement._mkdApplyViewport = applyViewport;
 
     requestAnimationFrame(function () {
       applyViewport();
       setTimeout(applyViewport, 200);
+      setTimeout(applyViewport, 500);
+      setTimeout(applyViewport, 900);
     });
+  }
+
+  if (window.htmx && !window.__mkdMapAfterSettleHookBound) {
+    document.body.addEventListener("htmx:afterSettle", function () {
+      const mapElement = document.getElementById("mkd-delivery-map");
+      if (!mapElement) return;
+      if (typeof mapElement._mkdApplyViewport === "function") {
+        requestAnimationFrame(function () {
+          mapElement._mkdApplyViewport();
+          setTimeout(mapElement._mkdApplyViewport, 250);
+          setTimeout(mapElement._mkdApplyViewport, 700);
+        });
+        return;
+      }
+      initDeliveryMap();
+    });
+    window.__mkdMapAfterSettleHookBound = true;
   }
 
   initDeliveryMap();
@@ -492,7 +700,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
   gap: 1rem;
-  align-items: center;
+  align-items: stretch;
 }
 
 .mkd-main--single {
@@ -729,14 +937,15 @@
 }
 
 .mkd-buybox {
-  padding: 1.45rem;
+  padding: 1.75rem 1.5rem;
   position: relative;
   top: auto;
-  align-self: center;
+  align-self: stretch;
+  min-height: 100%;
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1.15rem;
+  gap: 1.3rem;
 }
 
 .mkd-buybox h3 {
@@ -780,7 +989,7 @@
 .mkd-field {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.58rem;
 }
 
 .mkd-field label {
@@ -791,6 +1000,7 @@
 
 .mkd-quantity-wrap {
   position: relative;
+  margin-bottom: 0.1rem;
 }
 
 .mkd-quantity-wrap input {
@@ -824,7 +1034,11 @@
   border-radius: 0.95rem;
   background: #f8fafc;
   padding: 0.85rem 0.95rem;
-  margin-top: 0.1rem;
+  margin-top: 0;
+}
+
+.mkd-total-wrap {
+  margin-top: 0.62rem;
 }
 
 .mkd-total-box.is-warning {
@@ -975,6 +1189,14 @@
   justify-content: center;
   font-size: 1.3rem;
   font-weight: 800;
+  overflow: hidden;
+}
+
+.mkd-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .mkd-producer-name {
@@ -1047,11 +1269,69 @@
   line-height: 1.5;
 }
 
+.mkd-map-privacy {
+  margin: 0.65rem 0 0;
+  color: #1e3a8a;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .mkd-map-runtime-status {
   margin: 0.65rem 0 0;
   color: #b91c1c;
   font-size: 0.82rem;
   line-height: 1.5;
+}
+
+.mkd-map-toolbar {
+  margin-top: 0.7rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.mkd-map-toolbar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.mkd-map-toolbar-text .mkd-map-hint,
+.mkd-map-toolbar-text .mkd-map-privacy {
+  margin: 0;
+}
+
+.mkd-map-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.mkd-map-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #0f172a;
+  padding: 0.46rem 0.78rem;
+  font-size: 0.79rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.mkd-map-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.mkd-map-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .mkd-map-empty {
@@ -1060,6 +1340,13 @@
   padding: 1.1rem;
   text-align: center;
   color: #64748b;
+}
+
+.mkd-map-empty--privacy {
+  border-style: solid;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
 }
 
 .mkd-map-empty i {
@@ -1096,6 +1383,17 @@
   .mkd-buybox {
     position: static;
     align-self: stretch;
+  }
+}
+
+@media (max-width: 760px) {
+  .mkd-map-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mkd-map-actions {
+    justify-content: flex-start;
   }
 }
 

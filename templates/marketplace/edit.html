@@ -98,6 +98,15 @@
           {% endif %}
         </div>
 
+        <div class="mke-check-inline{% if form.show_location_on_map.errors %} has-error{% endif %}">
+          {{ form.show_location_on_map }}
+          <label for="{{ form.show_location_on_map.id_for_label }}">{{ form.show_location_on_map.label }}</label>
+        </div>
+        <div class="mke-help">Se desativar, o mapa da área de entrega não será mostrado no detalhe deste anúncio.</div>
+        {% if form.show_location_on_map.errors %}
+          <div class="mke-field-errors">{% for error in form.show_location_on_map.errors %}<span>{{ error }}</span>{% endfor %}</div>
+        {% endif %}
+
         <div class="mke-grid-2" id="mke-delivery-options-wrap">
           <div class="mke-field{% if form.delivery_radius_km.errors %} has-error{% endif %}">
             <label for="{{ form.delivery_radius_km.id_for_label }}">{{ form.delivery_radius_km.label }}</label>
@@ -504,6 +513,28 @@
   border-color: #16a34a;
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
   background: #fff;
+}
+
+.mke-check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.1rem;
+}
+
+.mke-check-inline input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: #16a34a;
+}
+
+.mke-check-inline label {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
 }
 
 .mke-field input[readonly] {

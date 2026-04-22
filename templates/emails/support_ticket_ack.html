@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="pt">
+<body style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <h2 style="margin:0 0 12px;">Pedido de suporte recebido</h2>
+  <p style="margin:0 0 12px;">
+    Olá {{ ticket.requester_name_snapshot }}, recebemos o teu pedido com o número
+    <strong>#{{ ticket.ticket_number }}</strong>.
+  </p>
+  <p style="margin:0 0 12px;"><strong>Assunto:</strong> {{ ticket.subject }}</p>
+  <p style="margin:0;">
+    <a href="{{ settings_url }}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;">
+      Ver estado do pedido
+    </a>
+  </p>
+</body>
+</html>
+

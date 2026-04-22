@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.messaging",
     "apps.dashboard",
     "apps.settings_app",
+    "apps.support",
     "apps.notifications_app",
     "apps.integrations",
 ]
@@ -165,6 +166,10 @@ DEFAULT_REPLY_TO_EMAIL = config(
     "DEFAULT_REPLY_TO_EMAIL",
     default="support@farm.vision4you.pt",
 )
+SUPPORT_CONTACT_EMAIL = config(
+    "SUPPORT_CONTACT_EMAIL",
+    default="",
+).strip()
 
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 EMAIL_TIMEOUT = 20

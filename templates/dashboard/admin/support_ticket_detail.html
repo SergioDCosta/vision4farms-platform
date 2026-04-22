@@ -1,0 +1,214 @@
+{% extends "dashboard/admin/base_admin.html" %}
+{% block admin_content %}
+
+<div class="adm-card" style="margin-bottom:1rem;">
+  <div class="adm-card-head" style="align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+    <div>
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.45rem;">
+        <a href="{% url 'support:admin_ticket_list' %}" class="adm-btn-ghost">
+          <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+      </div>
+      <h2 style="margin:0;font-size:1.3rem;font-weight:800;color:#0f172a;">
+        Ticket #{{ ticket.ticket_number }}
+      </h2>
+      <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.9rem;">
+        {{ ticket.subject }}
+      </p>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;">
+      {% if ticket.status == "OPEN" %}
+        <span class="adm-pill adm-pill--amber"><span class="adm-pill-dot"></span>Aberto</span>
+      {% elif ticket.status == "CLAIMED" %}
+        <span class="adm-pill adm-pill--blue"><span class="adm-pill-dot"></span>Em tratamento</span>
+      {% else %}
+        <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Fechado</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="adm-user-detail-layout">
+  <div class="adm-user-detail-main">
+    <div class="adm-card">
+      <div class="adm-card-head">
+        <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Pedido original</h3>
+      </div>
+      <div class="adm-card-body">
+        <p style="margin:0;color:#334155;line-height:1.7;white-space:pre-wrap;">{{ ticket.message }}</p>
+      </div>
+    </div>
+
+    {% if ticket.admin_reply_message %}
+      <div class="adm-card">
+        <div class="adm-card-head">
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Resposta enviada</h3>
+        </div>
+        <div class="adm-card-body">
+          <p style="margin:0;color:#334155;line-height:1.7;white-space:pre-wrap;">{{ ticket.admin_reply_message }}</p>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if ticket.status != "CLOSED" and ticket.assigned_admin_id == request.current_user.id %}
+      <div class="adm-card">
+        <div class="adm-card-head">
+          <div>
+            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Responder e fechar</h3>
+            <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.84rem;">
+              A primeira resposta fecha automaticamente o ticket.
+            </p>
+          </div>
+        </div>
+        <div class="adm-card-body">
+          <form method="post" action="{% url 'support:admin_ticket_reply' ticket.id %}">
+            {% csrf_token %}
+            <div style="display:flex;flex-direction:column;gap:.45rem;">
+              <label for="{{ reply_form.reply_message.id_for_label }}" style="font-size:.82rem;font-weight:700;color:#334155;">
+                {{ reply_form.reply_message.label }}
+              </label>
+              {{ reply_form.reply_message }}
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+              <button type="submit" class="adm-btn-primary">
+                <i class="bi bi-send"></i> Enviar resposta e fechar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="adm-user-detail-side">
+    <div class="adm-card">
+      <div class="adm-card-head">
+        <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Resumo</h3>
+      </div>
+      <div class="adm-card-body">
+        <div class="adm-user-summary-stack">
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Criado em</div>
+            <div class="adm-user-info-value">{{ ticket.created_at|date:"d/m/Y H:i" }}</div>
+          </div>
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Claimed em</div>
+            <div class="adm-user-info-value">{{ ticket.claimed_at|date:"d/m/Y H:i"|default:"—" }}</div>
+          </div>
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Fechado em</div>
+            <div class="adm-user-info-value">{{ ticket.closed_at|date:"d/m/Y H:i"|default:"—" }}</div>
+          </div>
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Administrador atribuído</div>
+            <div class="adm-user-info-value">
+              {% if ticket.assigned_admin %}
+                {{ ticket.assigned_admin.full_name|default:ticket.assigned_admin.email }}
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="adm-card">
+      <div class="adm-card-head">
+        <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Requerente</h3>
+      </div>
+      <div class="adm-card-body">
+        <div class="adm-user-summary-stack">
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Nome</div>
+            <div class="adm-user-info-value">{{ ticket.requester_name_snapshot }}</div>
+          </div>
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Email</div>
+            <div class="adm-user-info-value">{{ ticket.requester_email_snapshot }}</div>
+          </div>
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Role</div>
+            <div class="adm-user-info-value">{{ ticket.requester_role_snapshot|default:"—" }}</div>
+          </div>
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Empresa</div>
+            <div class="adm-user-info-value">{{ ticket.requester_company_snapshot|default:"—" }}</div>
+          </div>
+          <div class="adm-user-info-item">
+            <div class="adm-user-info-label">Telefone</div>
+            <div class="adm-user-info-value">{{ ticket.requester_phone_snapshot|default:"—" }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if ticket.status == "OPEN" %}
+      <div class="adm-card">
+        <div class="adm-card-head">
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Ação</h3>
+        </div>
+        <div class="adm-card-body">
+          <form method="post" action="{% url 'support:admin_ticket_claim' ticket.id %}">
+            {% csrf_token %}
+            <button type="submit" class="adm-btn-primary" style="width:100%;justify-content:center;">
+              <i class="bi bi-hand-index-thumb"></i> Aceitar ticket
+            </button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+.adm-user-detail-layout{
+  display:grid;
+  grid-template-columns:minmax(0,2fr) minmax(320px,1fr);
+  gap:1rem;
+}
+.adm-user-detail-main,
+.adm-user-detail-side{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:1rem;
+}
+.adm-card-body{
+  padding:1rem 1.25rem;
+}
+.adm-user-info-item{
+  padding:1rem;
+  border:1px solid #e2e8f0;
+  border-radius:1rem;
+  background:#fff;
+}
+.adm-user-info-label{
+  font-size:.75rem;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:#94a3b8;
+  margin-bottom:.35rem;
+}
+.adm-user-info-value{
+  font-weight:700;
+  color:#0f172a;
+}
+.adm-user-summary-stack{
+  display:flex;
+  flex-direction:column;
+  gap:.75rem;
+}
+@media (max-width: 1200px){
+  .adm-user-detail-layout{
+    grid-template-columns:1fr;
+  }
+}
+@media (max-width: 768px){
+  .adm-card-body{
+    padding:1rem;
+  }
+}
+</style>
+{% endblock %}

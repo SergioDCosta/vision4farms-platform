@@ -100,7 +100,7 @@
                 {% if alert.type in 'SHORTAGE,BUY_OPPORTUNITY,EXTERNAL_DEFICIT' %}
                   <a href="/recomendacoes/" class="pnl-cta-red">Resolver</a>
                 {% elif alert.type == 'CRITICAL_STOCK' %}
-                  <a href="/stocks/" class="pnl-cta-ghost">Ver stock</a>
+                  <a href="/alertas/" class="pnl-cta-ghost">Ver stock</a>
                 {% else %}
                   <a href="/alertas/" class="pnl-cta-ghost">Ver alerta</a>
                 {% endif %}
@@ -175,7 +175,7 @@
             <h2 class="pnl-card-title">Stocks críticos</h2>
             <p class="pnl-card-hint">Abaixo do stock de segurança.</p>
           </div>
-          {% if low_stock_preview %}<a href="/stocks/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>{% endif %}
+          {% if low_stock_preview %}<a href="/alertas/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>{% endif %}
         </div>
         {% if low_stock_preview %}
           <div class="pnl-stock-list">

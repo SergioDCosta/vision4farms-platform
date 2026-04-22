@@ -21,7 +21,9 @@
 - Config/env: `python-decouple` (`.env`).
 - Segurança recente:
   - `django-ratelimit` em login/registo;
+  - `django-ratelimit` em submissão de tickets de suporte (`5/30m`, chave por user/IP);
   - validação de anexos por extensão + MIME (`content_type`) + limite 10MB.
+  - `SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"` para compatibilidade com tiles de mapas cross-origin.
 
 ## 3) Organização do Código
 - `config/`
@@ -35,6 +37,7 @@
   - `recommendations`: wizard e recomendações persistidas.
   - `orders`: encomendas, grupos, status, reservas.
   - `messaging`: conversas 1:1, texto+anexo, WS.
+  - `support`: ticketing de suporte utilizador->admin (criação, claim, resposta/fecho).
   - `dashboard`, `settings_app`, `alerts`, `notifications_app`, `integrations`, `catalog`.
 - `templates/`: estrutura por domínio (`inventory/`, `marketplace/`, `orders/`, `messaging/`, etc.).
 - `static/`: assets globais.
@@ -159,15 +162,82 @@
   - purge físico apenas quando ambos os participantes arquivarem.
 - Header da thread abre detalhe do anúncio quando a conversa está ligada a listing.
 
+### 5.7 Alerts
+- Página dedicada `/alertas/` com tabs: `active`, `ignored`, `resolved`.
+- Sincronização automática no load (`sync_alerts_for_producer`) para gerar/atualizar/resolver alertas geridos.
+- Tipos geridos atualmente:
+  - `CRITICAL_STOCK` (stock disponível <= safety stock);
+  - `SURPLUS_AVAILABLE` (excedente real >= limiar);
+  - `EXTERNAL_DEFICIT` (need em aberto/parcial sem cobertura suficiente);
+  - `SELL_SUGGESTION` (previsão com quantidade vendável).
+- Motor inclui deduplicação por contexto lógico (`product`, `need`, `forecast`, `listing`) e auto-resolução de duplicados.
+- Alertas ignorados não são recriados enquanto a condição persiste e o alerta ignorado não tiver sido limpo.
+- Ações utilizador:
+  - ignorar (`/alertas/<id>/ignorar/`);
+  - resolver (`/alertas/<id>/resolver/`).
+- Eventos em `alert_events` são registados para criação/ignorar/resolução.
+- Dashboard cliente consome `alerts` para KPI de ativos/críticos e lista de prioritários.
+
+### 5.8 Support
+- Nova app `support` com tabela `support_tickets` (SQL manual), modelo `managed=False`.
+- Estados finais do ticket:
+  - `OPEN`;
+  - `CLAIMED`;
+  - `CLOSED`.
+- Campos operacionais:
+  - `ticket_number` sequencial (sequence BD);
+  - snapshots do requerente no momento da criação;
+  - `claimed_at`, `admin_replied_at`, `closed_at`.
+- Fluxo utilizador:
+  - card “Contactar suporte” em Definições;
+  - submit para rota dedicada `POST /suporte/tickets/`;
+  - persistência do ticket acontece antes de tentar emails;
+  - falha de email não faz rollback do ticket.
+- Fluxo admin:
+  - fila em `/gestor/suporte/` + detalhe em `/gestor/suporte/<uuid>/`;
+  - claim por `POST /gestor/suporte/<uuid>/claim/` com lock transacional;
+  - resposta por `POST /gestor/suporte/<uuid>/reply/` (fecha automaticamente na 1.ª resposta).
+- Auditoria obrigatória implementada:
+  - `SUPPORT_TICKET_CREATED`
+  - `SUPPORT_TICKET_CLAIMED`
+  - `SUPPORT_TICKET_REPLIED`
+  - `SUPPORT_TICKET_CLOSED`
+- Histórico em Definições e fila admin expõem `claimed_at`.
+- Nota técnica de concorrência:
+  - em operações com `select_for_update`, evitar `select_related` em FKs nullable (ex.: `assigned_admin`) para não disparar erro PostgreSQL em outer join com lock.
+
+### 5.9 Marketplace (Entrega + Mapa no detalhe)
+- Formulários publish/edit:
+  - quando `delivery_mode = PICKUP`, campos de `delivery_radius_km` e `delivery_fee` ficam ocultos no frontend;
+  - backend mantém limpeza defensiva de raio/taxa em pickup.
+  - novo toggle por anúncio `show_location_on_map` para o produtor escolher se quer expor localização no mapa.
+- Detalhe do anúncio:
+  - mapa Leaflet com marcador da exploração (modo `exact`, quando coordenadas válidas);
+  - fallback `approximate` por `cidade/distrito` via geocoding no frontend (Nominatim), com aviso de que a localização exata não foi divulgada;
+  - modo `hidden` quando o produtor desativa a exibição do mapa no anúncio;
+  - mensagem de indisponibilidade apenas quando não há coordenadas nem cidade/distrito;
+  - círculo de entrega quando há raio no anúncio;
+  - popup no marcador com produtor + produto do anúncio;
+  - marcador adicional do comprador (verde), quando coordenadas do comprador estão disponíveis no contexto;
+  - círculo de entrega também interativo (popup com raio).
+- Robustez frontend mapa:
+  - guard para evitar double-init em navegação HTMX (`_leaflet_id`);
+  - carregamento robusto do Leaflet no detalhe (inclui carregamento dinâmico do script quando necessário);
+  - reflow pós-swap HTMX (`htmx:afterSettle`) para evitar mapa cinza no primeiro load;
+  - ajuste de viewport com `invalidateSize` + `requestAnimationFrame`;
+  - fallback de provider de tiles em caso de erro.
+
 ## 6) Modelo de Dados (Entidades-Chave)
 - Identidade: `users`, `producer_profiles`, `user_preferences`, `account_verification_tokens`.
 - Catálogo global: `product_categories`, `products`.
 - Inventário do produtor: `producer_products`, `stocks`, `stock_movements`, `production_forecasts`, `needs`.
-- Marketplace: `marketplace_listings` (inclui `need_id` nullable para resposta privada).
+- Marketplace: `marketplace_listings` (inclui `need_id` nullable para resposta privada e `show_location_on_map` para controlo de privacidade no mapa).
 - Recomendações: `recommendations`, `recommendation_items`.
 - Encomendas: `order_groups`, `orders`, `order_items`, `order_status_history`.
 - Mensagens: `conversations`, `conversation_participants`, `messages`.
-- Suporte: `notifications`, `alerts`, `alert_events`, `audit_log`, `vision4farms_sync_log`.
+- Alertas: `alerts`, `alert_events`.
+- Suporte: `support_tickets`.
+- Operacional/integrações: `notifications`, `audit_log`, `vision4farms_sync_log`.
 
 ## 7) Relações e Regras-Chave
 - `users` 1-1 `producer_profiles`.
@@ -178,9 +248,12 @@
 - `order_items.need_id` e `recommendations.need_id` suportam rastreio de cobertura da need.
 - `orders` pode ter `group_id` nulo (legado suportado).
 - `messages` pertence a `conversation`; acesso só para participantes não arquivados.
+- `support_tickets.requester_user_id` referencia `users` (cascade delete).
+- `support_tickets.assigned_admin_id` referencia `users` (set null).
 
 ## 8) Notas Operacionais
 - Sem migrations em tabelas de negócio: alterações estruturais via SQL manual + map em `models.py`.
 - Em produção com Cloudinary, render de media deve usar URL resolvida pela storage.
 - Padrão de autenticação no projeto: usar `request.current_user` (não `request.user`) nas views de negócio.
 - Atenção ao `.env`: `DEBUG` precisa de valor booleano parseável (`true/false`), não `"release"`.
+- Em produção, configurar `SUPPORT_CONTACT_EMAIL` como fallback quando não houver admins ativos com email para notificação de novo ticket.

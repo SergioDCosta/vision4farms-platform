@@ -1,0 +1,12 @@
+Olá {{ ticket.requester_name_snapshot }},
+
+O teu ticket de suporte #{{ ticket.ticket_number }} foi respondido e fechado.
+
+Assunto: {{ ticket.subject }}
+
+Resposta do administrador:
+{{ ticket.admin_reply_message }}
+
+Podes consultar o histórico em:
+{{ settings_url }}
+

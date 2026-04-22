@@ -1,0 +1,2 @@
+Resposta ao teu ticket de suporte #{{ ticket.ticket_number }}
+

@@ -1,0 +1,2 @@
+Novo ticket de suporte #{{ ticket.ticket_number }}
+

@@ -56,6 +56,7 @@ class MarketplaceListing(models.Model):
     delivery_mode = models.CharField(max_length=20, choices=DeliveryMode.choices)
     delivery_radius_km = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    show_location_on_map = models.BooleanField(default=True)
     notes = models.TextField(blank=True, null=True)
     photo_path = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=ListingStatus.choices, default=ListingStatus.ACTIVE)

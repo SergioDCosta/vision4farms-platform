@@ -512,6 +512,7 @@ def create_listing(
     delivery_mode,
     delivery_radius_km=None,
     delivery_fee=None,
+    show_location_on_map=True,
     notes=None,
     photo_path=None,
     status=ListingStatus.ACTIVE,
@@ -595,6 +596,7 @@ def create_listing(
         delivery_mode=delivery_mode,
         delivery_radius_km=delivery_radius_km,
         delivery_fee=delivery_fee,
+        show_location_on_map=bool(show_location_on_map),
         notes=notes or None,
         photo_path=photo_path or None,
         status=status or ListingStatus.ACTIVE,
@@ -611,6 +613,7 @@ def update_listing(
     delivery_mode,
     delivery_radius_km=None,
     delivery_fee=None,
+    show_location_on_map=True,
     notes=None,
     status=ListingStatus.ACTIVE,
     expires_at=None,
@@ -679,6 +682,7 @@ def update_listing(
     listing.delivery_mode = delivery_mode
     listing.delivery_radius_km = delivery_radius_km
     listing.delivery_fee = delivery_fee
+    listing.show_location_on_map = bool(show_location_on_map)
     listing.notes = notes or None
     listing.status = status
     listing.expires_at = expires_at
@@ -693,6 +697,7 @@ def update_listing(
             "delivery_mode",
             "delivery_radius_km",
             "delivery_fee",
+            "show_location_on_map",
             "notes",
             "status",
             "expires_at",

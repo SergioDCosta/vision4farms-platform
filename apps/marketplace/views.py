@@ -51,6 +51,7 @@ from apps.marketplace.services import (
     get_public_listings,
     update_listing,
 )
+from apps.settings_app.models import UserPreference
 
 
 def _sync_alerts_after_marketplace_change(producer, acting_user):
@@ -83,6 +84,22 @@ def _listing_photo_url(photo_path):
         return default_storage.url(normalized_path)
     except Exception:
         return f"{settings.MEDIA_URL}{normalized_path}"
+
+
+def _producer_profile_photo_url(user):
+    if not user:
+        return None
+
+    preference = (
+        UserPreference.objects
+        .filter(user=user)
+        .only("profile_photo")
+        .first()
+    )
+    if not preference:
+        return None
+
+    return _listing_photo_url(preference.profile_photo)
 
 
 def _attach_listing_photo_urls(listings):
@@ -531,6 +548,15 @@ def _build_marketplace_detail_context(request, listing, producer):
         return None, None
 
     map_latitude, map_longitude = _parse_valid_coordinates(listing.producer)
+    map_show_enabled = bool(getattr(listing, "show_location_on_map", True))
+    map_city = (getattr(listing.producer, "city", None) or "").strip()
+    map_district = (getattr(listing.producer, "district", None) or "").strip()
+    map_location_query = (
+        ", ".join(part for part in [map_city, map_district, "Portugal"] if part)
+        if (map_city or map_district)
+        else ""
+    )
+    map_location_label = ", ".join(part for part in [map_city, map_district] if part)
 
     map_delivery_radius_km = None
     if listing.delivery_mode in {"DELIVERY", "BOTH"} and listing.delivery_radius_km is not None:
@@ -541,7 +567,27 @@ def _build_marketplace_detail_context(request, listing, producer):
         except (TypeError, ValueError):
             map_delivery_radius_km = None
 
-    can_show_delivery_map = map_latitude is not None and map_longitude is not None
+    if not map_show_enabled:
+        map_mode = "hidden"
+    elif map_latitude is not None and map_longitude is not None:
+        map_mode = "exact"
+    elif map_city or map_district:
+        map_mode = "approximate"
+    else:
+        map_mode = "unavailable"
+
+    map_privacy_message = None
+    if map_mode == "hidden":
+        map_privacy_message = (
+            "O produtor preferiu não divulgar a localização no mapa neste anúncio."
+        )
+    elif map_mode == "approximate":
+        map_privacy_message = (
+            "O produtor preferiu não divulgar a localização exata da exploração. "
+            "Contacta-o diretamente para combinar detalhes."
+        )
+
+    can_show_delivery_map = map_mode in {"exact", "approximate"}
     buyer_map_latitude = None
     buyer_map_longitude = None
     buyer_map_name = None
@@ -567,6 +613,12 @@ def _build_marketplace_detail_context(request, listing, producer):
 
     producer_member_since = None
     producer_user = getattr(listing.producer, "user", None)
+    producer_profile_photo_url = _producer_profile_photo_url(producer_user)
+    producer_published_listings_count = (
+        MarketplaceListing.objects
+        .filter(producer_id=listing.producer_id)
+        .count()
+    )
     if producer_user and getattr(producer_user, "created_at", None):
         producer_member_since = producer_user.created_at.year
 
@@ -649,10 +701,19 @@ def _build_marketplace_detail_context(request, listing, producer):
         **quote,
         "producer_name": producer_name,
         "producer_initials": producer_initials,
+        "producer_profile_photo_url": producer_profile_photo_url,
+        "producer_published_listings_count": producer_published_listings_count,
         "producer_location": producer_location,
         "delivery_text": delivery_text,
         "map_latitude": map_latitude,
         "map_longitude": map_longitude,
+        "map_show_enabled": map_show_enabled,
+        "map_city": map_city,
+        "map_district": map_district,
+        "map_location_query": map_location_query if map_location_query else None,
+        "map_location_label": map_location_label if map_location_label else None,
+        "map_mode": map_mode,
+        "map_privacy_message": map_privacy_message,
         "map_delivery_radius_km": map_delivery_radius_km,
         "can_show_delivery_map": can_show_delivery_map,
         "buyer_map_latitude": buyer_map_latitude,
@@ -1056,6 +1117,7 @@ def marketplace_publish_view(request):
                 delivery_mode=form.cleaned_data["delivery_mode"],
                 delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
                 delivery_fee=form.cleaned_data.get("delivery_fee"),
+                show_location_on_map=form.cleaned_data.get("show_location_on_map", True),
                 notes=form.cleaned_data.get("notes"),
                 photo_path=photo_path,
                 status=form.cleaned_data.get("status"),
@@ -1141,6 +1203,7 @@ def marketplace_edit_view(request, listing_id):
                 delivery_mode=form.cleaned_data["delivery_mode"],
                 delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
                 delivery_fee=form.cleaned_data.get("delivery_fee"),
+                show_location_on_map=form.cleaned_data.get("show_location_on_map", True),
                 notes=form.cleaned_data.get("notes"),
                 status=form.cleaned_data["status"],
                 expires_at=form.cleaned_data.get("expires_at_final"),

@@ -1,0 +1,99 @@
+{% extends "dashboard/admin/base_admin.html" %}
+{% block admin_content %}
+<div class="adm-card">
+  <div class="adm-card-head" style="gap:.65rem;">
+    <form method="get" class="adm-search" style="max-width:360px;">
+      <i class="bi bi-search"></i>
+      <input
+        type="text"
+        name="q"
+        value="{{ q }}"
+        placeholder="Pesquisar por ticket, assunto, nome ou email..."
+        autocomplete="off"
+      >
+      {% if selected_status %}
+        <input type="hidden" name="status" value="{{ selected_status }}">
+      {% endif %}
+    </form>
+
+    <form method="get" style="display:flex;align-items:center;gap:.5rem;margin-left:auto;">
+      {% if q %}
+        <input type="hidden" name="q" value="{{ q }}">
+      {% endif %}
+      <select name="status" class="form-select" style="min-width:170px;">
+        <option value="">Todos os estados</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="adm-btn-ghost">
+        <i class="bi bi-funnel"></i> Filtrar
+      </button>
+    </form>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table class="adm-table">
+      <thead>
+        <tr>
+          <th>Ticket</th>
+          <th>Estado</th>
+          <th>Assunto</th>
+          <th>Requerente</th>
+          <th>Atribuído</th>
+          <th>Criado em</th>
+          <th>Claimed em</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ticket in tickets %}
+          <tr>
+            <td style="font-family:'DM Mono',monospace;">#{{ ticket.ticket_number }}</td>
+            <td>
+              {% if ticket.status == "OPEN" %}
+                <span class="adm-pill adm-pill--amber"><span class="adm-pill-dot"></span>Aberto</span>
+              {% elif ticket.status == "CLAIMED" %}
+                <span class="adm-pill adm-pill--blue"><span class="adm-pill-dot"></span>Em tratamento</span>
+              {% else %}
+                <span class="adm-pill adm-pill--green"><span class="adm-pill-dot"></span>Fechado</span>
+              {% endif %}
+            </td>
+            <td>{{ ticket.subject }}</td>
+            <td>
+              <div style="display:flex;flex-direction:column;gap:.12rem;">
+                <strong>{{ ticket.requester_name_snapshot }}</strong>
+                <span style="font-size:.78rem;color:#64748b;">{{ ticket.requester_email_snapshot }}</span>
+              </div>
+            </td>
+            <td>
+              {% if ticket.assigned_admin %}
+                {{ ticket.assigned_admin.full_name|default:ticket.assigned_admin.email }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ ticket.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ ticket.claimed_at|date:"d/m/Y H:i"|default:"—" }}</td>
+            <td>
+              <a href="{% url 'support:admin_ticket_detail' ticket.id %}" class="adm-act-btn" title="Ver detalhe">
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="8">
+              <div class="adm-empty">
+                <i class="bi bi-life-preserver"></i>
+                <p>Sem tickets de suporte para mostrar.</p>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+

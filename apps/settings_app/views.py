@@ -19,6 +19,8 @@ from apps.settings_app.forms import (
     UserPreferencesForm,
 )
 from apps.settings_app.models import UserPreference
+from apps.support.forms import SupportTicketCreateForm
+from apps.support.models import SupportTicket
 
 
 def _ensure_user_preference(user):
@@ -32,7 +34,6 @@ def _ensure_user_preference(user):
         alerts_in_app=True,
         alerts_email=False,
         alerts_sms=False,
-        preferred_unit="kg",
         created_at=timezone.now(),
         updated_at=timezone.now(),
     )
@@ -119,6 +120,7 @@ def settings_view(request):
         return redirect("accounts:login")
 
     preference = _ensure_user_preference(user)
+    is_admin_user = user.role == UserRole.ADMIN
     is_client_user = user.role == UserRole.CLIENTE
     producer_profile = ProducerProfile.objects.filter(user=user).first() if is_client_user else None
 
@@ -136,6 +138,17 @@ def settings_view(request):
     )
     preferences_form = UserPreferencesForm(instance=preference, user=user)
     security_form = ChangePasswordForm()
+    support_form = SupportTicketCreateForm() if not is_admin_user else None
+    support_tickets = []
+    if not is_admin_user:
+        try:
+            support_tickets = list(
+                SupportTicket.objects.filter(requester_user=user)
+                .select_related("assigned_admin")
+                .order_by("-created_at")[:10]
+            )
+        except Exception:
+            support_tickets = []
 
     if request.method == "POST":
         form_type = (request.POST.get("form_type") or "").strip()
@@ -208,7 +221,6 @@ def settings_view(request):
                     "alerts_in_app",
                     "alerts_email",
                     "alerts_sms",
-                    "preferred_unit",
                     "profile_photo",
                 }
 
@@ -216,17 +228,12 @@ def settings_view(request):
                     field for field in preferences_form.changed_data
                     if field in allowed_model_fields
                 ]
-                
-                is_admin_user = user.role == UserRole.ADMIN
 
                 uploaded_photo = request.FILES.get("profile_photo")
                 old_photo = preference.profile_photo if uploaded_photo else None
                 new_photo_path = None
 
                 updated_preference = preferences_form.save(commit=False)
-
-                if is_admin_user:
-                    updated_preference.preferred_unit = preference.preferred_unit
 
                 if uploaded_photo:
                     new_photo_path = _save_profile_photo(user, uploaded_photo)
@@ -239,9 +246,6 @@ def settings_view(request):
                     updated_preference.updated_at = timezone.now()
 
                     update_fields = list(set(changed_fields + ["updated_at"]))
-
-                    if is_admin_user and "preferred_unit" in update_fields:
-                        update_fields.remove("preferred_unit")
 
                     try:
                         updated_preference.save(update_fields=update_fields)
@@ -289,6 +293,11 @@ def settings_view(request):
         "producer_profile_form": producer_profile_form,
         "preferences_form": preferences_form,
         "security_form": security_form,
+        "support_form": support_form,
+        "support_tickets": support_tickets,
+        "support_company_snapshot": getattr(producer_profile, "company_name", None) if producer_profile else None,
+        "support_phone_snapshot": getattr(producer_profile, "phone", None) if producer_profile else None,
+        "is_admin_user": is_admin_user,
         "is_client_user": is_client_user and bool(producer_profile_form),
         "profile_photo_url": _profile_photo_url(preference),
         "avatar_initials": _user_initials(user),

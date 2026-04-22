@@ -1,0 +1,18 @@
+Foi criado um novo ticket de suporte.
+
+Ticket: #{{ ticket.ticket_number }}
+Estado: {{ ticket.get_status_display }}
+Assunto: {{ ticket.subject }}
+Mensagem:
+{{ ticket.message }}
+
+Requerente:
+- Nome: {{ ticket.requester_name_snapshot }}
+- Email: {{ ticket.requester_email_snapshot }}
+- Role: {{ ticket.requester_role_snapshot|default:"—" }}
+- Empresa: {{ ticket.requester_company_snapshot|default:"—" }}
+- Telefone: {{ ticket.requester_phone_snapshot|default:"—" }}
+
+Abrir no painel:
+{{ admin_detail_url }}
+

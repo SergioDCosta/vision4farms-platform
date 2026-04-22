@@ -110,6 +110,12 @@ class MarketplacePublishForm(forms.Form):
             "placeholder": "Ex: 5.00",
         }),
     )
+    show_location_on_map = forms.BooleanField(
+        label="Mostrar localização no mapa",
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
 
     photo = forms.ImageField(
         label="Foto do anúncio",
@@ -340,6 +346,12 @@ class MarketplaceEditForm(forms.Form):
             "placeholder": "Ex: 5.00",
         }),
     )
+    show_location_on_map = forms.BooleanField(
+        label="Mostrar localização no mapa",
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
 
     notes = forms.CharField(
         label="Observações",
@@ -417,6 +429,9 @@ class MarketplaceEditForm(forms.Form):
             self.fields["delivery_mode"].initial = self.listing.delivery_mode
             self.fields["delivery_radius_km"].initial = self.listing.delivery_radius_km
             self.fields["delivery_fee"].initial = self.listing.delivery_fee
+            self.fields["show_location_on_map"].initial = bool(
+                getattr(self.listing, "show_location_on_map", True)
+            )
             self.fields["notes"].initial = self.listing.notes
             self.fields["status"].initial = self.listing.status
 
