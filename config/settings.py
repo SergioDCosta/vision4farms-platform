@@ -94,6 +94,7 @@ APP_BASE_URL = config("APP_BASE_URL", default="").strip().rstrip("/")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

@@ -1,5 +1,6 @@
 from django import forms
 
+from apps.accounts.models import User
 from apps.catalog.models import ProductCategory
 
 
@@ -22,7 +23,10 @@ class AdminUserCreateForm(forms.Form):
     )
 
     def clean_email(self):
-        return (self.cleaned_data.get("email") or "").strip().lower()
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        if User.objects.filter(email=email).exists():
+            raise forms.ValidationError("Este email já está registado.")
+        return email
 
 
 class AdminCategoryForm(forms.Form):

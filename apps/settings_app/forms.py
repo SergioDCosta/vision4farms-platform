@@ -151,6 +151,22 @@ class ProducerProfileSettingsForm(forms.ModelForm):
             raise forms.ValidationError("O código-postal deve estar no formato 1234-567.")
         return value
 
+    def clean_latitude(self):
+        value = self.cleaned_data.get("latitude")
+        if value in (None, ""):
+            return None
+        if value < -90 or value > 90:
+            raise forms.ValidationError("A latitude deve estar entre -90 e 90.")
+        return value
+
+    def clean_longitude(self):
+        value = self.cleaned_data.get("longitude")
+        if value in (None, ""):
+            return None
+        if value < -180 or value > 180:
+            raise forms.ValidationError("A longitude deve estar entre -180 e 180.")
+        return value
+
     def clean(self):
         cleaned_data = super().clean()
         optional_text_fields = [

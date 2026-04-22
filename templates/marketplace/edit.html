@@ -98,7 +98,7 @@
           {% endif %}
         </div>
 
-        <div class="mke-grid-2">
+        <div class="mke-grid-2" id="mke-delivery-options-wrap">
           <div class="mke-field{% if form.delivery_radius_km.errors %} has-error{% endif %}">
             <label for="{{ form.delivery_radius_km.id_for_label }}">{{ form.delivery_radius_km.label }}</label>
             <div class="mke-input-wrap">
@@ -197,6 +197,8 @@
   const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
   const timerWrap = document.getElementById("mke-timer-wrap");
   const dateWrap = document.getElementById("mke-date-wrap");
+  const deliveryModeField = document.getElementById("{{ form.delivery_mode.id_for_label }}");
+  const deliveryOptionsWrap = document.getElementById("mke-delivery-options-wrap");
 
   function syncExpiryFields() {
     if (!modeField || !timerWrap || !dateWrap) return;
@@ -205,10 +207,20 @@
     dateWrap.style.display = mode === "date" ? "" : "none";
   }
 
+  function syncDeliveryFields() {
+    if (!deliveryModeField || !deliveryOptionsWrap) return;
+    const deliveryMode = (deliveryModeField.value || "").toUpperCase();
+    deliveryOptionsWrap.style.display = deliveryMode === "PICKUP" ? "none" : "";
+  }
+
   if (modeField) {
     modeField.addEventListener("change", syncExpiryFields);
   }
   syncExpiryFields();
+  if (deliveryModeField) {
+    deliveryModeField.addEventListener("change", syncDeliveryFields);
+  }
+  syncDeliveryFields();
 
   const photoInput = document.getElementById("{{ form.photo.id_for_label }}");
   const photoCropInput = document.getElementById("{{ form.photo_crop.id_for_label }}");

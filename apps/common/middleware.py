@@ -1,4 +1,4 @@
-from apps.accounts.models import User
+from apps.accounts.models import User, AccountStatus
 
 
 class SessionUserMiddleware:
@@ -7,10 +7,13 @@ class SessionUserMiddleware:
 
     def __call__(self, request):
         user_id = request.session.get("user_id")
+        request.current_user = None
 
         if user_id:
-            request.current_user = User.objects.filter(id=user_id).first()
-        else:
-            request.current_user = None
+            user = User.objects.filter(id=user_id).first()
+            if user and user.is_active and user.account_status == AccountStatus.ACTIVE:
+                request.current_user = user
+            else:
+                request.session.flush()
 
         return self.get_response(request)

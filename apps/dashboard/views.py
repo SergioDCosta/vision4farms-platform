@@ -930,35 +930,38 @@ def admin_user_create_view(request):
     form = AdminUserCreateForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            role = form.cleaned_data["role"]
+        try:
+            with transaction.atomic():
+                role = form.cleaned_data["role"]
 
-            user = User.objects.create(
-                email=form.cleaned_data["email"],
-                password="",
-                first_name="",
-                last_name="",
-                role=role,
-                registration_source=RegistrationSource.ADMIN_CREATED,
-                account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
-                is_active=False,
-                is_staff=(role == UserRole.ADMIN),
-            )
+                user = User.objects.create(
+                    email=form.cleaned_data["email"],
+                    password="",
+                    first_name="",
+                    last_name="",
+                    role=role,
+                    registration_source=RegistrationSource.ADMIN_CREATED,
+                    account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
+                    is_active=False,
+                    is_staff=(role == UserRole.ADMIN),
+                )
 
-            verification = create_admin_invite_token(user)
-            send_admin_invite_email(request, user, verification)
+                verification = create_admin_invite_token(user)
+                send_admin_invite_email(request, user, verification)
 
-            _log_admin_action(
-                request=request,
-                action="USER_INVITED",
-                entity_type="users",
-                entity_id=user.id,
-                notes=f"Administrador convidou utilizador {user.email}.",
-                new_values=_user_snapshot(user),
-            )
-
-        messages.success(request, "Convite enviado com sucesso.")
-        return redirect("dashboard:gestor_utilizadores")
+                _log_admin_action(
+                    request=request,
+                    action="USER_INVITED",
+                    entity_type="users",
+                    entity_id=user.id,
+                    notes=f"Administrador convidou utilizador {user.email}.",
+                    new_values=_user_snapshot(user),
+                )
+        except IntegrityError:
+            form.add_error("email", "Este email já está registado.")
+        else:
+            messages.success(request, "Convite enviado com sucesso.")
+            return redirect("dashboard:gestor_utilizadores")
 
     context = {
         "admin_tab": "utilizadores",

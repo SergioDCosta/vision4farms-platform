@@ -26,6 +26,7 @@ from apps.accounts.services import (
     validate_password_reset_token,
     validate_admin_invite_token,
     complete_invited_user_account,
+    invalidate_pending_admin_invite_tokens,
 )
 
 
@@ -129,8 +130,8 @@ def admin_invite_complete_view(request, token):
     if request.method == "POST" and form.is_valid():
         complete_invited_user_account(user, form.cleaned_data)
 
-        token_obj.used_at = timezone.now()
-        token_obj.save(update_fields=["used_at"])
+        now = timezone.now()
+        invalidate_pending_admin_invite_tokens(user, used_at=now)
 
         messages.success(request, "Conta ativada com sucesso. Já pode iniciar sessão.")
         return redirect("accounts:login")
@@ -151,8 +152,17 @@ def logout_view(request):
     return redirect("accounts:login")
 
 
+@ratelimit(key="ip", rate="10/30m", method="POST", block=False)
+@ratelimit(key="post:email", rate="5/30m", method="POST", block=False)
 def password_reset_request_view(request):
     form = PasswordResetRequestForm(request.POST or None)
+
+    if request.method == "POST" and getattr(request, "limited", False):
+        messages.error(
+            request,
+            "Demasiadas tentativas de recuperação. Tente novamente dentro de alguns minutos.",
+        )
+        return render(request, "accounts/password_reset_request.html", {"form": form})
 
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"].strip().lower()

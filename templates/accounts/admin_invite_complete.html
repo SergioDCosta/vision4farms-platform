@@ -23,6 +23,11 @@
         </div>
         <form method="post" class="auth-form" novalidate>
           {% csrf_token %}
+          {% if form.non_field_errors %}
+            <div class="af-group">
+              <p class="af-error">{{ form.non_field_errors|join:" " }}</p>
+            </div>
+          {% endif %}
           <div class="af-group">
             <label class="af-label">Email</label>
             <div class="af-field">
@@ -59,6 +64,7 @@
                   <i class="bi bi-eye" data-eye></i><i class="bi bi-eye-slash" data-eye-off style="display:none"></i>
                 </button>
               </div>
+              {% if form.password.errors %}<p class="af-error">{{ form.password.errors|join:" " }}</p>{% endif %}
             </div>
             <div class="af-group">
               <label class="af-label">{{ form.confirm_password.label }}</label>
@@ -68,6 +74,7 @@
                   <i class="bi bi-eye" data-eye></i><i class="bi bi-eye-slash" data-eye-off style="display:none"></i>
                 </button>
               </div>
+              {% if form.confirm_password.errors %}<p class="af-error">{{ form.confirm_password.errors|join:" " }}</p>{% endif %}
             </div>
           </div>
           <button type="submit" class="af-submit"><i class="bi bi-person-check"></i> Ativar conta</button>

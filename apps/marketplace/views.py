@@ -515,6 +515,41 @@ def _build_marketplace_detail_context(request, listing, producer):
     producer_initials = get_producer_initials(listing.producer)
     producer_location = get_producer_location(listing.producer)
     delivery_text = build_delivery_text(listing)
+
+    def _parse_valid_coordinates(profile):
+        raw_latitude = getattr(profile, "latitude", None)
+        raw_longitude = getattr(profile, "longitude", None)
+        try:
+            if raw_latitude is None or raw_longitude is None:
+                return None, None
+            candidate_latitude = float(raw_latitude)
+            candidate_longitude = float(raw_longitude)
+            if -90.0 <= candidate_latitude <= 90.0 and -180.0 <= candidate_longitude <= 180.0:
+                return candidate_latitude, candidate_longitude
+        except (TypeError, ValueError):
+            return None, None
+        return None, None
+
+    map_latitude, map_longitude = _parse_valid_coordinates(listing.producer)
+
+    map_delivery_radius_km = None
+    if listing.delivery_mode in {"DELIVERY", "BOTH"} and listing.delivery_radius_km is not None:
+        try:
+            radius_km = Decimal(str(listing.delivery_radius_km))
+            if radius_km > 0:
+                map_delivery_radius_km = float(radius_km)
+        except (TypeError, ValueError):
+            map_delivery_radius_km = None
+
+    can_show_delivery_map = map_latitude is not None and map_longitude is not None
+    buyer_map_latitude = None
+    buyer_map_longitude = None
+    buyer_map_name = None
+    if producer and producer.id != listing.producer_id:
+        buyer_map_latitude, buyer_map_longitude = _parse_valid_coordinates(producer)
+        if buyer_map_latitude is not None and buyer_map_longitude is not None:
+            buyer_map_name = get_producer_display_name(producer)
+
     producer_product = ProducerProduct.objects.filter(
         producer_id=listing.producer_id,
         product_id=listing.product_id,
@@ -616,6 +651,13 @@ def _build_marketplace_detail_context(request, listing, producer):
         "producer_initials": producer_initials,
         "producer_location": producer_location,
         "delivery_text": delivery_text,
+        "map_latitude": map_latitude,
+        "map_longitude": map_longitude,
+        "map_delivery_radius_km": map_delivery_radius_km,
+        "can_show_delivery_map": can_show_delivery_map,
+        "buyer_map_latitude": buyer_map_latitude,
+        "buyer_map_longitude": buyer_map_longitude,
+        "buyer_map_name": buyer_map_name,
         "detail_description": detail_description,
         "producer_member_since": producer_member_since,
         "is_owner_listing": is_owner_listing,

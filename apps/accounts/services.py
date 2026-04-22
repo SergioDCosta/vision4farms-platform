@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
 from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -97,27 +98,28 @@ def create_user_and_profile(form_data):
     user_type = form_data["user_type"]
     raw_password = form_data["password"]
 
-    user = User.objects.create(
-        email=email,
-        password=make_password(raw_password),
-        first_name=first_name,
-        last_name=last_name,
-        role=UserRole.CLIENTE,
-        registration_source=RegistrationSource.SELF_REGISTERED,
-        account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
-        is_active=False,
-        is_staff=False,
-    )
+    with transaction.atomic():
+        user = User.objects.create(
+            email=email,
+            password=make_password(raw_password),
+            first_name=first_name,
+            last_name=last_name,
+            role=UserRole.CLIENTE,
+            registration_source=RegistrationSource.SELF_REGISTERED,
+            account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
+            is_active=False,
+            is_staff=False,
+        )
 
-    ProducerProfile.objects.create(
-        user=user,
-        display_name=f"{first_name} {last_name}".strip(),
-        company_name=company or None,
-        user_type=user_type,
-        member_since=timezone.now(),
-        completed_transactions_count=0,
-        is_active_marketplace=True,
-    )
+        ProducerProfile.objects.create(
+            user=user,
+            display_name=f"{first_name} {last_name}".strip(),
+            company_name=company or None,
+            user_type=user_type,
+            member_since=timezone.now(),
+            completed_transactions_count=0,
+            is_active_marketplace=True,
+        )
 
     return user
 
@@ -136,13 +138,17 @@ def create_signup_verification_token(user):
 
 def create_admin_invite_token(user):
     token = secrets.token_urlsafe(48)
+    now = timezone.now()
 
-    verification = AccountVerificationToken.objects.create(
-        user=user,
-        token=token,
-        purpose=VerificationPurpose.ADMIN_INVITE,
-        expires_at=timezone.now() + timedelta(hours=48),
-    )
+    with transaction.atomic():
+        invalidate_pending_admin_invite_tokens(user, used_at=now)
+        verification = AccountVerificationToken.objects.create(
+            user=user,
+            token=token,
+            purpose=VerificationPurpose.ADMIN_INVITE,
+            expires_at=timezone.now() + timedelta(hours=48),
+        )
+
     return verification
 
 
@@ -269,7 +275,22 @@ def validate_admin_invite_token(token_value):
     if token.expires_at < timezone.now():
         return None
 
+    if token.user.account_status != AccountStatus.PENDING_EMAIL_CONFIRMATION:
+        return None
+
+    if token.user.is_active:
+        return None
+
     return token
+
+
+def invalidate_pending_admin_invite_tokens(user, used_at=None):
+    mark_time = used_at or timezone.now()
+    return AccountVerificationToken.objects.filter(
+        user=user,
+        purpose=VerificationPurpose.ADMIN_INVITE,
+        used_at__isnull=True,
+    ).update(used_at=mark_time)
 
 
 def complete_invited_user_account(user, form_data):

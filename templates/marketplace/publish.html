@@ -119,7 +119,7 @@
             {% endif %}
           </div>
 
-          <div class="mkp-grid-2">
+          <div class="mkp-grid-2" id="mkp-delivery-options-wrap">
             <div class="mkp-field{% if form.delivery_radius_km.errors %} has-error{% endif %}">
               <label for="{{ form.delivery_radius_km.id_for_label }}">{{ form.delivery_radius_km.label }}</label>
               <div class="mkp-input-wrap">
@@ -369,6 +369,8 @@
 (function () {
   const sourceField = document.getElementById("{{ form.listing_source.id_for_label }}");
   const productField = document.getElementById("{{ form.product.id_for_label }}");
+  const deliveryModeField = document.getElementById("{{ form.delivery_mode.id_for_label }}");
+  const deliveryOptionsWrap = document.getElementById("mkp-delivery-options-wrap");
   const forecastWrap = document.getElementById("mkp-forecast-wrap");
   const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
   const dateWrap = document.getElementById("mkp-date-wrap");
@@ -381,11 +383,17 @@
   const trendMin = document.getElementById("mkp-trend-min");
   const trendMax = document.getElementById("mkp-trend-max");
   const trendCount = document.getElementById("mkp-trend-count");
-  if (!modeField || !dateWrap) return;
 
   function syncExpiryFields() {
+    if (!modeField || !dateWrap) return;
     const mode = modeField.value;
     dateWrap.style.display = mode === "date" ? "" : "none";
+  }
+
+  function syncDeliveryFields() {
+    if (!deliveryModeField || !deliveryOptionsWrap) return;
+    const deliveryMode = (deliveryModeField.value || "").toUpperCase();
+    deliveryOptionsWrap.style.display = deliveryMode === "PICKUP" ? "none" : "";
   }
 
   function syncSourceFields() {
@@ -484,6 +492,10 @@
 
   modeField.addEventListener("change", syncExpiryFields);
   syncExpiryFields();
+  if (deliveryModeField) {
+    deliveryModeField.addEventListener("change", syncDeliveryFields);
+  }
+  syncDeliveryFields();
   if (sourceField) {
     sourceField.addEventListener("change", function () {
       syncSourceFields();
