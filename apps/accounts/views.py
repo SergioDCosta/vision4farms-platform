@@ -169,7 +169,8 @@ def admin_invite_complete_view(request, token):
         return redirect("accounts:login")
 
     user = token_obj.user
-    form = AdminInviteCompleteForm(request.POST or None)
+    show_user_type = user.role != "ADMIN"
+    form = AdminInviteCompleteForm(request.POST or None, user_role=user.role)
 
     if request.method == "POST" and form.is_valid():
         complete_invited_user_account(user, form.cleaned_data)
@@ -187,6 +188,7 @@ def admin_invite_complete_view(request, token):
             "form": form,
             "invited_email": user.email,
             "token": token,
+            "show_user_type": show_user_type,
         },
     )
 

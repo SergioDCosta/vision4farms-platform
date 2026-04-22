@@ -233,23 +233,23 @@ class ProductionForecastForm(forms.Form):
         }),
     )
 
-    period_start = forms.DateTimeField(
-        label="Início do período (opcional)",
-        required=False,
-        input_formats=["%Y-%m-%dT%H:%M"],
-        widget=forms.DateTimeInput(attrs={
+    period_start = forms.DateField(
+        label="Início do período",
+        required=True,
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(attrs={
             "class": "form-control",
-            "type": "datetime-local",
+            "type": "date",
         }),
     )
 
-    period_end = forms.DateTimeField(
-        label="Fim do período (opcional)",
-        required=False,
-        input_formats=["%Y-%m-%dT%H:%M"],
-        widget=forms.DateTimeInput(attrs={
+    period_end = forms.DateField(
+        label="Fim do período",
+        required=True,
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(attrs={
             "class": "form-control",
-            "type": "datetime-local",
+            "type": "date",
         }),
     )
 
@@ -267,6 +267,11 @@ class ProductionForecastForm(forms.Form):
 
         if forecast_quantity is not None and forecast_quantity <= 0:
             self.add_error("forecast_quantity", "A quantidade prevista deve ser superior a zero.")
+
+        if not period_start:
+            self.add_error("period_start", "Indica a data de início do período.")
+        if not period_end:
+            self.add_error("period_end", "Indica a data de fim do período.")
 
         if period_start and period_end and period_end < period_start:
             self.add_error("period_end", "O período final não pode ser anterior ao período inicial.")

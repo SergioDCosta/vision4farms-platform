@@ -51,10 +51,13 @@
             <label class="af-label">Empresa<span class="af-optional">(opcional)</span></label>
             <div class="af-field"><i class="bi bi-building af-icon"></i>{{ form.company }}</div>
           </div>
-          <div class="af-group">
-            <label class="af-label">{{ form.user_type.label }}</label>
-            <div class="af-field"><i class="bi bi-person-badge af-icon"></i>{{ form.user_type }}</div>
-          </div>
+          {% if show_user_type %}
+            <div class="af-group">
+              <label class="af-label">{{ form.user_type.label }}</label>
+              <div class="af-field"><i class="bi bi-person-badge af-icon"></i>{{ form.user_type }}</div>
+              {% if form.user_type.errors %}<p class="af-error">{{ form.user_type.errors|join:" " }}</p>{% endif %}
+            </div>
+          {% endif %}
           <div class="af-grid-2">
             <div class="af-group">
               <label class="af-label">{{ form.password.label }}</label>

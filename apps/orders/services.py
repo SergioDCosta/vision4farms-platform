@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Min, Prefetch, Sum
+from django.db.models import Max, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -177,6 +177,26 @@ def get_order_group_status_label(status):
     return ORDER_STATUS_LABELS.get(str(status), str(status))
 
 
+def _producer_display_name(producer):
+    if not producer:
+        return "Vendedor"
+    display_name = (getattr(producer, "display_name", "") or "").strip()
+    if display_name:
+        return display_name
+    company_name = (getattr(producer, "company_name", "") or "").strip()
+    if company_name:
+        return company_name
+    user = getattr(producer, "user", None)
+    if user:
+        full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
+        if full_name:
+            return full_name
+        email = (getattr(user, "email", "") or "").strip()
+        if email:
+            return email
+    return "Vendedor"
+
+
 def get_buyer_incoming_forecast_projection(*, buyer_producer):
     """
     Calcula stock previsto do comprador sem persistência:
@@ -184,7 +204,7 @@ def get_buyer_incoming_forecast_projection(*, buyer_producer):
     - apenas itens ainda ativos (exclui COMPLETED/CANCELLED)
     - apenas itens com prova de origem forecast (listing + forecast_id)
     """
-    aggregated_rows = (
+    incoming_items = (
         OrderItem.objects
         .filter(
             order__buyer_producer=buyer_producer,
@@ -193,33 +213,85 @@ def get_buyer_incoming_forecast_projection(*, buyer_producer):
             listing__forecast_id__isnull=False,
         )
         .exclude(item_status__in=[OrderItemStatus.COMPLETED, OrderItemStatus.CANCELLED])
-        .values("product_id", "product__name", "product__unit")
-        .annotate(
-            incoming_qty=Sum("quantity"),
-            period_start_min=Min("listing__forecast__period_start"),
-            period_end_max=Max("listing__forecast__period_end"),
+        .select_related(
+            "order",
+            "listing",
+            "listing__forecast",
+            "seller_producer",
+            "seller_producer__user",
+            "product",
         )
+        .order_by("-order__created_at", "-created_at")
     )
 
     total_incoming = Decimal("0.000")
     by_product = {}
-    products = []
+    for item in incoming_items:
+        product_id = str(item.product_id)
+        listing = item.listing
+        forecast = getattr(listing, "forecast", None) if listing else None
+        order = item.order
 
-    for row in aggregated_rows:
-        incoming_qty = quantize_qty(row.get("incoming_qty") or 0)
-        product_id = str(row["product_id"])
+        bucket = by_product.get(product_id)
+        if not bucket:
+            bucket = {
+                "product_id": product_id,
+                "product_name": getattr(item.product, "name", None) or "Produto",
+                "product_unit": getattr(item.product, "unit", None) or "",
+                "incoming_qty": Decimal("0.000"),
+                "period_start_min": None,
+                "period_end_max": None,
+                "items": [],
+            }
+            by_product[product_id] = bucket
 
-        entry = {
-            "product_id": product_id,
-            "product_name": row.get("product__name") or "Produto",
-            "product_unit": row.get("product__unit") or "",
-            "incoming_qty": incoming_qty,
-            "period_start_min": row.get("period_start_min"),
-            "period_end_max": row.get("period_end_max"),
-        }
-        by_product[product_id] = entry
-        products.append(entry)
-        total_incoming += incoming_qty
+        quantity = quantize_qty(item.quantity or 0)
+        bucket["incoming_qty"] = quantize_qty(bucket["incoming_qty"] + quantity)
+
+        period_start = getattr(forecast, "period_start", None)
+        period_end = getattr(forecast, "period_end", None)
+        if period_start and (not bucket["period_start_min"] or period_start < bucket["period_start_min"]):
+            bucket["period_start_min"] = period_start
+        if period_end and (not bucket["period_end_max"] or period_end > bucket["period_end_max"]):
+            bucket["period_end_max"] = period_end
+
+        bucket["items"].append(
+            {
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "order_status": order.status,
+                "order_status_label": order.get_status_display(),
+                "listing_id": getattr(listing, "id", None),
+                "listing_unit_price": quantize_money(item.unit_price or 0),
+                "seller_name": _producer_display_name(item.seller_producer),
+                "quantity": quantity,
+                "subtotal": quantize_money(item.subtotal or 0),
+                "delivery_mode": getattr(listing, "delivery_mode", None),
+                "delivery_mode_label": (
+                    listing.get_delivery_mode_display()
+                    if listing and hasattr(listing, "get_delivery_mode_display")
+                    else "—"
+                ),
+                "period_start": period_start,
+                "period_end": period_end,
+                "committed_at": order.created_at,
+            }
+        )
+
+        total_incoming = quantize_qty(total_incoming + quantity)
+
+    products = list(by_product.values())
+
+    for entry in products:
+        entry["incoming_qty"] = quantize_qty(entry["incoming_qty"])
+        fallback_now = timezone.now()
+        entry["items"].sort(
+            key=lambda row: (
+                row.get("committed_at") is not None,
+                row.get("committed_at") or fallback_now,
+            ),
+            reverse=True,
+        )
 
     products.sort(key=lambda item: (-item["incoming_qty"], item["product_name"].lower()))
 

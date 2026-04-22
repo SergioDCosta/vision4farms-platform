@@ -1,4 +1,5 @@
 from django import forms
+from apps.accounts.models import UserRole
 from apps.inventory.models import ProducerUserType, ProducerProfile
 
 
@@ -220,11 +221,16 @@ class AdminInviteCompleteForm(forms.Form):
         })
     )
 
+    def __init__(self, *args, user_role=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_role = user_role
+        if user_role == UserRole.ADMIN:
+            self.fields.pop("user_type", None)
+
     def clean(self):
         cleaned_data = super().clean()
         password = cleaned_data.get("password")
         confirm_password = cleaned_data.get("confirm_password")
-        user_type = cleaned_data.get("user_type")
 
         if password and confirm_password and password != confirm_password:
             self.add_error("confirm_password", "As palavras-passe não coincidem.")

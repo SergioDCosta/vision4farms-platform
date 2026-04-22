@@ -32,6 +32,16 @@ urlpatterns = [
         name="guardar_previsao",
     ),
     path(
+        "inventario/stock/<uuid:product_id>/previsoes/<uuid:forecast_id>/remover/",
+        views.remover_previsao,
+        name="remover_previsao",
+    ),
+    path(
+        "inventario/stock/<uuid:product_id>/previsoes/<uuid:forecast_id>/assimilar/",
+        views.assimilar_previsao,
+        name="assimilar_previsao",
+    ),
+    path(
         "inventario/compras/exportar/",
         views.compras_export_pdf,
         name="compras_export_pdf",

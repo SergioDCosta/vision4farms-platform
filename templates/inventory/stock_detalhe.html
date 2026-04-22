@@ -117,6 +117,58 @@
             Janela prevista: sem período definido.
           {% endif %}
         </p>
+        {% if incoming_forecast_items %}
+          <div class="inv-table-wrap" style="margin-top:.45rem;">
+            <table class="inv-table">
+              <thead>
+                <tr>
+                  <th>Encomenda</th>
+                  <th>Anúncio</th>
+                  <th>Vendedor</th>
+                  <th>Estado</th>
+                  <th>Entrega</th>
+                  <th>Quantidade</th>
+                  <th>Preço</th>
+                  <th>Janela</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in incoming_forecast_items %}
+                  <tr>
+                    <td>
+                      <a href="{% url 'orders:detail' item.order_id %}?force_single=1">
+                        #{{ item.order_number }}
+                      </a>
+                    </td>
+                    <td>
+                      {% if item.listing_id %}
+                        <a href="{% url 'marketplace:detail' item.listing_id %}">
+                          #{{ item.listing_id|stringformat:"s"|slice:":8" }}
+                        </a>
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
+                    <td>{{ item.seller_name }}</td>
+                    <td>{{ item.order_status_label }}</td>
+                    <td>{{ item.delivery_mode_label|default:"—" }}</td>
+                    <td>{{ item.quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
+                    <td>{{ item.listing_unit_price|floatformat:2 }} €/{{ stock.product.unit }}</td>
+                    <td>
+                      {% if item.period_start or item.period_end %}
+                        {% if item.period_start %}{{ item.period_start|date:"d/m/Y" }}{% else %}—{% endif %}
+                        -
+                        {% if item.period_end %}{{ item.period_end|date:"d/m/Y" }}{% else %}—{% endif %}
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
       {% else %}
         <p class="inv-help" style="margin:0;">Sem pré-vendas comprometidas a caminho para este produto.</p>
       {% endif %}
@@ -124,98 +176,118 @@
   </div>
 
   {% if is_product_active %}
-    <div class="inv-card inv-forecast-card">
+    <div id="inv-forecast-card" class="inv-card inv-forecast-card">
       <div class="inv-card-head inv-forecast-card-head">
         <div>
           <h3 class="inv-card-title">Produção futura</h3>
           <p class="inv-forecast-subtitle">
-            Camada separada do stock atual para pré-venda no marketplace.
+            Define quantidade e período previsto sem alterar o stock atual.
           </p>
+          <div class="inv-forecast-chips">
+            <span class="inv-forecast-chip">
+              <i class="bi bi-calendar3"></i>
+              {{ forecast_count }} previsão{{ forecast_count|pluralize }}
+            </span>
+          </div>
         </div>
         <div class="inv-forecast-head-actions">
+          {% if forecast_mode == "new" %}
+            <a
+              href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}"
+              hx-get="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}"
+              hx-target="#inv-forecast-card"
+              hx-select="#inv-forecast-card"
+              hx-swap="outerHTML"
+              hx-push-url="false"
+              class="inv-btn inv-btn--ghost"
+            >
+              <i class="bi bi-x-circle"></i>
+              <span>Fechar nova previsão</span>
+            </a>
+          {% else %}
           <a
             href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=new"
+            hx-get="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=new"
+            hx-target="#inv-forecast-card"
+            hx-select="#inv-forecast-card"
+            hx-swap="outerHTML"
+            hx-push-url="false"
             class="inv-btn inv-btn--ghost"
           >
             <i class="bi bi-plus-circle"></i>
             <span>Nova previsão</span>
           </a>
-          {% if forecast_primary and not forecast_conflict %}
-            <a
-              href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=edit&edit_forecast={{ forecast_primary.id }}"
-              class="inv-btn inv-btn--secondary"
-            >
-              <i class="bi bi-pencil-square"></i>
-              <span>Editar previsão</span>
-            </a>
           {% endif %}
         </div>
       </div>
       <div class="inv-card-body inv-forecast-body">
-        {% if forecast_conflict %}
-          <div class="inv-alert inv-alert--danger">
-            Foram encontradas múltiplas previsões para este produto. A edição está bloqueada até existir apenas uma previsão.
-          </div>
-        {% endif %}
+        {% if show_forecast_form %}
+          <form method="post" action="{% url 'inventory:guardar_previsao' product_id=stock.product.id %}" class="inv-form inv-forecast-form-panel">
+            {% csrf_token %}
+            {{ forecast_form.forecast_id }}
+            <input type="hidden" name="forecast_mode" value="{{ forecast_mode }}">
 
-        <form method="post" action="{% url 'inventory:guardar_previsao' product_id=stock.product.id %}" class="inv-form">
-          {% csrf_token %}
-          {{ forecast_form.forecast_id }}
-          <input type="hidden" name="forecast_mode" value="{{ forecast_mode }}">
-
-          {% if forecast_form.non_field_errors %}
-            <div class="inv-alert inv-alert--danger">
-              {% for error in forecast_form.non_field_errors %}
-                <div>{{ error }}</div>
-              {% endfor %}
-            </div>
-          {% endif %}
-
-          <div class="inv-form-grid inv-forecast-grid">
-            <div class="inv-field">
-              <label for="{{ forecast_form.forecast_quantity.id_for_label }}">{{ forecast_form.forecast_quantity.label }} ({{ stock.product.unit }})</label>
-              {{ forecast_form.forecast_quantity }}
-              {% if forecast_form.forecast_quantity.errors %}<div class="inv-errors">{{ forecast_form.forecast_quantity.errors.0 }}</div>{% endif %}
-            </div>
-            <div class="inv-field inv-forecast-toggle">
-              <label class="form-check inv-forecast-toggle-check">
-                {{ forecast_form.is_marketplace_enabled }}
-                <span>{{ forecast_form.is_marketplace_enabled.label }}</span>
-              </label>
-            </div>
-            <div class="inv-field">
-              <label for="{{ forecast_form.period_start.id_for_label }}">{{ forecast_form.period_start.label }}</label>
-              {{ forecast_form.period_start }}
-              {% if forecast_form.period_start.errors %}<div class="inv-errors">{{ forecast_form.period_start.errors.0 }}</div>{% endif %}
-            </div>
-            <div class="inv-field">
-              <label for="{{ forecast_form.period_end.id_for_label }}">{{ forecast_form.period_end.label }}</label>
-              {{ forecast_form.period_end }}
-              {% if forecast_form.period_end.errors %}<div class="inv-errors">{{ forecast_form.period_end.errors.0 }}</div>{% endif %}
-            </div>
-          </div>
-
-          <div class="inv-actions-row">
-            <button type="submit" class="inv-btn inv-btn--primary" {% if forecast_conflict %}disabled{% endif %}>
-              <i class="bi bi-check2-circle"></i>
-              <span>
-                {% if editing_forecast %}
-                  Guardar previsão
-                {% elif forecast_primary %}
-                  Substituir previsão
-                {% else %}
-                  Registar previsão
-                {% endif %}
-              </span>
-            </button>
-            {% if editing_forecast %}
-              <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}" class="inv-btn inv-btn--ghost">
-                <i class="bi bi-x-circle"></i>
-                <span>Cancelar edição</span>
-              </a>
+            {% if forecast_form.non_field_errors %}
+              <div class="inv-alert inv-alert--danger">
+                {% for error in forecast_form.non_field_errors %}
+                  <div>{{ error }}</div>
+                {% endfor %}
+              </div>
             {% endif %}
-          </div>
-        </form>
+
+            <p class="inv-help inv-forecast-form-hint">
+              Esta previsão pode ser assimilada no stock quando o período iniciar.
+            </p>
+
+            <div class="inv-form-grid inv-forecast-grid inv-forecast-grid--compact">
+              <div class="inv-field">
+                <label for="{{ forecast_form.forecast_quantity.id_for_label }}">Quantidade prevista ({{ stock.product.unit }})</label>
+                {{ forecast_form.forecast_quantity }}
+                {% if forecast_form.forecast_quantity.errors %}<div class="inv-errors">{{ forecast_form.forecast_quantity.errors.0 }}</div>{% endif %}
+              </div>
+              <div class="inv-field inv-forecast-toggle">
+                <span class="inv-help inv-forecast-toggle-help">Ativa já a possibilidade de publicar anúncio desta previsão.</span>
+                <label class="form-check inv-forecast-toggle-check">
+                  {{ forecast_form.is_marketplace_enabled }}
+                  <span>Permitir pré-venda no marketplace</span>
+                </label>
+              </div>
+              <div class="inv-field">
+                <label for="{{ forecast_form.period_start.id_for_label }}">{{ forecast_form.period_start.label }}</label>
+                {{ forecast_form.period_start }}
+                {% if forecast_form.period_start.errors %}<div class="inv-errors">{{ forecast_form.period_start.errors.0 }}</div>{% endif %}
+              </div>
+              <div class="inv-field">
+                <label for="{{ forecast_form.period_end.id_for_label }}">{{ forecast_form.period_end.label }}</label>
+                {{ forecast_form.period_end }}
+                {% if forecast_form.period_end.errors %}<div class="inv-errors">{{ forecast_form.period_end.errors.0 }}</div>{% endif %}
+              </div>
+            </div>
+
+            <div class="inv-actions-row inv-forecast-actions">
+              <button type="submit" class="inv-btn inv-btn--primary">
+                <i class="bi bi-check2-circle"></i>
+                <span>{% if editing_forecast %}Guardar previsão{% else %}Registar previsão{% endif %}</span>
+              </button>
+              {% if editing_forecast %}
+                <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}" class="inv-btn inv-btn--ghost">
+                  <i class="bi bi-x-circle"></i>
+                  <span>Cancelar edição</span>
+                </a>
+                <button
+                  type="submit"
+                  formaction="{% url 'inventory:remover_previsao' product_id=stock.product.id forecast_id=editing_forecast.id %}"
+                  formmethod="post"
+                  class="inv-btn inv-btn--secondary inv-btn--danger"
+                  onclick="return confirm('Queres eliminar esta previsão de produção futura? Esta ação não pode ser desfeita.');"
+                >
+                  <i class="bi bi-trash"></i>
+                  <span>Eliminar previsão</span>
+                </button>
+              {% endif %}
+            </div>
+          </form>
+        {% endif %}
 
         {% if forecast_rows %}
           <div class="inv-forecast-table-shell">
@@ -256,16 +328,29 @@
                       </td>
                       <td>
                         <div class="inv-actions" style="justify-content:flex-end;">
-                          {% if not forecast_conflict %}
-                            <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=edit&edit_forecast={{ row.forecast.id }}" class="inv-icon-btn" title="Editar previsão">
-                              <i class="bi bi-pencil"></i>
-                            </a>
-                            <a href="{% url 'marketplace:publish' %}?source=forecast&product={{ stock.product.id }}&forecast={{ row.forecast.id }}" class="inv-icon-btn inv-icon-btn--green" title="Publicar pré-venda">
-                              <i class="bi bi-shop"></i>
-                            </a>
-                          {% else %}
-                            <span class="inv-help">Bloqueado</span>
+                          {% if row.can_assimilate_now %}
+                            <form
+                              method="post"
+                              action="{% url 'inventory:assimilar_previsao' product_id=stock.product.id forecast_id=row.forecast.id %}"
+                              style="margin:0;"
+                            >
+                              {% csrf_token %}
+                              <button
+                                type="submit"
+                                class="inv-icon-btn"
+                                title="Assimilar previsão para stock atual"
+                                onclick="return confirm('Assimilar esta previsão para stock atual e eliminá-la?');"
+                              >
+                                <i class="bi bi-box-arrow-in-down"></i>
+                              </button>
+                            </form>
                           {% endif %}
+                          <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=edit&edit_forecast={{ row.forecast.id }}" class="inv-icon-btn" title="Editar previsão">
+                            <i class="bi bi-pencil"></i>
+                          </a>
+                          <a href="{% url 'marketplace:publish' %}?source=forecast&product={{ stock.product.id }}&forecast={{ row.forecast.id }}" class="inv-icon-btn inv-icon-btn--green" title="Publicar pré-venda">
+                            <i class="bi bi-shop"></i>
+                          </a>
                         </div>
                       </td>
                     </tr>
@@ -426,6 +511,87 @@
     </div>
   </div>
 </div>
+
+<style>
+.inv-forecast-chips{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.55rem;}
+.inv-forecast-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.28rem .55rem;border-radius:999px;background:#e0f2fe;color:#075985;font-size:.72rem;font-weight:700;}
+.inv-btn--danger{border-color:#fecaca!important;color:#b91c1c!important;}
+.inv-btn--danger:hover{background:#fff1f2!important;border-color:#fda4af!important;color:#9f1239!important;}
+.inv-forecast-subtitle{max-width:56ch;}
+.inv-forecast-form-panel{
+  border:1px solid #e2e8f0;
+  border-radius:.95rem;
+  background:#f8fafc;
+  padding:.9rem;
+  gap:.75rem;
+}
+.inv-forecast-form-hint{
+  margin:0;
+}
+.inv-forecast-grid--compact{
+  grid-template-columns:repeat(12, minmax(0, 1fr));
+  gap:.75rem .9rem;
+  align-items:end;
+}
+.inv-forecast-grid--compact .inv-field:nth-child(1){grid-column:span 5;}
+.inv-forecast-grid--compact .inv-field:nth-child(2){grid-column:span 7;}
+.inv-forecast-grid--compact .inv-field:nth-child(3){grid-column:span 6;}
+.inv-forecast-grid--compact .inv-field:nth-child(4){grid-column:span 6;}
+.inv-forecast-grid--compact .inv-field label{font-size:.82rem;}
+.inv-forecast-grid--compact .inv-field input{padding:.7rem .85rem;}
+.inv-forecast-toggle{
+  justify-content:flex-end;
+  align-items:flex-start;
+  gap:.4rem;
+}
+.inv-forecast-toggle-check{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:.55rem;
+  margin:0;
+  border:1px solid #cbd5e1;
+  border-radius:.75rem;
+  background:#fff;
+  padding:.62rem .78rem;
+  width:100%;
+  min-height:42px;
+}
+.inv-forecast-toggle-check input[type="checkbox"]{
+  width:1rem;
+  height:1rem;
+  margin:0;
+  flex:0 0 auto;
+}
+.inv-forecast-toggle-check span{
+  display:inline-block;
+  line-height:1.2;
+}
+.inv-forecast-toggle-help{
+  margin:0;
+  width:100%;
+  text-align:left;
+}
+.inv-forecast-actions{
+  border-top:1px dashed #dbe4ee;
+  padding-top:.8rem;
+  margin-top:.1rem;
+}
+@media (max-width: 900px){
+  .inv-forecast-grid--compact .inv-field:nth-child(1),
+  .inv-forecast-grid--compact .inv-field:nth-child(2){
+    grid-column:span 6;
+  }
+}
+@media (max-width: 768px){
+  .inv-forecast-grid--compact .inv-field:nth-child(1),
+  .inv-forecast-grid--compact .inv-field:nth-child(2),
+  .inv-forecast-grid--compact .inv-field:nth-child(3),
+  .inv-forecast-grid--compact .inv-field:nth-child(4){
+    grid-column:1 / -1;
+  }
+}
+</style>
 
 {% endblock %}
 

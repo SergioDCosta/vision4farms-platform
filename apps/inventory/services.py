@@ -1017,7 +1017,7 @@ def get_product_forecasts(producer, product_id):
     forecasts = list(
         ProductionForecast.objects
         .filter(producer=producer, product_id=product_id)
-        .order_by("-period_start", "-created_at")
+        .order_by("period_start", "period_end", "-created_at")
     )
 
     if not forecasts:
@@ -1050,6 +1050,7 @@ def get_product_forecasts(producer, product_id):
                 str(listing.quantity_available or 0)
             )
 
+    today = timezone.localdate()
     rows = []
     for forecast in forecasts:
         forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
@@ -1057,6 +1058,14 @@ def get_product_forecasts(producer, product_id):
         available_quantity = forecast_quantity - reserved_quantity
         open_published_quantity = open_published_by_forecast.get(forecast.id, ZERO)
         saleable_quantity = max(available_quantity - open_published_quantity, ZERO)
+        period_start_local = (
+            timezone.localtime(forecast.period_start)
+            if getattr(forecast, "period_start", None) and timezone.is_aware(forecast.period_start)
+            else getattr(forecast, "period_start", None)
+        )
+        can_assimilate_now = bool(
+            period_start_local and today >= period_start_local.date()
+        )
 
         linked_listing = (
             active_listing_by_forecast.get(forecast.id)
@@ -1092,9 +1101,16 @@ def get_product_forecasts(producer, product_id):
             "linked_listing": linked_listing,
             "marketplace_status_label": marketplace_status_label,
             "marketplace_status_class": marketplace_status_class,
+            "can_assimilate_now": can_assimilate_now,
         })
 
     return rows
+
+
+def _forecast_periods_overlap(*, start_a, end_a, start_b, end_b):
+    if not start_a or not end_a or not start_b or not end_b:
+        return True
+    return start_a <= end_b and end_a >= start_b
 
 
 @transaction.atomic
@@ -1113,32 +1129,30 @@ def save_product_forecast(
     if quantity <= ZERO:
         raise ValidationError("A quantidade prevista deve ser superior a zero.")
 
+    if not period_start or not period_end:
+        raise ValidationError("Indica o início e o fim do período da previsão.")
+
     if period_start and period_end and period_end < period_start:
         raise ValidationError("O período final não pode ser anterior ao período inicial.")
 
-    existing_forecasts = list(
+    existing_forecasts_qs = (
         ProductionForecast.objects
         .select_for_update()
         .filter(producer=producer, product=product)
-        .order_by("-created_at")
+    )
+    existing_forecasts = list(
+        existing_forecasts_qs.order_by("period_start", "period_end", "-created_at")
     )
 
-    if len(existing_forecasts) > 1:
-        raise ValidationError(
-            (
-                "Foram encontradas múltiplas previsões para este produto. "
-                "Faça a limpeza manual para manter apenas uma previsão e voltar a editar."
-            )
-        )
-
     created = False
-    if existing_forecasts:
-        forecast = existing_forecasts[0]
-        if forecast_id and str(forecast.id) != str(forecast_id):
-            raise ValidationError("Previsão inválida para este produto.")
-    else:
-        if forecast_id:
+    if forecast_id:
+        forecast = next(
+            (row for row in existing_forecasts if str(row.id) == str(forecast_id)),
+            None,
+        )
+        if not forecast:
             raise ValidationError("Previsão não encontrada para este produto.")
+    else:
         forecast = ProductionForecast(
             producer=producer,
             product=product,
@@ -1146,6 +1160,31 @@ def save_product_forecast(
             source_system=ForecastSourceSystem.MANUAL,
         )
         created = True
+
+    other_forecasts = [
+        row for row in existing_forecasts
+        if not getattr(forecast, "id", None) or row.id != forecast.id
+    ]
+
+    for other in other_forecasts:
+        if not other.period_start or not other.period_end:
+            raise ValidationError(
+                "Existe uma previsão antiga sem período completo. Edite/limpe essa previsão antes de criar novas."
+            )
+        if _forecast_periods_overlap(
+            start_a=period_start,
+            end_a=period_end,
+            start_b=other.period_start,
+            end_b=other.period_end,
+        ):
+            overlap_start = timezone.localtime(other.period_start) if timezone.is_aware(other.period_start) else other.period_start
+            overlap_end = timezone.localtime(other.period_end) if timezone.is_aware(other.period_end) else other.period_end
+            raise ValidationError(
+                (
+                    "O intervalo desta previsão sobrepõe-se a uma previsão já existente "
+                    f"({overlap_start.strftime('%d/%m/%Y')} - {overlap_end.strftime('%d/%m/%Y')})."
+                )
+            )
 
     reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
     open_published_quantity = ZERO
@@ -1195,6 +1234,128 @@ def save_product_forecast(
         forecast.save(update_fields=update_fields)
 
     return forecast, created
+
+
+@transaction.atomic
+def delete_product_forecast(*, producer, product, forecast_id):
+    forecast = (
+        ProductionForecast.objects
+        .select_for_update()
+        .filter(
+            id=forecast_id,
+            producer=producer,
+            product=product,
+        )
+        .first()
+    )
+    if not forecast:
+        raise ValidationError("Previsão não encontrada para este produto.")
+
+    reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+    if reserved_quantity > ZERO:
+        raise ValidationError(
+            "Esta previsão não pode ser eliminada porque já tem quantidade reservada em encomendas."
+        )
+
+    has_open_listings = MarketplaceListing.objects.filter(
+        forecast_id=forecast.id,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+    ).exists()
+    if has_open_listings:
+        raise ValidationError(
+            "Esta previsão não pode ser eliminada enquanto tiver anúncios ativos/reservados associados."
+        )
+
+    forecast.delete()
+    return True
+
+
+@transaction.atomic
+def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user):
+    forecast = (
+        ProductionForecast.objects
+        .select_for_update()
+        .filter(
+            id=forecast_id,
+            producer=producer,
+            product=product,
+        )
+        .first()
+    )
+    if not forecast:
+        raise ValidationError("Previsão não encontrada para este produto.")
+
+    if not forecast.period_start:
+        raise ValidationError("Esta previsão não tem data de início válida para assimilação.")
+
+    period_start_local = (
+        timezone.localtime(forecast.period_start)
+        if timezone.is_aware(forecast.period_start)
+        else forecast.period_start
+    )
+    today = timezone.localdate()
+    if period_start_local.date() > today:
+        raise ValidationError(
+            "Esta previsão ainda não pode ser assimilada: a data de início ainda não chegou."
+        )
+
+    reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+    if reserved_quantity > ZERO:
+        raise ValidationError(
+            "Esta previsão não pode ser assimilada porque já tem quantidade reservada em encomendas."
+        )
+
+    has_open_listings = MarketplaceListing.objects.filter(
+        forecast_id=forecast.id,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+    ).exists()
+    if has_open_listings:
+        raise ValidationError(
+            "Esta previsão não pode ser assimilada enquanto tiver anúncios ativos/reservados associados."
+        )
+
+    quantity_to_assimilate = Decimal(str(forecast.forecast_quantity or 0))
+    if quantity_to_assimilate <= ZERO:
+        raise ValidationError("A previsão tem quantidade inválida para assimilação.")
+
+    stock = (
+        Stock.objects
+        .select_for_update()
+        .filter(producer=producer, product=product)
+        .first()
+    )
+    if not stock:
+        raise ValidationError("Stock não encontrado para este produto.")
+
+    stock.current_quantity = Decimal(str(stock.current_quantity or 0)) + quantity_to_assimilate
+    stock.updated_by = user
+    stock.last_updated_at = timezone.now()
+    stock.updated_at = timezone.now()
+    stock.save(update_fields=["current_quantity", "updated_by", "last_updated_at", "updated_at"])
+
+    period_label_start = period_start_local.strftime("%d/%m/%Y")
+    period_end_local = (
+        timezone.localtime(forecast.period_end)
+        if getattr(forecast, "period_end", None) and timezone.is_aware(forecast.period_end)
+        else getattr(forecast, "period_end", None)
+    )
+    period_label_end = period_end_local.strftime("%d/%m/%Y") if period_end_local else "—"
+
+    StockMovement.objects.create(
+        stock=stock,
+        movement_type=StockMovementType.IMPORT,
+        quantity_delta=quantity_to_assimilate,
+        reference_type="FORECAST",
+        reference_id=forecast.id,
+        notes=(
+            "Assimilação de produção futura para stock atual "
+            f"(período {period_label_start} - {period_label_end})."
+        ),
+        performed_by=user,
+    )
+
+    forecast.delete()
+    return quantity_to_assimilate
 
 
 def get_stock_movements(stock, limit=20):

@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime, time
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -41,19 +42,25 @@ def _decimal_to_int(value):
     return int(decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def _to_datetime_local(value):
+def _to_date_local(value):
     if not value:
         return ""
     local_value = timezone.localtime(value) if timezone.is_aware(value) else value
-    return local_value.strftime("%Y-%m-%dT%H:%M")
+    return local_value.strftime("%Y-%m-%d")
 
 
-def _ensure_aware_datetime(value):
+def _date_to_period_start(value):
     if not value:
-        return value
-    if timezone.is_naive(value):
-        return timezone.make_aware(value, timezone.get_current_timezone())
-    return value
+        return None
+    start_dt = datetime.combine(value, time.min)
+    return timezone.make_aware(start_dt, timezone.get_current_timezone())
+
+
+def _date_to_period_end(value):
+    if not value:
+        return None
+    end_dt = datetime.combine(value, time.max)
+    return timezone.make_aware(end_dt, timezone.get_current_timezone())
 
 
 def _build_stock_detail_context(
@@ -77,16 +84,18 @@ def _build_stock_detail_context(
         forecast_rows = services.get_product_forecasts(producer, stock.product_id)
 
     forecast_count = len(forecast_rows)
-    forecast_conflict = forecast_count > 1
     forecast_primary_row = forecast_rows[0] if forecast_rows else None
     forecast_primary = forecast_primary_row["forecast"] if forecast_primary_row else None
 
-    if forecast_mode == "new":
+    normalized_forecast_mode = (forecast_mode or "").strip().lower()
+    if normalized_forecast_mode not in {"new", "edit"}:
+        normalized_forecast_mode = "list"
+
+    if normalized_forecast_mode == "new":
         edit_forecast_id = None
     elif (
-        forecast_mode == "edit"
+        normalized_forecast_mode == "edit"
         and not edit_forecast_id
-        and not forecast_conflict
         and forecast_primary
     ):
         edit_forecast_id = str(forecast_primary.id)
@@ -96,15 +105,10 @@ def _build_stock_detail_context(
     incoming_forecast_qty = Decimal(str(incoming_forecast.get("incoming_qty") or 0))
     incoming_forecast_period_start = incoming_forecast.get("period_start_min")
     incoming_forecast_period_end = incoming_forecast.get("period_end_max")
+    incoming_forecast_items = list(incoming_forecast.get("items") or [])
 
     if not forecast_form:
         forecast_form = ProductionForecastForm()
-
-    if forecast_conflict:
-        for field_name, field in forecast_form.fields.items():
-            if field_name == "forecast_id":
-                continue
-            field.widget.attrs["disabled"] = "disabled"
 
     editing_forecast = None
     if edit_forecast_id:
@@ -112,6 +116,12 @@ def _build_stock_detail_context(
             if str(row["forecast"].id) == str(edit_forecast_id):
                 editing_forecast = row["forecast"]
                 break
+
+    effective_forecast_mode = (
+        "edit"
+        if editing_forecast
+        else "new" if normalized_forecast_mode == "new" else "list"
+    )
 
     context = {
         "stock": stock,
@@ -122,14 +132,15 @@ def _build_stock_detail_context(
         "activity_items": activity_items,
         "forecast_rows": forecast_rows,
         "forecast_count": forecast_count,
-        "forecast_conflict": forecast_conflict,
         "forecast_primary": forecast_primary,
-        "forecast_mode": "edit" if editing_forecast else "new",
+        "forecast_mode": effective_forecast_mode,
+        "show_forecast_form": effective_forecast_mode in {"new", "edit"},
         "forecast_form": forecast_form,
         "editing_forecast": editing_forecast,
         "incoming_forecast_qty": incoming_forecast_qty,
         "incoming_forecast_period_start": incoming_forecast_period_start,
         "incoming_forecast_period_end": incoming_forecast_period_end,
+        "incoming_forecast_items": incoming_forecast_items,
         "page_title": f"Stock — {stock.product.name}",
     }
     return context
@@ -376,7 +387,6 @@ def stock_detalhe(request, product_id):
     incoming_forecast = incoming_projection.get("by_product", {}).get(str(stock.product_id))
 
     forecast_rows = services.get_product_forecasts(producer, product_id)
-    forecast_conflict = len(forecast_rows) > 1
     forecast_mode = (request.GET.get("forecast_mode") or "").strip().lower()
     edit_forecast_id = (request.GET.get("edit_forecast") or "").strip() or None
 
@@ -385,21 +395,20 @@ def stock_detalhe(request, product_id):
     elif (
         forecast_mode == "edit"
         and not edit_forecast_id
-        and not forecast_conflict
         and forecast_rows
     ):
         edit_forecast_id = str(forecast_rows[0]["forecast"].id)
 
     initial = {}
-    if edit_forecast_id and not forecast_conflict:
+    if edit_forecast_id:
         for row in forecast_rows:
             forecast = row["forecast"]
             if str(forecast.id) == edit_forecast_id:
                 initial = {
                     "forecast_id": str(forecast.id),
                     "forecast_quantity": forecast.forecast_quantity,
-                    "period_start": _to_datetime_local(forecast.period_start),
-                    "period_end": _to_datetime_local(forecast.period_end),
+                    "period_start": _to_date_local(forecast.period_start),
+                    "period_end": _to_date_local(forecast.period_end),
                     "is_marketplace_enabled": forecast.is_marketplace_enabled,
                 }
                 break
@@ -446,8 +455,8 @@ def guardar_previsao(request, product_id):
                 producer=producer,
                 product=stock.product,
                 forecast_quantity=form.cleaned_data["forecast_quantity"],
-                period_start=_ensure_aware_datetime(form.cleaned_data.get("period_start")),
-                period_end=_ensure_aware_datetime(form.cleaned_data.get("period_end")),
+                period_start=_date_to_period_start(form.cleaned_data.get("period_start")),
+                period_end=_date_to_period_end(form.cleaned_data.get("period_end")),
                 is_marketplace_enabled=form.cleaned_data.get("is_marketplace_enabled", False),
                 user=request.current_user,
                 forecast_id=forecast_id,
@@ -457,11 +466,6 @@ def guardar_previsao(request, product_id):
                 messages.success(request, "Produção futura registada com sucesso.")
             elif forecast_id:
                 messages.success(request, "Produção futura atualizada com sucesso.")
-            else:
-                messages.success(
-                    request,
-                    "Produção futura substituída com sucesso (mesmo registo).",
-                )
 
             _sync_alerts_after_inventory_change(producer, request.current_user)
             return redirect("inventory:stock_detalhe", product_id=product_id)
@@ -485,6 +489,86 @@ def guardar_previsao(request, product_id):
         forecast_rows=forecast_rows,
     )
     return render(request, "inventory/stock_detalhe.html", context, status=400)
+
+
+@login_required
+@client_only_required
+@require_POST
+def remover_previsao(request, product_id, forecast_id):
+    producer = _get_producer_or_redirect(request)
+    if not producer:
+        return redirect("dashboard:painel")
+
+    stock = services.get_stock_for_product(producer, product_id)
+    if not stock:
+        messages.error(request, "Produto não encontrado no teu inventário.")
+        return redirect("inventory:meus_produtos")
+
+    producer_product = ProducerProduct.objects.filter(
+        producer=producer,
+        product_id=product_id,
+    ).first()
+    if not producer_product or not producer_product.is_active:
+        messages.warning(request, "Este produto está desativado. Reative-o para gerir produção futura.")
+        return redirect("inventory:stock_detalhe", product_id=product_id)
+
+    try:
+        services.delete_product_forecast(
+            producer=producer,
+            product=stock.product,
+            forecast_id=forecast_id,
+        )
+    except ValidationError as exc:
+        messages.error(request, str(exc))
+    except Exception as exc:
+        messages.error(request, f"Não foi possível eliminar a previsão: {exc}")
+    else:
+        messages.success(request, "Previsão eliminada com sucesso.")
+        _sync_alerts_after_inventory_change(producer, request.current_user)
+
+    return redirect("inventory:stock_detalhe", product_id=product_id)
+
+
+@login_required
+@client_only_required
+@require_POST
+def assimilar_previsao(request, product_id, forecast_id):
+    producer = _get_producer_or_redirect(request)
+    if not producer:
+        return redirect("dashboard:painel")
+
+    stock = services.get_stock_for_product(producer, product_id)
+    if not stock:
+        messages.error(request, "Produto não encontrado no teu inventário.")
+        return redirect("inventory:meus_produtos")
+
+    producer_product = ProducerProduct.objects.filter(
+        producer=producer,
+        product_id=product_id,
+    ).first()
+    if not producer_product or not producer_product.is_active:
+        messages.warning(request, "Este produto está desativado. Reative-o para gerir produção futura.")
+        return redirect("inventory:stock_detalhe", product_id=product_id)
+
+    try:
+        assimilated_qty = services.assimilate_product_forecast_to_stock(
+            producer=producer,
+            product=stock.product,
+            forecast_id=forecast_id,
+            user=request.current_user,
+        )
+    except ValidationError as exc:
+        messages.error(request, str(exc))
+    except Exception as exc:
+        messages.error(request, f"Não foi possível assimilar a previsão: {exc}")
+    else:
+        messages.success(
+            request,
+            f"Previsão assimilada com sucesso: +{assimilated_qty} {stock.product.unit} no stock atual.",
+        )
+        _sync_alerts_after_inventory_change(producer, request.current_user)
+
+    return redirect("inventory:stock_detalhe", product_id=product_id)
 
 
 @login_required
