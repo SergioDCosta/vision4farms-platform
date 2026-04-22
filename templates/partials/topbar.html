@@ -38,7 +38,11 @@
 
     <a href="{% url 'settings_app:settings_index' %}" class="topbar-profile">
       <div class="topbar-avatar">
-        {{ request.session.user_name|default:"U"|slice:":2"|upper }}
+        {% if topbar_profile_photo_url %}
+          <img src="{{ topbar_profile_photo_url }}" alt="Foto de perfil">
+        {% else %}
+          {{ request.session.user_name|default:"U"|slice:":2"|upper }}
+        {% endif %}
       </div>
       <div class="topbar-profile-info topbar-hide-mobile">
         <span class="topbar-profile-name">{{ request.session.user_name }}</span>
