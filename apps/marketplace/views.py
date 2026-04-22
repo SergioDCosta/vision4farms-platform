@@ -37,6 +37,7 @@ from apps.marketplace.services import (
     build_delivery_text,
     create_listing,
     expire_due_active_listings,
+    get_marketplace_eligible_forecasts,
     get_current_producer_for_user,
     get_forecast_available_quantity,
     get_listing_categories_for_queryset,
@@ -44,6 +45,7 @@ from apps.marketplace.services import (
     get_market_price_trends_for_product_sources,
     get_my_listings,
     get_need_response_listings_for_owner,
+    get_publishable_products,
     get_publishable_products_summary,
     get_producer_display_name,
     get_producer_initials,
@@ -1044,6 +1046,39 @@ def marketplace_publish_view(request):
     if selected_source not in {LISTING_SOURCE_STOCK, LISTING_SOURCE_FORECAST}:
         selected_source = LISTING_SOURCE_STOCK
 
+    all_publishable_products = list(
+        get_publishable_products(producer).values("id", "name")
+    )
+    eligible_forecasts_for_picker = get_marketplace_eligible_forecasts(producer)
+    forecast_picker_options = []
+    for forecast in eligible_forecasts_for_picker:
+        local_start = (
+            timezone.localtime(forecast.period_start)
+            if forecast.period_start and timezone.is_aware(forecast.period_start)
+            else forecast.period_start
+        )
+        local_end = (
+            timezone.localtime(forecast.period_end)
+            if forecast.period_end and timezone.is_aware(forecast.period_end)
+            else forecast.period_end
+        )
+        if local_start and local_end:
+            period_label = f"{local_start.strftime('%d/%m/%Y')} - {local_end.strftime('%d/%m/%Y')}"
+        elif local_start:
+            period_label = f"A partir de {local_start.strftime('%d/%m/%Y')}"
+        else:
+            period_label = "Sem período definido"
+
+        available_qty = get_forecast_available_quantity(forecast)
+        forecast_picker_options.append({
+            "id": str(forecast.id),
+            "product_id": str(forecast.product_id),
+            "label": (
+                f"{forecast.product.name} · {period_label} · "
+                f"Disponível {available_qty} {forecast.product.unit}"
+            ),
+        })
+
     product_ids_for_trends = list(
         form.fields["product"].queryset.values_list("id", flat=True)
     )
@@ -1152,6 +1187,11 @@ def marketplace_publish_view(request):
         "is_need_prefill_flow": is_need_prefill_flow,
         "requested_need_id": requested_need_id,
         "publish_need": linked_need if is_need_prefill_flow else None,
+        "product_picker_options": [
+            {"id": str(row["id"]), "label": row["name"]}
+            for row in all_publishable_products
+        ],
+        "forecast_picker_options": forecast_picker_options,
     }
     return render(request, "marketplace/publish.html", context)
 

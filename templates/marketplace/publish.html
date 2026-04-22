@@ -380,10 +380,14 @@
   {% endif %}
 </div>
 
+{{ product_picker_options|json_script:"mkp-product-options-data" }}
+{{ forecast_picker_options|json_script:"mkp-forecast-options-data" }}
+
 <script>
 (function () {
   const sourceField = document.getElementById("{{ form.listing_source.id_for_label }}");
   const productField = document.getElementById("{{ form.product.id_for_label }}");
+  const forecastField = document.getElementById("{{ form.forecast.id_for_label }}");
   const deliveryModeField = document.getElementById("{{ form.delivery_mode.id_for_label }}");
   const deliveryOptionsWrap = document.getElementById("mkp-delivery-options-wrap");
   const forecastWrap = document.getElementById("mkp-forecast-wrap");
@@ -398,6 +402,11 @@
   const trendMin = document.getElementById("mkp-trend-min");
   const trendMax = document.getElementById("mkp-trend-max");
   const trendCount = document.getElementById("mkp-trend-count");
+  const productOptionsDataNode = document.getElementById("mkp-product-options-data");
+  const forecastOptionsDataNode = document.getElementById("mkp-forecast-options-data");
+  const productOptions = productOptionsDataNode ? JSON.parse(productOptionsDataNode.textContent || "[]") : [];
+  const forecastOptions = forecastOptionsDataNode ? JSON.parse(forecastOptionsDataNode.textContent || "[]") : [];
+  const forecastProductIds = new Set(forecastOptions.map((row) => String(row.product_id || "")));
 
   function syncExpiryFields() {
     if (!modeField || !dateWrap) return;
@@ -415,6 +424,63 @@
     if (!sourceField || !forecastWrap) return;
     const source = sourceField.value;
     forecastWrap.style.display = source === "forecast" ? "" : "none";
+  }
+
+  function rebuildProductOptions() {
+    if (!productField || productField.disabled) return;
+
+    const selectedValue = String(productField.value || "");
+    const source = selectedSource();
+    const placeholderText = productField.options.length ? productField.options[0].text : "Selecione um produto...";
+    const allowedProducts = source === "forecast"
+      ? productOptions.filter((row) => forecastProductIds.has(String(row.id || "")))
+      : productOptions;
+
+    productField.innerHTML = "";
+    productField.appendChild(new Option(placeholderText, ""));
+    allowedProducts.forEach((row) => {
+      const option = new Option(row.label, row.id);
+      productField.appendChild(option);
+    });
+
+    const hasSelected = allowedProducts.some((row) => String(row.id) === selectedValue);
+    productField.value = hasSelected ? selectedValue : "";
+  }
+
+  function rebuildForecastOptions() {
+    if (!forecastField) return;
+
+    const source = selectedSource();
+    const selectedValue = String(forecastField.value || "");
+    const productId = selectedProductId();
+
+    forecastField.innerHTML = "";
+    if (source !== "forecast") {
+      forecastField.appendChild(new Option("Selecionar previsão...", ""));
+      forecastField.value = "";
+      forecastField.disabled = true;
+      return;
+    }
+
+    const filteredForecasts = productId
+      ? forecastOptions.filter((row) => String(row.product_id || "") === productId)
+      : [];
+
+    const placeholder = productId ? "Selecionar previsão..." : "Selecione primeiro um produto...";
+    forecastField.appendChild(new Option(placeholder, ""));
+    filteredForecasts.forEach((row) => {
+      const option = new Option(row.label, row.id);
+      forecastField.appendChild(option);
+    });
+
+    forecastField.disabled = false;
+    const hasSelected = filteredForecasts.some((row) => String(row.id) === selectedValue);
+    forecastField.value = hasSelected ? selectedValue : "";
+  }
+
+  function syncSourceDrivenSelectors() {
+    rebuildProductOptions();
+    rebuildForecastOptions();
   }
 
   function selectedProductId() {
@@ -513,13 +579,18 @@
   syncDeliveryFields();
   if (sourceField) {
     sourceField.addEventListener("change", function () {
+      syncSourceDrivenSelectors();
       syncSourceFields();
       syncSummaryAndTrend();
     });
   }
+  syncSourceDrivenSelectors();
   syncSourceFields();
   if (productField) {
-    productField.addEventListener("change", syncSummaryAndTrend);
+    productField.addEventListener("change", function () {
+      rebuildForecastOptions();
+      syncSummaryAndTrend();
+    });
   }
   syncSummaryAndTrend();
 

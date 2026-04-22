@@ -172,6 +172,21 @@ class MarketplacePublishForm(forms.Form):
         ),
     )
 
+    @staticmethod
+    def _normalize_listing_source(value):
+        normalized = (str(value or "")).strip().lower()
+        if normalized in {LISTING_SOURCE_STOCK, LISTING_SOURCE_FORECAST}:
+            return normalized
+        return LISTING_SOURCE_STOCK
+
+    def _bound_or_initial_value(self, field_name):
+        if self.is_bound:
+            prefixed_name = self.add_prefix(field_name)
+            if prefixed_name in self.data:
+                return self.data.get(prefixed_name)
+            return self.initial.get(field_name, self.fields[field_name].initial)
+        return self.initial.get(field_name, self.fields[field_name].initial)
+
     def __init__(self, *args, **kwargs):
         self.producer = kwargs.pop("producer", None)
         self.lock_listing_source = kwargs.pop("lock_listing_source", False)
@@ -179,15 +194,39 @@ class MarketplacePublishForm(forms.Form):
         super().__init__(*args, **kwargs)
 
         if self.producer:
-            self.fields["product"].queryset = get_publishable_products(self.producer)
+            selected_source = self._normalize_listing_source(
+                self._bound_or_initial_value("listing_source")
+            )
+            selected_product_id = (str(self._bound_or_initial_value("product") or "")).strip()
+
+            all_publishable_products = get_publishable_products(self.producer)
             eligible_forecasts = get_marketplace_eligible_forecasts(self.producer)
             eligible_forecast_ids = [forecast.id for forecast in eligible_forecasts]
-            self.fields["forecast"].queryset = (
+            eligible_forecast_product_ids = {
+                str(forecast.product_id) for forecast in eligible_forecasts
+            }
+
+            forecast_queryset = (
                 ProductionForecast.objects
                 .filter(id__in=eligible_forecast_ids)
                 .select_related("product")
                 .order_by("-period_start", "-created_at")
             )
+
+            if selected_source == self.LISTING_SOURCE_FORECAST:
+                self.fields["product"].queryset = all_publishable_products.filter(
+                    id__in=eligible_forecast_product_ids
+                )
+                if selected_product_id:
+                    forecast_queryset = forecast_queryset.filter(product_id=selected_product_id)
+                else:
+                    forecast_queryset = forecast_queryset.none()
+                    self.fields["forecast"].empty_label = "Selecione primeiro um produto..."
+            else:
+                self.fields["product"].queryset = all_publishable_products
+                forecast_queryset = forecast_queryset.none()
+
+            self.fields["forecast"].queryset = forecast_queryset
         else:
             self.fields["product"].queryset = self.fields["product"].queryset.none()
             self.fields["forecast"].queryset = ProductionForecast.objects.none()
