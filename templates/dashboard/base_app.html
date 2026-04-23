@@ -512,6 +512,18 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     gap: 0;
     padding: 0;
   }
+  .shell:not(.sidebar-mobile-open) .sidebar-support-badge,
+  .shell:not(.sidebar-mobile-open) .sidebar-alerts-badge,
+  .shell:not(.sidebar-mobile-open) .sidebar-messages-badge {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    margin-left: 0;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: .62rem;
+  }
   .shell:not(.sidebar-mobile-open) .sidebar-collapse-btn { display: none; }
   /* re-show on hover */
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover {
@@ -527,6 +539,18 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     justify-content: flex-start;
     gap: .75rem;
     padding: .65rem .75rem;
+  }
+  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-support-badge,
+  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-alerts-badge,
+  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-messages-badge {
+    position: static;
+    top: auto;
+    right: auto;
+    margin-left: auto;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: .68rem;
   }
 }
 

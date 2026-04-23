@@ -22,6 +22,7 @@ from apps.messaging.models import (
     Message,
     MessageType,
 )
+from apps.settings_app.models import UserPreference
 
 
 class MessagingServiceError(Exception):
@@ -410,6 +411,13 @@ def _counterpart_name(user):
     return user.full_name or user.email or "Utilizador"
 
 
+def _resolve_profile_photo_url(photo_path):
+    raw_path = str(photo_path or "").strip()
+    if not raw_path:
+        return ""
+    return _resolve_attachment_url(raw_path)
+
+
 def _build_listing_context_label(conversation):
     listing = getattr(conversation, "listing", None)
     if conversation.conversation_type == ConversationType.ORDER_CONTACT:
@@ -610,6 +618,28 @@ def list_conversations_for_user(user, *, archived=False):
     )
     last_message_map = _get_last_messages_by_conversation(conversations)
 
+    counterpart_user_by_conversation = {}
+    counterpart_user_ids = set()
+    for conversation in conversations:
+        participants = list(conversation.participants.all())
+        counterpart = next((p.user for p in participants if p.user_id != user.id), None)
+        counterpart_user_by_conversation[str(conversation.id)] = counterpart
+        counterpart_id = getattr(counterpart, "id", None)
+        if counterpart_id:
+            counterpart_user_ids.add(counterpart_id)
+
+    counterpart_photo_map = {}
+    if counterpart_user_ids:
+        preferences = (
+            UserPreference.objects
+            .filter(user_id__in=counterpart_user_ids)
+            .only("user_id", "profile_photo")
+        )
+        counterpart_photo_map = {
+            str(preference.user_id): _resolve_profile_photo_url(preference.profile_photo)
+            for preference in preferences
+        }
+
     entries = []
     total_unread = 0
     for conversation in conversations:
@@ -617,15 +647,15 @@ def list_conversations_for_user(user, *, archived=False):
         unread_count = unread_map.get(conv_key, 0)
         total_unread += unread_count
         last_message = last_message_map.get(conv_key)
-
-        participants = list(conversation.participants.all())
-        counterpart = next((p.user for p in participants if p.user_id != user.id), None)
+        counterpart = counterpart_user_by_conversation.get(conv_key)
+        counterpart_id = str(getattr(counterpart, "id", "")) if counterpart else ""
         entries.append(
             {
                 "conversation": conversation,
                 "title": _build_conversation_title(conversation, user),
                 "context_label": _build_listing_context_label(conversation),
                 "counterpart_name": _counterpart_name(counterpart),
+                "counterpart_photo_url": counterpart_photo_map.get(counterpart_id, ""),
                 "last_message": last_message,
                 "preview_text": _build_preview_text(last_message),
                 "preview_at": (

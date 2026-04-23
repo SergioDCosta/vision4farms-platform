@@ -101,7 +101,11 @@
                hx-push-url="true"
                class="msg-thread__head-main is-clickable">
               <div class="msg-thread__head-avatar">
-                {{ active_entry.counterpart_name|first|upper }}
+                {% if active_entry.counterpart_photo_url %}
+                  <img src="{{ active_entry.counterpart_photo_url }}" alt="Foto de perfil de {{ active_entry.counterpart_name|default:'Utilizador' }}">
+                {% else %}
+                  {{ active_entry.counterpart_name|first|upper }}
+                {% endif %}
               </div>
               <div class="msg-thread__head-info">
                 <h2>{{ active_entry.counterpart_name|default:"Conversa" }}</h2>
@@ -122,7 +126,11 @@
           {% else %}
             <div class="msg-thread__head-main">
               <div class="msg-thread__head-avatar">
-                {{ active_entry.counterpart_name|first|upper }}
+                {% if active_entry.counterpart_photo_url %}
+                  <img src="{{ active_entry.counterpart_photo_url }}" alt="Foto de perfil de {{ active_entry.counterpart_name|default:'Utilizador' }}">
+                {% else %}
+                  {{ active_entry.counterpart_name|first|upper }}
+                {% endif %}
               </div>
               <div class="msg-thread__head-info">
                 <h2>{{ active_entry.counterpart_name|default:"Conversa" }}</h2>
@@ -518,6 +526,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.msg-thread__head-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .msg-thread__head-info {
