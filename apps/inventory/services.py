@@ -1056,15 +1056,18 @@ def get_product_forecasts(producer, product_id):
         forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
         reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
         available_quantity = forecast_quantity - reserved_quantity
-        open_published_quantity = open_published_by_forecast.get(forecast.id, ZERO)
-        saleable_quantity = max(available_quantity - open_published_quantity, ZERO)
+        open_published_quantity = Decimal(str(open_published_by_forecast.get(forecast.id, ZERO))).quantize(Decimal("0.001"))
+        # "Disponível pré-venda" no card reflete o que ainda está disponível
+        # nos anúncios do marketplace associados a esta previsão.
+        saleable_quantity = Decimal(str(max(open_published_quantity, ZERO))).quantize(Decimal("0.001"))
+        publish_ready_quantity = Decimal(str(max(available_quantity - open_published_quantity, ZERO))).quantize(Decimal("0.001"))
         period_start_local = (
             timezone.localtime(forecast.period_start)
             if getattr(forecast, "period_start", None) and timezone.is_aware(forecast.period_start)
             else getattr(forecast, "period_start", None)
         )
         can_assimilate_now = bool(
-            period_start_local and today >= period_start_local.date()
+            period_start_local and today >= period_start_local.date() and saleable_quantity > ZERO
         )
 
         linked_listing = (
@@ -1088,7 +1091,7 @@ def get_product_forecasts(producer, product_id):
                 marketplace_status_label = "Fechada"
             elif hasattr(linked_listing, "get_status_display"):
                 marketplace_status_label = linked_listing.get_status_display()
-        elif forecast.is_marketplace_enabled and saleable_quantity > ZERO:
+        elif forecast.is_marketplace_enabled and publish_ready_quantity > ZERO:
             marketplace_status_label = "Pronta para publicar"
 
         rows.append({
@@ -1305,18 +1308,37 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
             "Esta previsão não pode ser assimilada porque já tem quantidade reservada em encomendas."
         )
 
-    has_open_listings = MarketplaceListing.objects.filter(
-        forecast_id=forecast.id,
-        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
-    ).exists()
-    if has_open_listings:
+    open_listings = list(
+        MarketplaceListing.objects
+        .select_for_update()
+        .filter(
+            forecast_id=forecast.id,
+            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        )
+        .only("id", "quantity_available", "quantity_reserved", "status", "updated_at")
+    )
+
+    quantity_to_assimilate = ZERO
+    for listing in open_listings:
+        listing_reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
+        if listing_reserved_quantity > ZERO:
+            raise ValidationError(
+                "Existe um anúncio desta previsão com quantidade reservada. Resolve primeiro as encomendas pendentes."
+            )
+        quantity_to_assimilate += Decimal(str(listing.quantity_available or 0))
+
+    quantity_to_assimilate = Decimal(str(quantity_to_assimilate)).quantize(Decimal("0.001"))
+    if quantity_to_assimilate <= ZERO:
         raise ValidationError(
-            "Esta previsão não pode ser assimilada enquanto tiver anúncios ativos/reservados associados."
+            "Não existe quantidade disponível pré-venda para assimilar nesta previsão."
         )
 
-    quantity_to_assimilate = Decimal(str(forecast.forecast_quantity or 0))
-    if quantity_to_assimilate <= ZERO:
-        raise ValidationError("A previsão tem quantidade inválida para assimilação.")
+    now = timezone.now()
+    for listing in open_listings:
+        listing.quantity_available = Decimal("0.000")
+        listing.status = ListingStatus.CLOSED
+        listing.updated_at = now
+        listing.save(update_fields=["quantity_available", "status", "updated_at"])
 
     stock = (
         Stock.objects
@@ -1329,8 +1351,8 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
 
     stock.current_quantity = Decimal(str(stock.current_quantity or 0)) + quantity_to_assimilate
     stock.updated_by = user
-    stock.last_updated_at = timezone.now()
-    stock.updated_at = timezone.now()
+    stock.last_updated_at = now
+    stock.updated_at = now
     stock.save(update_fields=["current_quantity", "updated_by", "last_updated_at", "updated_at"])
 
     period_label_start = period_start_local.strftime("%d/%m/%Y")
@@ -1348,13 +1370,18 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
         reference_type="FORECAST",
         reference_id=forecast.id,
         notes=(
-            "Assimilação de produção futura para stock atual "
+            "Assimilação de quantidade disponível pré-venda para stock atual "
             f"(período {period_label_start} - {period_label_end})."
         ),
         performed_by=user,
     )
 
-    forecast.delete()
+    current_forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
+    forecast.forecast_quantity = max(current_forecast_quantity - quantity_to_assimilate, ZERO)
+    if forecast.forecast_quantity <= ZERO:
+        forecast.is_marketplace_enabled = False
+    forecast.updated_at = now
+    forecast.save(update_fields=["forecast_quantity", "is_marketplace_enabled", "updated_at"])
     return quantity_to_assimilate
 
 

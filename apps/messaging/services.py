@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from apps.inventory.models import ProducerProfile
 from apps.marketplace.models import MarketplaceListing
+from apps.orders.models import Order
 from apps.messaging.models import (
     Conversation,
     ConversationParticipant,
@@ -691,6 +692,28 @@ def _find_listing_contact_conversation(*, listing, user_a_id, user_b_id):
     )
 
 
+def _find_order_contact_conversation(*, order, user_a_id, user_b_id):
+    return (
+        Conversation.objects
+        .filter(
+            conversation_type=ConversationType.ORDER_CONTACT,
+            order=order,
+            is_active=True,
+        )
+        .annotate(
+            participants_count=Count("participants", distinct=True),
+            matched_count=Count(
+                "participants",
+                filter=Q(participants__user_id__in=[user_a_id, user_b_id]),
+                distinct=True,
+            ),
+        )
+        .filter(participants_count=2, matched_count=2)
+        .order_by("-updated_at")
+        .first()
+    )
+
+
 @transaction.atomic
 def get_or_create_listing_contact_conversation(*, current_user, listing):
     if not isinstance(listing, MarketplaceListing):
@@ -734,6 +757,83 @@ def get_or_create_listing_contact_conversation(*, current_user, listing):
     ConversationParticipant.objects.create(
         conversation=conversation,
         user=seller_user,
+        is_archived=False,
+    )
+
+    return conversation, True
+
+
+@transaction.atomic
+def get_or_create_order_contact_conversation(*, current_user, order):
+    if not isinstance(order, Order):
+        raise MessagingServiceError("Encomenda inválida para iniciar conversa.")
+
+    order = (
+        Order.objects
+        .select_related("buyer_producer__user")
+        .prefetch_related("items__seller_producer__user")
+        .filter(id=order.id)
+        .first()
+    )
+    if not order:
+        raise MessagingServiceError("Encomenda não encontrada.")
+
+    buyer_user = getattr(getattr(order, "buyer_producer", None), "user", None)
+    if not buyer_user:
+        raise MessagingServiceError("Não foi possível identificar o comprador desta encomenda.")
+
+    from apps.orders.services import is_order_forecast_only
+
+    seller_users = []
+    seen_seller_ids = set()
+    for item in order.items.all():
+        seller_user = getattr(getattr(item, "seller_producer", None), "user", None)
+        seller_user_id = getattr(seller_user, "id", None)
+        if not seller_user_id or seller_user_id in seen_seller_ids:
+            continue
+        seen_seller_ids.add(seller_user_id)
+        seller_users.append(seller_user)
+
+    if not is_order_forecast_only(order):
+        raise MessagingServiceError("Este chat está disponível apenas para encomendas de pré-venda.")
+
+    if len(seller_users) != 1:
+        raise MessagingServiceError("Esta encomenda não é elegível para chat 1:1.")
+
+    seller_user = seller_users[0]
+    if current_user.id not in {buyer_user.id, seller_user.id}:
+        raise MessagingServiceError("Sem acesso a esta encomenda.")
+
+    counterpart_user = seller_user if current_user.id == buyer_user.id else buyer_user
+    existing_conversation = _find_order_contact_conversation(
+        order=order,
+        user_a_id=current_user.id,
+        user_b_id=counterpart_user.id,
+    )
+    if existing_conversation:
+        ConversationParticipant.objects.filter(
+            conversation=existing_conversation,
+            user=current_user,
+        ).update(is_archived=False)
+        return existing_conversation, False
+
+    title = f"Encomenda #{order.order_number} — {_counterpart_name(counterpart_user)}"
+    conversation = Conversation.objects.create(
+        conversation_type=ConversationType.ORDER_CONTACT,
+        title=title,
+        order=order,
+        created_by=current_user,
+        is_active=True,
+    )
+    ConversationParticipant.objects.create(
+        conversation=conversation,
+        user=current_user,
+        last_read_at=timezone.now(),
+        is_archived=False,
+    )
+    ConversationParticipant.objects.create(
+        conversation=conversation,
+        user=counterpart_user,
         is_archived=False,
     )
 

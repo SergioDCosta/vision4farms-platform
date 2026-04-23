@@ -20,6 +20,16 @@
         <i class="bi bi-inbox"></i>
         Pedidos recebidos
       </a>
+
+      <a href="{% url 'orders:index' %}?tab=pre_vendas{% if selected_status %}&status={{ selected_status }}{% endif %}"
+         hx-get="{% url 'orders:index' %}?tab=pre_vendas{% if selected_status %}&status={{ selected_status }}{% endif %}"
+         hx-target="#orders-panel"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="ord-tab {% if selected_tab == 'pre_vendas' %}is-active{% endif %}">
+        <i class="bi bi-calendar2-check"></i>
+        Pré-vendas
+      </a>
     </div>
 
     <section class="ord-filters">
@@ -82,6 +92,92 @@
           <p>Os pedidos aos seus anúncios do marketplace vão aparecer aqui.</p>
         </div>
       {% endfor %}
+    {% elif selected_tab == "pre_vendas" %}
+      <div class="ord-presale-grid">
+        <section class="ord-section ord-section--presale">
+          <header class="ord-section__head">
+            <h3>Como comprador</h3>
+            <span class="ord-presale-badge">Pré-venda</span>
+          </header>
+
+          {% for entry in presale_buyer_orders %}
+            <article class="ord-card ord-card--{{ entry.status|lower }}">
+              <div class="ord-card__main">
+                <div>
+                  <p class="ord-number">Encomenda #{{ entry.order.order_number }}</p>
+                  <h3>{{ entry.status_label }}</h3>
+                  <p class="ord-source-chip">Pré-venda</p>
+                  <p class="ord-meta">{{ entry.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+
+                <div class="ord-total">
+                  <span>Total</span>
+                  <strong>{{ entry.total_amount|floatformat:2 }} €</strong>
+                </div>
+              </div>
+
+              <div class="ord-card__items">
+                <p><strong>Produto:</strong> {{ entry.product_label }}</p>
+                <p><strong>Quantidade:</strong> {{ entry.quantity_label }}</p>
+                <p><strong>Vendedor:</strong> {{ entry.counterpart_label }}</p>
+                <p><strong>Período previsto:</strong> {{ entry.forecast_period_text }}</p>
+              </div>
+
+              <div class="ord-card__actions">
+                <a href="{{ entry.detail_url }}" class="ord-btn">Ver detalhe</a>
+              </div>
+            </article>
+          {% empty %}
+            <div class="ord-empty">
+              <i class="bi bi-calendar2-x"></i>
+              <h3>Sem pré-vendas como comprador</h3>
+              <p>As compras de produção futura vão aparecer aqui.</p>
+            </div>
+          {% endfor %}
+        </section>
+
+        <section class="ord-section ord-section--presale">
+          <header class="ord-section__head">
+            <h3>Como vendedor</h3>
+            <span class="ord-presale-badge">Pré-venda</span>
+          </header>
+
+          {% for entry in presale_seller_orders %}
+            <article class="ord-card ord-card--{{ entry.status|lower }}">
+              <div class="ord-card__main">
+                <div>
+                  <p class="ord-number">Encomenda #{{ entry.order.order_number }}</p>
+                  <h3>{{ entry.status_label }}</h3>
+                  <p class="ord-source-chip">Pré-venda</p>
+                  <p class="ord-meta">{{ entry.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+
+                <div class="ord-total">
+                  <span>Total</span>
+                  <strong>{{ entry.total_amount|floatformat:2 }} €</strong>
+                </div>
+              </div>
+
+              <div class="ord-card__items">
+                <p><strong>Produto:</strong> {{ entry.product_label }}</p>
+                <p><strong>Quantidade:</strong> {{ entry.quantity_label }}</p>
+                <p><strong>Comprador:</strong> {{ entry.counterpart_label }}</p>
+                <p><strong>Período previsto:</strong> {{ entry.forecast_period_text }}</p>
+              </div>
+
+              <div class="ord-card__actions">
+                <a href="{{ entry.detail_url }}" class="ord-btn">Ver detalhe</a>
+              </div>
+            </article>
+          {% empty %}
+            <div class="ord-empty">
+              <i class="bi bi-calendar2-x"></i>
+              <h3>Sem pré-vendas como vendedor</h3>
+              <p>Os pedidos recebidos de produção futura vão aparecer aqui.</p>
+            </div>
+          {% endfor %}
+        </section>
+      </div>
     {% else %}
       {% for entry in purchase_entries %}
         <article class="ord-card ord-card--{{ entry.status|lower }}">

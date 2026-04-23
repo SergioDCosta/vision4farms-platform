@@ -46,6 +46,12 @@
 }
 
 .ord-list{display:flex;flex-direction:column;gap:1rem;margin-top:.2rem}
+.ord-presale-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;align-items:start}
+.ord-section{display:flex;flex-direction:column;gap:.8rem}
+.ord-section--presale{min-width:0}
+.ord-section__head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+.ord-section__head h3{margin:0;color:#0f172a;font-size:1.05rem}
+.ord-presale-badge{display:inline-flex;align-items:center;padding:.28rem .6rem;border-radius:.7rem;background:#eff6ff;color:#1d4ed8;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
 .ord-card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04);border-left:6px solid #cbd5e1}
 .ord-card--pending{border-left-color:#f59e0b}
 .ord-card--confirmed{border-left-color:#2563eb}
@@ -77,6 +83,7 @@
 .ord-empty h3{margin:.25rem 0;color:#0f172a}
 
 @media (max-width: 820px){
+  .ord-presale-grid{grid-template-columns:1fr}
   .ord-toolbar{align-items:stretch}
   .ord-tabs{width:100%;justify-content:flex-start}
   .ord-filters{margin-left:0;width:100%}

@@ -11,7 +11,11 @@ from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
 from apps.inventory.models import NeedSourceSystem
 from apps.inventory.services import create_or_update_need
-from apps.orders.services import create_order_from_recommendation, OrderServiceError
+from apps.orders.services import (
+    OrderServiceError,
+    create_order_from_recommendation,
+    is_order_forecast_only,
+)
 from apps.recommendations.forms import RecommendationRequestForm
 from apps.recommendations.models import Recommendation
 from apps.recommendations.services import (
@@ -441,13 +445,17 @@ def recommendations_accept_view(request, recommendation_id):
             str(exc),
         )
 
+    redirect_url = reverse("orders:group_detail", args=[order_group.id])
+    if created_orders and all(is_order_forecast_only(order) for order in created_orders):
+        redirect_url = f"{reverse('orders:index')}?tab=pre_vendas"
+
     if _is_htmx(request):
         response = HttpResponse("")
-        response["HX-Redirect"] = reverse("orders:group_detail", args=[order_group.id])
+        response["HX-Redirect"] = redirect_url
         return response
 
     messages.success(request, f"Foram criadas {len(created_orders)} encomenda(s) no grupo #{order_group.group_number}.")
-    return redirect("orders:group_detail", group_id=order_group.id)
+    return redirect(redirect_url)
 
 
 @login_required

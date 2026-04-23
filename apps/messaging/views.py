@@ -7,6 +7,7 @@ from channels.layers import get_channel_layer
 
 from apps.common.decorators import client_only_required, login_required
 from apps.marketplace.models import MarketplaceListing
+from apps.orders.models import Order
 from apps.messaging.services import (
     MessagingServiceError,
     MESSAGE_TAB_ACTIVE,
@@ -19,6 +20,7 @@ from apps.messaging.services import (
     get_conversation_messages,
     get_current_producer_for_user,
     get_or_create_listing_contact_conversation,
+    get_or_create_order_contact_conversation,
     is_conversation_archived_for_user,
     list_conversations_for_user,
     mark_conversation_as_read,
@@ -132,6 +134,39 @@ def start_listing_contact_view(request, listing_id):
     except MessagingServiceError as exc:
         messages.error(request, str(exc))
         return redirect("marketplace:detail", listing_id=listing.id)
+
+    target_url = f"{reverse('messaging:index')}?tab={MESSAGE_TAB_ACTIVE}&c={conversation.id}"
+    if _is_htmx(request):
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = target_url
+        return response
+
+    return redirect(target_url)
+
+
+@login_required
+@client_only_required
+def start_order_contact_view(request, order_id):
+    producer = get_current_producer_for_user(request.current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    order = get_object_or_404(
+        Order.objects
+        .select_related("buyer_producer__user")
+        .prefetch_related("items__seller_producer__user"),
+        id=order_id,
+    )
+
+    try:
+        conversation, _ = get_or_create_order_contact_conversation(
+            current_user=request.current_user,
+            order=order,
+        )
+    except MessagingServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect("orders:detail", order_id=order.id)
 
     target_url = f"{reverse('messaging:index')}?tab={MESSAGE_TAB_ACTIVE}&c={conversation.id}"
     if _is_htmx(request):

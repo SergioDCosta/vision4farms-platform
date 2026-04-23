@@ -21,13 +21,27 @@ from apps.orders.services import (
     get_order_detail_for_buyer,
     get_order_detail_for_seller,
     get_orders_for_seller,
+    get_presale_order_entries_for_producer,
     get_order_source_label,
+    is_order_forecast_only,
     seller_update_order_status,
 )
 
 
 def _is_orders_panel_request(request):
     return request.headers.get("HX-Request") == "true" and request.headers.get("HX-Target") == "orders-panel"
+
+
+def _is_presale_purchase_entry(entry):
+    if not entry:
+        return False
+
+    if entry.get("kind") == "group":
+        orders = list(entry.get("orders") or [])
+        return bool(orders) and all(is_order_forecast_only(order) for order in orders)
+
+    order = entry.get("order")
+    return bool(order and is_order_forecast_only(order))
 
 
 @login_required
@@ -39,24 +53,47 @@ def orders_index_view(request):
         return redirect("dashboard:painel")
 
     tab = (request.GET.get("tab") or "compras").strip()
-    if tab not in {"compras", "recebidas"}:
+    if tab not in {"compras", "recebidas", "pre_vendas"}:
         tab = "compras"
 
     status = (request.GET.get("status") or "").strip()
     orders = []
     purchase_entries = []
+    presale_buyer_orders = []
+    presale_seller_orders = []
 
     if tab == "recebidas":
-        orders = get_orders_for_seller(seller_producer=producer, status=status)
+        all_orders = list(get_orders_for_seller(seller_producer=producer, status=status))
+        orders = [order for order in all_orders if not is_order_forecast_only(order)]
         for order in orders:
             order.order_source_label = get_order_source_label(order)
+    elif tab == "pre_vendas":
+        presale_entries = get_presale_order_entries_for_producer(
+            producer=producer,
+            status=status,
+        )
+        presale_buyer_orders = presale_entries["buyer_entries"]
+        presale_seller_orders = presale_entries["seller_entries"]
+        for entry in [*presale_buyer_orders, *presale_seller_orders]:
+            order = entry["order"]
+            detail_url = reverse("orders:detail", kwargs={"order_id": order.id})
+            if entry["viewer_role"] == "buyer":
+                detail_url = f"{detail_url}?force_single=1"
+            entry["detail_url"] = detail_url
     else:
-        purchase_entries = get_buyer_purchase_entries(buyer_producer=producer, status=status)
+        all_purchase_entries = get_buyer_purchase_entries(buyer_producer=producer, status=status)
+        purchase_entries = [
+            entry
+            for entry in all_purchase_entries
+            if not _is_presale_purchase_entry(entry)
+        ]
 
     context = {
         "page_title": "Encomendas",
         "orders": orders,
         "purchase_entries": purchase_entries,
+        "presale_buyer_orders": presale_buyer_orders,
+        "presale_seller_orders": presale_seller_orders,
         "selected_status": status,
         "selected_tab": tab,
         "status_choices": OrderStatus.choices,
@@ -131,12 +168,21 @@ def order_detail_view(request, order_id):
         and order.status not in {OrderStatus.COMPLETED, OrderStatus.CANCELLED}
         and any(item.item_status not in {OrderItemStatus.CANCELLED, OrderItemStatus.COMPLETED} for item in seller_items)
     )
+    is_presale_order = is_order_forecast_only(order)
 
     context = {
         "page_title": f"Encomenda #{order.order_number}",
         "order": order,
         "order_role": role,
         "order_source_label": get_order_source_label(order),
+        "is_presale_order": is_presale_order,
+        "back_to_orders_url": (
+            f"{reverse('orders:index')}?tab=pre_vendas"
+            if is_presale_order
+            else f"{reverse('orders:index')}?tab=recebidas"
+            if role == "seller"
+            else reverse("orders:index")
+        ),
         "back_to_group_url": (
             reverse("orders:group_detail", kwargs={"group_id": order.group_id})
             if role == "buyer" and order.group_id and force_single
@@ -271,6 +317,16 @@ def create_order_from_listing_view(request, listing_id):
     except OrderServiceError as exc:
         messages.error(request, str(exc))
         return redirect("marketplace:detail", listing_id=listing.id)
+
+    if is_order_forecast_only(order):
+        messages.success(
+            request,
+            (
+                f"Pré-venda #{order.order_number} criada com sucesso no grupo "
+                f"#{order_group.group_number}."
+            ),
+        )
+        return redirect(f"{reverse('orders:index')}?tab=pre_vendas")
 
     messages.success(request, f"Encomenda #{order.order_number} criada com sucesso no grupo #{order_group.group_number}.")
     return redirect("orders:group_detail", group_id=order_group.id)

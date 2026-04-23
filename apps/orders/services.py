@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Prefetch
+from django.db.models import Max, Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -32,6 +32,11 @@ from apps.recommendations.models import RecommendationStatus
 
 QTY_DECIMAL = Decimal("0.001")
 MONEY_DECIMAL = Decimal("0.01")
+RESERVED_ORDER_ITEM_STATUSES = (
+    OrderItemStatus.PENDING,
+    OrderItemStatus.CONFIRMED,
+    OrderItemStatus.IN_DELIVERY,
+)
 
 
 class OrderServiceError(Exception):
@@ -112,19 +117,39 @@ def _listing_source_kind(listing):
     raise OrderServiceError("Não foi possível determinar a origem da listing.")
 
 
-def get_order_source_label(order):
+def _collect_order_source_flags(order):
     items = list(getattr(order, "_prefetched_objects_cache", {}).get("items", []) or order.items.all())
     has_stock_source = False
     has_forecast_source = False
+    has_unknown_source = False
 
     for item in items:
         listing = getattr(item, "listing", None)
         if not listing:
+            has_unknown_source = True
             continue
-        if getattr(listing, "stock_id", None):
+
+        has_stock = bool(getattr(listing, "stock_id", None))
+        has_forecast = bool(getattr(listing, "forecast_id", None))
+        if has_stock == has_forecast:
+            has_unknown_source = True
+            continue
+
+        if has_stock:
             has_stock_source = True
-        if getattr(listing, "forecast_id", None):
+        if has_forecast:
             has_forecast_source = True
+
+    return has_stock_source, has_forecast_source, has_unknown_source
+
+
+def is_order_forecast_only(order):
+    has_stock_source, has_forecast_source, has_unknown_source = _collect_order_source_flags(order)
+    return bool(has_forecast_source and not has_stock_source and not has_unknown_source)
+
+
+def get_order_source_label(order):
+    has_stock_source, has_forecast_source, _ = _collect_order_source_flags(order)
 
     if has_forecast_source and not has_stock_source:
         return "Pré-venda"
@@ -431,6 +456,110 @@ def _release_stock_reservation(stock, quantity, acting_user):
         update_fields.append("updated_at")
 
     stock.save(update_fields=update_fields)
+
+
+def _expected_reserved_quantity_for_listing(listing_id):
+    total = (
+        OrderItem.objects
+        .filter(
+            listing_id=listing_id,
+            item_status__in=RESERVED_ORDER_ITEM_STATUSES,
+        )
+        .aggregate(total=Sum("quantity"))
+        .get("total")
+        or Decimal("0.000")
+    )
+    return quantize_qty(total)
+
+
+def _reconcile_listing_reservation(listing_id, acting_user, *, strict=True):
+    listing = (
+        MarketplaceListing.objects
+        .select_for_update()
+        .get(id=listing_id)
+    )
+    has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
+
+    expected_reserved = _expected_reserved_quantity_for_listing(listing.id)
+    current_reserved = quantize_qty(Decimal(str(listing.quantity_reserved or 0)))
+    if expected_reserved == current_reserved:
+        return listing
+
+    current_available = quantize_qty(Decimal(str(listing.quantity_available or 0)))
+    source_delta = Decimal("0.000")
+
+    if expected_reserved > current_reserved:
+        reserve_delta = quantize_qty(expected_reserved - current_reserved)
+        if reserve_delta > current_available:
+            if strict:
+                raise OrderServiceError(
+                    (
+                        "Não existe quantidade suficiente no anúncio para reservar esta encomenda. "
+                        "Atualize o anúncio ou reverta a operação."
+                    )
+                )
+            reserve_delta = quantize_qty(current_available)
+            if reserve_delta <= Decimal("0.000"):
+                return listing
+        listing.quantity_available = quantize_qty(current_available - reserve_delta)
+        listing.quantity_reserved = quantize_qty(current_reserved + reserve_delta)
+        source_delta = reserve_delta
+    else:
+        release_delta = quantize_qty(current_reserved - expected_reserved)
+        listing.quantity_available = quantize_qty(current_available + release_delta)
+        listing.quantity_reserved = quantize_qty(max(current_reserved - release_delta, Decimal("0.000")))
+        source_delta = -release_delta
+
+    update_fields = ["quantity_available", "quantity_reserved", "updated_at"]
+    if (
+        listing.status not in {ListingStatus.CANCELLED, ListingStatus.EXPIRED}
+        and listing.quantity_available <= 0
+        and listing.quantity_reserved > 0
+    ):
+        listing.status = ListingStatus.RESERVED
+        update_fields.append("status")
+    elif (
+        listing.status not in {ListingStatus.CANCELLED, ListingStatus.EXPIRED}
+        and listing.quantity_available <= 0
+        and listing.quantity_reserved <= 0
+    ):
+        listing.status = ListingStatus.CLOSED
+        update_fields.append("status")
+    elif listing.status in {ListingStatus.RESERVED, ListingStatus.CLOSED} and listing.quantity_available > 0:
+        listing.status = ListingStatus.ACTIVE
+        update_fields.append("status")
+
+    listing.updated_at = timezone.now()
+    listing.save(update_fields=list(dict.fromkeys(update_fields)))
+
+    if source_delta > 0:
+        if has_stock_source:
+            stock = Stock.objects.select_for_update().get(id=listing.stock_id)
+            _update_stock_reserved(stock, source_delta, acting_user)
+        elif has_forecast_source:
+            forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
+            forecast_saleable = quantize_qty(
+                Decimal(str(forecast.forecast_quantity or 0))
+                - Decimal(str(forecast.reserved_quantity or 0))
+            )
+            if source_delta > forecast_saleable:
+                raise OrderServiceError(
+                    (
+                        "A quantidade comprometida excede a previsão disponível para pré-venda "
+                        f"({forecast_saleable} {listing.product.unit})."
+                    )
+                )
+            _update_forecast_reserved(forecast, source_delta)
+    elif source_delta < 0:
+        source_release = quantize_qty(abs(source_delta))
+        if has_stock_source:
+            stock = Stock.objects.select_for_update().get(id=listing.stock_id)
+            _release_stock_reservation(stock, source_release, acting_user)
+        elif has_forecast_source:
+            forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
+            _release_forecast_reservation(forecast, source_release)
+
+    return listing
 
 
 def _reserve_listing_quantity(listing_id, quantity, acting_user):
@@ -773,6 +902,7 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
         subtotal=subtotal,
         item_status=OrderItemStatus.PENDING,
     )
+    _reconcile_listing_reservation(listing.id, acting_user)
 
     _create_status_history(
         order=order,
@@ -818,6 +948,7 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
     created_orders = []
 
     for bucket_items in grouped_items.values():
+        touched_listing_ids = set()
         order = _create_order_with_retry(
             group=order_group,
             buyer_producer=buyer_producer,
@@ -850,6 +981,8 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
                 subtotal=subtotal,
                 item_status=OrderItemStatus.PENDING,
             )
+            if listing and getattr(listing, "id", None):
+                touched_listing_ids.add(listing.id)
 
             mapped_method = _map_delivery_method_from_listing(listing)
             if delivery_method is None:
@@ -861,6 +994,9 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
         order.delivery_method = delivery_method
         order.updated_at = timezone.now()
         order.save(update_fields=["total_amount", "delivery_method", "updated_at"])
+
+        for listing_id in touched_listing_ids:
+            _reconcile_listing_reservation(listing_id, acting_user, strict=False)
 
         _create_status_history(
             order=order,
@@ -990,6 +1126,117 @@ def _build_legacy_order_purchase_entry(order):
         "item_count": item_count,
         "order_count": 1,
         "created_at": order.created_at,
+    }
+
+
+def _format_forecast_period_from_order(order):
+    items = list(getattr(order, "_prefetched_objects_cache", {}).get("items", []) or order.items.all())
+    period_start_min = None
+    period_end_max = None
+
+    for item in items:
+        listing = getattr(item, "listing", None)
+        forecast = getattr(listing, "forecast", None) if listing else None
+        if not forecast:
+            continue
+
+        period_start = getattr(forecast, "period_start", None)
+        period_end = getattr(forecast, "period_end", None)
+        if period_start and (not period_start_min or period_start < period_start_min):
+            period_start_min = period_start
+        if period_end and (not period_end_max or period_end > period_end_max):
+            period_end_max = period_end
+
+    if period_start_min and timezone.is_aware(period_start_min):
+        period_start_min = timezone.localtime(period_start_min)
+    if period_end_max and timezone.is_aware(period_end_max):
+        period_end_max = timezone.localtime(period_end_max)
+
+    if period_start_min and period_end_max:
+        return f"{period_start_min.strftime('%d/%m/%Y')} - {period_end_max.strftime('%d/%m/%Y')}"
+    if period_start_min:
+        return f"A partir de {period_start_min.strftime('%d/%m/%Y')}"
+    return "Sem período definido"
+
+
+def _build_presale_order_entry(*, order, viewer_role):
+    prefetched_items = list(getattr(order, "_prefetched_objects_cache", {}).get("items", []) or order.items.all())
+    first_item = prefetched_items[0] if prefetched_items else None
+    item_count = len(prefetched_items)
+
+    if item_count == 1 and first_item:
+        product_label = getattr(getattr(first_item, "product", None), "name", "") or "Produto"
+        quantity_label = (
+            f"{quantize_qty(first_item.quantity or 0)} "
+            f"{getattr(getattr(first_item, 'product', None), 'unit', '')}"
+        ).strip()
+    else:
+        product_label = f"Múltiplos produtos ({item_count})" if item_count > 1 else "Produto"
+        quantity_label = "Vários itens"
+
+    if viewer_role == "buyer":
+        counterpart = first_item.seller_producer if first_item else None
+    else:
+        counterpart = order.buyer_producer
+
+    return {
+        "order": order,
+        "viewer_role": viewer_role,
+        "status": order.status,
+        "status_label": order.get_status_display(),
+        "total_amount": order.total_amount,
+        "created_at": order.created_at,
+        "product_label": product_label,
+        "quantity_label": quantity_label,
+        "counterpart_label": _producer_display_name(counterpart),
+        "forecast_period_text": _format_forecast_period_from_order(order),
+        "is_presale": True,
+    }
+
+
+def get_presale_order_entries_for_producer(*, producer, status=""):
+    common_prefetch = [
+        "items__product",
+        "items__seller_producer__user",
+        "items__listing",
+        "items__listing__forecast",
+    ]
+
+    buyer_qs = (
+        Order.objects
+        .select_related("buyer_producer__user")
+        .prefetch_related(*common_prefetch)
+        .filter(buyer_producer=producer)
+        .order_by("-created_at")
+    )
+    seller_qs = (
+        Order.objects
+        .select_related("buyer_producer__user")
+        .prefetch_related(*common_prefetch)
+        .filter(items__seller_producer=producer)
+        .distinct()
+        .order_by("-created_at")
+    )
+
+    if status:
+        buyer_qs = buyer_qs.filter(status=status)
+        seller_qs = seller_qs.filter(status=status)
+
+    buyer_entries = []
+    for order in buyer_qs:
+        if not is_order_forecast_only(order):
+            continue
+        buyer_entries.append(_build_presale_order_entry(order=order, viewer_role="buyer"))
+
+    seller_entries = []
+    for order in seller_qs:
+        if not is_order_forecast_only(order):
+            continue
+        seller_entries.append(_build_presale_order_entry(order=order, viewer_role="seller"))
+
+    return {
+        "buyer_entries": buyer_entries,
+        "seller_entries": seller_entries,
     }
 
 
@@ -1139,13 +1386,16 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         if not reservable_items:
             raise OrderServiceError("Este pedido já foi previamente aceite por este vendedor.")
 
+        touched_listing_ids = set()
         for item in reservable_items:
-            if item.listing_id:
-                _reserve_listing_quantity(item.listing_id, item.quantity, acting_user)
-
             item.item_status = OrderItemStatus.CONFIRMED
             item.updated_at = timezone.now()
             item.save(update_fields=["item_status", "updated_at"])
+            if item.listing_id:
+                touched_listing_ids.add(item.listing_id)
+
+        for listing_id in touched_listing_ids:
+            _reconcile_listing_reservation(listing_id, acting_user, strict=False)
 
         _recalculate_order_status(order, preferred_status=OrderStatus.CONFIRMED)
 
@@ -1235,13 +1485,16 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         if not cancelable_items:
             raise OrderServiceError("Os items deste vendedor já foram concluídos e não podem ser cancelados.")
 
+        touched_listing_ids = set()
         for item in cancelable_items:
-            if item.item_status in {OrderItemStatus.CONFIRMED, OrderItemStatus.IN_DELIVERY} and item.listing_id:
-                _release_listing_reservation(item.listing_id, item.quantity, acting_user)
-
             item.item_status = OrderItemStatus.CANCELLED
             item.updated_at = timezone.now()
             item.save(update_fields=["item_status", "updated_at"])
+            if item.listing_id:
+                touched_listing_ids.add(item.listing_id)
+
+        for listing_id in touched_listing_ids:
+            _reconcile_listing_reservation(listing_id, acting_user)
 
         _recalculate_order_status(order)
 

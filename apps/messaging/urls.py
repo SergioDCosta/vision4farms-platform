@@ -22,4 +22,9 @@ urlpatterns = [
         views.start_listing_contact_view,
         name="start_listing_contact",
     ),
+    path(
+        "mensagens/encomenda/<uuid:order_id>/iniciar/",
+        views.start_order_contact_view,
+        name="start_order_contact",
+    ),
 ]

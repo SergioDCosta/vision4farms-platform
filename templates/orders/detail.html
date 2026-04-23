@@ -4,7 +4,7 @@
 
 <div class="ordd-page">
   <nav class="ordd-backbar">
-    <a href="{% if back_to_group_url %}{{ back_to_group_url }}{% else %}{% url 'orders:index' %}{% if order_role == 'seller' %}?tab=recebidas{% endif %}{% endif %}"
+    <a href="{% if back_to_group_url %}{{ back_to_group_url }}{% else %}{{ back_to_orders_url }}{% endif %}"
        class="ordd-backlink">
       <i class="bi bi-arrow-left"></i>
       {% if back_to_group_url %}Voltar ao grupo{% else %}Voltar às encomendas{% endif %}
@@ -42,6 +42,25 @@
       {% endif %}
     </div>
   </header>
+
+  {% if is_presale_order %}
+    <section class="ordd-card ordd-presale-channel">
+      <div>
+        <h3>Canal de atualização da previsão</h3>
+        <p>Use este chat para alinhar datas, disponibilidade e outros detalhes da pré-venda.</p>
+      </div>
+      <a href="{% url 'messaging:start_order_contact' order.id %}"
+         hx-get="{% url 'messaging:start_order_contact' order.id %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="ordd-btn-secondary">
+        <i class="bi bi-chat-dots"></i>
+        Abrir chat da pré-venda
+      </a>
+    </section>
+  {% endif %}
 
   {% if order_role == "seller" %}
     <section class="ordd-actions">
@@ -209,6 +228,9 @@
 .ordd-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:1rem}
 .ordd-card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
 .ordd-card h3{margin:0 0 1rem 0;color:#0f172a}
+.ordd-presale-channel{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;border-left:4px solid #2563eb;background:#f8fbff}
+.ordd-presale-channel h3{margin:0 0 .35rem 0}
+.ordd-presale-channel p{margin:0;color:#475569}
 .ordd-table-wrap{overflow:auto}
 .ordd-table{width:100%;border-collapse:collapse}
 .ordd-table th,.ordd-table td{padding:.8rem .7rem;border-bottom:1px solid #f1f5f9;text-align:left;font-size:.88rem}
