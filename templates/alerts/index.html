@@ -127,7 +127,7 @@
                   onsubmit="return confirm('Ignorar este alerta?');">
               {% csrf_token %}
               <input type="hidden" name="tab" value="{{ active_tab }}">
-              <button type="submit" class="alt-btn alt-btn--soft">Ignorar</button>
+              <button type="submit" class="alt-btn alt-btn--soft">Ignorar 30 min</button>
             </form>
           {% elif active_tab == "ignored" %}
             <form method="post"

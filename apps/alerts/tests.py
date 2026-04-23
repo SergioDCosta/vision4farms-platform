@@ -9,6 +9,7 @@ from apps.alerts.models import AlertStatus, AlertType
 from apps.alerts.services import (
     get_alert_type_label,
     get_client_alerts_badge_state,
+    list_alerts_for_producer,
     resolve_alert,
 )
 
@@ -84,6 +85,8 @@ class ClientAlertsBadgeStateTests(SimpleTestCase):
 
 
 class ResolveAlertSemanticsTests(SimpleTestCase):
+    databases = {"default"}
+
     @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
     @patch("apps.alerts.services.record_alert_event")
     @patch("apps.alerts.services.timezone")
@@ -151,3 +154,37 @@ class ResolveAlertSemanticsTests(SimpleTestCase):
         alert.save.assert_not_called()
         record_event_mock.assert_not_called()
         queue_mock.assert_not_called()
+
+
+class AlertActionsFallbackTests(SimpleTestCase):
+    @patch("apps.alerts.services.Alert")
+    def test_order_alert_fallback_actions(self, alert_model_mock):
+        alert = SimpleNamespace(
+            type=AlertType.ORDER_CONFIRMED,
+            severity="INFO",
+            payload={"action_url": "/encomendas/1/", "order_id": "ord-1"},
+            product=None,
+        )
+        alert_model_mock.objects.select_related.return_value.filter.return_value.order_by.return_value = [alert]
+
+        alerts = list_alerts_for_producer(producer=SimpleNamespace(id="p1"), tab="active")
+
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alert.action_label, "Ir para encomenda")
+        self.assertEqual(alert.secondary_action_url, "/mensagens/encomenda/ord-1/iniciar/")
+        self.assertEqual(alert.secondary_action_label, "Ir para conversa")
+
+    @patch("apps.alerts.services.Alert")
+    def test_message_alert_fallback_primary_action_label(self, alert_model_mock):
+        alert = SimpleNamespace(
+            type=AlertType.MESSAGE_UNREAD,
+            severity="INFO",
+            payload={"action_url": "/mensagens/?tab=active&c=conv-1"},
+            product=None,
+        )
+        alert_model_mock.objects.select_related.return_value.filter.return_value.order_by.return_value = [alert]
+
+        alerts = list_alerts_for_producer(producer=SimpleNamespace(id="p1"), tab="active")
+
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alert.action_label, "Ir para conversa")

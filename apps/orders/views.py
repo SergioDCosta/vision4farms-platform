@@ -24,6 +24,7 @@ from apps.orders.services import (
     get_presale_order_entries_for_producer,
     get_order_source_label,
     is_order_forecast_only,
+    build_presale_timeline_context,
     seller_update_order_status,
 )
 
@@ -169,6 +170,7 @@ def order_detail_view(request, order_id):
         and any(item.item_status not in {OrderItemStatus.CANCELLED, OrderItemStatus.COMPLETED} for item in seller_items)
     )
     is_presale_order = is_order_forecast_only(order)
+    presale_timeline = build_presale_timeline_context(order) if is_presale_order else None
 
     context = {
         "page_title": f"Encomenda #{order.order_number}",
@@ -194,6 +196,9 @@ def order_detail_view(request, order_id):
         "can_seller_start": can_seller_start,
         "can_seller_deliver": can_seller_deliver,
         "can_seller_cancel": can_seller_cancel,
+        "presale_timeline_steps": presale_timeline["steps"] if presale_timeline else [],
+        "presale_timeline_state": presale_timeline["state"] if presale_timeline else "normal",
+        "presale_timeline_cancelled": presale_timeline["cancelled"] if presale_timeline else False,
     }
     return render(request, "orders/detail.html", context)
 

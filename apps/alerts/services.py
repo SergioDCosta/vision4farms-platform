@@ -36,6 +36,14 @@ MANAGED_ALERT_TYPES = {
     AlertType.EXTERNAL_DEFICIT,
     AlertType.SELL_SUGGESTION,
 }
+ORDER_ALERT_TYPES = {
+    AlertType.ORDER_PURCHASE_CREATED,
+    AlertType.ORDER_CONFIRMED,
+    AlertType.ORDER_IN_PROGRESS,
+    AlertType.ORDER_DELIVERING,
+    AlertType.ORDER_CANCELLED,
+    AlertType.ORDER_COMPLETED,
+}
 AUTO_RESOLVED_NOTE = "Resolução automática por fim da condição"
 ALERTS_LAST_SEEN_SESSION_KEY = "alerts_last_seen_at"
 ALERTS_BADGE_GROUP_PREFIX = "alerts_badge_user_"
@@ -192,7 +200,7 @@ def create_order_interaction_alert(
     counterpart_name,
     summary_label,
     action_url,
-    action_label="Ver encomenda",
+    action_label="Ir para encomenda",
     acting_user=None,
 ):
     first_item = (
@@ -210,6 +218,8 @@ def create_order_interaction_alert(
         "summary": summary_label or "",
         "action_url": action_url,
         "action_label": action_label,
+        "secondary_action_url": f"/mensagens/encomenda/{order.id}/iniciar/",
+        "secondary_action_label": "Ir para conversa",
     }
     if first_item and first_item.product_id:
         payload["product_name"] = first_item.product.name
@@ -270,7 +280,7 @@ def upsert_message_unread_alert(
         "sender_name": sender_label,
         "preview": preview_label,
         "action_url": action_url,
-        "action_label": "Abrir conversa",
+        "action_label": "Ir para conversa",
     }
 
     alert = (
@@ -962,9 +972,27 @@ def list_alerts_for_producer(*, producer, tab="active"):
         alert.type_label = get_alert_type_label(alert.type)
         alert.severity_label = severity_labels.get(alert.severity, alert.severity)
         alert.action_url = payload.get("action_url")
-        alert.action_label = payload.get("action_label") or "Abrir contexto"
-        alert.secondary_action_url = payload.get("secondary_action_url")
-        alert.secondary_action_label = payload.get("secondary_action_label")
+        if payload.get("action_label"):
+            alert.action_label = payload.get("action_label")
+        elif alert.type == AlertType.MESSAGE_UNREAD:
+            alert.action_label = "Ir para conversa"
+        elif alert.type in ORDER_ALERT_TYPES:
+            alert.action_label = "Ir para encomenda"
+        else:
+            alert.action_label = "Abrir contexto"
+
+        secondary_action_url = payload.get("secondary_action_url")
+        if not secondary_action_url and alert.type in ORDER_ALERT_TYPES:
+            order_id = payload.get("order_id")
+            if order_id:
+                secondary_action_url = f"/mensagens/encomenda/{order_id}/iniciar/"
+        alert.secondary_action_url = secondary_action_url
+
+        secondary_action_label = payload.get("secondary_action_label")
+        if not secondary_action_label and secondary_action_url and alert.type in ORDER_ALERT_TYPES:
+            secondary_action_label = "Ir para conversa"
+        alert.secondary_action_label = secondary_action_label
+
         alert.related_product_name = (
             alert.product.name
             if alert.product

@@ -89,6 +89,27 @@ CHANNEL_LAYERS = {
     }
 }
 
+if DEBUG:
+    weather_cache_backend = "django.core.cache.backends.filebased.FileBasedCache"
+    weather_cache_location = str(BASE_DIR / ".cache" / "weather")
+    os.makedirs(weather_cache_location, exist_ok=True)
+else:
+    weather_cache_backend = "django.core.cache.backends.redis.RedisCache"
+    weather_cache_location = config("REDIS_URL", default="redis://127.0.0.1:6379/0")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "cooperativa-default-cache",
+    },
+    "weather": {
+        "BACKEND": weather_cache_backend,
+        "LOCATION": weather_cache_location,
+        "TIMEOUT": 30 * 60,
+        "KEY_PREFIX": "weather",
+    },
+}
+
 CSRF_TRUSTED_ORIGINS = config(
     "CSRF_TRUSTED_ORIGINS",
     default="http://127.0.0.1:8000"

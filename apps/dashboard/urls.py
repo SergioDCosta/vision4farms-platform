@@ -5,6 +5,7 @@ app_name = "dashboard"
 
 urlpatterns = [
     path("painel/", views.dashboard_view, name="painel"),
+    path("painel/weather-card/", views.dashboard_weather_card_view, name="painel_weather_card"),
 
     path("gestor/", views.admin_dashboard_view, name="gestor"),
 

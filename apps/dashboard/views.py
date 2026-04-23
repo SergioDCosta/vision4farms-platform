@@ -26,10 +26,11 @@ from apps.accounts.services import send_admin_invite_email, create_admin_invite_
 from apps.inventory.models import ProducerProfile, ProducerProduct, Stock
 from apps.alerts.models import Alert, AlertStatus, AlertSeverity
 from apps.marketplace.models import MarketplaceListing, ListingStatus
-from apps.orders.models import Order, OrderStatus, OrderItem, OrderItemStatus, OrderSourceType
+from apps.orders.models import Order, OrderStatus, OrderItem, OrderItemStatus, OrderSourceType, DeliveryMethod
 from apps.catalog.models import Product, ProductCategory
 from apps.dashboard.models import AuditLog
 from apps.dashboard.forms import AdminUserCreateForm, AdminCategoryForm, AdminProductForm
+from apps.dashboard.services.weather import get_dashboard_weather_snapshot
 
 def _get_client_ip(request):
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -155,6 +156,75 @@ def _category_snapshot(category):
         "created_at": category.created_at.isoformat() if category.created_at else None,
         "updated_at": category.updated_at.isoformat() if category.updated_at else None,
     }
+
+
+def _build_weather_operational_hints(
+    *,
+    weather,
+    active_delivery_orders_count,
+    active_delivery_or_mixed_exists,
+    presale_starting_soon_count,
+):
+    hints = []
+    if weather.get("state") != "success":
+        return hints
+
+    daily_forecast = weather.get("daily_forecast") or []
+    tomorrow = next((day for day in daily_forecast if day.get("offset_days") == 1), None)
+    tomorrow_wet_risk = bool(tomorrow and tomorrow.get("is_wet_risk"))
+
+    if active_delivery_orders_count > 0:
+        if tomorrow_wet_risk and active_delivery_or_mixed_exists:
+            hints.append(
+                "Risco de chuva amanhã: priorize levantamentos e confirme janelas de entrega."
+            )
+        elif active_delivery_or_mixed_exists:
+            hints.append(
+                "Janela favorável para entregas em curso nas próximas 24h."
+            )
+        else:
+            hints.append(
+                "Tens encomendas em curso: valida disponibilidade e comunicação com a contraparte."
+            )
+
+    if presale_starting_soon_count > 0:
+        hints.append(
+            "Pré-venda a iniciar em breve: valida disponibilidade e logística com antecedência."
+        )
+
+    return hints
+
+
+def _build_weather_quick_actions(*, active_delivery_orders_count, presale_starting_soon_count):
+    actions = []
+
+    if active_delivery_orders_count > 0:
+        actions.append(
+            {
+                "label": "Ver encomendas",
+                "url": "/encomendas/?status=DELIVERING",
+                "style": "primary",
+            }
+        )
+
+    if presale_starting_soon_count > 0:
+        actions.append(
+            {
+                "label": "Ver pré-vendas",
+                "url": "/encomendas/?tab=pre_vendas",
+                "style": "ghost",
+            }
+        )
+
+    actions.append(
+        {
+            "label": "Abrir marketplace",
+            "url": "/marketplace/",
+            "style": "ghost",
+        }
+    )
+
+    return actions
 
 
 @client_only_required
@@ -318,6 +388,75 @@ def dashboard_view(request):
         "recent_activity": recent_activity,
     }
     return render(request, "dashboard/painel.html", context)
+
+
+@client_only_required
+def dashboard_weather_card_view(request):
+    user = request.current_user
+
+    try:
+        producer = ProducerProfile.objects.only(
+            "id",
+            "city",
+            "district",
+        ).get(user_id=user.id)
+    except ProducerProfile.DoesNotExist:
+        request.session.flush()
+        return redirect("accounts:login")
+
+    weather = get_dashboard_weather_snapshot(
+        city=producer.city,
+        district=producer.district,
+    )
+
+    active_operations_qs = (
+        Order.objects
+        .filter(
+            Q(buyer_producer=producer) | Q(items__seller_producer=producer),
+            status__in=[OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING],
+        )
+        .distinct()
+    )
+    active_delivery_orders_count = active_operations_qs.count()
+    active_delivery_or_mixed_exists = active_operations_qs.filter(
+        delivery_method__in=[DeliveryMethod.DELIVERY, DeliveryMethod.MIXED]
+    ).exists()
+
+    today = timezone.localdate()
+    presale_window_end = today + timedelta(days=3)
+    presale_starting_soon_count = (
+        MarketplaceListing.objects
+        .filter(
+            producer=producer,
+            status=ListingStatus.ACTIVE,
+            forecast_id__isnull=False,
+            forecast__period_start__isnull=False,
+            forecast__period_start__date__gte=today,
+            forecast__period_start__date__lte=presale_window_end,
+        )
+        .count()
+    )
+
+    weather_operational_hints = _build_weather_operational_hints(
+        weather=weather,
+        active_delivery_orders_count=active_delivery_orders_count,
+        active_delivery_or_mixed_exists=active_delivery_or_mixed_exists,
+        presale_starting_soon_count=presale_starting_soon_count,
+    )
+    weather_actions = _build_weather_quick_actions(
+        active_delivery_orders_count=active_delivery_orders_count,
+        presale_starting_soon_count=presale_starting_soon_count,
+    )
+
+    context = {
+        "weather": weather,
+        "weather_state": weather.get("state", "degraded"),
+        "active_delivery_orders_count": active_delivery_orders_count,
+        "presale_starting_soon_count": presale_starting_soon_count,
+        "weather_operational_hints": weather_operational_hints,
+        "weather_actions": weather_actions,
+    }
+    return render(request, "dashboard/partials/weather_card.html", context)
 
 
 @admin_required

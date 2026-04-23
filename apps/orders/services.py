@@ -303,6 +303,69 @@ def get_order_source_label(order):
     return "Origem mista"
 
 
+PRESALE_TIMELINE_STEPS = (
+    ("created", "Criada", {OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING, OrderStatus.COMPLETED}),
+    ("confirmed", "Confirmada", {OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING, OrderStatus.COMPLETED}),
+    ("in_progress", "Em preparação", {OrderStatus.IN_PROGRESS, OrderStatus.DELIVERING, OrderStatus.COMPLETED}),
+    ("delivered", "Entregue", {OrderStatus.DELIVERING, OrderStatus.COMPLETED}),
+)
+
+
+def _coerce_history_events(order):
+    status_history = getattr(order, "status_history", None)
+    if status_history is None:
+        return []
+
+    if hasattr(status_history, "all"):
+        return list(status_history.all())
+
+    try:
+        return list(status_history)
+    except TypeError:
+        return []
+
+
+def build_presale_timeline_context(order):
+    current_status = str(getattr(order, "status", "") or "")
+    history_events = _coerce_history_events(order)
+    reached_from_history = {str(getattr(event, "status", "") or "") for event in history_events}
+    reached_from_history.add(current_status)
+
+    current_step_for_status = {
+        OrderStatus.PENDING: "created",
+        OrderStatus.CONFIRMED: "confirmed",
+        OrderStatus.IN_PROGRESS: "in_progress",
+        OrderStatus.DELIVERING: "delivered",
+    }
+    is_cancelled = current_status == OrderStatus.CANCELLED
+    is_completed = current_status == OrderStatus.COMPLETED
+
+    timeline_steps = []
+    for key, label, reached_by_statuses in PRESALE_TIMELINE_STEPS:
+        reached = bool(reached_from_history.intersection(reached_by_statuses))
+        if reached:
+            if not is_cancelled and not is_completed and current_step_for_status.get(current_status) == key:
+                state = "current"
+            else:
+                state = "done"
+        else:
+            state = "interrupted" if is_cancelled else "pending"
+
+        timeline_steps.append(
+            {
+                "key": key,
+                "label": label,
+                "state": state,
+            }
+        )
+
+    return {
+        "steps": timeline_steps,
+        "state": "interrupted" if is_cancelled else "normal",
+        "cancelled": is_cancelled,
+    }
+
+
 ORDER_STATUS_LABELS = dict(OrderStatus.choices)
 INCOMING_FORECAST_ORDER_STATUSES = (
     OrderStatus.CONFIRMED,

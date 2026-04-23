@@ -60,6 +60,28 @@
         Abrir chat da pré-venda
       </a>
     </section>
+
+    <section class="ordd-card ordd-presale-progress ordd-presale-progress--{{ presale_timeline_state }}">
+      <div class="ordd-presale-progress__head">
+        <h3>Progresso da pré-venda</h3>
+        {% if presale_timeline_cancelled %}
+          <span class="ordd-presale-progress__badge">Interrompida</span>
+        {% endif %}
+      </div>
+      <ol class="ordd-presale-steps" aria-label="Timeline da pré-venda">
+        {% for step in presale_timeline_steps %}
+          <li class="ordd-presale-step is-{{ step.state }}">
+            <span class="ordd-presale-step__dot" aria-hidden="true"></span>
+            <span class="ordd-presale-step__label">{{ step.label }}</span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if presale_timeline_cancelled %}
+        <p class="ordd-presale-progress__hint">
+          A encomenda foi cancelada. Os passos concluídos foram mantidos para referência.
+        </p>
+      {% endif %}
+    </section>
   {% endif %}
 
   {% if order_role == "seller" %}
@@ -231,6 +253,21 @@
 .ordd-presale-channel{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;border-left:4px solid #2563eb;background:#f8fbff}
 .ordd-presale-channel h3{margin:0 0 .35rem 0}
 .ordd-presale-channel p{margin:0;color:#475569}
+.ordd-presale-progress{border-left:4px solid #2563eb;background:#f8fbff}
+.ordd-presale-progress--interrupted{border-left-color:#dc2626;background:#fff7f7}
+.ordd-presale-progress__head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem}
+.ordd-presale-progress__head h3{margin:0}
+.ordd-presale-progress__badge{display:inline-flex;align-items:center;padding:.22rem .62rem;border-radius:.7rem;background:#fee2e2;color:#b91c1c;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.ordd-presale-steps{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin:0;padding:0}
+.ordd-presale-step{display:flex;align-items:center;gap:.5rem;padding:.6rem .7rem;border-radius:.75rem;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-weight:700;font-size:.84rem}
+.ordd-presale-step__dot{width:11px;height:11px;border-radius:999px;background:#cbd5e1;flex-shrink:0}
+.ordd-presale-step.is-done{color:#166534;border-color:#86efac;background:#f0fdf4}
+.ordd-presale-step.is-done .ordd-presale-step__dot{background:#16a34a}
+.ordd-presale-step.is-current{color:#1d4ed8;border-color:#93c5fd;background:#eff6ff}
+.ordd-presale-step.is-current .ordd-presale-step__dot{background:#2563eb}
+.ordd-presale-step.is-interrupted{color:#b91c1c;border-color:#fecaca;background:#fef2f2}
+.ordd-presale-step.is-interrupted .ordd-presale-step__dot{background:#ef4444}
+.ordd-presale-progress__hint{margin:.75rem 0 0;color:#7f1d1d;font-size:.82rem}
 .ordd-table-wrap{overflow:auto}
 .ordd-table{width:100%;border-collapse:collapse}
 .ordd-table th,.ordd-table td{padding:.8rem .7rem;border-bottom:1px solid #f1f5f9;text-align:left;font-size:.88rem}
@@ -258,6 +295,7 @@
 @media (max-width: 960px){
   .ordd-grid{grid-template-columns:1fr}
   .ordd-cancel-grid{grid-template-columns:1fr}
+  .ordd-presale-steps{grid-template-columns:1fr}
 }
 </style>
 
