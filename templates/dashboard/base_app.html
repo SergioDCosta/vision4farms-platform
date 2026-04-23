@@ -238,6 +238,41 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   flex-shrink: 0;
 }
 
+.sidebar-alerts-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .68rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(15,31,19,.22);
+  flex-shrink: 0;
+}
+
+.sidebar-messages-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .68rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(15,31,19,.22);
+  flex-shrink: 0;
+}
+
 .sidebar-support-badge.is-red {
   background: #dc2626;
 }
@@ -247,6 +282,22 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 }
 
 .sidebar-support-badge.is-hidden {
+  display: none;
+}
+
+.sidebar-alerts-badge.is-red {
+  background: #dc2626;
+}
+
+.sidebar-alerts-badge.is-orange {
+  background: #f59e0b;
+}
+
+.sidebar-alerts-badge.is-hidden {
+  display: none;
+}
+
+.sidebar-messages-badge.is-hidden {
   display: none;
 }
 
@@ -275,6 +326,26 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   padding: 0;
 }
 .shell.sidebar-collapsed .sidebar-support-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  margin-left: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: .62rem;
+}
+.shell.sidebar-collapsed .sidebar-alerts-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  margin-left: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: .62rem;
+}
+.shell.sidebar-collapsed .sidebar-messages-badge {
   position: absolute;
   top: 5px;
   right: 5px;
@@ -501,12 +572,23 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   const overlay = document.getElementById('shellOverlay');
   const COLLAPSED_KEY = 'sidebar_collapsed';
   const SUPPORT_BADGE_MIN_REFRESH_GAP_MS = 800;
+  const ALERTS_BADGE_MIN_REFRESH_GAP_MS = 800;
   let supportBadgeFetchInFlight = false;
   let supportBadgeLastRefreshAt = 0;
   let supportBadgeSocket = null;
   let supportBadgeSocketReconnectTimer = null;
   let supportBadgeSocketBackoffIndex = 0;
+  let alertsBadgeFetchInFlight = false;
+  let alertsBadgeLastRefreshAt = 0;
+  let alertsBadgeSocket = null;
+  let alertsBadgeSocketReconnectTimer = null;
+  let alertsBadgeSocketBackoffIndex = 0;
+  let messagingUnreadSocket = null;
+  let messagingUnreadSocketReconnectTimer = null;
+  let messagingUnreadSocketBackoffIndex = 0;
   const SUPPORT_BADGE_SOCKET_BACKOFF_MS = [1000, 2000, 5000, 10000];
+  const ALERTS_BADGE_SOCKET_BACKOFF_MS = [1000, 2000, 5000, 10000];
+  const MESSAGING_UNREAD_SOCKET_BACKOFF_MS = [1000, 2000, 5000, 10000];
 
   const isMobile = () => window.innerWidth < 768;
   const isAutoCollapse = () => window.innerWidth < 1280 && window.innerWidth >= 768;
@@ -576,6 +658,24 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     return { supportLink, badge, url };
   };
 
+  const getAlertsBadgeElements = () => {
+    const alertsLink = document.querySelector('.sidebar-link[data-alerts-badge-url]');
+    if (!alertsLink) return null;
+    const badge = alertsLink.querySelector("[data-alerts-badge]");
+    if (!badge) return null;
+    const url = (alertsLink.dataset.alertsBadgeUrl || "").trim();
+    if (!url) return null;
+    return { alertsLink, badge, url };
+  };
+
+  const getMessagesBadgeElements = () => {
+    const messagesLink = document.querySelector('.sidebar-link[data-messages-badge="true"]');
+    if (!messagesLink) return null;
+    const badge = messagesLink.querySelector("[data-messages-badge-count]");
+    if (!badge) return null;
+    return { messagesLink, badge };
+  };
+
   const applySupportBadgeState = (state) => {
     const elements = getSupportBadgeElements();
     if (!elements) return;
@@ -592,6 +692,39 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     }
 
     badge.classList.add(tone === "red" ? "is-red" : "is-orange");
+    badge.textContent = count > 99 ? "99+" : String(count);
+  };
+
+  const applyAlertsBadgeState = (state) => {
+    const elements = getAlertsBadgeElements();
+    if (!elements) return;
+    const { badge } = elements;
+
+    const count = Number(state && state.count ? state.count : 0);
+    const visible = Boolean(state && state.visible && count > 0);
+    const tone = state && state.tone === "red" ? "red" : "orange";
+
+    badge.classList.remove("is-red", "is-orange", "is-hidden");
+    if (!visible) {
+      badge.classList.add("is-hidden");
+      return;
+    }
+
+    badge.classList.add(tone === "red" ? "is-red" : "is-orange");
+    badge.textContent = count > 99 ? "99+" : String(count);
+  };
+
+  const applyMessagesBadgeCount = (rawCount) => {
+    const elements = getMessagesBadgeElements();
+    if (!elements) return;
+    const { badge } = elements;
+
+    const count = Number(rawCount || 0);
+    badge.classList.remove("is-hidden");
+    if (count <= 0) {
+      badge.classList.add("is-hidden");
+      return;
+    }
     badge.textContent = count > 99 ? "99+" : String(count);
   };
 
@@ -625,6 +758,36 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
       });
   };
 
+  const refreshAlertsBadge = ({ force = false } = {}) => {
+    const elements = getAlertsBadgeElements();
+    if (!elements) return;
+    if (alertsBadgeFetchInFlight) return;
+
+    const now = Date.now();
+    if (!force && now - alertsBadgeLastRefreshAt < ALERTS_BADGE_MIN_REFRESH_GAP_MS) {
+      return;
+    }
+
+    alertsBadgeFetchInFlight = true;
+    alertsBadgeLastRefreshAt = now;
+
+    fetch(elements.url, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!payload) return;
+        applyAlertsBadgeState(payload);
+      })
+      .catch(() => {})
+      .finally(() => {
+        alertsBadgeFetchInFlight = false;
+      });
+  };
+
   const closeSupportBadgeSocket = () => {
     if (supportBadgeSocketReconnectTimer) {
       clearTimeout(supportBadgeSocketReconnectTimer);
@@ -640,6 +803,36 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     }
   };
 
+  const closeAlertsBadgeSocket = () => {
+    if (alertsBadgeSocketReconnectTimer) {
+      clearTimeout(alertsBadgeSocketReconnectTimer);
+      alertsBadgeSocketReconnectTimer = null;
+    }
+    if (alertsBadgeSocket) {
+      alertsBadgeSocket.onopen = null;
+      alertsBadgeSocket.onmessage = null;
+      alertsBadgeSocket.onerror = null;
+      alertsBadgeSocket.onclose = null;
+      alertsBadgeSocket.close();
+      alertsBadgeSocket = null;
+    }
+  };
+
+  const closeMessagingUnreadSocket = () => {
+    if (messagingUnreadSocketReconnectTimer) {
+      clearTimeout(messagingUnreadSocketReconnectTimer);
+      messagingUnreadSocketReconnectTimer = null;
+    }
+    if (messagingUnreadSocket) {
+      messagingUnreadSocket.onopen = null;
+      messagingUnreadSocket.onmessage = null;
+      messagingUnreadSocket.onerror = null;
+      messagingUnreadSocket.onclose = null;
+      messagingUnreadSocket.close();
+      messagingUnreadSocket = null;
+    }
+  };
+
   const scheduleSupportBadgeReconnect = () => {
     if (supportBadgeSocketReconnectTimer) return;
     const waitMs = SUPPORT_BADGE_SOCKET_BACKOFF_MS[
@@ -650,6 +843,30 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
       connectSupportBadgeSocket();
     }, waitMs);
     supportBadgeSocketBackoffIndex += 1;
+  };
+
+  const scheduleAlertsBadgeReconnect = () => {
+    if (alertsBadgeSocketReconnectTimer) return;
+    const waitMs = ALERTS_BADGE_SOCKET_BACKOFF_MS[
+      Math.min(alertsBadgeSocketBackoffIndex, ALERTS_BADGE_SOCKET_BACKOFF_MS.length - 1)
+    ];
+    alertsBadgeSocketReconnectTimer = window.setTimeout(() => {
+      alertsBadgeSocketReconnectTimer = null;
+      connectAlertsBadgeSocket();
+    }, waitMs);
+    alertsBadgeSocketBackoffIndex += 1;
+  };
+
+  const scheduleMessagingUnreadReconnect = () => {
+    if (messagingUnreadSocketReconnectTimer) return;
+    const waitMs = MESSAGING_UNREAD_SOCKET_BACKOFF_MS[
+      Math.min(messagingUnreadSocketBackoffIndex, MESSAGING_UNREAD_SOCKET_BACKOFF_MS.length - 1)
+    ];
+    messagingUnreadSocketReconnectTimer = window.setTimeout(() => {
+      messagingUnreadSocketReconnectTimer = null;
+      connectMessagingUnreadSocket();
+    }, waitMs);
+    messagingUnreadSocketBackoffIndex += 1;
   };
 
   const connectSupportBadgeSocket = () => {
@@ -692,6 +909,85 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     };
   };
 
+  const connectAlertsBadgeSocket = () => {
+    const elements = getAlertsBadgeElements();
+    if (!elements || alertsBadgeSocket) return;
+
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const socketUrl = `${scheme}://${window.location.host}/ws/alertas/sidebar/`;
+
+    try {
+      alertsBadgeSocket = new WebSocket(socketUrl);
+    } catch (error) {
+      alertsBadgeSocket = null;
+      scheduleAlertsBadgeReconnect();
+      return;
+    }
+
+    alertsBadgeSocket.onopen = () => {
+      alertsBadgeSocketBackoffIndex = 0;
+      refreshAlertsBadge({ force: true });
+    };
+
+    alertsBadgeSocket.onmessage = (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || "{}");
+      } catch (error) {
+        return;
+      }
+      if (payload && payload.type === "alerts.badge.changed") {
+        refreshAlertsBadge({ force: true });
+      }
+    };
+
+    alertsBadgeSocket.onerror = () => {};
+
+    alertsBadgeSocket.onclose = () => {
+      alertsBadgeSocket = null;
+      scheduleAlertsBadgeReconnect();
+    };
+  };
+
+  const connectMessagingUnreadSocket = () => {
+    const elements = getMessagesBadgeElements();
+    if (!elements || messagingUnreadSocket) return;
+
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const socketUrl = `${scheme}://${window.location.host}/ws/mensagens/unread/`;
+
+    try {
+      messagingUnreadSocket = new WebSocket(socketUrl);
+    } catch (error) {
+      messagingUnreadSocket = null;
+      scheduleMessagingUnreadReconnect();
+      return;
+    }
+
+    messagingUnreadSocket.onopen = () => {
+      messagingUnreadSocketBackoffIndex = 0;
+    };
+
+    messagingUnreadSocket.onmessage = (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || "{}");
+      } catch (error) {
+        return;
+      }
+      if (payload && payload.type === "unread.totals") {
+        applyMessagesBadgeCount(payload.active_unread_total || 0);
+      }
+    };
+
+    messagingUnreadSocket.onerror = () => {};
+
+    messagingUnreadSocket.onclose = () => {
+      messagingUnreadSocket = null;
+      scheduleMessagingUnreadReconnect();
+    };
+  };
+
   const toggleMainSidebar = () => {
     if (isMobile()) {
       shell.classList.toggle("sidebar-mobile-open");
@@ -724,6 +1020,9 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   syncSidebarActive();
   refreshSupportBadge({ force: true });
   connectSupportBadgeSocket();
+  refreshAlertsBadge({ force: true });
+  connectAlertsBadgeSocket();
+  connectMessagingUnreadSocket();
 
   if (!window.__appShellHandlersBound) {
     document.addEventListener("click", (event) => {
@@ -755,10 +1054,21 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
       if (target && target.id === "shellMain") {
         syncSidebarActive();
         refreshSupportBadge({ force: true });
+        refreshAlertsBadge({ force: true });
         if (!getSupportBadgeElements()) {
           closeSupportBadgeSocket();
         } else if (!supportBadgeSocket) {
           connectSupportBadgeSocket();
+        }
+        if (!getAlertsBadgeElements()) {
+          closeAlertsBadgeSocket();
+        } else if (!alertsBadgeSocket) {
+          connectAlertsBadgeSocket();
+        }
+        if (!getMessagesBadgeElements()) {
+          closeMessagingUnreadSocket();
+        } else if (!messagingUnreadSocket) {
+          connectMessagingUnreadSocket();
         }
       }
     });
@@ -766,14 +1076,18 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     document.body.addEventListener("htmx:historyRestore", () => {
       syncSidebarActive();
       refreshSupportBadge({ force: true });
+      refreshAlertsBadge({ force: true });
     });
     window.addEventListener("popstate", () => {
       syncSidebarActive();
       refreshSupportBadge({ force: true });
+      refreshAlertsBadge({ force: true });
     });
 
     window.addEventListener("beforeunload", () => {
       closeSupportBadgeSocket();
+      closeAlertsBadgeSocket();
+      closeMessagingUnreadSocket();
     });
 
     // handle resize

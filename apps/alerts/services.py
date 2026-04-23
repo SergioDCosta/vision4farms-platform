@@ -1,8 +1,14 @@
+import logging
 from decimal import Decimal
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.db.models import Count, Max
 from django.db import transaction
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
+from apps.accounts.models import UserRole
 from apps.alerts.models import (
     Alert,
     AlertEvent,
@@ -12,7 +18,7 @@ from apps.alerts.models import (
     AlertStatus,
     AlertType,
 )
-from apps.inventory.models import Need, NeedStatus, ProductionForecast, Stock
+from apps.inventory.models import Need, NeedStatus, ProducerProfile, ProductionForecast, Stock
 from apps.inventory.services import calculate_need_coverage
 from apps.marketplace.services import get_forecast_available_quantity
 
@@ -30,6 +36,95 @@ MANAGED_ALERT_TYPES = {
     AlertType.SELL_SUGGESTION,
 }
 AUTO_RESOLVED_NOTE = "Resolução automática por fim da condição"
+ALERTS_LAST_SEEN_SESSION_KEY = "alerts_last_seen_at"
+ALERTS_BADGE_GROUP_PREFIX = "alerts_badge_user_"
+
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_session_datetime(value):
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    parsed = parse_datetime(raw)
+    if not parsed:
+        return None
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def get_alerts_badge_group_name(user_id):
+    return f"{ALERTS_BADGE_GROUP_PREFIX}{user_id}"
+
+
+def broadcast_alerts_badge_changed_for_user(*, user_id):
+    if not user_id:
+        return
+    try:
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            return
+        async_to_sync(channel_layer.group_send)(
+            get_alerts_badge_group_name(user_id),
+            {"type": "alerts_badge_changed"},
+        )
+    except Exception:
+        logger.exception("Falha ao emitir atualização realtime do badge de alertas.")
+
+
+def _queue_alerts_badge_changed_for_user(*, user_id):
+    transaction.on_commit(
+        lambda: broadcast_alerts_badge_changed_for_user(user_id=user_id)
+    )
+
+
+def get_client_alerts_badge_state(request):
+    user = getattr(request, "current_user", None)
+    if not user or getattr(user, "role", None) != UserRole.CLIENTE:
+        return {"visible": False, "count": 0, "tone": "orange"}
+
+    producer = ProducerProfile.objects.filter(user=user).only("id").first()
+    if not producer:
+        return {"visible": False, "count": 0, "tone": "orange"}
+
+    aggregate = (
+        Alert.objects
+        .filter(producer=producer, status=AlertStatus.ACTIVE)
+        .aggregate(
+            open_count=Count("id"),
+            latest_active_created_at=Max("created_at"),
+        )
+    )
+    open_count = int(aggregate.get("open_count") or 0)
+    if open_count <= 0:
+        return {"visible": False, "count": 0, "tone": "orange"}
+
+    latest_active_created_at = aggregate.get("latest_active_created_at")
+    last_seen_at = _parse_session_datetime(
+        request.session.get(ALERTS_LAST_SEEN_SESSION_KEY)
+    )
+    has_unseen_new = bool(
+        latest_active_created_at and (
+            not last_seen_at or latest_active_created_at > last_seen_at
+        )
+    )
+
+    return {
+        "visible": True,
+        "count": open_count,
+        "tone": "red" if has_unseen_new else "orange",
+    }
+
+
+def mark_client_alerts_seen(request):
+    user = getattr(request, "current_user", None)
+    if not user or getattr(user, "role", None) != UserRole.CLIENTE:
+        return
+    request.session[ALERTS_LAST_SEEN_SESSION_KEY] = timezone.now().isoformat()
+    request.session.modified = True
+    _queue_alerts_badge_changed_for_user(user_id=user.id)
 
 
 def _as_decimal(value, default="0.000"):
@@ -42,6 +137,13 @@ def get_alert_type_label(alert_type):
         AlertType.SURPLUS_AVAILABLE: "Excedente / oportunidade de venda",
         AlertType.EXTERNAL_DEFICIT: "Need sem cobertura suficiente",
         AlertType.SELL_SUGGESTION: "Pré-venda disponível para publicar",
+        AlertType.ORDER_PURCHASE_CREATED: "Nova compra recebida",
+        AlertType.ORDER_CONFIRMED: "Encomenda confirmada",
+        AlertType.ORDER_IN_PROGRESS: "Encomenda em preparação",
+        AlertType.ORDER_DELIVERING: "Encomenda em entrega",
+        AlertType.ORDER_CANCELLED: "Encomenda cancelada",
+        AlertType.ORDER_COMPLETED: "Receção confirmada",
+        AlertType.MESSAGE_UNREAD: "Nova mensagem",
     }
     return labels.get(str(alert_type), str(alert_type))
 
@@ -75,6 +177,206 @@ def record_alert_event(alert, event_type, performed_by=None, notes=None):
         performed_by=performed_by,
         notes=notes or None,
     )
+
+
+@transaction.atomic
+def create_order_interaction_alert(
+    *,
+    target_producer,
+    order,
+    alert_type,
+    title,
+    description,
+    counterpart_name,
+    summary_label,
+    action_url,
+    action_label="Ver encomenda",
+    acting_user=None,
+):
+    first_item = (
+        order.items
+        .select_related("product", "listing")
+        .order_by("created_at")
+        .first()
+    )
+    payload = {
+        "order_id": str(order.id),
+        "order_number": order.order_number,
+        "order_status": order.status,
+        "order_status_label": order.get_status_display(),
+        "counterpart_name": counterpart_name or "Contraparte",
+        "summary": summary_label or "",
+        "action_url": action_url,
+        "action_label": action_label,
+    }
+    if first_item and first_item.product_id:
+        payload["product_name"] = first_item.product.name
+
+    severity = (
+        AlertSeverity.WARNING
+        if alert_type == AlertType.ORDER_CANCELLED
+        else AlertSeverity.INFO
+    )
+    alert = Alert.objects.create(
+        producer=target_producer,
+        product=getattr(first_item, "product", None),
+        listing=getattr(first_item, "listing", None),
+        need=None,
+        forecast=None,
+        type=alert_type,
+        severity=severity,
+        title=title,
+        description=description,
+        source_system=AlertSourceSystem.INTERNAL,
+        status=AlertStatus.ACTIVE,
+        payload=payload,
+        assumed_loss=False,
+    )
+    record_alert_event(
+        alert,
+        AlertEventType.CREATED,
+        performed_by=acting_user,
+        notes="Alerta de encomenda criado automaticamente.",
+    )
+    _queue_alerts_badge_changed_for_user(user_id=target_producer.user_id)
+    return alert
+
+
+@transaction.atomic
+def upsert_message_unread_alert(
+    *,
+    target_producer,
+    conversation_id,
+    conversation_type,
+    sender_name,
+    preview_text,
+    action_url,
+    acting_user=None,
+):
+    if not target_producer or not conversation_id:
+        return None
+
+    now = timezone.now()
+    sender_label = (sender_name or "Utilizador").strip() or "Utilizador"
+    preview_label = (preview_text or "").strip()
+    title = f"Nova mensagem de {sender_label}"
+    description = preview_label or "Tens uma nova mensagem por ler."
+
+    payload = {
+        "conversation_id": str(conversation_id),
+        "conversation_type": str(conversation_type or "").strip() or "DIRECT",
+        "sender_name": sender_label,
+        "preview": preview_label,
+        "action_url": action_url,
+        "action_label": "Abrir conversa",
+    }
+
+    alert = (
+        Alert.objects
+        .select_for_update()
+        .filter(
+            producer=target_producer,
+            type=AlertType.MESSAGE_UNREAD,
+            status=AlertStatus.ACTIVE,
+            payload__conversation_id=str(conversation_id),
+        )
+        .order_by("-updated_at", "-created_at")
+        .first()
+    )
+
+    if alert:
+        changed = False
+        if alert.title != title:
+            alert.title = title
+            changed = True
+        if alert.description != description:
+            alert.description = description
+            changed = True
+        if alert.payload != payload:
+            alert.payload = payload
+            changed = True
+        if alert.severity != AlertSeverity.INFO:
+            alert.severity = AlertSeverity.INFO
+            changed = True
+        if alert.source_system != AlertSourceSystem.INTERNAL:
+            alert.source_system = AlertSourceSystem.INTERNAL
+            changed = True
+        if alert.updated_at != now:
+            alert.updated_at = now
+            changed = True
+        if changed:
+            alert.save(
+                update_fields=[
+                    "title",
+                    "description",
+                    "payload",
+                    "severity",
+                    "source_system",
+                    "updated_at",
+                ]
+            )
+        _queue_alerts_badge_changed_for_user(user_id=target_producer.user_id)
+        return alert
+
+    alert = Alert.objects.create(
+        producer=target_producer,
+        type=AlertType.MESSAGE_UNREAD,
+        severity=AlertSeverity.INFO,
+        title=title,
+        description=description,
+        source_system=AlertSourceSystem.INTERNAL,
+        status=AlertStatus.ACTIVE,
+        payload=payload,
+        assumed_loss=False,
+    )
+    record_alert_event(
+        alert,
+        AlertEventType.CREATED,
+        performed_by=acting_user,
+        notes="Alerta de nova mensagem criado automaticamente.",
+    )
+    _queue_alerts_badge_changed_for_user(user_id=target_producer.user_id)
+    return alert
+
+
+@transaction.atomic
+def resolve_message_unread_alert(
+    *,
+    target_producer,
+    conversation_id,
+    acting_user=None,
+):
+    if not target_producer or not conversation_id:
+        return False
+
+    now = timezone.now()
+    alert = (
+        Alert.objects
+        .select_for_update()
+        .filter(
+            producer=target_producer,
+            type=AlertType.MESSAGE_UNREAD,
+            status=AlertStatus.ACTIVE,
+            payload__conversation_id=str(conversation_id),
+        )
+        .order_by("-updated_at", "-created_at")
+        .first()
+    )
+    if not alert:
+        return False
+
+    alert.status = AlertStatus.RESOLVED
+    alert.cleared_at = now
+    alert.updated_at = now
+    alert.save(update_fields=["status", "cleared_at", "updated_at"])
+    record_alert_event(
+        alert,
+        AlertEventType.RESOLVED,
+        performed_by=acting_user,
+        notes="Alerta de mensagem resolvido ao ler conversa.",
+    )
+    _queue_alerts_badge_changed_for_user(user_id=target_producer.user_id)
+    return True
 
 
 def _critical_stock_candidates(producer):
@@ -436,6 +738,9 @@ def sync_alerts_for_producer(producer, acting_user=None):
         ignored_alert.updated_at = now
         ignored_alert.save(update_fields=["cleared_at", "updated_at"])
 
+    if created_count or resolved_count:
+        _queue_alerts_badge_changed_for_user(user_id=getattr(producer, "user_id", None))
+
     return {
         "created": created_count,
         "updated": updated_count,
@@ -461,6 +766,7 @@ def ignore_alert(alert, user, reason=None):
         performed_by=user,
         notes=alert.ignored_reason or "Ignorado manualmente pelo utilizador",
     )
+    _queue_alerts_badge_changed_for_user(user_id=getattr(user, "id", None))
     return True
 
 
@@ -480,6 +786,7 @@ def resolve_alert(alert, user, notes=None):
         performed_by=user,
         notes=(notes or "").strip() or "Resolução manual pelo utilizador",
     )
+    _queue_alerts_badge_changed_for_user(user_id=getattr(user, "id", None))
     return True
 
 

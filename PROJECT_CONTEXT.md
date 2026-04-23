@@ -73,6 +73,10 @@
   - Excedente: `real_surplus >= surplus_threshold`
 - Previsão futura (`production_forecasts`) separada do stock real.
 - Previsão por produto/produtor funciona com unicidade funcional (update do mesmo registo quando existe 1).
+- Card "Produção futura" (detalhe de stock):
+  - `Reservada` reflete `production_forecasts.reserved_quantity`;
+  - `Disponível pré-venda` reflete quantidade ainda disponível nos anúncios do marketplace associados à previsão
+    (`sum(listing.quantity_available)` para listings `ACTIVE/RESERVED` dessa previsão).
 - “Stock previsto” do comprador calculado em runtime via orders (não persistido em coluna).
 - Needs (`needs`) como procura anunciada:
   - estados: `OPEN`, `PARTIALLY_COVERED`, `COVERED`, `IGNORED`;
@@ -83,6 +87,11 @@
 - Recalculo de need é idempotente e, quando há cobertura planeada/em curso, sincroniza projeção no stock do comprador com log:
   - `StockMovement.reference_type="NEED"` + `reference_id=<need.id>`;
   - notas explicam origem do ajuste por necessidade.
+- Assimilação de previsão para stock atual:
+  - usa a quantidade disponível pré-venda (do(s) anúncio(s) aberto(s) da previsão), não o `forecast_quantity` bruto;
+  - fecha listings abertas associadas (`quantity_available=0`, `status=CLOSED`);
+  - mantém a previsão (não faz delete), reduzindo `forecast_quantity` pelo valor assimilado;
+  - se a previsão ficar sem quantidade, desativa `is_marketplace_enabled`.
 
 ### 5.3 Marketplace
 - `marketplace_listings` suporta 2 origens:
@@ -127,11 +136,16 @@
   - por recommendation: split por `(vendedor, origem)` dentro do mesmo grupo.
 - Buyer vê grupo; seller trabalha por encomenda individual.
 - Recálculo conservador de estado global + helper central para estado agregado do grupo.
+- Classificação de origem:
+  - helper central `forecast-only` para identificar pré-venda pura (sem mistura com stock).
 - Workflow operacional:
-  - `PENDING`: sem reservas;
-  - `CONFIRMED`: reserva na origem correta (stock ou forecast);
+  - `PENDING`: já reserva quantidade na origem correta (stock ou forecast) no momento da criação da encomenda;
+  - `CONFIRMED`: não volta a reservar; apenas avança estado dos items;
   - `IN_PROGRESS` / `DELIVERING`: transições com guardas e idempotência;
   - `COMPLETED` (confirm_receipt): consome reserva, debita stock do vendedor e dá entrada no inventário do comprador.
+- Reconciliação de reservas por listing:
+  - reserva efetiva é reconciliada por soma de `order_items` abertos (`PENDING/CONFIRMED/IN_DELIVERY`);
+  - evita dupla-reserva e garante release correto também em cancelamento de pendentes.
 - Integração com needs:
   - `order_items.need_id` é propagado no fluxo por listing e por recommendation;
   - recálculo de need ocorre em eventos de criação/transição/receção;
@@ -139,6 +153,11 @@
 - Listings sincronizadas com reservas:
   - esgotado em reserva pode ir para `RESERVED`;
   - sem disponível e sem reservado fecha para `CLOSED`.
+- UX de encomendas para pré-venda:
+  - nova aba dedicada `tab=pre_vendas` com duas colunas: "Como comprador" e "Como vendedor";
+  - `compras` e `recebidas` excluem encomendas `forecast-only` para evitar duplicação visual;
+  - criar encomenda por anúncio forecast redireciona para `tab=pre_vendas`;
+  - no fluxo de recommendation, se todas as sub-encomendas criadas forem `forecast-only`, redireciona para `tab=pre_vendas`.
 - Comando de reconciliação existe para corrigir `orders.status` sem mexer em stock/reservas.
 
 ### 5.6 Messaging
@@ -146,6 +165,7 @@
 - HTTP:
   - `/mensagens/` (inbox + thread);
   - start/reuse por listing;
+  - start/reuse por encomenda (`ORDER_CONTACT`) em `/mensagens/encomenda/<uuid>/iniciar/`;
   - upload de anexos.
 - WebSocket:
   - `/ws/mensagens/<conversation_id>/`.
@@ -161,6 +181,9 @@
   - one-sided com `is_archived=True`;
   - purge físico apenas quando ambos os participantes arquivarem.
 - Header da thread abre detalhe do anúncio quando a conversa está ligada a listing.
+- Conversa `ORDER_CONTACT`:
+  - criada lazy no primeiro clique em detalhe de encomenda de pré-venda;
+  - reutilizada nos cliques seguintes (1:1 comprador-vendedor por encomenda).
 
 ### 5.7 Alerts
 - Página dedicada `/alertas/` com tabs: `active`, `ignored`, `resolved`.
@@ -249,6 +272,8 @@
 - `producer_profiles` N-N `products` via `producer_products`.
 - `stocks` e `production_forecasts` são por `(producer, product)`.
 - `marketplace_listings` referencia sempre uma origem operacional (stock ou forecast).
+- Constraint DB `marketplace_listings_source_xor_chk` impõe XOR estrito:
+  - `(stock_id IS NOT NULL AND forecast_id IS NULL) OR (stock_id IS NULL AND forecast_id IS NOT NULL)`.
 - `marketplace_listings.need_id` liga oferta privada ao dono de uma need.
 - `order_items.need_id` e `recommendations.need_id` suportam rastreio de cobertura da need.
 - `orders` pode ter `group_id` nulo (legado suportado).

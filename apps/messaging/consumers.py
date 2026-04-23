@@ -2,7 +2,6 @@ import json
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.messaging.models import (
@@ -10,9 +9,11 @@ from apps.messaging.models import (
     ConversationParticipant,
 )
 from apps.messaging.services import (
+    broadcast_unread_totals_for_user_ids,
     create_text_message,
     get_unread_totals_for_conversation_participants,
     get_unread_totals_for_user,
+    mark_conversation_as_read,
     serialize_message_payload,
 )
 
@@ -108,6 +109,7 @@ class ConversationConsumer(_BaseMessagingConsumer):
 
         if str(message_payload.get("sender_id")) != str(self.current_user.id):
             await self._mark_conversation_as_read()
+            await self._broadcast_current_user_unread_totals()
 
     @database_sync_to_async
     def _is_conversation_participant(self):
@@ -119,10 +121,18 @@ class ConversationConsumer(_BaseMessagingConsumer):
 
     @database_sync_to_async
     def _mark_conversation_as_read(self):
-        ConversationParticipant.objects.filter(
-            conversation_id=self.conversation_id,
-            user_id=self.current_user.id,
-        ).update(last_read_at=timezone.now())
+        conversation = (
+            Conversation.objects
+            .filter(id=self.conversation_id, is_active=True)
+            .first()
+        )
+        if not conversation:
+            return False
+        return bool(mark_conversation_as_read(user=self.current_user, conversation=conversation))
+
+    @database_sync_to_async
+    def _broadcast_current_user_unread_totals(self):
+        return bool(broadcast_unread_totals_for_user_ids([self.current_user.id]))
 
     @database_sync_to_async
     def _create_text_message(self, content):

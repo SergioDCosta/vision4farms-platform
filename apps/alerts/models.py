@@ -9,6 +9,13 @@ class AlertType(models.TextChoices):
     BUY_OPPORTUNITY = "BUY_OPPORTUNITY", "Oportunidade de Compra"
     SELL_SUGGESTION = "SELL_SUGGESTION", "Sugestão de Venda"
     EXTERNAL_DEFICIT = "EXTERNAL_DEFICIT", "Défice Externo"
+    ORDER_PURCHASE_CREATED = "ORDER_PURCHASE_CREATED", "Compra criada"
+    ORDER_CONFIRMED = "ORDER_CONFIRMED", "Encomenda confirmada"
+    ORDER_IN_PROGRESS = "ORDER_IN_PROGRESS", "Encomenda em preparação"
+    ORDER_DELIVERING = "ORDER_DELIVERING", "Encomenda em entrega"
+    ORDER_CANCELLED = "ORDER_CANCELLED", "Encomenda cancelada"
+    ORDER_COMPLETED = "ORDER_COMPLETED", "Encomenda concluída"
+    MESSAGE_UNREAD = "MESSAGE_UNREAD", "Nova mensagem"
 
 
 class AlertSeverity(models.TextChoices):

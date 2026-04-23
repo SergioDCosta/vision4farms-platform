@@ -2,6 +2,8 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 
 from apps.accounts.models import UserRole
+from apps.alerts.services import get_client_alerts_badge_state
+from apps.messaging.services import get_client_messages_badge_state
 from apps.settings_app.models import UserPreference
 from apps.support.services import get_admin_support_badge_state
 
@@ -55,3 +57,17 @@ def admin_support_sidebar_badge(request):
     if not user or getattr(user, "role", None) != UserRole.ADMIN:
         return {"admin_support_badge": {"visible": False, "count": 0, "tone": "orange"}}
     return {"admin_support_badge": get_admin_support_badge_state(request)}
+
+
+def client_alerts_sidebar_badge(request):
+    user = getattr(request, "current_user", None)
+    if not user or getattr(user, "role", None) != UserRole.CLIENTE:
+        return {"client_alerts_badge": {"visible": False, "count": 0, "tone": "orange"}}
+    return {"client_alerts_badge": get_client_alerts_badge_state(request)}
+
+
+def client_messages_sidebar_badge(request):
+    user = getattr(request, "current_user", None)
+    if not user or getattr(user, "role", None) != UserRole.CLIENTE:
+        return {"client_messages_badge": {"visible": False, "count": 0, "tone": "orange"}}
+    return {"client_messages_badge": get_client_messages_badge_state(user)}

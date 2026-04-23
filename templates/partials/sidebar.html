@@ -159,10 +159,18 @@
          hx-push-url="true"
          data-active-mode="prefix"
          data-active-value="/alertas/"
+         data-alerts-badge-url="{% url 'alerts:sidebar_state' %}"
          class="sidebar-link {% if '/alertas/' in request.path %}active{% endif %}"
          data-tooltip="Alertas">
         <span class="sidebar-link-icon"><i class="bi bi-bell-fill"></i></span>
         <span class="sidebar-link-text">Alertas</span>
+        <span
+          class="sidebar-alerts-badge {% if client_alerts_badge.tone == 'red' %}is-red{% else %}is-orange{% endif %}{% if not client_alerts_badge.visible or not client_alerts_badge.count %} is-hidden{% endif %}"
+          data-alerts-badge
+          aria-label="Alertas ativos"
+        >
+          {{ client_alerts_badge.count }}
+        </span>
       </a>
       <a href="/marketplace/"
          hx-get="/marketplace/"
@@ -185,10 +193,18 @@
          hx-push-url="true"
          data-active-mode="prefix"
          data-active-value="/mensagens/"
+         data-messages-badge="true"
          class="sidebar-link {% if '/mensagens/' in request.path %}active{% endif %}"
          data-tooltip="Mensagens">
         <span class="sidebar-link-icon"><i class="bi bi-chat-fill"></i></span>
         <span class="sidebar-link-text">Mensagens</span>
+        <span
+          class="sidebar-messages-badge{% if not client_messages_badge.visible or not client_messages_badge.count %} is-hidden{% endif %}"
+          data-messages-badge-count
+          aria-label="Mensagens não lidas"
+        >
+          {{ client_messages_badge.count }}
+        </span>
       </a>
       <a href="/recomendacoes/"
          hx-get="/recomendacoes/"

@@ -1,14 +1,17 @@
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 
 from apps.common.decorators import client_only_required, login_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile
 from apps.alerts.services import (
+    get_client_alerts_badge_state,
     get_alert_for_producer,
     get_alert_tab_counts,
     ignore_alert,
     list_alerts_for_producer,
+    mark_client_alerts_seen,
     resolve_alert,
     sync_alerts_for_producer,
 )
@@ -51,8 +54,15 @@ def alerts_index_view(request):
         return redirect("dashboard:painel")
 
     sync_alerts_for_producer(producer, acting_user=request.current_user)
+    mark_client_alerts_seen(request)
     tab = _normalize_tab(request.GET.get("tab"))
     return _render_alerts_page(request, producer, tab)
+
+
+@login_required
+@client_only_required
+def alerts_sidebar_state_view(request):
+    return JsonResponse(get_client_alerts_badge_state(request))
 
 
 @login_required

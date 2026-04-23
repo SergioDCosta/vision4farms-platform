@@ -75,6 +75,151 @@ def _sync_alerts_for_producers(*producers, acting_user=None):
             continue
 
 
+def _safe_emit_order_interaction_alert(
+    *,
+    target_producer,
+    order,
+    alert_type,
+    title,
+    description,
+    counterpart_name,
+    summary_label,
+    action_url,
+    acting_user,
+):
+    try:
+        from apps.alerts.services import create_order_interaction_alert
+    except Exception:
+        return
+
+    try:
+        create_order_interaction_alert(
+            target_producer=target_producer,
+            order=order,
+            alert_type=alert_type,
+            title=title,
+            description=description,
+            counterpart_name=counterpart_name,
+            summary_label=summary_label,
+            action_url=action_url,
+            acting_user=acting_user,
+        )
+    except Exception:
+        return
+
+
+def _order_detail_url_for_alert(order, *, viewer_role):
+    if viewer_role == "buyer":
+        return f"/encomendas/{order.id}/?force_single=1"
+    return f"/encomendas/{order.id}/"
+
+
+def _build_order_alert_summary(order, *, seller_producer=None):
+    all_items = list(
+        order.items.select_related("product", "seller_producer", "seller_producer__user")
+    )
+    items = all_items
+    if seller_producer:
+        items = [item for item in all_items if item.seller_producer_id == seller_producer.id]
+
+    if not items:
+        return "sem itens"
+
+    if len(items) == 1:
+        item = items[0]
+        quantity = quantize_qty(item.quantity or 0)
+        unit = getattr(getattr(item, "product", None), "unit", "") or ""
+        product_name = getattr(getattr(item, "product", None), "name", "") or "Produto"
+        quantity_label = f"{quantity} {unit}".strip()
+        return f"{quantity_label} de {product_name}"
+
+    return f"{len(items)} itens"
+
+
+def _notify_order_purchase_created(*, order, buyer_producer, seller_producer, acting_user):
+    try:
+        from apps.alerts.models import AlertType
+    except Exception:
+        return
+
+    counterpart_name = _producer_display_name(buyer_producer)
+    summary_label = _build_order_alert_summary(order, seller_producer=seller_producer)
+    _safe_emit_order_interaction_alert(
+        target_producer=seller_producer,
+        order=order,
+        alert_type=AlertType.ORDER_PURCHASE_CREATED,
+        title=f"Nova encomenda #{order.order_number}",
+        description=f"{counterpart_name} criou uma nova encomenda ({summary_label}).",
+        counterpart_name=counterpart_name,
+        summary_label=summary_label,
+        action_url=_order_detail_url_for_alert(order, viewer_role="seller"),
+        acting_user=acting_user,
+    )
+
+
+def _notify_order_status_changed_to_buyer(
+    *,
+    order,
+    buyer_producer,
+    seller_producer,
+    status,
+    acting_user,
+):
+    try:
+        from apps.alerts.models import AlertType
+    except Exception:
+        return
+
+    status_map = {
+        OrderStatus.CONFIRMED: AlertType.ORDER_CONFIRMED,
+        OrderStatus.IN_PROGRESS: AlertType.ORDER_IN_PROGRESS,
+        OrderStatus.DELIVERING: AlertType.ORDER_DELIVERING,
+        OrderStatus.CANCELLED: AlertType.ORDER_CANCELLED,
+    }
+    alert_type = status_map.get(status)
+    if not alert_type:
+        return
+
+    status_label = dict(OrderStatus.choices).get(status, str(status))
+    counterpart_name = _producer_display_name(seller_producer)
+    summary_label = _build_order_alert_summary(order, seller_producer=seller_producer)
+    _safe_emit_order_interaction_alert(
+        target_producer=buyer_producer,
+        order=order,
+        alert_type=alert_type,
+        title=f"Encomenda #{order.order_number}: {status_label}",
+        description=(
+            f"{counterpart_name} atualizou a encomenda para "
+            f"\"{status_label}\" ({summary_label})."
+        ),
+        counterpart_name=counterpart_name,
+        summary_label=summary_label,
+        action_url=_order_detail_url_for_alert(order, viewer_role="buyer"),
+        acting_user=acting_user,
+    )
+
+
+def _notify_order_completed_to_seller(*, order, buyer_producer, seller_producer, acting_user):
+    try:
+        from apps.alerts.models import AlertType
+    except Exception:
+        return
+
+    counterpart_name = _producer_display_name(buyer_producer)
+    summary_label = _build_order_alert_summary(order, seller_producer=seller_producer)
+    _safe_emit_order_interaction_alert(
+        target_producer=seller_producer,
+        order=order,
+        alert_type=AlertType.ORDER_COMPLETED,
+        title=f"Receção confirmada na encomenda #{order.order_number}",
+        description=f"{counterpart_name} confirmou a receção ({summary_label}).",
+        counterpart_name=counterpart_name,
+        summary_label=summary_label,
+        action_url=_order_detail_url_for_alert(order, viewer_role="seller"),
+        acting_user=acting_user,
+    )
+
+
 def _next_order_number():
     last_number = Order.objects.aggregate(max_number=Max("order_number")).get("max_number") or 1000
     return int(last_number) + 1
@@ -910,6 +1055,12 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
         changed_by=acting_user,
         notes="Pedido criado a partir de um anúncio do marketplace.",
     )
+    _notify_order_purchase_created(
+        order=order,
+        buyer_producer=buyer_producer,
+        seller_producer=listing.producer,
+        acting_user=acting_user,
+    )
 
     recalculate_needs_for_order(order, acting_user=acting_user)
     _sync_alerts_for_producers(buyer_producer, listing.producer, acting_user=acting_user)
@@ -1004,6 +1155,14 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
             changed_by=acting_user,
             notes="Pedido criado a partir de uma recomendação aceite.",
         )
+        seller_for_order = bucket_items[0].seller_producer if bucket_items else None
+        if seller_for_order:
+            _notify_order_purchase_created(
+                order=order,
+                buyer_producer=buyer_producer,
+                seller_producer=seller_for_order,
+                acting_user=acting_user,
+            )
         recalculate_needs_for_order(order, acting_user=acting_user)
         created_orders.append(order)
 
@@ -1070,8 +1229,23 @@ def confirm_order_receipt(*, order, acting_user):
         notes="Receção confirmada pelo comprador.",
     )
 
+    seller_producers = []
+    seen_seller_ids = set()
+    for item in active_items:
+        seller = item.seller_producer
+        seller_id = getattr(seller, "id", None)
+        if not seller or seller_id in seen_seller_ids:
+            continue
+        seen_seller_ids.add(seller_id)
+        seller_producers.append(seller)
+        _notify_order_completed_to_seller(
+            order=order,
+            buyer_producer=buyer_producer,
+            seller_producer=seller,
+            acting_user=acting_user,
+        )
+
     recalculate_needs_for_order(order, acting_user=acting_user)
-    seller_producers = [item.seller_producer for item in active_items]
     _sync_alerts_for_producers(buyer_producer, *seller_producers, acting_user=acting_user)
 
     return order
@@ -1405,6 +1579,13 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             changed_by=acting_user,
             notes=notes or "Pedido aceite pelo vendedor.",
         )
+        _notify_order_status_changed_to_buyer(
+            order=order,
+            buyer_producer=order.buyer_producer,
+            seller_producer=seller_producer,
+            status=OrderStatus.CONFIRMED,
+            acting_user=acting_user,
+        )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
         return order
@@ -1433,6 +1614,13 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             status=OrderStatus.IN_PROGRESS,
             changed_by=acting_user,
             notes=notes or "Pedido marcado em preparação.",
+        )
+        _notify_order_status_changed_to_buyer(
+            order=order,
+            buyer_producer=order.buyer_producer,
+            seller_producer=seller_producer,
+            status=OrderStatus.IN_PROGRESS,
+            acting_user=acting_user,
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
@@ -1476,6 +1664,13 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             changed_by=acting_user,
             notes=notes or "Pedido marcado em entrega.",
         )
+        _notify_order_status_changed_to_buyer(
+            order=order,
+            buyer_producer=order.buyer_producer,
+            seller_producer=seller_producer,
+            status=OrderStatus.DELIVERING,
+            acting_user=acting_user,
+        )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
         return order
@@ -1503,6 +1698,13 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
             status=OrderStatus.CANCELLED,
             changed_by=acting_user,
             notes=notes or "Pedido cancelado pelo vendedor.",
+        )
+        _notify_order_status_changed_to_buyer(
+            order=order,
+            buyer_producer=order.buyer_producer,
+            seller_producer=seller_producer,
+            status=OrderStatus.CANCELLED,
+            acting_user=acting_user,
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)

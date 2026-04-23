@@ -2,6 +2,8 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
@@ -227,6 +229,105 @@ def serialize_message_payload(*, message):
     return payload
 
 
+def _safe_upsert_message_unread_alerts_for_message(*, conversation, message, sender_user):
+    if not conversation or not message or not sender_user:
+        return
+
+    try:
+        from apps.alerts.services import upsert_message_unread_alert
+    except Exception:
+        return
+
+    sender_label = (sender_user.full_name or sender_user.email or "Utilizador").strip() or "Utilizador"
+    if message.message_type == MessageType.FILE:
+        attachment_name = (message.attachment_name or message.content or "anexo").strip()
+        preview = f"Enviou um anexo: {attachment_name}"
+    else:
+        content = (message.content or "").strip()
+        preview = content if len(content) <= 120 else f"{content[:117]}..."
+
+    participants = list(
+        ConversationParticipant.objects
+        .select_related("user")
+        .filter(conversation=conversation, user_id__isnull=False)
+    )
+    recipient_user_ids = {
+        participant.user_id
+        for participant in participants
+        if participant.user_id and participant.user_id != sender_user.id
+    }
+    if not recipient_user_ids:
+        return
+
+    recipient_profiles = ProducerProfile.objects.filter(user_id__in=recipient_user_ids)
+    action_url = f"/mensagens/?tab={MESSAGE_TAB_ACTIVE}&c={conversation.id}"
+
+    for producer in recipient_profiles:
+        try:
+            upsert_message_unread_alert(
+                target_producer=producer,
+                conversation_id=conversation.id,
+                conversation_type=conversation.conversation_type,
+                sender_name=sender_label,
+                preview_text=preview,
+                action_url=action_url,
+                acting_user=sender_user,
+            )
+        except Exception:
+            continue
+
+
+def _safe_resolve_message_unread_alert_for_read(*, user, conversation):
+    if not user or not conversation:
+        return
+    try:
+        from apps.alerts.services import resolve_message_unread_alert
+    except Exception:
+        return
+
+    producer = ProducerProfile.objects.filter(user=user).first()
+    if not producer:
+        return
+
+    try:
+        resolve_message_unread_alert(
+            target_producer=producer,
+            conversation_id=conversation.id,
+            acting_user=user,
+        )
+    except Exception:
+        return
+
+
+def broadcast_unread_totals_for_user_ids(user_ids):
+    totals_by_user = get_unread_totals_for_user_ids(user_ids or [])
+    if not totals_by_user:
+        return False
+
+    try:
+        channel_layer = get_channel_layer()
+    except Exception:
+        return False
+    if not channel_layer:
+        return False
+
+    dispatched = False
+    for user_id, totals in totals_by_user.items():
+        try:
+            async_to_sync(channel_layer.group_send)(
+                f"messaging_user_{user_id}",
+                {
+                    "type": "unread_totals",
+                    "active_unread_total": int(totals.get("active_unread_total") or 0),
+                    "archived_unread_total": int(totals.get("archived_unread_total") or 0),
+                },
+            )
+            dispatched = True
+        except Exception:
+            continue
+    return dispatched
+
+
 def create_text_message(*, conversation, sender_user, content):
     content = str(content or "").strip()
     if not content:
@@ -245,6 +346,11 @@ def create_text_message(*, conversation, sender_user, content):
         message_created_at=message.created_at,
     )
     _mark_sender_read(conversation=conversation, sender_user=sender_user, now=now)
+    _safe_upsert_message_unread_alerts_for_message(
+        conversation=conversation,
+        message=message,
+        sender_user=sender_user,
+    )
     return message
 
 
@@ -280,6 +386,11 @@ def create_file_message(*, conversation, sender_user, uploaded_file):
         message_created_at=message.created_at,
     )
     _mark_sender_read(conversation=conversation, sender_user=sender_user, now=now)
+    _safe_upsert_message_unread_alerts_for_message(
+        conversation=conversation,
+        message=message,
+        sender_user=sender_user,
+    )
     return message
 
 
@@ -392,6 +503,16 @@ def get_unread_totals_for_user(user):
         str(user.id),
         {"active_unread_total": 0, "archived_unread_total": 0},
     )
+
+
+def get_client_messages_badge_state(user):
+    totals = get_unread_totals_for_user(user)
+    count = int(totals.get("active_unread_total") or 0)
+    return {
+        "visible": count > 0,
+        "count": count,
+        "tone": "orange",
+    }
 
 
 def _get_unread_totals_grouped_by_user(*, user_ids, archived):
@@ -581,11 +702,39 @@ def get_conversation_messages(*, conversation, limit=150):
 
 def mark_conversation_as_read(*, user, conversation):
     if not user or not conversation:
-        return
+        return False
+
+    participant = ConversationParticipant.objects.filter(
+        conversation=conversation,
+        user=user,
+    ).first()
+    if not participant:
+        return False
+
+    last_read_at = getattr(participant, "last_read_at", None)
+    had_unread = (
+        Message.objects
+        .filter(conversation=conversation)
+        .exclude(sender_user=user)
+        .filter(
+            Q(created_at__gt=last_read_at) if last_read_at else Q(created_at__isnull=False)
+        )
+        .exists()
+    )
+
+    now = timezone.now()
     ConversationParticipant.objects.filter(
         conversation=conversation,
         user=user,
-    ).update(last_read_at=timezone.now())
+    ).update(last_read_at=now)
+
+    _safe_resolve_message_unread_alert_for_read(user=user, conversation=conversation)
+
+    if had_unread:
+        transaction.on_commit(
+            lambda: broadcast_unread_totals_for_user_ids([user.id])
+        )
+    return had_unread
 
 
 @transaction.atomic
