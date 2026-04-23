@@ -6,12 +6,15 @@ from apps.common.decorators import client_only_required, login_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile
 from apps.alerts.services import (
+    expire_ignored_alerts_for_producer,
     get_client_alerts_badge_state,
     get_alert_for_producer,
     get_alert_tab_counts,
     ignore_alert,
+    ignore_all_active_alerts,
     list_alerts_for_producer,
     mark_client_alerts_seen,
+    reactivate_ignored_alert,
     resolve_alert,
     sync_alerts_for_producer,
 )
@@ -45,6 +48,10 @@ def _render_alerts_page(request, producer, tab):
     return render(request, "alerts/index.html", context)
 
 
+def _expire_ignored_alerts(producer, acting_user=None):
+    expire_ignored_alerts_for_producer(producer=producer, acting_user=acting_user)
+
+
 @login_required
 @client_only_required
 def alerts_index_view(request):
@@ -54,6 +61,7 @@ def alerts_index_view(request):
         return redirect("dashboard:painel")
 
     sync_alerts_for_producer(producer, acting_user=request.current_user)
+    _expire_ignored_alerts(producer, acting_user=request.current_user)
     mark_client_alerts_seen(request)
     tab = _normalize_tab(request.GET.get("tab"))
     return _render_alerts_page(request, producer, tab)
@@ -76,6 +84,7 @@ def alert_ignore_view(request, alert_id):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
+    _expire_ignored_alerts(producer, acting_user=request.current_user)
     alert = get_alert_for_producer(producer=producer, alert_id=alert_id)
     tab = _normalize_tab(request.POST.get("tab"))
     if not alert:
@@ -107,6 +116,7 @@ def alert_resolve_view(request, alert_id):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
+    _expire_ignored_alerts(producer, acting_user=request.current_user)
     alert = get_alert_for_producer(producer=producer, alert_id=alert_id)
     tab = _normalize_tab(request.POST.get("tab"))
     if not alert:
@@ -124,4 +134,68 @@ def alert_resolve_view(request, alert_id):
     if _is_htmx(request):
         return with_htmx_toast(response, "success" if changed else "info", message)
     messages.success(request, message) if changed else messages.info(request, message)
+    return response
+
+
+@login_required
+@client_only_required
+def alert_reactivate_view(request, alert_id):
+    if request.method != "POST":
+        return redirect("alerts:index")
+
+    producer = _get_producer(request)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    _expire_ignored_alerts(producer, acting_user=request.current_user)
+    alert = get_alert_for_producer(producer=producer, alert_id=alert_id)
+    tab = _normalize_tab(request.POST.get("tab"))
+    if not alert:
+        response = _render_alerts_page(request, producer, tab)
+        if _is_htmx(request):
+            return with_htmx_toast(response, "error", "Alerta não encontrado.")
+        messages.error(request, "Alerta não encontrado.")
+        return response
+
+    changed = reactivate_ignored_alert(alert, user=request.current_user)
+    message = "Alerta reativado." if changed else "O alerta já não estava ignorado."
+
+    response = _render_alerts_page(request, producer, tab)
+    if _is_htmx(request):
+        return with_htmx_toast(response, "success" if changed else "info", message)
+    messages.success(request, message) if changed else messages.info(request, message)
+    return response
+
+
+@login_required
+@client_only_required
+def alert_ignore_all_view(request):
+    if request.method != "POST":
+        return redirect("alerts:index")
+
+    producer = _get_producer(request)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    _expire_ignored_alerts(producer, acting_user=request.current_user)
+    tab = _normalize_tab(request.POST.get("tab"))
+    reason = (request.POST.get("reason") or "").strip()
+    ignored_count = ignore_all_active_alerts(
+        producer=producer,
+        user=request.current_user,
+        reason=reason,
+    )
+    if ignored_count == 1:
+        message = "Foi ignorado 1 alerta."
+    elif ignored_count > 1:
+        message = f"Foram ignorados {ignored_count} alertas."
+    else:
+        message = "Não existiam alertas ativos para ignorar."
+
+    response = _render_alerts_page(request, producer, tab)
+    if _is_htmx(request):
+        return with_htmx_toast(response, "success" if ignored_count else "info", message)
+    messages.success(request, message) if ignored_count else messages.info(request, message)
     return response

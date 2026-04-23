@@ -43,6 +43,23 @@
     </a>
   </nav>
 
+  {% if active_tab == "active" and tab_counts.active %}
+    <div class="alt-tab-actions">
+      <form method="post"
+            action="{% url 'alerts:ignore_all' %}"
+            hx-post="{% url 'alerts:ignore_all' %}"
+            hx-target="#shellMain"
+            hx-select="#shellMain"
+            hx-swap="outerHTML"
+            hx-push-url="true"
+            onsubmit="return confirm('Ignorar todos os alertas ativos?');">
+        {% csrf_token %}
+        <input type="hidden" name="tab" value="{{ active_tab }}">
+        <button type="submit" class="alt-btn alt-btn--soft">Ignorar todos</button>
+      </form>
+    </div>
+  {% endif %}
+
   <section class="alt-list">
     {% for alert in alerts %}
       <article class="alt-card alt-card--{{ alert.severity|lower }}">
@@ -112,6 +129,18 @@
               <input type="hidden" name="tab" value="{{ active_tab }}">
               <button type="submit" class="alt-btn alt-btn--soft">Ignorar</button>
             </form>
+          {% elif active_tab == "ignored" %}
+            <form method="post"
+                  action="{% url 'alerts:reactivate' alert.id %}"
+                  hx-post="{% url 'alerts:reactivate' alert.id %}"
+                  hx-target="#shellMain"
+                  hx-select="#shellMain"
+                  hx-swap="outerHTML"
+                  hx-push-url="true">
+              {% csrf_token %}
+              <input type="hidden" name="tab" value="{{ active_tab }}">
+              <button type="submit" class="alt-btn alt-btn--soft">Reativar</button>
+            </form>
           {% endif %}
         </div>
       </article>
@@ -152,6 +181,7 @@
 }
 .alt-tab.is-active { background:#dcfce7; border-color:#86efac; color:#166534; }
 .alt-tab.is-active span { background:#16a34a; color:#fff; }
+.alt-tab-actions { display:flex; justify-content:flex-end; }
 
 .alt-list { display:flex; flex-direction:column; gap:.8rem; }
 .alt-card {

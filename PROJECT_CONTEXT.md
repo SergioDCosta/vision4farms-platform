@@ -193,12 +193,25 @@
   - `SURPLUS_AVAILABLE` (excedente real >= limiar);
   - `EXTERNAL_DEFICIT` (need em aberto/parcial sem cobertura suficiente);
   - `SELL_SUGGESTION` (previsão com quantidade vendável).
+- Tipos orientados a evento (fora do ciclo de sync gerido):
+  - encomendas: `ORDER_PURCHASE_CREATED`, `ORDER_CONFIRMED`, `ORDER_IN_PROGRESS`,
+    `ORDER_DELIVERING`, `ORDER_CANCELLED`, `ORDER_COMPLETED`;
+  - mensagens: `MESSAGE_UNREAD` (upsert por conversa).
 - Motor inclui deduplicação por contexto lógico (`product`, `need`, `forecast`, `listing`) e auto-resolução de duplicados.
 - Alertas ignorados não são recriados enquanto a condição persiste e o alerta ignorado não tiver sido limpo.
+- Regra de expiração de ignorados:
+  - `IGNORED` expira ao fim de 30 minutos e transita para `CLEARED` (limpeza lazy ao entrar/interagir em `/alertas/`).
+  - `CLEARED` não tem tab dedicada na UI.
+- Semântica de `RESOLVED` em alertas geridos (`CRITICAL_STOCK`, `SURPLUS_AVAILABLE`, `EXTERNAL_DEFICIT`, `SELL_SUGGESTION`):
+  - resolução manual define `status=RESOLVED` com `cleared_at=NULL` para suprimir reabertura enquanto a condição persistir;
+  - quando a condição deixa de existir, o `sync_alerts_for_producer` preenche `cleared_at` e regista evento `CLEARED`;
+  - se a condição voltar depois disso, pode ser criado novo alerta `ACTIVE`.
 - Ações utilizador:
   - ignorar (`/alertas/<id>/ignorar/`);
+  - ignorar todos os ativos (`/alertas/ignorar-todos/`);
+  - reativar ignorado (`/alertas/<id>/reativar/`);
   - resolver (`/alertas/<id>/resolver/`).
-- Eventos em `alert_events` são registados para criação/ignorar/resolução.
+- Eventos em `alert_events` são registados para criação/ignorar/resolução/limpeza (`CLEARED`).
 - Dashboard cliente consome `alerts` para KPI de ativos/críticos e lista de prioritários.
 
 ### 5.8 Support

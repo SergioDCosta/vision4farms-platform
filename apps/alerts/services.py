@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from asgiref.sync import async_to_sync
@@ -38,6 +39,7 @@ MANAGED_ALERT_TYPES = {
 AUTO_RESOLVED_NOTE = "Resolução automática por fim da condição"
 ALERTS_LAST_SEEN_SESSION_KEY = "alerts_last_seen_at"
 ALERTS_BADGE_GROUP_PREFIX = "alerts_badge_user_"
+IGNORED_ALERT_TTL = timedelta(minutes=30)
 
 
 logger = logging.getLogger(__name__)
@@ -668,9 +670,27 @@ def sync_alerts_for_producer(producer, acting_user=None):
         if key not in ignored_map:
             ignored_map[key] = alert
 
+    resolved_suppressed_alerts = list(
+        Alert.objects
+        .select_for_update()
+        .filter(
+            producer=producer,
+            type__in=MANAGED_ALERT_TYPES,
+            status=AlertStatus.RESOLVED,
+            cleared_at__isnull=True,
+        )
+        .order_by("-updated_at", "-created_at")
+    )
+    resolved_suppressed_map = {}
+    for alert in resolved_suppressed_alerts:
+        key = _alert_context_key(alert)
+        if key not in resolved_suppressed_map:
+            resolved_suppressed_map[key] = alert
+
     created_count = 0
     updated_count = 0
     resolved_count = len(duplicate_alerts)
+    cleared_count = 0
 
     for key, candidate in candidate_map.items():
         existing = existing_map.get(key)
@@ -687,6 +707,10 @@ def sync_alerts_for_producer(producer, acting_user=None):
 
         ignored_alert = ignored_map.get(key)
         if ignored_alert and ignored_alert.cleared_at is None:
+            continue
+
+        resolved_suppressed_alert = resolved_suppressed_map.get(key)
+        if resolved_suppressed_alert and resolved_suppressed_alert.cleared_at is None:
             continue
 
         alert = Alert.objects.create(
@@ -738,6 +762,22 @@ def sync_alerts_for_producer(producer, acting_user=None):
         ignored_alert.updated_at = now
         ignored_alert.save(update_fields=["cleared_at", "updated_at"])
 
+    for key, resolved_suppressed_alert in resolved_suppressed_map.items():
+        if key in candidate_map:
+            continue
+        if resolved_suppressed_alert.cleared_at is not None:
+            continue
+        resolved_suppressed_alert.cleared_at = now
+        resolved_suppressed_alert.updated_at = now
+        resolved_suppressed_alert.save(update_fields=["cleared_at", "updated_at"])
+        record_alert_event(
+            resolved_suppressed_alert,
+            AlertEventType.CLEARED,
+            performed_by=acting_user,
+            notes="Condição de alerta resolvido deixou de existir.",
+        )
+        cleared_count += 1
+
     if created_count or resolved_count:
         _queue_alerts_badge_changed_for_user(user_id=getattr(producer, "user_id", None))
 
@@ -745,11 +785,12 @@ def sync_alerts_for_producer(producer, acting_user=None):
         "created": created_count,
         "updated": updated_count,
         "resolved": resolved_count,
+        "cleared": cleared_count,
     }
 
 
 @transaction.atomic
-def ignore_alert(alert, user, reason=None):
+def ignore_alert(alert, user, reason=None, *, queue_badge_update=True):
     if alert.status == AlertStatus.IGNORED:
         return False
 
@@ -766,8 +807,104 @@ def ignore_alert(alert, user, reason=None):
         performed_by=user,
         notes=alert.ignored_reason or "Ignorado manualmente pelo utilizador",
     )
+    if queue_badge_update:
+        _queue_alerts_badge_changed_for_user(user_id=getattr(user, "id", None))
+    return True
+
+
+@transaction.atomic
+def ignore_all_active_alerts(*, producer, user, reason=None):
+    if not producer or not user:
+        return 0
+
+    active_alerts = list(
+        Alert.objects
+        .select_for_update()
+        .filter(
+            producer=producer,
+            status=AlertStatus.ACTIVE,
+        )
+        .order_by("-updated_at", "-created_at")
+    )
+    if not active_alerts:
+        return 0
+
+    ignored_count = 0
+    for alert in active_alerts:
+        changed = ignore_alert(
+            alert,
+            user=user,
+            reason=reason,
+            queue_badge_update=False,
+        )
+        if changed:
+            ignored_count += 1
+
+    if ignored_count:
+        _queue_alerts_badge_changed_for_user(user_id=getattr(user, "id", None))
+
+    return ignored_count
+
+
+@transaction.atomic
+def reactivate_ignored_alert(alert, user):
+    if alert.status != AlertStatus.IGNORED:
+        return False
+
+    now = timezone.now()
+    alert.status = AlertStatus.ACTIVE
+    alert.ignored_at = None
+    alert.ignored_reason = None
+    alert.cleared_at = None
+    alert.updated_at = now
+    alert.save(
+        update_fields=[
+            "status",
+            "ignored_at",
+            "ignored_reason",
+            "cleared_at",
+            "updated_at",
+        ]
+    )
     _queue_alerts_badge_changed_for_user(user_id=getattr(user, "id", None))
     return True
+
+
+@transaction.atomic
+def expire_ignored_alerts_for_producer(*, producer, acting_user=None):
+    if not producer:
+        return 0
+
+    now = timezone.now()
+    cutoff = now - IGNORED_ALERT_TTL
+    expiring_alerts = list(
+        Alert.objects
+        .select_for_update()
+        .filter(
+            producer=producer,
+            status=AlertStatus.IGNORED,
+            ignored_at__isnull=False,
+            ignored_at__lte=cutoff,
+        )
+        .order_by("ignored_at", "created_at")
+    )
+    if not expiring_alerts:
+        return 0
+
+    for alert in expiring_alerts:
+        alert.status = AlertStatus.CLEARED
+        if alert.cleared_at is None:
+            alert.cleared_at = now
+        alert.updated_at = now
+        alert.save(update_fields=["status", "cleared_at", "updated_at"])
+        record_alert_event(
+            alert,
+            AlertEventType.CLEARED,
+            performed_by=acting_user,
+            notes="Alerta ignorado expirado automaticamente após 30 minutos.",
+        )
+
+    return len(expiring_alerts)
 
 
 @transaction.atomic
@@ -777,7 +914,10 @@ def resolve_alert(alert, user, notes=None):
 
     now = timezone.now()
     alert.status = AlertStatus.RESOLVED
-    alert.cleared_at = now
+    if alert.type in MANAGED_ALERT_TYPES:
+        alert.cleared_at = None
+    else:
+        alert.cleared_at = now
     alert.updated_at = now
     alert.save(update_fields=["status", "cleared_at", "updated_at"])
     record_alert_event(

@@ -5,8 +5,12 @@ from django.test import SimpleTestCase
 from django.utils import timezone
 
 from apps.accounts.models import UserRole
-from apps.alerts.models import AlertType
-from apps.alerts.services import get_alert_type_label, get_client_alerts_badge_state
+from apps.alerts.models import AlertStatus, AlertType
+from apps.alerts.services import (
+    get_alert_type_label,
+    get_client_alerts_badge_state,
+    resolve_alert,
+)
 
 
 class AlertLabelsTests(SimpleTestCase):
@@ -77,3 +81,73 @@ class ClientAlertsBadgeStateTests(SimpleTestCase):
 
         state = get_client_alerts_badge_state(request)
         self.assertEqual(state, {"visible": False, "count": 0, "tone": "orange"})
+
+
+class ResolveAlertSemanticsTests(SimpleTestCase):
+    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.services.record_alert_event")
+    @patch("apps.alerts.services.timezone")
+    def test_managed_alert_keeps_cleared_at_null(self, timezone_mock, record_event_mock, queue_mock):
+        now = timezone.now()
+        timezone_mock.now.return_value = now
+        alert = SimpleNamespace(
+            status=AlertStatus.ACTIVE,
+            type=AlertType.CRITICAL_STOCK,
+            cleared_at=now,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        user = SimpleNamespace(id="user-1")
+
+        changed = resolve_alert(alert, user=user)
+
+        self.assertTrue(changed)
+        self.assertEqual(alert.status, AlertStatus.RESOLVED)
+        self.assertIsNone(alert.cleared_at)
+        self.assertEqual(alert.updated_at, now)
+        alert.save.assert_called_once_with(update_fields=["status", "cleared_at", "updated_at"])
+        record_event_mock.assert_called_once()
+        queue_mock.assert_called_once_with(user_id="user-1")
+
+    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.services.record_alert_event")
+    @patch("apps.alerts.services.timezone")
+    def test_non_managed_alert_sets_cleared_at_now(self, timezone_mock, record_event_mock, queue_mock):
+        now = timezone.now()
+        timezone_mock.now.return_value = now
+        alert = SimpleNamespace(
+            status=AlertStatus.ACTIVE,
+            type=AlertType.ORDER_CONFIRMED,
+            cleared_at=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        user = SimpleNamespace(id="user-2")
+
+        changed = resolve_alert(alert, user=user)
+
+        self.assertTrue(changed)
+        self.assertEqual(alert.status, AlertStatus.RESOLVED)
+        self.assertEqual(alert.cleared_at, now)
+        self.assertEqual(alert.updated_at, now)
+        alert.save.assert_called_once_with(update_fields=["status", "cleared_at", "updated_at"])
+        record_event_mock.assert_called_once()
+        queue_mock.assert_called_once_with(user_id="user-2")
+
+    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.services.record_alert_event")
+    def test_already_resolved_returns_false_without_side_effects(self, record_event_mock, queue_mock):
+        alert = SimpleNamespace(
+            status=AlertStatus.RESOLVED,
+            type=AlertType.CRITICAL_STOCK,
+            cleared_at=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+
+        changed = resolve_alert(alert, user=SimpleNamespace(id="user-3"))
+
+        self.assertFalse(changed)
+        alert.save.assert_not_called()
+        record_event_mock.assert_not_called()
+        queue_mock.assert_not_called()
