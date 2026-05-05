@@ -33,15 +33,17 @@
        class="mk-tab {% if active_tab == 'todos' %}is-active{% endif %}">
       Todos os Anúncios
     </a>
-    <a href="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
-       hx-get="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="mk-tab {% if active_tab == 'meus' %}is-active{% endif %}">
-      Meus Anúncios
-    </a>
+    {% if can_publish %}
+      <a href="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+         hx-get="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-tab {% if active_tab == 'meus' %}is-active{% endif %}">
+        Meus Anúncios
+      </a>
+    {% endif %}
     <a href="{% url 'marketplace:index' %}?tab=necessidades&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
        hx-get="{% url 'marketplace:index' %}?tab=necessidades&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
        hx-target="#shellMain"

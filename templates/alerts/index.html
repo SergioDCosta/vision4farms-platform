@@ -4,150 +4,217 @@
 
 <div class="alt-page">
   <header class="alt-header">
-    <div>
+    <div class="alt-header__copy">
+      <span class="alt-eyebrow">Centro de alertas</span>
       <h1>Alertas</h1>
-      <p>Acompanhe situações críticas, oportunidades e necessidades sem cobertura.</p>
+      <p>Acompanhe situações críticas, oportunidades, encomendas e mensagens num só lugar.</p>
+    </div>
+    <div class="alt-header__stats" aria-label="Resumo de alertas">
+      <div class="alt-stat">
+        <strong>{{ tab_counts.active }}</strong>
+        <span>Ativos</span>
+      </div>
+      <div class="alt-stat">
+        <strong>{{ tab_counts.ignored }}</strong>
+        <span>Ignorados</span>
+      </div>
+      <div class="alt-stat">
+        <strong>{{ tab_counts.resolved }}</strong>
+        <span>Resolvidos</span>
+      </div>
     </div>
   </header>
 
-  <nav class="alt-tabs">
-    <a href="{% url 'alerts:index' %}?tab=active"
-       hx-get="{% url 'alerts:index' %}?tab=active"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="alt-tab {% if active_tab == 'active' %}is-active{% endif %}">
-      Ativos
-      <span>{{ tab_counts.active }}</span>
-    </a>
-    <a href="{% url 'alerts:index' %}?tab=ignored"
-       hx-get="{% url 'alerts:index' %}?tab=ignored"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="alt-tab {% if active_tab == 'ignored' %}is-active{% endif %}">
-      Ignorados
-      <span>{{ tab_counts.ignored }}</span>
-    </a>
-    <a href="{% url 'alerts:index' %}?tab=resolved"
-       hx-get="{% url 'alerts:index' %}?tab=resolved"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="alt-tab {% if active_tab == 'resolved' %}is-active{% endif %}">
-      Resolvidos
-      <span>{{ tab_counts.resolved }}</span>
-    </a>
-  </nav>
+  <section class="alt-toolbar" aria-label="Filtros de alertas">
+    <nav class="alt-tabs" aria-label="Estados">
+      <a href="{{ tab_urls.active }}"
+         hx-get="{{ tab_urls.active }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="alt-tab {% if active_tab == 'active' %}is-active{% endif %}">
+        Ativos
+        <span>{{ tab_counts.active }}</span>
+      </a>
+      <a href="{{ tab_urls.ignored }}"
+         hx-get="{{ tab_urls.ignored }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="alt-tab {% if active_tab == 'ignored' %}is-active{% endif %}">
+        Ignorados
+        <span>{{ tab_counts.ignored }}</span>
+      </a>
+      <a href="{{ tab_urls.resolved }}"
+         hx-get="{{ tab_urls.resolved }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="alt-tab {% if active_tab == 'resolved' %}is-active{% endif %}">
+        Resolvidos
+        <span>{{ tab_counts.resolved }}</span>
+      </a>
+    </nav>
 
-  {% if active_tab == "active" and tab_counts.active %}
-    <div class="alt-tab-actions">
+    <form class="alt-filter"
+          method="get"
+          action="{% url 'alerts:index' %}"
+          hx-get="{% url 'alerts:index' %}"
+          hx-target="#shellMain"
+          hx-select="#shellMain"
+          hx-swap="outerHTML"
+          hx-push-url="true">
+      <input type="hidden" name="tab" value="{{ active_tab }}">
+      <label for="alert-type-filter">Tipo</label>
+      <select id="alert-type-filter" name="type" onchange="this.form.requestSubmit()">
+        <option value="" {% if not active_type %}selected{% endif %}>Todos os tipos</option>
+        {% for option in type_options %}
+          <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+            {{ option.label }}{% if option.count %} ({{ option.count }}){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="alt-btn alt-btn--soft">Filtrar</button></noscript>
+    </form>
+  </section>
+
+  <div class="alt-results-bar">
+    <p>
+      <strong>{{ filtered_count }}</strong>
+      alerta{{ filtered_count|pluralize:"s" }}
+      {% if active_type %}do tipo <strong>{{ active_type_label }}</strong>{% endif %}
+      nesta vista.
+    </p>
+
+    {% if active_tab == "active" and filtered_count %}
       <form method="post"
             action="{% url 'alerts:ignore_all' %}"
             hx-post="{% url 'alerts:ignore_all' %}"
             hx-target="#shellMain"
             hx-select="#shellMain"
             hx-swap="outerHTML"
-            hx-push-url="true"
-            onsubmit="return confirm('Ignorar todos os alertas ativos?');">
+            hx-push-url="{{ current_url }}"
+            onsubmit="return confirm('{% if active_type %}Ignorar todos os alertas visíveis?{% else %}Ignorar todos os alertas ativos?{% endif %}');">
         {% csrf_token %}
         <input type="hidden" name="tab" value="{{ active_tab }}">
-        <button type="submit" class="alt-btn alt-btn--soft">Ignorar todos</button>
+        <input type="hidden" name="type" value="{{ active_type }}">
+        <button type="submit" class="alt-btn alt-btn--soft">
+          {% if active_type %}Ignorar visíveis{% else %}Ignorar todos{% endif %}
+        </button>
       </form>
-    </div>
-  {% endif %}
+    {% endif %}
+  </div>
 
   <section class="alt-list">
     {% for alert in alerts %}
       <article class="alt-card alt-card--{{ alert.severity|lower }}">
-        <div class="alt-card__head">
-          <div class="alt-badges">
-            <span class="alt-badge alt-badge--{{ alert.severity|lower }}">{{ alert.severity_label }}</span>
-            <span class="alt-badge alt-badge--muted">{{ alert.type_label }}</span>
+        <div class="alt-card__stripe" aria-hidden="true"></div>
+        <div class="alt-card__main">
+          <div class="alt-card__head">
+            <div class="alt-badges">
+              <span class="alt-badge alt-badge--{{ alert.severity|lower }}">{{ alert.severity_label }}</span>
+              <span class="alt-badge alt-badge--muted">{{ alert.type_label }}</span>
+            </div>
+            <time datetime="{{ alert.created_at|date:'c' }}">{{ alert.created_at|date:"d/m/Y H:i" }}</time>
           </div>
-          <time>{{ alert.created_at|date:"d/m/Y H:i" }}</time>
-        </div>
 
-        <h3>{{ alert.title }}</h3>
-        {% if alert.description %}
-          <p class="alt-description">{{ alert.description }}</p>
-        {% endif %}
-        {% if alert.related_product_name %}
-          <p class="alt-related">Produto: <strong>{{ alert.related_product_name }}</strong></p>
-        {% endif %}
+          <div class="alt-card__body">
+            <h3>{{ alert.title }}</h3>
+            {% if alert.description %}
+              <p class="alt-description">{{ alert.description }}</p>
+            {% endif %}
+            {% if alert.related_product_name %}
+              <p class="alt-related">Produto: <strong>{{ alert.related_product_name }}</strong></p>
+            {% endif %}
+          </div>
 
-        <div class="alt-actions">
-          {% if alert.action_url %}
-            <a href="{{ alert.action_url }}"
-               hx-get="{{ alert.action_url }}"
-               hx-target="#shellMain"
-               hx-select="#shellMain"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="alt-btn alt-btn--primary">
-              {{ alert.action_label }}
-            </a>
-          {% endif %}
+          <div class="alt-actions">
+            <div class="alt-actions__primary">
+              {% if alert.action_url %}
+                <a href="{{ alert.action_url }}"
+                   hx-get="{{ alert.action_url }}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="alt-btn alt-btn--primary">
+                  {{ alert.action_label }}
+                </a>
+              {% endif %}
 
-          {% if alert.secondary_action_url %}
-            <a href="{{ alert.secondary_action_url }}"
-               hx-get="{{ alert.secondary_action_url }}"
-               hx-target="#shellMain"
-               hx-select="#shellMain"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="alt-btn alt-btn--ghost">
-              {{ alert.secondary_action_label }}
-            </a>
-          {% endif %}
+              {% if alert.secondary_action_url %}
+                <a href="{{ alert.secondary_action_url }}"
+                   hx-get="{{ alert.secondary_action_url }}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="alt-btn alt-btn--ghost">
+                  {{ alert.secondary_action_label }}
+                </a>
+              {% endif %}
+            </div>
 
-          {% if active_tab == "active" %}
-            <form method="post"
-                  action="{% url 'alerts:resolve' alert.id %}"
-                  hx-post="{% url 'alerts:resolve' alert.id %}"
-                  hx-target="#shellMain"
-                  hx-select="#shellMain"
-                  hx-swap="outerHTML"
-                  hx-push-url="true">
-              {% csrf_token %}
-              <input type="hidden" name="tab" value="{{ active_tab }}">
-              <button type="submit" class="alt-btn alt-btn--soft">Resolver</button>
-            </form>
+            <div class="alt-actions__state">
+              {% if active_tab == "active" %}
+                <form method="post"
+                      action="{% url 'alerts:resolve' alert.id %}"
+                      hx-post="{% url 'alerts:resolve' alert.id %}"
+                      hx-target="#shellMain"
+                      hx-select="#shellMain"
+                      hx-swap="outerHTML"
+                      hx-push-url="{{ current_url }}">
+                  {% csrf_token %}
+                  <input type="hidden" name="tab" value="{{ active_tab }}">
+                  <input type="hidden" name="type" value="{{ active_type }}">
+                  <button type="submit"
+                          class="alt-btn alt-btn--soft"
+                          title="Em alertas automáticos, resolver oculta o alerta enquanto a mesma condição persistir.">
+                    Resolver
+                  </button>
+                </form>
 
-            <form method="post"
-                  action="{% url 'alerts:ignore' alert.id %}"
-                  hx-post="{% url 'alerts:ignore' alert.id %}"
-                  hx-target="#shellMain"
-                  hx-select="#shellMain"
-                  hx-swap="outerHTML"
-                  hx-push-url="true"
-                  onsubmit="return confirm('Ignorar este alerta?');">
-              {% csrf_token %}
-              <input type="hidden" name="tab" value="{{ active_tab }}">
-              <button type="submit" class="alt-btn alt-btn--soft">Ignorar 30 min</button>
-            </form>
-          {% elif active_tab == "ignored" %}
-            <form method="post"
-                  action="{% url 'alerts:reactivate' alert.id %}"
-                  hx-post="{% url 'alerts:reactivate' alert.id %}"
-                  hx-target="#shellMain"
-                  hx-select="#shellMain"
-                  hx-swap="outerHTML"
-                  hx-push-url="true">
-              {% csrf_token %}
-              <input type="hidden" name="tab" value="{{ active_tab }}">
-              <button type="submit" class="alt-btn alt-btn--soft">Reativar</button>
-            </form>
-          {% endif %}
+                <form method="post"
+                      action="{% url 'alerts:ignore' alert.id %}"
+                      hx-post="{% url 'alerts:ignore' alert.id %}"
+                      hx-target="#shellMain"
+                      hx-select="#shellMain"
+                      hx-swap="outerHTML"
+                      hx-push-url="{{ current_url }}"
+                      onsubmit="return confirm('Ignorar este alerta durante 30 minutos?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="tab" value="{{ active_tab }}">
+                  <input type="hidden" name="type" value="{{ active_type }}">
+                  <button type="submit" class="alt-btn alt-btn--soft">Ignorar 30 min</button>
+                </form>
+              {% elif active_tab == "ignored" %}
+                <form method="post"
+                      action="{% url 'alerts:reactivate' alert.id %}"
+                      hx-post="{% url 'alerts:reactivate' alert.id %}"
+                      hx-target="#shellMain"
+                      hx-select="#shellMain"
+                      hx-swap="outerHTML"
+                      hx-push-url="{{ current_url }}">
+                  {% csrf_token %}
+                  <input type="hidden" name="tab" value="{{ active_tab }}">
+                  <input type="hidden" name="type" value="{{ active_type }}">
+                  <button type="submit" class="alt-btn alt-btn--soft">Reativar</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
         </div>
       </article>
     {% empty %}
       <article class="alt-empty">
         <i class="bi bi-check-circle-fill"></i>
-        {% if active_tab == 'active' %}
+        {% if active_type %}
+          <h3>Sem alertas deste tipo</h3>
+          <p>Não existem alertas do tipo {{ active_type_label }} nesta vista.</p>
+        {% elif active_tab == 'active' %}
           <h3>Sem alertas ativos</h3>
           <p>Não existem alertas ativos neste momento.</p>
         {% elif active_tab == 'ignored' %}
@@ -163,65 +230,342 @@
 </div>
 
 <style>
-.alt-page { display:flex; flex-direction:column; gap:1rem; }
-.alt-header { background:#fff; border:1px solid #e2e8f0; border-radius:.9rem; padding:1.1rem 1.2rem; }
-.alt-header h1 { margin:0; font-size:1.45rem; color:#0f172a; }
-.alt-header p { margin:.35rem 0 0; color:#64748b; }
+.alt-page {
+  display:flex;
+  flex-direction:column;
+  gap:1rem;
+  color:#0f172a;
+}
+.alt-header {
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.5rem;
+  padding:1rem 1.1rem;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+}
+.alt-header__copy { min-width:0; }
+.alt-eyebrow {
+  display:block;
+  margin-bottom:.25rem;
+  color:#64748b;
+  font-size:.74rem;
+  font-weight:800;
+  text-transform:uppercase;
+}
+.alt-header h1 {
+  margin:0;
+  font-size:1.45rem;
+  line-height:1.15;
+}
+.alt-header p {
+  margin:.35rem 0 0;
+  color:#64748b;
+  overflow-wrap:anywhere;
+}
+.alt-header__stats {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(5.2rem, 1fr));
+  gap:.55rem;
+  flex:0 0 auto;
+}
+.alt-stat {
+  border:1px solid #e2e8f0;
+  border-radius:.45rem;
+  padding:.55rem .65rem;
+  background:#f8fafc;
+}
+.alt-stat strong {
+  display:block;
+  font-size:1.1rem;
+  line-height:1;
+}
+.alt-stat span {
+  display:block;
+  margin-top:.2rem;
+  color:#64748b;
+  font-size:.78rem;
+  font-weight:700;
+}
 
-.alt-tabs { display:flex; gap:.6rem; flex-wrap:wrap; }
+.alt-toolbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.8rem;
+}
+.alt-tabs {
+  display:flex;
+  gap:.5rem;
+  flex-wrap:wrap;
+  min-width:0;
+}
 .alt-tab {
-  display:inline-flex; align-items:center; gap:.5rem;
-  text-decoration:none; color:#334155; background:#fff;
-  border:1px solid #e2e8f0; border-radius:.75rem;
-  padding:.5rem .8rem; font-weight:700;
+  display:inline-flex;
+  align-items:center;
+  gap:.5rem;
+  min-height:2.35rem;
+  text-decoration:none;
+  color:#334155;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.5rem;
+  padding:.45rem .75rem;
+  font-weight:800;
 }
 .alt-tab span {
-  min-width:1.5rem; text-align:center; font-size:.8rem;
-  border-radius:999px; background:#f1f5f9; color:#0f172a; padding:.1rem .35rem;
+  min-width:1.55rem;
+  text-align:center;
+  font-size:.78rem;
+  border-radius:999px;
+  background:#f1f5f9;
+  color:#0f172a;
+  padding:.1rem .35rem;
 }
-.alt-tab.is-active { background:#dcfce7; border-color:#86efac; color:#166534; }
-.alt-tab.is-active span { background:#16a34a; color:#fff; }
-.alt-tab-actions { display:flex; justify-content:flex-end; }
+.alt-tab.is-active {
+  background:#dcfce7;
+  border-color:#86efac;
+  color:#166534;
+}
+.alt-tab.is-active span {
+  background:#16a34a;
+  color:#fff;
+}
+.alt-filter {
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  flex:0 0 auto;
+}
+.alt-filter label {
+  color:#475569;
+  font-size:.82rem;
+  font-weight:800;
+}
+.alt-filter select {
+  min-height:2.35rem;
+  max-width:18rem;
+  border:1px solid #cbd5e1;
+  border-radius:.5rem;
+  background:#fff;
+  color:#0f172a;
+  font-weight:700;
+  padding:.45rem 2rem .45rem .7rem;
+}
 
-.alt-list { display:flex; flex-direction:column; gap:.8rem; }
+.alt-results-bar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.8rem;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.5rem;
+  padding:.75rem .9rem;
+}
+.alt-results-bar p {
+  margin:0;
+  color:#475569;
+  overflow-wrap:anywhere;
+}
+.alt-results-bar form { margin:0; }
+
+.alt-list {
+  display:flex;
+  flex-direction:column;
+  gap:.75rem;
+}
 .alt-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:.9rem;
-  padding:1rem 1.1rem; display:flex; flex-direction:column; gap:.65rem;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.55rem;
+  display:grid;
+  grid-template-columns:4px minmax(0, 1fr);
+  overflow:hidden;
 }
-.alt-card--critical { border-left:4px solid #ef4444; }
-.alt-card--warning { border-left:4px solid #f59e0b; }
-.alt-card--info { border-left:4px solid #2563eb; }
-
-.alt-card__head { display:flex; justify-content:space-between; gap:.5rem; flex-wrap:wrap; }
-.alt-card__head time { color:#64748b; font-size:.83rem; }
-.alt-badges { display:flex; gap:.45rem; flex-wrap:wrap; }
-.alt-badge { font-size:.72rem; font-weight:800; padding:.22rem .5rem; border-radius:999px; }
+.alt-card__stripe { background:#2563eb; }
+.alt-card--critical .alt-card__stripe { background:#ef4444; }
+.alt-card--warning .alt-card__stripe { background:#f59e0b; }
+.alt-card--info .alt-card__stripe { background:#2563eb; }
+.alt-card__main {
+  padding:1rem 1.05rem;
+  display:flex;
+  flex-direction:column;
+  gap:.7rem;
+  min-width:0;
+}
+.alt-card__head {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:.7rem;
+}
+.alt-card__head time {
+  color:#64748b;
+  font-size:.82rem;
+  white-space:nowrap;
+}
+.alt-badges {
+  display:flex;
+  gap:.45rem;
+  flex-wrap:wrap;
+  min-width:0;
+}
+.alt-badge {
+  font-size:.72rem;
+  font-weight:800;
+  padding:.22rem .5rem;
+  border-radius:999px;
+}
 .alt-badge--critical { background:#fee2e2; color:#b91c1c; }
 .alt-badge--warning { background:#fef3c7; color:#92400e; }
 .alt-badge--info { background:#dbeafe; color:#1d4ed8; }
 .alt-badge--muted { background:#f1f5f9; color:#334155; }
 
-.alt-card h3 { margin:0; font-size:1rem; color:#0f172a; }
-.alt-description { margin:0; color:#475569; }
-.alt-related { margin:0; color:#64748b; font-size:.88rem; }
+.alt-card__body {
+  min-width:0;
+}
+.alt-card h3 {
+  margin:0;
+  font-size:1rem;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.alt-description {
+  margin:.35rem 0 0;
+  color:#475569;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.alt-related {
+  margin:.4rem 0 0;
+  color:#64748b;
+  font-size:.88rem;
+  overflow-wrap:anywhere;
+}
 
-.alt-actions { display:flex; flex-wrap:wrap; gap:.55rem; align-items:center; }
+.alt-actions {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.65rem;
+}
+.alt-actions__primary,
+.alt-actions__state {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.5rem;
+  align-items:center;
+}
 .alt-actions form { margin:0; }
 .alt-btn {
-  border:1px solid #cbd5e1; border-radius:.6rem; padding:.45rem .75rem;
-  font-weight:700; font-size:.84rem; text-decoration:none; cursor:pointer;
-  background:#fff; color:#0f172a;
+  min-height:2.25rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid #cbd5e1;
+  border-radius:.45rem;
+  padding:.45rem .75rem;
+  font-weight:800;
+  font-size:.84rem;
+  line-height:1.1;
+  text-decoration:none;
+  cursor:pointer;
+  background:#fff;
+  color:#0f172a;
+  white-space:normal;
+  text-align:center;
 }
-.alt-btn--primary { background:#16a34a; border-color:#16a34a; color:#fff; }
+.alt-btn--primary {
+  background:#16a34a;
+  border-color:#16a34a;
+  color:#fff;
+}
 .alt-btn--ghost { background:#f8fafc; }
 .alt-btn--soft { background:#f1f5f9; }
 
 .alt-empty {
-  background:#fff; border:1px dashed #cbd5e1; border-radius:.9rem; padding:1.2rem;
-  text-align:center; color:#64748b;
+  background:#fff;
+  border:1px dashed #cbd5e1;
+  border-radius:.55rem;
+  padding:1.25rem;
+  text-align:center;
+  color:#64748b;
 }
-.alt-empty i { font-size:1.3rem; color:#16a34a; }
-.alt-empty h3 { margin:.5rem 0 .2rem; color:#0f172a; font-size:1rem; }
-.alt-empty p { margin:0; }
+.alt-empty i {
+  font-size:1.35rem;
+  color:#16a34a;
+}
+.alt-empty h3 {
+  margin:.5rem 0 .2rem;
+  color:#0f172a;
+  font-size:1rem;
+}
+.alt-empty p {
+  margin:0;
+  overflow-wrap:anywhere;
+}
+
+@media (max-width: 900px) {
+  .alt-header {
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .alt-header__stats {
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+  .alt-toolbar {
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .alt-filter {
+    width:100%;
+  }
+  .alt-filter select {
+    flex:1;
+    max-width:none;
+  }
+  .alt-actions {
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .alt-actions__primary,
+  .alt-actions__state {
+    width:100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .alt-header,
+  .alt-results-bar,
+  .alt-card__main {
+    padding:.85rem;
+  }
+  .alt-header__stats {
+    grid-template-columns:1fr;
+  }
+  .alt-tabs,
+  .alt-filter,
+  .alt-results-bar {
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .alt-tab,
+  .alt-filter select,
+  .alt-btn,
+  .alt-actions form,
+  .alt-actions__primary a {
+    width:100%;
+  }
+  .alt-card__head {
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .alt-card__head time {
+    white-space:normal;
+  }
+}
 </style>
 {% endblock %}

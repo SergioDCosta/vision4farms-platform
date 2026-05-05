@@ -14,7 +14,9 @@
       </thead>
       <tbody>
         {% for product in products %}
-        <tr>
+        <tr class="adm-clickable-row"
+            tabindex="0"
+            data-row-href="{% url 'dashboard:gestor_produto_detalhe' product.id %}">
           <td>
             <div style="font-weight:700;color:#0f172a;">{{ product.name }}</div>
             <div style="font-size:.75rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ product.slug }}</div>

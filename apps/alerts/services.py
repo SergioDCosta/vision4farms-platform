@@ -158,6 +158,12 @@ def get_alert_type_label(alert_type):
     return labels.get(str(alert_type), str(alert_type))
 
 
+def normalize_alert_type(raw_type):
+    alert_type = (raw_type or "").strip()
+    valid_types = {value for value, _label in AlertType.choices}
+    return alert_type if alert_type in valid_types else ""
+
+
 def _build_context_key(alert_type, *, product_id=None, need_id=None, forecast_id=None, listing_id=None):
     if need_id:
         return f"{alert_type}:need:{need_id}"
@@ -823,19 +829,23 @@ def ignore_alert(alert, user, reason=None, *, queue_badge_update=True):
 
 
 @transaction.atomic
-def ignore_all_active_alerts(*, producer, user, reason=None):
+def ignore_all_active_alerts(*, producer, user, reason=None, alert_type=None):
     if not producer or not user:
         return 0
 
-    active_alerts = list(
+    active_alerts_qs = (
         Alert.objects
         .select_for_update()
         .filter(
             producer=producer,
             status=AlertStatus.ACTIVE,
         )
-        .order_by("-updated_at", "-created_at")
     )
+    normalized_type = normalize_alert_type(alert_type)
+    if normalized_type:
+        active_alerts_qs = active_alerts_qs.filter(type=normalized_type)
+
+    active_alerts = list(active_alerts_qs.order_by("-updated_at", "-created_at"))
     if not active_alerts:
         return 0
 
@@ -957,14 +967,52 @@ def get_alert_tab_counts(*, producer):
     }
 
 
-def list_alerts_for_producer(*, producer, tab="active"):
+def get_alert_type_filter_options(*, producer, tab="active", selected_type=None):
     selected_status = UI_TAB_STATUS_MAP.get(tab, AlertStatus.ACTIVE)
-    alerts = list(
+    normalized_selected_type = normalize_alert_type(selected_type)
+    rows = (
+        Alert.objects
+        .filter(producer=producer, status=selected_status)
+        .values("type")
+        .annotate(count=Count("id"))
+        .order_by("type")
+    )
+
+    options_by_value = {}
+    for row in rows:
+        alert_type = row.get("type")
+        if not alert_type:
+            continue
+        options_by_value[alert_type] = {
+            "value": alert_type,
+            "label": get_alert_type_label(alert_type),
+            "count": int(row.get("count") or 0),
+            "selected": alert_type == normalized_selected_type,
+        }
+
+    if normalized_selected_type and normalized_selected_type not in options_by_value:
+        options_by_value[normalized_selected_type] = {
+            "value": normalized_selected_type,
+            "label": get_alert_type_label(normalized_selected_type),
+            "count": 0,
+            "selected": True,
+        }
+
+    return sorted(options_by_value.values(), key=lambda item: item["label"].lower())
+
+
+def list_alerts_for_producer(*, producer, tab="active", alert_type=None):
+    selected_status = UI_TAB_STATUS_MAP.get(tab, AlertStatus.ACTIVE)
+    alerts_qs = (
         Alert.objects
         .select_related("product", "need", "forecast", "listing")
         .filter(producer=producer, status=selected_status)
-        .order_by("-updated_at", "-created_at")
     )
+    normalized_type = normalize_alert_type(alert_type)
+    if normalized_type:
+        alerts_qs = alerts_qs.filter(type=normalized_type)
+
+    alerts = list(alerts_qs.order_by("-updated_at", "-created_at"))
 
     severity_labels = dict(AlertSeverity.choices)
     for alert in alerts:

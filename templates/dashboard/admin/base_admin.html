@@ -45,6 +45,9 @@
 .adm-table tbody td{font-size:.875rem;padding:.85rem 1.2rem;border-bottom:1px solid #f8fafc;color:#374151;vertical-align:middle;}
 .adm-table tbody tr:last-child td{border-bottom:none;}
 .adm-table tbody tr:hover td{background:#fafafa;}
+.adm-table tbody tr.adm-clickable-row{cursor:pointer;}
+.adm-table tbody tr.adm-clickable-row:focus{outline:2px solid #86efac;outline-offset:-2px;}
+.adm-table tbody tr.adm-clickable-row:hover td{background:#f8fafc;}
 .adm-table th:last-child,.adm-table td:last-child{text-align:right;}
 .adm-table--products thead th{padding:.88rem 1.4rem;}
 .adm-table--products tbody td{padding:1rem 1.4rem;}
@@ -93,4 +96,26 @@
   transition:opacity .15s ease;
 }
 </style>
+
+<script>
+document.addEventListener("click", function (event) {
+  const row = event.target.closest(".adm-clickable-row[data-row-href]");
+  if (!row) return;
+
+  const interactive = event.target.closest("a, button, input, select, textarea, label, form, .modal");
+  if (interactive) return;
+
+  window.location.href = row.dataset.rowHref;
+});
+
+document.addEventListener("keydown", function (event) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+
+  const row = event.target.closest(".adm-clickable-row[data-row-href]");
+  if (!row || event.target !== row) return;
+
+  event.preventDefault();
+  window.location.href = row.dataset.rowHref;
+});
+</script>
 {% endblock %}

@@ -746,6 +746,8 @@ def marketplace_index_view(request):
     producer = get_current_producer_for_user(current_user)
     expire_due_active_listings()
     active_tab, q, category_id, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
+    if active_tab == "meus" and not producer:
+        active_tab = "todos"
     context = _build_marketplace_index_context(
         producer,
         active_tab=active_tab,

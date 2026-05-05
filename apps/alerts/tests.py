@@ -9,7 +9,9 @@ from apps.alerts.models import AlertStatus, AlertType
 from apps.alerts.services import (
     get_alert_type_label,
     get_client_alerts_badge_state,
+    ignore_all_active_alerts,
     list_alerts_for_producer,
+    normalize_alert_type,
     resolve_alert,
 )
 
@@ -188,3 +190,87 @@ class AlertActionsFallbackTests(SimpleTestCase):
 
         self.assertEqual(len(alerts), 1)
         self.assertEqual(alert.action_label, "Ir para conversa")
+
+
+class AlertFilterTests(SimpleTestCase):
+    def test_normalize_alert_type_returns_empty_for_invalid_value(self):
+        self.assertEqual(normalize_alert_type("NOT_A_TYPE"), "")
+        self.assertEqual(normalize_alert_type(""), "")
+        self.assertEqual(normalize_alert_type(AlertType.CRITICAL_STOCK), AlertType.CRITICAL_STOCK)
+
+    @patch("apps.alerts.services.Alert")
+    def test_list_alerts_for_producer_filters_by_valid_type(self, alert_model_mock):
+        alert = SimpleNamespace(
+            type=AlertType.CRITICAL_STOCK,
+            severity="CRITICAL",
+            payload={},
+            product=None,
+        )
+        base_qs = MagicMock()
+        filtered_qs = MagicMock()
+        alert_model_mock.objects.select_related.return_value.filter.return_value = base_qs
+        base_qs.filter.return_value = filtered_qs
+        filtered_qs.order_by.return_value = [alert]
+
+        alerts = list_alerts_for_producer(
+            producer=SimpleNamespace(id="p1"),
+            tab="active",
+            alert_type=AlertType.CRITICAL_STOCK,
+        )
+
+        base_qs.filter.assert_called_once_with(type=AlertType.CRITICAL_STOCK)
+        self.assertEqual(alerts, [alert])
+
+    @patch("apps.alerts.services.Alert")
+    def test_list_alerts_for_producer_ignores_invalid_type(self, alert_model_mock):
+        alert = SimpleNamespace(
+            type=AlertType.ORDER_CONFIRMED,
+            severity="INFO",
+            payload={},
+            product=None,
+        )
+        base_qs = MagicMock()
+        alert_model_mock.objects.select_related.return_value.filter.return_value = base_qs
+        base_qs.order_by.return_value = [alert]
+
+        alerts = list_alerts_for_producer(
+            producer=SimpleNamespace(id="p1"),
+            tab="active",
+            alert_type="NOT_A_TYPE",
+        )
+
+        base_qs.filter.assert_not_called()
+        self.assertEqual(alerts, [alert])
+
+
+class IgnoreAllAlertFilterTests(SimpleTestCase):
+    databases = {"default"}
+
+    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.services.ignore_alert")
+    @patch("apps.alerts.services.Alert")
+    def test_ignore_all_active_alerts_filters_by_type(self, alert_model_mock, ignore_alert_mock, queue_mock):
+        user = SimpleNamespace(id="user-1")
+        alert = SimpleNamespace(id="alert-1")
+        base_qs = MagicMock()
+        filtered_qs = MagicMock()
+        alert_model_mock.objects.select_for_update.return_value.filter.return_value = base_qs
+        base_qs.filter.return_value = filtered_qs
+        filtered_qs.order_by.return_value = [alert]
+        ignore_alert_mock.return_value = True
+
+        count = ignore_all_active_alerts(
+            producer=SimpleNamespace(id="p1"),
+            user=user,
+            alert_type=AlertType.ORDER_CONFIRMED,
+        )
+
+        base_qs.filter.assert_called_once_with(type=AlertType.ORDER_CONFIRMED)
+        ignore_alert_mock.assert_called_once_with(
+            alert,
+            user=user,
+            reason=None,
+            queue_badge_update=False,
+        )
+        queue_mock.assert_called_once_with(user_id="user-1")
+        self.assertEqual(count, 1)
