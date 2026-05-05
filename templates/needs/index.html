@@ -1,0 +1,420 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Necessidades{% endblock %}
+{% block app_content %}
+
+<div class="nd-page">
+  <header class="nd-header">
+    <div>
+      <h1>Necessidades</h1>
+      <p>Gerir procura própria, acompanhar respostas recebidas e responder a necessidades abertas.</p>
+    </div>
+    {% if can_publish %}
+      <a href="{% url 'needs:index' %}?show_need_form=1{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+         hx-get="{% url 'needs:index' %}?show_need_form=1{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="nd-btn nd-btn--primary">
+        <i class="bi bi-megaphone"></i>
+        Anunciar necessidade
+      </a>
+    {% endif %}
+  </header>
+
+  <form method="get"
+        action="{% url 'needs:index' %}"
+        class="nd-filters"
+        hx-get="{% url 'needs:index' %}"
+        hx-trigger="keyup changed delay:350ms from:input[name='q'], change from:select[name='category'], submit"
+        hx-target="#shellMain"
+        hx-select="#shellMain"
+        hx-swap="outerHTML"
+        hx-push-url="true">
+    {% if selected_need_id %}<input type="hidden" name="need" value="{{ selected_need_id }}">{% endif %}
+    {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
+    {% if need_prefill_product_id %}<input type="hidden" name="product" value="{{ need_prefill_product_id }}">{% endif %}
+    {% if need_prefill_quantity %}<input type="hidden" name="qty" value="{{ need_prefill_quantity }}">{% endif %}
+
+    <label class="nd-search">
+      <i class="bi bi-search"></i>
+      <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar produto ou produtor...">
+    </label>
+
+    <label class="nd-select">
+      <span>Categoria</span>
+      <select name="category">
+        <option value="">Todas as categorias</option>
+        {% for category in available_categories %}
+          <option value="{{ category.id }}" {% if selected_category_id == category.id|stringformat:"s" %}selected{% endif %}>
+            {{ category.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {% if show_need_form %}
+    <section class="nd-panel nd-panel--form">
+      <div class="nd-panel__head">
+        <div>
+          <h2>Anunciar necessidade</h2>
+          <p>Registe procura de produto para que outros produtores possam responder.</p>
+        </div>
+        <a href="{% url 'needs:index' %}{% if selected_need_id or q or selected_category_id %}?{% if selected_need_id %}need={{ selected_need_id }}{% endif %}{% if q %}{% if selected_need_id %}&{% endif %}q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if selected_need_id or q %}&{% endif %}category={{ selected_category_id|urlencode }}{% endif %}{% endif %}"
+           hx-get="{% url 'needs:index' %}{% if selected_need_id or q or selected_category_id %}?{% if selected_need_id %}need={{ selected_need_id }}{% endif %}{% if q %}{% if selected_need_id %}&{% endif %}q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if selected_need_id or q %}&{% endif %}category={{ selected_category_id|urlencode }}{% endif %}{% endif %}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="nd-btn nd-btn--ghost">
+          Fechar
+        </a>
+      </div>
+      <form method="post"
+            action="{% url 'needs:create' %}"
+            hx-post="{% url 'needs:create' %}"
+            hx-target="#shellMain"
+            hx-select="#shellMain"
+            hx-swap="outerHTML"
+            hx-push-url="false"
+            class="nd-form">
+        {% csrf_token %}
+        <input type="hidden" name="q" value="{{ q }}">
+        <input type="hidden" name="category" value="{{ selected_category_id }}">
+        {% if selected_need_id %}<input type="hidden" name="need" value="{{ selected_need_id }}">{% endif %}
+        <input type="hidden" name="show_need_form" value="1">
+        <input type="hidden" name="source_context" value="needs">
+
+        <label>
+          Produto
+          <select name="product_id" required>
+            <option value="">Selecionar produto</option>
+            {% for product in need_products %}
+              <option value="{{ product.id }}" {% if need_prefill_product_id == product.id|stringformat:"s" %}selected{% endif %}>
+                {{ product.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Quantidade necessária
+          <input type="number" name="required_quantity" min="0.001" step="0.001" required value="{{ need_prefill_quantity|default:'' }}">
+        </label>
+        <label>
+          Data limite
+          <input type="datetime-local" name="needed_by_date">
+        </label>
+        <label class="nd-form__wide">
+          Observações
+          <textarea name="notes" rows="2" placeholder="Ex: preciso desta quantidade até à próxima semana."></textarea>
+        </label>
+        <button type="submit" class="nd-btn nd-btn--primary">
+          <i class="bi bi-megaphone"></i>
+          Guardar necessidade
+        </button>
+      </form>
+    </section>
+  {% endif %}
+
+  <section class="nd-grid">
+    <article class="nd-panel">
+      <div class="nd-panel__head">
+        <div>
+          <h2>Minhas necessidades</h2>
+          <p>Estado interno e progresso das necessidades que anunciou.</p>
+        </div>
+      </div>
+
+      <div class="nd-list">
+        {% for row in need_my_rows %}
+          <div class="nd-item{% if selected_need_id == row.need.id|stringformat:'s' %} is-selected{% endif %}">
+            <div class="nd-item__top">
+              <div>
+                <h3>{{ row.need.product.name }}</h3>
+                <p>{{ row.status_label }}</p>
+              </div>
+              <span class="nd-badge {% if row.status == 'COVERED' %}nd-badge--ok{% elif row.status == 'PARTIALLY_COVERED' %}nd-badge--info{% else %}nd-badge--warn{% endif %}">
+                {{ row.status_label }}
+              </span>
+            </div>
+            <div class="nd-metrics">
+              <span>Necessário <strong>{{ row.required_quantity|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+              <span>Planeado <strong>{{ row.planned_qty|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+              <span>Recebido <strong>{{ row.completed_qty|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+              <span>Em falta <strong>{{ row.remaining_to_plan|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+            </div>
+            {% if row.need.notes %}
+              <div class="nd-note">
+                <span>Observações da necessidade</span>
+                <p>{{ row.need.notes }}</p>
+              </div>
+            {% endif %}
+            <div class="nd-actions">
+              <a href="{% url 'needs:index' %}?need={{ row.need.id }}"
+                 hx-get="{% url 'needs:index' %}?need={{ row.need.id }}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="nd-btn nd-btn--soft">
+                Ver respostas
+              </a>
+              <form method="post"
+                    action="{% url 'needs:ignore' row.need.id %}"
+                    hx-post="{% url 'needs:ignore' row.need.id %}"
+                    hx-target="#shellMain"
+                    hx-select="#shellMain"
+                    hx-swap="outerHTML"
+                    hx-push-url="false"
+                    onsubmit="return confirm('{% if row.status == 'COVERED' %}Remover esta necessidade da lista?{% else %}Ignorar esta necessidade?{% endif %}');">
+                {% csrf_token %}
+                <input type="hidden" name="q" value="{{ q }}">
+                <input type="hidden" name="category" value="{{ selected_category_id }}">
+                {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
+                <button type="submit" class="nd-btn nd-btn--ghost">
+                  {% if row.status == 'COVERED' %}Remover{% else %}Ignorar{% endif %}
+                </button>
+              </form>
+            </div>
+          </div>
+        {% empty %}
+          <div class="nd-empty">
+            <i class="bi bi-inbox"></i>
+            <h3>Sem necessidades próprias</h3>
+            <p>Ainda não anunciou necessidades.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="nd-panel">
+      <div class="nd-panel__head">
+        <div>
+          {% if selected_need_row %}
+            <h2>Respostas para {{ selected_need_row.need.product.name }}</h2>
+            <p>{{ need_response_rows|length }} resposta(s) encontrada(s).</p>
+          {% else %}
+            <h2>Respostas recebidas</h2>
+            <p>Ofertas dirigidas às suas necessidades.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="nd-list">
+        {% for item in need_response_rows %}
+          <div class="nd-item">
+            <div class="nd-item__top">
+              <div>
+                <h3>{{ item.product.name }}</h3>
+                <p>
+                  Respondido por:
+                  {% if item.producer.display_name %}
+                    {{ item.producer.display_name }}
+                  {% elif item.producer.company_name %}
+                    {{ item.producer.company_name }}
+                  {% elif item.producer.user.full_name %}
+                    {{ item.producer.user.full_name }}
+                  {% elif item.producer.user.email %}
+                    {{ item.producer.user.email }}
+                  {% else %}
+                    Produtor
+                  {% endif %}
+                </p>
+              </div>
+              <span class="nd-badge nd-badge--info">{{ item.get_status_display }}</span>
+            </div>
+            <div class="nd-metrics">
+              <span>Tipo <strong>{{ item.source_label|default:"Disponível agora" }}</strong></span>
+              <span>Preço <strong>{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</strong></span>
+              <span>Disponível <strong>{{ item.quantity_available|floatformat:"-3" }} {{ item.product.unit }}</strong></span>
+            </div>
+            {% if item.notes %}
+              <div class="nd-note">
+                <span>Observações da resposta</span>
+                <p>{{ item.notes }}</p>
+              </div>
+            {% endif %}
+            <div class="nd-actions">
+              <a href="{% url 'marketplace:detail' item.id %}?need={{ item.need.id }}"
+                 hx-get="{% url 'marketplace:detail' item.id %}?need={{ item.need.id }}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="nd-btn nd-btn--soft">
+                Ver detalhe
+              </a>
+            </div>
+          </div>
+        {% empty %}
+          <div class="nd-empty">
+            <i class="bi bi-chat-square-text"></i>
+            {% if selected_need_row %}
+              <h3>Sem respostas para esta necessidade</h3>
+              <p>Ainda não existem ofertas dirigidas para {{ selected_need_row.need.product.name }}.</p>
+            {% else %}
+              <h3>Sem respostas recebidas</h3>
+              <p>As ofertas dirigidas às suas necessidades aparecerão aqui.</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="nd-panel">
+      <div class="nd-panel__head">
+        <div>
+          <h2>Necessidades abertas</h2>
+          <p>Pedidos de outros produtores com quantidade ainda por cobrir.</p>
+        </div>
+      </div>
+
+      <div class="nd-list">
+        {% for row in need_public_rows %}
+          <div class="nd-item">
+            <div class="nd-item__top">
+              <div>
+                <h3>{{ row.need.product.name }}</h3>
+                <p>{{ row.producer_label }}</p>
+              </div>
+              <span class="nd-badge nd-badge--warn">{{ row.public_status_label }}</span>
+            </div>
+            <div class="nd-metrics">
+              <span>Quantidade em falta <strong>{{ row.public_quantity|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+              {% if row.need.needed_by_date %}
+                <span>Data limite <strong>{{ row.need.needed_by_date|date:"d/m/Y" }}</strong></span>
+              {% endif %}
+            </div>
+            {% if row.need.notes %}
+              <div class="nd-note">
+                <span>Observações da necessidade</span>
+                <p>{{ row.need.notes }}</p>
+              </div>
+            {% endif %}
+            <div class="nd-actions">
+              <a href="{% url 'marketplace:publish' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
+                 hx-get="{% url 'marketplace:publish' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="nd-btn nd-btn--primary">
+                <i class="bi bi-reply"></i>
+                Responder
+              </a>
+            </div>
+          </div>
+        {% empty %}
+          <div class="nd-empty">
+            <i class="bi bi-search"></i>
+            <h3>Sem necessidades abertas</h3>
+            <p>Não existem necessidades compatíveis com os filtros atuais.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+</div>
+
+<style>
+.nd-page { display:flex; flex-direction:column; gap:1rem; color:#0f172a; }
+.nd-header {
+  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
+  padding:1rem 1.1rem; display:flex; justify-content:space-between; gap:1rem; align-items:center;
+}
+.nd-header h1 { margin:0; font-size:1.45rem; line-height:1.15; }
+.nd-header p { margin:.35rem 0 0; color:#64748b; overflow-wrap:anywhere; }
+.nd-btn {
+  min-height:2.35rem; display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
+  border:1px solid #cbd5e1; border-radius:.45rem; padding:.5rem .8rem;
+  background:#fff; color:#0f172a; font-size:.84rem; font-weight:800; text-decoration:none; cursor:pointer;
+  text-align:center;
+}
+.nd-btn--primary { background:#16a34a; border-color:#16a34a; color:#fff; }
+.nd-btn--soft { background:#f8fafc; }
+.nd-btn--ghost { background:#f1f5f9; }
+.nd-filters {
+  display:grid; grid-template-columns:minmax(14rem, 1fr) minmax(12rem, 18rem);
+  gap:.75rem; align-items:end;
+}
+.nd-search, .nd-select {
+  background:#fff; border:1px solid #e2e8f0; border-radius:.5rem;
+  min-height:2.6rem; display:flex; align-items:center; gap:.55rem; padding:.35rem .7rem;
+}
+.nd-search i { color:#64748b; }
+.nd-search input, .nd-select select {
+  width:100%; border:0; outline:0; background:transparent; color:#0f172a; font-weight:700;
+}
+.nd-select { flex-direction:column; align-items:flex-start; gap:.2rem; }
+.nd-select span { color:#64748b; font-size:.72rem; font-weight:800; text-transform:uppercase; }
+.nd-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:1rem; align-items:start; }
+.nd-panel {
+  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
+  padding:1rem; display:flex; flex-direction:column; gap:.9rem; min-width:0;
+}
+.nd-panel--form { border-color:#bbf7d0; background:#f8fff9; }
+.nd-panel__head { display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start; }
+.nd-panel__head h2 { margin:0; font-size:1rem; line-height:1.25; }
+.nd-panel__head p { margin:.3rem 0 0; color:#64748b; font-size:.83rem; overflow-wrap:anywhere; }
+.nd-form { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.75rem; }
+.nd-form label { display:flex; flex-direction:column; gap:.35rem; color:#334155; font-size:.82rem; font-weight:800; }
+.nd-form input, .nd-form select, .nd-form textarea {
+  width:100%; border:1px solid #cbd5e1; border-radius:.45rem; background:#fff;
+  padding:.65rem .75rem; outline:0; color:#0f172a;
+}
+.nd-form input:focus, .nd-form select:focus, .nd-form textarea:focus {
+  border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.12);
+}
+.nd-form__wide { grid-column:1 / -1; }
+.nd-list { display:flex; flex-direction:column; gap:.75rem; }
+.nd-item {
+  border:1px solid #e2e8f0; border-radius:.5rem; background:#f8fafc;
+  padding:.85rem; display:flex; flex-direction:column; gap:.65rem; min-width:0;
+}
+.nd-item.is-selected { border-color:#93c5fd; background:#eff6ff; }
+.nd-item__top { display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start; }
+.nd-item h3 { margin:0; font-size:.96rem; line-height:1.25; overflow-wrap:anywhere; }
+.nd-item p { margin:.2rem 0 0; color:#64748b; font-size:.8rem; overflow-wrap:anywhere; }
+.nd-badge { flex:0 0 auto; border-radius:999px; padding:.22rem .5rem; font-size:.72rem; font-weight:800; }
+.nd-badge--warn { background:#fef3c7; color:#92400e; }
+.nd-badge--info { background:#dbeafe; color:#1d4ed8; }
+.nd-badge--ok { background:#dcfce7; color:#166534; }
+.nd-metrics {
+  display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:.4rem .65rem; color:#475569; font-size:.8rem;
+}
+.nd-metrics span { min-width:0; overflow-wrap:anywhere; }
+.nd-metrics strong { color:#0f172a; }
+.nd-note {
+  border:1px solid #e2e8f0; border-radius:.45rem; background:#fff; padding:.65rem .7rem;
+}
+.nd-note span {
+  display:block; color:#64748b; font-size:.72rem; font-weight:800; text-transform:uppercase;
+}
+.nd-note p {
+  margin:.25rem 0 0; color:#334155; font-size:.82rem; line-height:1.5; overflow-wrap:anywhere;
+}
+.nd-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+.nd-actions > * { flex:1 1 9rem; }
+.nd-actions form { margin:0; }
+.nd-actions .nd-btn { width:100%; }
+.nd-empty {
+  border:1px dashed #cbd5e1; border-radius:.5rem; padding:1rem; text-align:center; color:#64748b;
+}
+.nd-empty i { color:#16a34a; font-size:1.35rem; }
+.nd-empty h3 { margin:.45rem 0 .2rem; color:#0f172a; font-size:1rem; }
+.nd-empty p { margin:0; overflow-wrap:anywhere; }
+
+@media (max-width: 1180px) {
+  .nd-grid { grid-template-columns:1fr; }
+}
+@media (max-width: 720px) {
+  .nd-header, .nd-panel__head { flex-direction:column; align-items:stretch; }
+  .nd-filters, .nd-form, .nd-metrics { grid-template-columns:1fr; }
+  .nd-header .nd-btn, .nd-panel__head .nd-btn, .nd-btn { width:100%; }
+  .nd-item__top { flex-direction:column; }
+  .nd-badge { align-self:flex-start; }
+}
+</style>
+{% endblock %}

@@ -1,14 +1,12 @@
 import io
 import json
 import uuid
-from datetime import datetime
 from pathlib import Path
 from decimal import Decimal
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
-from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile, InMemoryUploadedFile
 from django.utils import timezone
@@ -18,16 +16,13 @@ from PIL import Image, ImageOps
 
 from apps.common.decorators import login_required, client_only_required
 from apps.accounts.models import UserRole
-from apps.inventory.models import Need, NeedSourceSystem, NeedStatus, ProducerProduct, ProductionForecast
-from apps.inventory.services import (
+from apps.inventory.models import ProducerProduct, ProductionForecast
+from apps.needs.models import Need, NeedStatus
+from apps.needs.services import (
     calculate_need_coverage,
-    create_or_update_need,
-    get_need_candidate_products,
     get_need_for_producer,
-    ignore_need,
-    list_marketplace_my_needs,
-    list_marketplace_public_needs,
 )
+from apps.needs.views import build_needs_index_url
 from apps.marketplace.forms import MarketplacePublishForm, MarketplaceEditForm
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.marketplace.services import (
@@ -44,7 +39,6 @@ from apps.marketplace.services import (
     get_listing_detail_queryset,
     get_market_price_trends_for_product_sources,
     get_my_listings,
-    get_need_response_listings_for_owner,
     get_publishable_products,
     get_publishable_products_summary,
     get_producer_display_name,
@@ -290,33 +284,6 @@ def _is_htmx(request):
     return request.headers.get("HX-Request") == "true"
 
 
-def _parse_need_datetime(value):
-    raw_value = (value or "").strip()
-    if not raw_value:
-        return None
-    try:
-        parsed = datetime.strptime(raw_value, "%Y-%m-%dT%H:%M")
-    except ValueError:
-        raise ValidationError("Data limite inválida para a necessidade.")
-    if timezone.is_naive(parsed):
-        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
-    return parsed
-
-
-def _build_selected_need_row(need):
-    coverage = calculate_need_coverage(need)
-    return {
-        "need": need,
-        "status": need.status,
-        "status_label": need.get_status_display(),
-        "required_quantity": coverage["required_quantity"],
-        "planned_qty": coverage["planned_qty"],
-        "completed_qty": coverage["completed_qty"],
-        "remaining_to_plan": coverage["remaining_to_plan"],
-        "remaining_to_receive": coverage["remaining_to_receive"],
-    }
-
-
 def _activate_forecast_for_marketplace_if_possible(*, producer, product_id, forecast_id):
     if not producer or not product_id or not forecast_id:
         return None, None
@@ -380,84 +347,31 @@ def _build_marketplace_index_context(
         category_id=category_id,
     ) if producer else MarketplaceListing.objects.none()
 
-    need_public_rows = []
-    need_my_rows = []
-    need_response_rows = []
-    need_products = list(get_need_candidate_products(producer)) if producer else []
+    categories_source = (
+        get_my_listings(producer=producer, q=q, category_id="")
+        if active_tab == "meus" and producer
+        else get_public_listings(producer=producer, q=q, category_id="")
+    )
+    available_categories = list(get_listing_categories_for_queryset(categories_source))
 
-    if active_tab == "necessidades":
-        need_public_rows = list_marketplace_public_needs(
-            viewer_producer=producer,
-            q=q,
-            category_id=category_id,
+    if category_id and all(str(category.id) != category_id for category in available_categories):
+        selected_public = (
+            get_public_listings(producer=producer, q="", category_id=category_id)
+            .exclude(product__category_id__isnull=True)
+            .first()
         )
-        need_my_rows = list_marketplace_my_needs(
-            producer=producer,
-            q=q,
-            category_id=category_id,
-        ) if producer else []
-
-    if active_tab == "necessidades":
-        category_map = {}
-        for row in [*need_public_rows, *need_my_rows]:
-            category = getattr(getattr(row["need"], "product", None), "category", None)
-            if category:
-                category_map[str(category.id)] = category
-        available_categories = sorted(
-            category_map.values(),
-            key=lambda category: (category.name or "").lower(),
+        selected_private = (
+            get_my_listings(producer=producer, q="", category_id=category_id)
+            .exclude(product__category_id__isnull=True)
+            .first()
+            if producer else None
         )
-    else:
-        categories_source = (
-            get_my_listings(producer=producer, q=q, category_id="")
-            if active_tab == "meus" and producer
-            else get_public_listings(producer=producer, q=q, category_id="")
-        )
-        available_categories = list(get_listing_categories_for_queryset(categories_source))
-
-        if category_id and all(str(category.id) != category_id for category in available_categories):
-            selected_public = (
-                get_public_listings(producer=producer, q="", category_id=category_id)
-                .exclude(product__category_id__isnull=True)
-                .first()
-            )
-            selected_private = (
-                get_my_listings(producer=producer, q="", category_id=category_id)
-                .exclude(product__category_id__isnull=True)
-                .first()
-                if producer else None
-            )
-            selected_listing = selected_private or selected_public
-            if selected_listing and selected_listing.product and selected_listing.product.category:
-                available_categories.append(selected_listing.product.category)
-
-    validated_need_id = ""
-    selected_need_row = None
-    if selected_need_id and producer:
-        selected_need = get_need_for_producer(producer=producer, need_id=selected_need_id)
-        if selected_need and selected_need.status != NeedStatus.IGNORED:
-            validated_need_id = str(selected_need.id)
-            if not need_prefill_product_id:
-                need_prefill_product_id = str(selected_need.product_id)
-            matched_row = next(
-                (row for row in need_my_rows if str(row["need"].id) == str(selected_need.id)),
-                None,
-            )
-            if matched_row and not need_prefill_quantity:
-                need_prefill_quantity = str(matched_row["remaining_to_plan"])
-            selected_need_row = matched_row or _build_selected_need_row(selected_need)
+        selected_listing = selected_private or selected_public
+        if selected_listing and selected_listing.product and selected_listing.product.category:
+            available_categories.append(selected_listing.product.category)
 
     public_listings = _attach_listing_photo_urls(public_listings)
     my_listings = _attach_listing_photo_urls(my_listings)
-    if active_tab == "necessidades" and producer:
-        need_response_rows = _attach_listing_photo_urls(
-            get_need_response_listings_for_owner(
-                owner_producer=producer,
-                q=q,
-                category_id=category_id,
-                need_id=validated_need_id,
-            )
-        )
 
     return {
         "page_title": "Marketplace",
@@ -466,12 +380,8 @@ def _build_marketplace_index_context(
         "selected_category_id": category_id,
         "listings": public_listings,
         "my_listings": my_listings,
-        "need_public_rows": need_public_rows,
-        "need_my_rows": need_my_rows,
-        "need_products": need_products,
-        "need_response_rows": need_response_rows,
-        "selected_need_id": validated_need_id,
-        "selected_need_row": selected_need_row,
+        "selected_need_id": selected_need_id,
+        "selected_need_row": None,
         "need_prefill_product_id": need_prefill_product_id,
         "need_prefill_quantity": need_prefill_quantity,
         "show_need_form": bool(show_need_form),
@@ -746,6 +656,17 @@ def marketplace_index_view(request):
     producer = get_current_producer_for_user(current_user)
     expire_due_active_listings()
     active_tab, q, category_id, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
+    if active_tab == "necessidades":
+        return redirect(
+            build_needs_index_url(
+                q=q,
+                category_id=category_id,
+                selected_need_id=selected_need_id,
+                need_prefill_product_id=requested_product_id,
+                need_prefill_quantity=requested_quantity,
+                show_need_form=show_need_form,
+            )
+        )
     if active_tab == "meus" and not producer:
         active_tab = "todos"
     context = _build_marketplace_index_context(
@@ -759,144 +680,6 @@ def marketplace_index_view(request):
         show_need_form=show_need_form,
     )
     return render(request, "marketplace/index.html", context)
-
-
-@login_required
-@client_only_required
-def marketplace_need_create_view(request):
-    if request.method != "POST":
-        return redirect(f"{reverse('marketplace:index')}?tab=necessidades")
-
-    current_user = request.current_user
-    producer = get_current_producer_for_user(current_user)
-
-    if not producer:
-        messages.error(request, "Perfil de produtor não encontrado.")
-        return redirect("dashboard:painel")
-
-    active_tab, q, category_id, selected_need_id, requested_product_id, requested_quantity, _ = _get_index_filters(request)
-    active_tab = "necessidades"
-    show_need_form = True
-    created = False
-
-    product_id = (request.POST.get("product_id") or "").strip()
-    required_quantity_raw = (request.POST.get("required_quantity") or "").strip()
-    notes = (request.POST.get("notes") or "").strip()
-    source_context = (request.POST.get("source_context") or "").strip().lower()
-    source_system = (
-        NeedSourceSystem.VISION4FARMS
-        if source_context in {"recommendation", "vision4farms"}
-        else NeedSourceSystem.MANUAL
-    )
-    external_id = (request.POST.get("external_id") or "").strip() or None
-
-    required_quantity = None
-    try:
-        required_quantity = Decimal(required_quantity_raw)
-    except Exception:
-        messages.error(request, "Quantidade necessária inválida.")
-
-    product = None
-    if required_quantity is not None:
-        product = get_need_candidate_products(producer).filter(id=product_id).first()
-        if not product:
-            messages.error(request, "Produto inválido para criar necessidade.")
-
-    if required_quantity is not None and product is not None:
-        try:
-            needed_by_date = _parse_need_datetime(request.POST.get("needed_by_date"))
-            _, _, created = create_or_update_need(
-                producer=producer,
-                product=product,
-                required_quantity=required_quantity,
-                needed_by_date=needed_by_date,
-                source_system=source_system,
-                external_id=external_id,
-                notes=notes or None,
-            )
-        except ValidationError as exc:
-            messages.error(request, str(exc))
-        else:
-            messages.success(
-                request,
-                "Necessidade anunciada com sucesso."
-                if created
-                else "Necessidade existente atualizada com sucesso.",
-            )
-            _sync_alerts_after_marketplace_change(producer, request.current_user)
-            show_need_form = False
-
-    if _is_htmx(request):
-        context = _build_marketplace_index_context(
-            producer,
-            active_tab=active_tab,
-            q=q,
-            category_id=category_id,
-            selected_need_id=selected_need_id,
-            need_prefill_product_id=requested_product_id,
-            need_prefill_quantity=requested_quantity,
-            show_need_form=show_need_form,
-        )
-        return render(request, "marketplace/index.html", context)
-
-    redirect_url = f"{reverse('marketplace:index')}?tab=necessidades"
-    if show_need_form:
-        redirect_url = f"{redirect_url}&show_need_form=1"
-    return redirect(redirect_url)
-
-
-@login_required
-@client_only_required
-def marketplace_need_ignore_view(request, need_id):
-    if request.method != "POST":
-        return redirect(f"{reverse('marketplace:index')}?tab=necessidades")
-
-    current_user = request.current_user
-    producer = get_current_producer_for_user(current_user)
-
-    if not producer:
-        messages.error(request, "Perfil de produtor não encontrado.")
-        return redirect("dashboard:painel")
-
-    need = get_need_for_producer(producer=producer, need_id=need_id)
-    if not need:
-        messages.error(request, "Necessidade não encontrada.")
-        return redirect(f"{reverse('marketplace:index')}?tab=necessidades")
-
-    previous_status = need.status
-    try:
-        changed = ignore_need(need=need, producer=producer)
-    except ValidationError as exc:
-        messages.error(request, str(exc))
-    else:
-        if changed:
-            if previous_status == NeedStatus.COVERED:
-                messages.success(request, "Necessidade removida da lista (soft delete).")
-            else:
-                messages.success(request, "Necessidade ignorada com sucesso.")
-            _sync_alerts_after_marketplace_change(producer, request.current_user)
-        else:
-            messages.info(request, "A necessidade já estava ignorada.")
-
-    active_tab, q, category_id, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
-    active_tab = "necessidades"
-    if _is_htmx(request):
-        context = _build_marketplace_index_context(
-            producer,
-            active_tab=active_tab,
-            q=q,
-            category_id=category_id,
-            selected_need_id=selected_need_id,
-            need_prefill_product_id=requested_product_id,
-            need_prefill_quantity=requested_quantity,
-            show_need_form=show_need_form,
-        )
-        return render(request, "marketplace/index.html", context)
-
-    redirect_url = f"{reverse('marketplace:index')}?tab=necessidades"
-    if show_need_form:
-        redirect_url = f"{redirect_url}&show_need_form=1"
-    return redirect(redirect_url)
 
 
 @login_required
@@ -1027,7 +810,7 @@ def marketplace_publish_view(request):
 
     form = MarketplacePublishForm(
         request.POST or None,
-        request.FILES or None,
+        None if is_need_prefill_flow else request.FILES or None,
         producer=producer,
         initial=form_initial,
         lock_listing_source=lock_listing_source,
@@ -1126,8 +909,8 @@ def marketplace_publish_view(request):
             }
 
     if request.method == "POST" and form.is_valid():
-        uploaded_photo = request.FILES.get("photo")
-        photo_crop = form.cleaned_data.get("photo_crop")
+        uploaded_photo = None if is_need_prefill_flow else request.FILES.get("photo")
+        photo_crop = None if is_need_prefill_flow else form.cleaned_data.get("photo_crop")
         photo_path = None
         listing_source = form.cleaned_data.get("listing_source") or LISTING_SOURCE_STOCK
         selected_forecast = form.cleaned_data.get("forecast")
@@ -1170,13 +953,57 @@ def marketplace_publish_view(request):
             _delete_uploaded_file(photo_path)
             form.add_error(None, "Não foi possível guardar a foto do anúncio.")
         else:
-            messages.success(request, "Anúncio publicado com sucesso.")
             _sync_alerts_after_marketplace_change(producer, request.current_user)
+            if is_need_prefill_flow and linked_need:
+                messages.success(
+                    request,
+                    "Resposta enviada. A oferta ficou ligada à necessidade selecionada.",
+                )
+                return redirect(
+                    build_needs_index_url(selected_need_id=str(linked_need.id))
+                )
+
+            messages.success(request, "Anúncio publicado com sucesso.")
             url = reverse("marketplace:publish")
             return redirect(f"{url}?success=1&listing_id={listing.id}")
 
+    publish_cancel_url = (
+        build_needs_index_url(selected_need_id=requested_need_id)
+        if is_need_prefill_flow and requested_need_id
+        else reverse("marketplace:index")
+    )
+    publish_need_coverage = (
+        calculate_need_coverage(linked_need)
+        if is_need_prefill_flow and linked_need
+        else None
+    )
     context = {
-        "page_title": "Publicar Excedente",
+        "page_title": (
+            "Responder a necessidade"
+            if is_need_prefill_flow
+            else "Publicar Excedente"
+        ),
+        "publish_title": (
+            "Responder a necessidade"
+            if is_need_prefill_flow
+            else "Publicar Excedente"
+        ),
+        "publish_subtitle": (
+            "Envie uma oferta privada para cobrir a quantidade em falta deste pedido."
+            if is_need_prefill_flow
+            else "Venda os seus produtos no marketplace da cooperativa."
+        ),
+        "publish_submit_label": (
+            "Enviar resposta"
+            if is_need_prefill_flow
+            else "Publicar no marketplace"
+        ),
+        "publish_cancel_label": (
+            "Voltar às necessidades"
+            if is_need_prefill_flow
+            else "Cancelar"
+        ),
+        "publish_cancel_url": publish_cancel_url,
         "success": success,
         "form": form,
         "created_listing_id": created_listing_id,
@@ -1189,6 +1016,7 @@ def marketplace_publish_view(request):
         "is_need_prefill_flow": is_need_prefill_flow,
         "requested_need_id": requested_need_id,
         "publish_need": linked_need if is_need_prefill_flow else None,
+        "publish_need_coverage": publish_need_coverage,
         "product_picker_options": [
             {"id": str(row["id"]), "label": row["name"]}
             for row in all_publishable_products

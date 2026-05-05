@@ -185,6 +185,19 @@
         <span class="sidebar-link-icon"><i class="bi bi-shop"></i></span>
         <span class="sidebar-link-text">Marketplace</span>
       </a>
+      <a href="{% url 'needs:index' %}"
+         hx-get="{% url 'needs:index' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/necessidades/"
+         class="sidebar-link {% if '/necessidades/' in request.path %}active{% endif %}"
+         data-tooltip="Necessidades">
+        <span class="sidebar-link-icon"><i class="bi bi-megaphone-fill"></i></span>
+        <span class="sidebar-link-text">Necessidades</span>
+      </a>
       <a href="/mensagens/"
          hx-get="/mensagens/"
          hx-target="#shellMain"

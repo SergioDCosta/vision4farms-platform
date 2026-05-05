@@ -14,7 +14,7 @@ from apps.inventory.models import (
     StockMovement,
     StockMovementType,
 )
-from apps.inventory.services import recalculate_needs_for_order
+from apps.needs.services import recalculate_needs_for_order
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import (
     OrderGroup,

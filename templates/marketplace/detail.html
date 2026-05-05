@@ -258,7 +258,25 @@
 
     <article class="mkd-card">
       <h3><i class="bi bi-info-circle"></i> Observações</h3>
-      <p class="mkd-notes">{{ detail_description }}</p>
+      {% if is_need_response_listing and listing.need %}
+        {% if listing.need.notes %}
+          <div class="mkd-note-group">
+            <h4>Observações da necessidade</h4>
+            <p class="mkd-notes">{{ listing.need.notes }}</p>
+          </div>
+        {% endif %}
+        {% if listing.notes %}
+          <div class="mkd-note-group">
+            <h4>Observações da resposta</h4>
+            <p class="mkd-notes">{{ listing.notes }}</p>
+          </div>
+        {% endif %}
+        {% if not listing.need.notes and not listing.notes %}
+          <p class="mkd-notes">Sem observações adicionais.</p>
+        {% endif %}
+      {% else %}
+        <p class="mkd-notes">{{ detail_description }}</p>
+      {% endif %}
     </article>
 
     <article class="mkd-card mkd-card--map">
@@ -1234,6 +1252,19 @@
   margin: 0;
   color: #475569;
   line-height: 1.7;
+}
+
+.mkd-note-group + .mkd-note-group {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.mkd-note-group h4 {
+  margin: 0 0 0.35rem;
+  color: #0f172a;
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .mkd-delivery-map {

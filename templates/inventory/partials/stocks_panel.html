@@ -170,7 +170,7 @@
                                title="Ver recomendação de compra">
                               <i class="bi bi-stars"></i>
                             </a>
-                            <a href="{% url 'marketplace:index' %}?tab=necessidades&product={{ row.product_id }}&qty={{ row.state.deficit_quantity|unlocalize }}"
+                            <a href="{% url 'needs:index' %}?show_need_form=1&product={{ row.product_id }}&qty={{ row.state.deficit_quantity|unlocalize }}"
                                class="inv-icon-btn inv-icon-btn--amber"
                                title="Anunciar necessidade">
                               <i class="bi bi-megaphone"></i>

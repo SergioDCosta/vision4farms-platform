@@ -9,8 +9,8 @@ from django.utils import timezone
 from apps.common.decorators import login_required, client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
-from apps.inventory.models import NeedSourceSystem
-from apps.inventory.services import create_or_update_need
+from apps.needs.models import NeedSourceSystem
+from apps.needs.services import create_or_update_need
 from apps.orders.services import (
     OrderServiceError,
     create_order_from_recommendation,

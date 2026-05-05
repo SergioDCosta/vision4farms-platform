@@ -119,7 +119,7 @@ class OrderItem(models.Model):
         related_name="order_items",
     )
     need = models.ForeignKey(
-        "inventory.Need",
+        "needs.Need",
         on_delete=models.SET_NULL,
         blank=True,
         null=True,

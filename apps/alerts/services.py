@@ -19,8 +19,9 @@ from apps.alerts.models import (
     AlertStatus,
     AlertType,
 )
-from apps.inventory.models import Need, NeedStatus, ProducerProfile, ProductionForecast, Stock
-from apps.inventory.services import calculate_need_coverage
+from apps.inventory.models import ProducerProfile, ProductionForecast, Stock
+from apps.needs.models import Need, NeedStatus
+from apps.needs.services import calculate_need_coverage
 from apps.marketplace.services import get_forecast_available_quantity
 
 
@@ -145,7 +146,7 @@ def get_alert_type_label(alert_type):
     labels = {
         AlertType.CRITICAL_STOCK: "Stock crítico",
         AlertType.SURPLUS_AVAILABLE: "Excedente / oportunidade de venda",
-        AlertType.EXTERNAL_DEFICIT: "Need sem cobertura suficiente",
+        AlertType.EXTERNAL_DEFICIT: "Necessidade sem cobertura suficiente",
         AlertType.SELL_SUGGESTION: "Pré-venda disponível para publicar",
         AlertType.ORDER_PURCHASE_CREATED: "Nova compra recebida",
         AlertType.ORDER_CONFIRMED: "Encomenda confirmada",
@@ -528,7 +529,7 @@ def _need_candidates(producer):
                 "need": need,
                 "forecast": None,
                 "listing": None,
-                "title": f"Need sem cobertura suficiente: {need.product.name}",
+                "title": f"Necessidade sem cobertura suficiente: {need.product.name}",
                 "description": (
                     f"Em falta para planear: {remaining_to_plan} {unit}."
                 ),
@@ -537,7 +538,7 @@ def _need_candidates(producer):
                     "planned_qty": str(coverage.get("planned_qty")),
                     "completed_qty": str(coverage.get("completed_qty")),
                     "remaining_to_plan": str(remaining_to_plan),
-                    "action_url": f"/marketplace/?tab=necessidades&need={need.id}",
+                    "action_url": f"/necessidades/?need={need.id}",
                     "action_label": "Ver necessidade",
                     "secondary_action_url": f"/recomendacoes/?product={need.product_id}",
                     "secondary_action_label": "Abrir recomendações",

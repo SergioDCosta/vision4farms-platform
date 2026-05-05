@@ -5,8 +5,8 @@ from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 
 from apps.common.decorators import login_required, client_only_required
-from apps.inventory.models import NeedStatus
-from apps.inventory.services import get_need_for_producer
+from apps.needs.models import NeedStatus
+from apps.needs.services import get_need_for_producer
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import OrderStatus, OrderItemStatus
 from apps.orders.services import (

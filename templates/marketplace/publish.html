@@ -1,12 +1,12 @@
 {% extends "dashboard/base_app.html" %}
-{% block app_title %}Publicar Excedente{% endblock %}
+{% block app_title %}{{ page_title|default:"Publicar Excedente" }}{% endblock %}
 {% block app_content %}
 
 <div class="mkp-page">
   <header class="mkp-header">
     <div>
-      <h1>Publicar Excedente</h1>
-      <p>Venda os seus produtos no marketplace da cooperativa.</p>
+      <h1>{{ publish_title|default:"Publicar Excedente" }}</h1>
+      <p>{{ publish_subtitle|default:"Venda os seus produtos no marketplace da cooperativa." }}</p>
     </div>
   </header>
 
@@ -28,10 +28,39 @@
             </div>
           {% endif %}
           {% if is_need_prefill_flow and publish_need %}
-            <div class="mkp-form-error" style="border-color:#bfdbfe;background:#eff6ff;color:#1e3a8a;">
-              <p>
-                Oferta dirigida ao produtor da necessidade: <strong>{{ publish_need.producer.display_name|default:publish_need.producer.company_name|default:publish_need.producer.user.email }}</strong>.
-              </p>
+            <div class="mkp-need-summary">
+              <div class="mkp-need-summary__head">
+                <span>Resumo da necessidade</span>
+                <strong>{{ publish_need.product.name }}</strong>
+              </div>
+              <div class="mkp-need-summary__grid">
+                <p>
+                  <span>Produtor</span>
+                  <strong>{{ publish_need.producer.display_name|default:publish_need.producer.company_name|default:publish_need.producer.user.email|default:"Produtor" }}</strong>
+                </p>
+                <p>
+                  <span>Quantidade em falta</span>
+                  <strong>
+                    {% if publish_need_coverage %}
+                      {{ publish_need_coverage.remaining_to_plan|floatformat:"-3" }} {{ publish_need.product.unit }}
+                    {% else %}
+                      {{ publish_need.required_quantity|floatformat:"-3" }} {{ publish_need.product.unit }}
+                    {% endif %}
+                  </strong>
+                </p>
+                {% if publish_need.needed_by_date %}
+                  <p>
+                    <span>Data limite</span>
+                    <strong>{{ publish_need.needed_by_date|date:"d/m/Y" }}</strong>
+                  </p>
+                {% endif %}
+              </div>
+              {% if publish_need.notes %}
+                <div class="mkp-need-summary__notes">
+                  <span>Observações da necessidade</span>
+                  <p>{{ publish_need.notes }}</p>
+                </div>
+              {% endif %}
             </div>
           {% endif %}
 
@@ -218,37 +247,46 @@
             {% endif %}
           </div>
 
-          <div class="mkp-field{% if form.photo.errors %} has-error{% endif %}">
-            <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
-            <div class="mkp-photo-input">
-              {{ form.photo }}
-              {{ form.photo_crop }}
-            </div>
-            {% if form.photo.errors %}
-              <div class="mkp-field-errors">
-                {% for error in form.photo.errors %}
-                  <span>{{ error }}</span>
-                {% endfor %}
+          {% if not is_need_prefill_flow %}
+            <div class="mkp-field{% if form.photo.errors %} has-error{% endif %}">
+              <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
+              <div class="mkp-photo-input">
+                {{ form.photo }}
+                {{ form.photo_crop }}
               </div>
-            {% endif %}
-            <div class="mkp-cropper" id="mkp-cropper" hidden>
-              <div class="mkp-help">Recorta a foto arrastando a área verde antes de publicar.</div>
-              <div class="mkp-crop-stage" id="mkp-crop-stage">
-                <img id="mkp-crop-image" alt="Pré-visualização para recorte">
-                <div class="mkp-crop-box" id="mkp-crop-box">
-                  <span class="mkp-crop-handle" id="mkp-crop-handle"></span>
+              {% if form.photo.errors %}
+                <div class="mkp-field-errors">
+                  {% for error in form.photo.errors %}
+                    <span>{{ error }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              <div class="mkp-cropper" id="mkp-cropper" hidden>
+                <div class="mkp-help">Recorta a foto arrastando a área verde antes de publicar.</div>
+                <div class="mkp-crop-stage" id="mkp-crop-stage">
+                  <img id="mkp-crop-image" alt="Pré-visualização para recorte">
+                  <div class="mkp-crop-box" id="mkp-crop-box">
+                    <span class="mkp-crop-handle" id="mkp-crop-handle"></span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          {% endif %}
 
           <div class="mkp-actions">
-            <a href="{% url 'marketplace:index' %}" class="mkp-btn-secondary">
-              Cancelar
+            <a href="{{ publish_cancel_url }}" class="mkp-btn-secondary"
+               {% if is_need_prefill_flow %}
+                 hx-get="{{ publish_cancel_url }}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+               {% endif %}>
+              {{ publish_cancel_label|default:"Cancelar" }}
             </a>
             <button type="submit" class="mkp-btn-primary">
-              <i class="bi bi-upload"></i>
-              Publicar no marketplace
+              <i class="bi {% if is_need_prefill_flow %}bi-send{% else %}bi-upload{% endif %}"></i>
+              {{ publish_submit_label|default:"Publicar no marketplace" }}
             </button>
           </div>
         </form>
@@ -839,6 +877,62 @@
   margin-top: 0.35rem;
 }
 
+.mkp-need-summary {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: 0.9rem;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mkp-need-summary__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.mkp-need-summary__head span,
+.mkp-need-summary__notes span,
+.mkp-need-summary__grid span {
+  display: block;
+  color: #2563eb;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mkp-need-summary__head strong,
+.mkp-need-summary__grid strong {
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.mkp-need-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.mkp-need-summary__grid p,
+.mkp-need-summary__notes p {
+  margin: 0;
+}
+
+.mkp-need-summary__notes {
+  border-top: 1px solid #bfdbfe;
+  padding-top: 0.65rem;
+}
+
+.mkp-need-summary__notes p {
+  color: #334155;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 .mkp-grid-2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1255,6 +1349,18 @@
 
   .mkp-grid-2 {
     grid-template-columns: 1fr;
+  }
+
+  .mkp-need-summary__head,
+  .mkp-need-summary__grid {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .mkp-actions .mkp-btn-primary,
+  .mkp-actions .mkp-btn-secondary {
+    width: 100%;
+    min-width: 0;
   }
 }
 </style>

@@ -4,8 +4,9 @@ from django.db.models import Q, Min, Max, Count, Case, When, Value, CharField
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductCategory
-from apps.inventory.models import NeedStatus, ProducerProfile, ProducerProduct, ProductionForecast, Stock
+from apps.inventory.models import ProducerProfile, ProducerProduct, ProductionForecast, Stock
 from apps.marketplace.models import MarketplaceListing, ListingStatus, DeliveryMode
+from apps.needs.models import NeedStatus
 
 
 QTY_DECIMAL = Decimal("0.001")
@@ -251,32 +252,6 @@ def get_listing_detail_queryset(*, producer=None):
         quantity_available__gt=0,
         product__is_active=True,
     )
-
-
-def get_need_response_listings_for_owner(*, owner_producer, q="", category_id="", need_id=""):
-    qs = get_base_listing_queryset().filter(
-        need_id__isnull=False,
-        need__producer=owner_producer,
-    )
-
-    if need_id:
-        qs = qs.filter(need_id=need_id)
-
-    if q:
-        q = q.strip()
-        qs = qs.filter(
-            Q(product__name__icontains=q)
-            | Q(producer__display_name__icontains=q)
-            | Q(producer__company_name__icontains=q)
-            | Q(producer__user__first_name__icontains=q)
-            | Q(producer__user__last_name__icontains=q)
-            | Q(notes__icontains=q)
-        )
-
-    if category_id:
-        qs = qs.filter(product__category_id=category_id)
-
-    return qs
 
 
 def get_producer_products(producer):
