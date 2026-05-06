@@ -14,6 +14,7 @@ from apps.inventory.models import (
     StockMovement,
     StockMovementType,
 )
+from apps.needs.models import NeedResponseStatus
 from apps.needs.services import recalculate_needs_for_order
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import (
@@ -144,12 +145,21 @@ def _notify_order_purchase_created(*, order, buyer_producer, seller_producer, ac
 
     counterpart_name = _producer_display_name(buyer_producer)
     summary_label = _build_order_alert_summary(order, seller_producer=seller_producer)
+    is_need_response_order = is_order_from_need_response(order)
     _safe_emit_order_interaction_alert(
         target_producer=seller_producer,
         order=order,
         alert_type=AlertType.ORDER_PURCHASE_CREATED,
-        title=f"Nova encomenda #{order.order_number}",
-        description=f"{counterpart_name} criou uma nova encomenda ({summary_label}).",
+        title=(
+            f"A sua oferta foi aceite na encomenda #{order.order_number}"
+            if is_need_response_order
+            else f"Nova encomenda #{order.order_number}"
+        ),
+        description=(
+            f"{counterpart_name} aceitou a sua oferta privada para uma necessidade ({summary_label})."
+            if is_need_response_order
+            else f"{counterpart_name} criou uma nova encomenda ({summary_label})."
+        ),
         counterpart_name=counterpart_name,
         summary_label=summary_label,
         action_url=_order_detail_url_for_alert(order, viewer_role="seller"),
@@ -288,12 +298,30 @@ def _collect_order_source_flags(order):
     return has_stock_source, has_forecast_source, has_unknown_source
 
 
+def is_order_from_need_response(order):
+    items = list(getattr(order, "_prefetched_objects_cache", {}).get("items", []) or order.items.all())
+    if not items:
+        return False
+
+    return any(
+        bool(getattr(item, "need_id", None))
+        or bool(getattr(getattr(item, "listing", None), "need_id", None))
+        for item in items
+    )
+
+
 def is_order_forecast_only(order):
+    if is_order_from_need_response(order):
+        return False
+
     has_stock_source, has_forecast_source, has_unknown_source = _collect_order_source_flags(order)
     return bool(has_forecast_source and not has_stock_source and not has_unknown_source)
 
 
 def get_order_source_label(order):
+    if is_order_from_need_response(order):
+        return "Resposta a necessidade"
+
     has_stock_source, has_forecast_source, _ = _collect_order_source_flags(order)
 
     if has_forecast_source and not has_stock_source:
@@ -1067,6 +1095,10 @@ def _recalculate_order_status(order, preferred_status=None):
 def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user, buyer_notes=None, need=None):
     if listing.producer_id == buyer_producer.id:
         raise OrderServiceError("Não pode criar uma encomenda a partir do seu próprio anúncio.")
+    if listing.need_id and listing.need_response_status == NeedResponseStatus.REJECTED:
+        raise OrderServiceError("Esta oferta foi rejeitada e já não pode ser comprada.")
+    if listing.need_id and OrderItem.objects.filter(listing_id=listing.id, need_id=listing.need_id).exists():
+        raise OrderServiceError("Esta oferta já originou uma encomenda e não pode ser comprada novamente.")
     _validate_listing_source_xor(listing)
 
     quantity = quantize_qty(quantity)
@@ -1116,7 +1148,11 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
         order=order,
         status=OrderStatus.PENDING,
         changed_by=acting_user,
-        notes="Pedido criado a partir de um anúncio do marketplace.",
+        notes=(
+            "Pedido criado ao aceitar uma oferta privada para uma necessidade."
+            if need or listing.need_id
+            else "Pedido criado a partir de um anúncio do marketplace."
+        ),
     )
     _notify_order_purchase_created(
         order=order,

@@ -1,12 +1,18 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
 from apps.marketplace.models import MarketplaceListing
+from apps.needs.models import NeedResponseStatus
 from apps.orders.models import Order, OrderItem, OrderStatus
 from apps.orders.services import (
+    OrderServiceError,
+    _notify_order_purchase_created,
     build_presale_timeline_context,
+    create_order_from_listing,
     get_order_source_label,
+    is_order_from_need_response,
     is_order_forecast_only,
 )
 
@@ -39,6 +45,22 @@ class PresaleOrderClassificationTests(SimpleTestCase):
 
         self.assertFalse(is_order_forecast_only(order))
         self.assertEqual(get_order_source_label(order), "Stock atual")
+
+    def test_need_response_order_has_explicit_source_label(self):
+        listing = MarketplaceListing()
+        listing.forecast_id = None
+        listing.stock_id = "stock-1"
+        listing.need_id = "need-1"
+
+        item = OrderItem()
+        item.listing = listing
+        item.need_id = "need-1"
+        order = self._build_order_with_listings([listing])
+        order._prefetched_objects_cache = {"items": [item]}
+
+        self.assertTrue(is_order_from_need_response(order))
+        self.assertFalse(is_order_forecast_only(order))
+        self.assertEqual(get_order_source_label(order), "Resposta a necessidade")
 
     def test_mixed_order_is_not_presale(self):
         forecast_listing = MarketplaceListing()
@@ -116,3 +138,42 @@ class PresaleTimelineTests(SimpleTestCase):
         self.assertEqual(self._state_for_step(timeline["steps"], "confirmed"), "done")
         self.assertEqual(self._state_for_step(timeline["steps"], "in_progress"), "interrupted")
         self.assertEqual(self._state_for_step(timeline["steps"], "delivered"), "interrupted")
+
+
+class NeedResponseOrderTests(SimpleTestCase):
+    def test_rejected_need_response_cannot_create_order(self):
+        listing = MarketplaceListing()
+        listing.producer_id = "seller-1"
+        listing.need_id = "need-1"
+        listing.need_response_status = NeedResponseStatus.REJECTED
+
+        create = getattr(create_order_from_listing, "__wrapped__", create_order_from_listing)
+
+        with self.assertRaisesMessage(OrderServiceError, "oferta foi rejeitada"):
+            create(
+                buyer_producer=type("Producer", (), {"id": "buyer-1"})(),
+                listing=listing,
+                quantity="1",
+                acting_user=None,
+                need=type("Need", (), {"id": "need-1"})(),
+            )
+
+    def test_need_response_purchase_alert_mentions_accepted_offer(self):
+        order = SimpleNamespace(id="order-1", order_number=123)
+        buyer = SimpleNamespace(id="buyer-1", display_name="Diogo")
+        seller = SimpleNamespace(id="seller-1")
+
+        with (
+            patch("apps.orders.services.is_order_from_need_response", return_value=True),
+            patch("apps.orders.services._build_order_alert_summary", return_value="50.000 kg de Pera Rocha"),
+            patch("apps.orders.services._safe_emit_order_interaction_alert") as emit,
+        ):
+            _notify_order_purchase_created(
+                order=order,
+                buyer_producer=buyer,
+                seller_producer=seller,
+                acting_user=None,
+            )
+
+        self.assertIn("oferta foi aceite", emit.call_args.kwargs["title"])
+        self.assertIn("aceitou a sua oferta privada para uma necessidade", emit.call_args.kwargs["description"])

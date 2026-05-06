@@ -27,6 +27,12 @@
               {% endfor %}
             </div>
           {% endif %}
+          {% if existing_need_response_notice %}
+            <div class="mkp-form-notice">
+              <i class="bi bi-info-circle"></i>
+              <p>{{ existing_need_response_notice }}</p>
+            </div>
+          {% endif %}
           {% if is_need_prefill_flow and publish_need %}
             <div class="mkp-need-summary">
               <div class="mkp-need-summary__head">
@@ -865,6 +871,24 @@
   color: #b91c1c;
   border-radius: 0.9rem;
   padding: 0.75rem 0.9rem;
+}
+
+.mkp-form-notice {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 0.9rem;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+}
+
+.mkp-form-notice p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .mkp-form-error p {

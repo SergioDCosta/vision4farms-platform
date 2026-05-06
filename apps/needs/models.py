@@ -17,6 +17,11 @@ class NeedStatus(models.TextChoices):
     CANCELLED = "CANCELLED", "Cancelada"
 
 
+class NeedResponseStatus(models.TextChoices):
+    PENDING = "PENDING", "Pendente"
+    REJECTED = "REJECTED", "Rejeitada"
+
+
 class Need(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     producer = models.ForeignKey(

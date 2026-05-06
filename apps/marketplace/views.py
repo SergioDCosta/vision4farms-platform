@@ -20,6 +20,7 @@ from apps.inventory.models import ProducerProduct, ProductionForecast
 from apps.needs.models import Need, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
+    get_active_need_response_for_responder,
     get_need_for_producer,
 )
 from apps.needs.navigation import build_needs_index_url
@@ -692,6 +693,8 @@ def marketplace_detail_view(request, listing_id):
         get_listing_detail_queryset(producer=producer),
         id=listing_id,
     )
+    if getattr(listing, "need_id", None):
+        return redirect("needs:response_detail", listing_id=listing.id)
 
     context = _build_marketplace_detail_context(request, listing, producer)
     return render(request, "marketplace/detail.html", context)
@@ -977,6 +980,19 @@ def marketplace_publish_view(request):
         if is_need_prefill_flow and linked_need
         else None
     )
+    existing_need_response = (
+        get_active_need_response_for_responder(
+            responder_producer=producer,
+            need=linked_need,
+        )
+        if is_need_prefill_flow and linked_need
+        else None
+    )
+    existing_need_response_notice = (
+        "Já tem uma oferta ativa para esta necessidade. Pode enviar outra oferta se quiser ajustar quantidade, preço ou condições."
+        if existing_need_response
+        else ""
+    )
     context = {
         "page_title": (
             "Responder a necessidade"
@@ -1017,6 +1033,7 @@ def marketplace_publish_view(request):
         "requested_need_id": requested_need_id,
         "publish_need": linked_need if is_need_prefill_flow else None,
         "publish_need_coverage": publish_need_coverage,
+        "existing_need_response_notice": existing_need_response_notice,
         "product_picker_options": [
             {"id": str(row["id"]), "label": row["name"]}
             for row in all_publishable_products

@@ -5,10 +5,11 @@ from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 
 from apps.common.decorators import login_required, client_only_required
-from apps.needs.models import NeedStatus
+from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import get_need_for_producer
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import OrderStatus, OrderItemStatus
+from apps.orders.models import OrderItem
 from apps.orders.services import (
     compute_order_group_status,
     OrderServiceError,
@@ -23,6 +24,7 @@ from apps.orders.services import (
     get_orders_for_seller,
     get_presale_order_entries_for_producer,
     get_order_source_label,
+    is_order_from_need_response,
     is_order_forecast_only,
     build_presale_timeline_context,
     seller_update_order_status,
@@ -170,6 +172,7 @@ def order_detail_view(request, order_id):
         and any(item.item_status not in {OrderItemStatus.CANCELLED, OrderItemStatus.COMPLETED} for item in seller_items)
     )
     is_presale_order = is_order_forecast_only(order)
+    is_need_response_order = is_order_from_need_response(order)
     presale_timeline = build_presale_timeline_context(order) if is_presale_order else None
 
     context = {
@@ -177,6 +180,7 @@ def order_detail_view(request, order_id):
         "order": order,
         "order_role": role,
         "order_source_label": get_order_source_label(order),
+        "is_need_response_order": is_need_response_order,
         "is_presale_order": is_presale_order,
         "back_to_orders_url": (
             f"{reverse('orders:index')}?tab=pre_vendas"
@@ -288,6 +292,12 @@ def create_order_from_listing_view(request, listing_id):
 
     need = None
     if listing.need_id:
+        if listing.need_response_status == NeedResponseStatus.REJECTED:
+            messages.error(request, "Esta oferta foi rejeitada e já não pode ser comprada.")
+            return redirect("needs:response_detail", listing_id=listing.id)
+        if OrderItem.objects.filter(listing_id=listing.id, need_id=listing.need_id).exists():
+            messages.error(request, "Esta oferta já originou uma encomenda e não pode ser comprada novamente.")
+            return redirect("needs:response_detail", listing_id=listing.id)
         if not listing.need or listing.need.producer_id != producer.id:
             messages.error(request, "Esta oferta é dirigida ao produtor da necessidade e não está disponível para esta conta.")
             return redirect("marketplace:index")

@@ -1,13 +1,16 @@
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.http import Http404
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.common.decorators import client_only_required, login_required
 from apps.marketplace.services import (
+    build_delivery_text,
     expire_due_active_listings,
     get_current_producer_for_user,
 )
@@ -16,6 +19,9 @@ from apps.needs.models import NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     create_or_update_need,
+    build_need_response_for_listing,
+    get_critical_stock_product_ids,
+    get_need_response_listing_for_viewer,
     get_need_candidate_products,
     get_need_for_producer,
     get_need_response_counts_for_owner,
@@ -23,6 +29,7 @@ from apps.needs.services import (
     list_need_responses_for_owner,
     list_marketplace_my_needs,
     list_marketplace_public_needs,
+    reject_need_response,
 )
 
 
@@ -43,7 +50,11 @@ def parse_need_datetime(value):
     if not raw_value:
         return None
     try:
-        parsed = datetime.strptime(raw_value, "%Y-%m-%dT%H:%M")
+        if "T" in raw_value:
+            parsed = datetime.strptime(raw_value, "%Y-%m-%dT%H:%M")
+        else:
+            parsed_date = datetime.strptime(raw_value, "%Y-%m-%d").date()
+            parsed = datetime.combine(parsed_date, time.max)
     except ValueError:
         raise ValidationError("Data limite inválida para a necessidade.")
     if timezone.is_naive(parsed):
@@ -104,6 +115,17 @@ def build_needs_index_context(
         row["response_count"] = response_counts.get(str(row["need"].id), 0)
 
     need_products = list(get_need_candidate_products(producer)) if producer else []
+    critical_product_ids = get_critical_stock_product_ids(
+        producer,
+        product_ids=[
+            product_id
+            for product_id in (getattr(product, "id", None) for product in need_products)
+            if product_id
+        ],
+    ) if producer else set()
+    for product in need_products:
+        product_id = getattr(product, "id", None)
+        product.is_critical_stock = bool(product_id and str(product_id) in critical_product_ids)
 
     category_map = {}
     for row in [*need_public_rows, *need_my_rows]:
@@ -149,6 +171,27 @@ def build_needs_index_context(
         if producer and validated_need_id
         else []
     )
+    active_need_response_rows = [
+        response for response in need_response_rows
+        if response.response_status == "PENDING"
+    ]
+    past_need_response_rows = [
+        response for response in need_response_rows
+        if response.response_status != "PENDING"
+    ]
+    all_need_response_rows = (
+        list_need_responses_for_owner(
+            owner_producer=producer,
+            q=q,
+            category_id=category_id,
+        )
+        if producer
+        else []
+    )
+    all_past_need_response_rows = [
+        response for response in all_need_response_rows
+        if response.response_status != "PENDING"
+    ]
 
     return {
         "page_title": "Necessidades",
@@ -158,6 +201,9 @@ def build_needs_index_context(
         "need_my_rows": need_my_rows,
         "need_products": need_products,
         "need_response_rows": need_response_rows,
+        "active_need_response_rows": active_need_response_rows,
+        "past_need_response_rows": past_need_response_rows,
+        "all_past_need_response_rows": all_past_need_response_rows,
         "selected_need_id": validated_need_id,
         "selected_need_row": selected_need_row,
         "need_prefill_product_id": need_prefill_product_id,
@@ -343,3 +389,74 @@ def need_ignore_view(request, need_id):
             show_need_form=show_need_form,
         )
     )
+
+
+@login_required
+@client_only_required
+def need_response_detail_view(request, listing_id):
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    expire_due_active_listings()
+    listing = get_need_response_listing_for_viewer(
+        viewer_producer=producer,
+        listing_id=listing_id,
+    )
+    if not listing:
+        raise Http404("Resposta não encontrada.")
+
+    response = build_need_response_for_listing(listing)
+    is_need_owner = bool(listing.need and listing.need.producer_id == producer.id)
+    is_responder = bool(listing.producer_id == producer.id)
+    context = {
+        "page_title": "Oferta para necessidade",
+        "listing": listing,
+        "need": listing.need,
+        "response": response,
+        "is_need_owner": is_need_owner,
+        "is_responder": is_responder,
+        "delivery_text": build_delivery_text(listing),
+        "purchase_url": reverse("orders:create_from_listing", kwargs={"listing_id": listing.id}),
+        "back_to_needs_url": build_needs_index_url(
+            selected_need_id=str(listing.need_id) if is_need_owner else "",
+        ),
+    }
+    return render(request, "needs/response_detail.html", context)
+
+
+@login_required
+@client_only_required
+def need_response_reject_view(request, listing_id):
+    if request.method != "POST":
+        return redirect("needs:response_detail", listing_id=listing_id)
+
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    listing = get_need_response_listing_for_viewer(
+        viewer_producer=producer,
+        listing_id=listing_id,
+    )
+    if not listing:
+        raise Http404("Resposta não encontrada.")
+    next_url = (request.POST.get("next") or "").strip()
+
+    try:
+        changed = reject_need_response(listing=listing, owner_producer=producer)
+    except ValidationError as exc:
+        messages.error(request, str(exc))
+    else:
+        if changed:
+            messages.success(request, "Oferta rejeitada. A resposta deixou de estar disponível para compra.")
+        else:
+            messages.info(request, "Esta oferta já estava rejeitada.")
+
+    if next_url.startswith("/") and not next_url.startswith("//"):
+        return redirect(next_url)
+    return redirect("needs:response_detail", listing_id=listing_id)

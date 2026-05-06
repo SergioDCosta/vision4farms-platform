@@ -17,11 +17,17 @@
       <h1>{{ order.get_status_display }}</h1>
       <p class="ordd-meta">
         Criada em {{ order.created_at|date:"d/m/Y H:i" }}
-        {% if order.source_type %}· Origem: {{ order.get_source_type_display }}{% endif %}
+        · Origem: {{ order_source_label|default:order.get_source_type_display }}
         {% if order_role == "seller" %}· Vista vendedor{% else %}· Vista comprador{% endif %}
       </p>
-      {% if order_role == "seller" %}
-        <p class="ordd-source-chip">Origem operacional: {{ order_source_label|default:"—" }}</p>
+      {% if is_need_response_order %}
+        <p class="ordd-source-chip">
+          {% if order_role == "seller" %}
+            A sua oferta a uma necessidade foi aceite
+          {% else %}
+            Encomenda criada a partir de uma resposta à sua necessidade
+          {% endif %}
+        </p>
       {% endif %}
     </div>
 

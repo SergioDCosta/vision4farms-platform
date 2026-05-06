@@ -1,6 +1,8 @@
 import uuid
 from django.db import models
 
+from apps.needs.models import NeedResponseStatus
+
 
 class DeliveryMode(models.TextChoices):
     PICKUP = "PICKUP", "Levantamento"
@@ -60,6 +62,11 @@ class MarketplaceListing(models.Model):
     notes = models.TextField(blank=True, null=True)
     photo_path = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=ListingStatus.choices, default=ListingStatus.ACTIVE)
+    need_response_status = models.CharField(
+        max_length=20,
+        choices=NeedResponseStatus.choices,
+        default=NeedResponseStatus.PENDING,
+    )
     published_at = models.DateTimeField()
     expires_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

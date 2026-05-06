@@ -126,6 +126,7 @@ class MarketplacePublishNeedResponseTests(SimpleTestCase):
             patch("apps.marketplace.views.get_marketplace_eligible_forecasts", return_value=[]),
             patch("apps.marketplace.views.get_market_price_trends_for_product_sources", return_value={}),
             patch("apps.marketplace.views.get_publishable_products_summary", return_value=[]),
+            patch("apps.marketplace.views.get_active_need_response_for_responder", return_value=None),
             patch("apps.marketplace.views._sync_alerts_after_marketplace_change"),
             patch("apps.marketplace.views._maybe_crop_uploaded_photo") as crop_photo,
             patch("apps.marketplace.views._save_listing_photo") as save_photo,
