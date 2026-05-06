@@ -1,8 +1,10 @@
+from dataclasses import dataclass
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.catalog.models import Product
@@ -17,6 +19,25 @@ PLANNED_NEED_ORDER_STATUSES = [
     OrderStatus.IN_PROGRESS,
     OrderStatus.DELIVERING,
 ]
+
+
+@dataclass(frozen=True)
+class NeedResponse:
+    listing: MarketplaceListing
+    id: object
+    need_id: object
+    producer_label: str
+    product_name: str
+    product_unit: str
+    quantity_available: Decimal
+    unit_price: Decimal
+    source_key: str
+    source_label: str
+    status: str
+    status_label: str
+    notes: str
+    detail_url: str
+    cta_label: str = "Ver oferta e comprar"
 
 
 def _quantize_need_quantity(value):
@@ -337,6 +358,22 @@ def list_marketplace_my_needs(*, producer, q="", category_id=""):
     return [_build_need_row(need) for need in qs]
 
 
+def get_need_response_counts_for_owner(*, owner_producer, need_ids):
+    if not owner_producer or not need_ids:
+        return {}
+
+    rows = (
+        MarketplaceListing.objects
+        .filter(
+            need_id__in=need_ids,
+            need__producer=owner_producer,
+        )
+        .values("need_id")
+        .annotate(total=Count("id"))
+    )
+    return {str(row["need_id"]): row["total"] for row in rows}
+
+
 def get_need_candidate_products(producer):
     return (
         Product.objects
@@ -350,7 +387,7 @@ def get_need_candidate_products(producer):
     )
 
 
-def get_need_response_listings_for_owner(*, owner_producer, q="", category_id="", need_id=""):
+def _get_need_response_listings_for_owner(*, owner_producer, q="", category_id="", need_id=""):
     qs = (
         MarketplaceListing.objects
         .select_related(
@@ -388,3 +425,43 @@ def get_need_response_listings_for_owner(*, owner_producer, q="", category_id=""
         qs = qs.filter(product__category_id=category_id)
 
     return qs
+
+
+def _listing_source_label(listing):
+    has_stock_source = bool(getattr(listing, "stock_id", None))
+    has_forecast_source = bool(getattr(listing, "forecast_id", None))
+    if has_forecast_source and not has_stock_source:
+        return "forecast", "Pré-venda"
+    return "stock", "Disponível agora"
+
+
+def _build_need_response(listing):
+    source_key, source_label = _listing_source_label(listing)
+    return NeedResponse(
+        listing=listing,
+        id=listing.id,
+        need_id=listing.need_id,
+        producer_label=_producer_marketplace_display_name(listing.producer),
+        product_name=listing.product.name,
+        product_unit=listing.product.unit,
+        quantity_available=listing.quantity_available,
+        unit_price=listing.unit_price,
+        source_key=source_key,
+        source_label=source_label,
+        status=listing.status,
+        status_label=listing.get_status_display(),
+        notes=listing.notes or "",
+        detail_url=f"{reverse('marketplace:detail', args=[listing.id])}?need={listing.need_id}",
+    )
+
+
+def list_need_responses_for_owner(*, owner_producer, q="", category_id="", need_id=""):
+    return [
+        _build_need_response(listing)
+        for listing in _get_need_response_listings_for_owner(
+            owner_producer=owner_producer,
+            q=q,
+            category_id=category_id,
+            need_id=need_id,
+        )
+    ]

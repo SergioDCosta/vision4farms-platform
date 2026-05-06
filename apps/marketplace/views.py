@@ -22,7 +22,7 @@ from apps.needs.services import (
     calculate_need_coverage,
     get_need_for_producer,
 )
-from apps.needs.views import build_needs_index_url
+from apps.needs.navigation import build_needs_index_url
 from apps.marketplace.forms import MarketplacePublishForm, MarketplaceEditForm
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.marketplace.services import (

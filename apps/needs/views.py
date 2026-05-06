@@ -1,28 +1,26 @@
 from datetime import datetime
 from decimal import Decimal
-from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.utils import timezone
 
 from apps.common.decorators import client_only_required, login_required
 from apps.marketplace.services import (
-    LISTING_SOURCE_FORECAST,
-    LISTING_SOURCE_STOCK,
     expire_due_active_listings,
     get_current_producer_for_user,
 )
+from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     create_or_update_need,
     get_need_candidate_products,
     get_need_for_producer,
-    get_need_response_listings_for_owner,
+    get_need_response_counts_for_owner,
     ignore_need,
+    list_need_responses_for_owner,
     list_marketplace_my_needs,
     list_marketplace_public_needs,
 )
@@ -78,47 +76,6 @@ def get_needs_filters(request):
     return q, category_id, need_id, requested_product_id, requested_quantity, show_need_form
 
 
-def build_needs_index_url(
-    *,
-    q="",
-    category_id="",
-    selected_need_id="",
-    need_prefill_product_id="",
-    need_prefill_quantity="",
-    show_need_form=False,
-):
-    query = {}
-    if q:
-        query["q"] = q
-    if category_id:
-        query["category"] = category_id
-    if selected_need_id:
-        query["need"] = selected_need_id
-    if need_prefill_product_id:
-        query["product"] = need_prefill_product_id
-    if need_prefill_quantity:
-        query["qty"] = need_prefill_quantity
-    if show_need_form:
-        query["show_need_form"] = "1"
-    url = reverse("needs:index")
-    return f"{url}?{urlencode(query)}" if query else url
-
-
-def _attach_response_listing_source_labels(listings):
-    attached = []
-    for listing in listings:
-        has_stock_source = bool(getattr(listing, "stock_id", None))
-        has_forecast_source = bool(getattr(listing, "forecast_id", None))
-        if has_forecast_source and not has_stock_source:
-            listing.source_key = LISTING_SOURCE_FORECAST
-            listing.source_label = "Pré-venda"
-        else:
-            listing.source_key = LISTING_SOURCE_STOCK
-            listing.source_label = "Disponível agora"
-        attached.append(listing)
-    return attached
-
-
 def build_needs_index_context(
     producer,
     *,
@@ -139,6 +96,13 @@ def build_needs_index_context(
         q=q,
         category_id=category_id,
     ) if producer else []
+    response_counts = get_need_response_counts_for_owner(
+        owner_producer=producer,
+        need_ids=[row["need"].id for row in need_my_rows],
+    ) if producer else {}
+    for row in need_my_rows:
+        row["response_count"] = response_counts.get(str(row["need"].id), 0)
+
     need_products = list(get_need_candidate_products(producer)) if producer else []
 
     category_map = {}
@@ -167,14 +131,24 @@ def build_needs_index_context(
                 need_prefill_quantity = str(matched_row["remaining_to_plan"])
             selected_need_row = matched_row or build_selected_need_row(selected_need)
 
-    need_response_rows = _attach_response_listing_source_labels(
-        get_need_response_listings_for_owner(
+    if not selected_need_row and need_my_rows:
+        selected_need_row = need_my_rows[0]
+        validated_need_id = str(selected_need_row["need"].id)
+        if not need_prefill_product_id:
+            need_prefill_product_id = str(selected_need_row["need"].product_id)
+        if not need_prefill_quantity:
+            need_prefill_quantity = str(selected_need_row["remaining_to_plan"])
+
+    need_response_rows = (
+        list_need_responses_for_owner(
             owner_producer=producer,
             q=q,
             category_id=category_id,
             need_id=validated_need_id,
         )
-    ) if producer else []
+        if producer and validated_need_id
+        else []
+    )
 
     return {
         "page_title": "Necessidades",

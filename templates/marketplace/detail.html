@@ -28,7 +28,7 @@
           </span>
           {% if is_need_response_listing %}
             <span class="mkd-badge mkd-badge--need">
-              Resposta privada à necessidade
+              Oferta privada para necessidade
             </span>
           {% endif %}
           <span class="mkd-location">
@@ -48,7 +48,7 @@
         {% if is_need_response_listing and listing.need %}
           <p class="mkd-need-context">
             <i class="bi bi-megaphone"></i>
-            Oferta dirigida ao produtor da necessidade #{{ listing.need.id }}.
+            Oferta privada criada para responder à necessidade #{{ listing.need.id }}.
           </p>
         {% endif %}
       </header>
