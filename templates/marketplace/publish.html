@@ -1,4 +1,5 @@
 {% extends "dashboard/base_app.html" %}
+{% load l10n %}
 {% block app_title %}{{ page_title|default:"Publicar Excedente" }}{% endblock %}
 {% block app_content %}
 
@@ -45,10 +46,10 @@
                   <strong>{{ publish_need.producer.display_name|default:publish_need.producer.company_name|default:publish_need.producer.user.email|default:"Produtor" }}</strong>
                 </p>
                 <p>
-                  <span>Quantidade em falta</span>
+                  <span>Quantidade ainda por receber</span>
                   <strong>
                     {% if publish_need_coverage %}
-                      {{ publish_need_coverage.remaining_to_plan|floatformat:"-3" }} {{ publish_need.product.unit }}
+                      {{ publish_need_coverage.remaining_to_receive|floatformat:"-3" }} {{ publish_need.product.unit }}
                     {% else %}
                       {{ publish_need.required_quantity|floatformat:"-3" }} {{ publish_need.product.unit }}
                     {% endif %}
@@ -116,6 +117,16 @@
               </div>
               {% if forecast_quantity_limit is not None %}
                 <div class="mkp-help">Máximo para esta pré-venda: {{ forecast_quantity_limit|floatformat:"-3" }} (quantidade prevista disponível).</div>
+              {% endif %}
+              {% if is_need_prefill_flow and publish_need and publish_need_coverage %}
+                <div class="mkp-form-notice mkp-form-notice--warning"
+                     id="mkp-need-quantity-warning"
+                     data-remaining="{{ publish_need_coverage.remaining_to_receive|unlocalize }}"
+                     data-unit="{{ publish_need.product.unit }}"
+                     hidden>
+                  <i class="bi bi-exclamation-triangle"></i>
+                  <p>Está a propor mais do que a quantidade ainda por receber. A oferta será enviada, mas o produtor deve confirmar se pretende aceitar esse excesso.</p>
+                </div>
               {% endif %}
               {% if form.quantity.errors %}
                 <div class="mkp-field-errors">
@@ -436,6 +447,8 @@
   const deliveryOptionsWrap = document.getElementById("mkp-delivery-options-wrap");
   const forecastWrap = document.getElementById("mkp-forecast-wrap");
   const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
+  const quantityField = document.getElementById("{{ form.quantity.id_for_label }}");
+  const needQuantityWarning = document.getElementById("mkp-need-quantity-warning");
   const dateWrap = document.getElementById("mkp-date-wrap");
   const summaryList = document.getElementById("mkp-summary-list");
   const summaryItems = summaryList ? Array.from(summaryList.querySelectorAll(".mkp-summary-item")) : [];
@@ -637,6 +650,19 @@
     });
   }
   syncSummaryAndTrend();
+
+  function syncNeedQuantityWarning() {
+    if (!quantityField || !needQuantityWarning) return;
+    const remaining = Number(String(needQuantityWarning.dataset.remaining || "0").replace(",", "."));
+    const quantity = Number(String(quantityField.value || "0").replace(",", "."));
+    needQuantityWarning.hidden = !(remaining > 0 && quantity > remaining);
+  }
+
+  if (quantityField) {
+    quantityField.addEventListener("input", syncNeedQuantityWarning);
+    quantityField.addEventListener("change", syncNeedQuantityWarning);
+  }
+  syncNeedQuantityWarning();
 
   const photoInput = document.getElementById("{{ form.photo.id_for_label }}");
   const photoCropInput = document.getElementById("{{ form.photo_crop.id_for_label }}");

@@ -28,6 +28,7 @@ class NeedResponse:
     id: object
     need_id: object
     producer_label: str
+    need_owner_label: str
     product_name: str
     product_unit: str
     quantity_available: Decimal
@@ -311,6 +312,9 @@ def _build_need_row(need):
         "completed_qty": completed_qty,
         "remaining_to_plan": coverage["remaining_to_plan"],
         "remaining_to_receive": coverage["remaining_to_receive"],
+        "planned_excess_qty": _quantize_need_quantity(
+            max(coverage["planned_qty"] - required_quantity, Decimal("0.000"))
+        ),
         "progress_percent": max(Decimal("0"), min(progress_percent, Decimal("100"))),
     }
 
@@ -575,7 +579,7 @@ def get_active_need_response_for_responder(*, responder_producer, need):
         .filter(producer=responder_producer, need=need)
         .order_by("-published_at", "-created_at")
     )
-    accepted_listing_ids, cancelled_listing_ids = _get_need_response_order_state_listing_ids(
+    accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids(
         [listing.id for listing in listings]
     )
     for listing in listings:
@@ -583,6 +587,7 @@ def get_active_need_response_for_responder(*, responder_producer, need):
             listing,
             accepted_listing_ids=accepted_listing_ids,
             cancelled_listing_ids=cancelled_listing_ids,
+            completed_listing_ids=completed_listing_ids,
         )
         if state["is_active"]:
             return listing
@@ -609,7 +614,7 @@ def _listing_source_label(listing):
 
 def _get_need_response_order_state_listing_ids(listing_ids):
     if not listing_ids:
-        return set(), set()
+        return set(), set(), set()
 
     rows = (
         OrderItem.objects
@@ -621,23 +626,44 @@ def _get_need_response_order_state_listing_ids(listing_ids):
     )
     accepted_listing_ids = set()
     cancelled_listing_ids = set()
+    completed_listing_ids = set()
     for listing_id, item_status in rows:
         if item_status == OrderItemStatus.CANCELLED:
             cancelled_listing_ids.add(listing_id)
+        elif item_status == OrderItemStatus.COMPLETED:
+            completed_listing_ids.add(listing_id)
         else:
             accepted_listing_ids.add(listing_id)
-    return accepted_listing_ids, cancelled_listing_ids
+    return accepted_listing_ids, cancelled_listing_ids, completed_listing_ids
 
 
 def _get_accepted_need_response_listing_ids(listing_ids):
-    accepted_listing_ids, _ = _get_need_response_order_state_listing_ids(listing_ids)
-    return accepted_listing_ids
+    accepted_listing_ids, _, completed_listing_ids = _get_need_response_order_state_listing_ids(listing_ids)
+    return accepted_listing_ids | completed_listing_ids
 
 
-def _derive_need_response_state(listing, *, accepted_listing_ids=None, cancelled_listing_ids=None):
+def _derive_need_response_state(
+    listing,
+    *,
+    accepted_listing_ids=None,
+    cancelled_listing_ids=None,
+    completed_listing_ids=None,
+):
     accepted_listing_ids = accepted_listing_ids or set()
     cancelled_listing_ids = cancelled_listing_ids or set()
+    completed_listing_ids = completed_listing_ids or set()
     response_status = getattr(listing, "need_response_status", NeedResponseStatus.PENDING)
+
+    if listing.id in completed_listing_ids:
+        return {
+            "status": "COMPLETED",
+            "label": "Concluída",
+            "badge_class": "ok",
+            "message": "A encomenda criada a partir desta oferta foi concluída.",
+            "is_active": False,
+            "can_buy": False,
+            "can_reject": False,
+        }
 
     if response_status == NeedResponseStatus.REJECTED:
         return {
@@ -716,18 +742,26 @@ def _derive_need_response_state(listing, *, accepted_listing_ids=None, cancelled
     }
 
 
-def _build_need_response(listing, *, accepted_listing_ids=None, cancelled_listing_ids=None):
+def _build_need_response(
+    listing,
+    *,
+    accepted_listing_ids=None,
+    cancelled_listing_ids=None,
+    completed_listing_ids=None,
+):
     source_key, source_label = _listing_source_label(listing)
     state = _derive_need_response_state(
         listing,
         accepted_listing_ids=accepted_listing_ids,
         cancelled_listing_ids=cancelled_listing_ids,
+        completed_listing_ids=completed_listing_ids,
     )
     return NeedResponse(
         listing=listing,
         id=listing.id,
         need_id=listing.need_id,
         producer_label=_producer_marketplace_display_name(listing.producer),
+        need_owner_label=_producer_marketplace_display_name(getattr(getattr(listing, "need", None), "producer", None)),
         product_name=listing.product.name,
         product_unit=listing.product.unit,
         quantity_available=listing.quantity_available,
@@ -757,7 +791,7 @@ def list_need_responses_for_owner(*, owner_producer, q="", category_id="", need_
             need_id=need_id,
         )
     )
-    accepted_listing_ids, cancelled_listing_ids = _get_need_response_order_state_listing_ids(
+    accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids(
         [listing.id for listing in listings]
     )
     return [
@@ -765,18 +799,61 @@ def list_need_responses_for_owner(*, owner_producer, q="", category_id="", need_
             listing,
             accepted_listing_ids=accepted_listing_ids,
             cancelled_listing_ids=cancelled_listing_ids,
+            completed_listing_ids=completed_listing_ids,
         )
         for listing in listings
     ]
 
 
 def build_need_response_for_listing(listing):
-    accepted_listing_ids, cancelled_listing_ids = _get_need_response_order_state_listing_ids([listing.id])
+    accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids([listing.id])
     return _build_need_response(
         listing,
         accepted_listing_ids=accepted_listing_ids,
         cancelled_listing_ids=cancelled_listing_ids,
+        completed_listing_ids=completed_listing_ids,
     )
+
+
+def list_need_responses_for_responder(*, responder_producer, q="", category_id=""):
+    if not responder_producer:
+        return []
+
+    qs = (
+        _get_need_response_listing_queryset()
+        .filter(producer=responder_producer)
+        .exclude(need__producer=responder_producer)
+        .order_by("-published_at", "-created_at")
+    )
+
+    if q:
+        q = q.strip()
+        qs = qs.filter(
+            Q(product__name__icontains=q)
+            | Q(need__producer__display_name__icontains=q)
+            | Q(need__producer__company_name__icontains=q)
+            | Q(need__producer__user__first_name__icontains=q)
+            | Q(need__producer__user__last_name__icontains=q)
+            | Q(notes__icontains=q)
+            | Q(need__notes__icontains=q)
+        )
+
+    if category_id:
+        qs = qs.filter(product__category_id=category_id)
+
+    listings = list(qs)
+    accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids(
+        [listing.id for listing in listings]
+    )
+    return [
+        _build_need_response(
+            listing,
+            accepted_listing_ids=accepted_listing_ids,
+            cancelled_listing_ids=cancelled_listing_ids,
+            completed_listing_ids=completed_listing_ids,
+        )
+        for listing in listings
+    ]
 
 
 def get_need_response_summaries_for_responder(*, responder_producer, need_ids):
@@ -788,7 +865,7 @@ def get_need_response_summaries_for_responder(*, responder_producer, need_ids):
         .filter(producer=responder_producer, need_id__in=need_ids)
         .order_by("need_id", "-published_at", "-created_at")
     )
-    accepted_listing_ids, cancelled_listing_ids = _get_need_response_order_state_listing_ids(
+    accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids(
         [listing.id for listing in listings]
     )
 
@@ -801,7 +878,11 @@ def get_need_response_summaries_for_responder(*, responder_producer, need_ids):
             listing,
             accepted_listing_ids=accepted_listing_ids,
             cancelled_listing_ids=cancelled_listing_ids,
+            completed_listing_ids=completed_listing_ids,
         )
+        if state["status"] == "COMPLETED":
+            summaries[need_key] = None
+            continue
         summaries[need_key] = NeedResponseSummary(
             listing_id=listing.id,
             status=state["status"],

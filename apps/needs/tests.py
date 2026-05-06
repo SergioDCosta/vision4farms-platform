@@ -17,6 +17,7 @@ from apps.needs.services import (
     get_public_offered_quantities_by_need,
     ignore_need,
     list_need_responses_for_owner,
+    list_need_responses_for_responder,
     list_marketplace_public_needs,
     reject_need_response,
 )
@@ -328,7 +329,7 @@ class NeedsServiceTests(SimpleTestCase):
             return_value=[listing],
         ), patch(
             "apps.needs.services._get_need_response_order_state_listing_ids",
-            return_value=(set(), set()),
+            return_value=(set(), set(), set()),
         ):
             responses = list_need_responses_for_owner(
                 owner_producer=SimpleNamespace(id="owner-1"),
@@ -367,7 +368,7 @@ class NeedsServiceTests(SimpleTestCase):
 
         with (
             patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set())),
+            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
         ):
             summaries = get_need_response_summaries_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -403,7 +404,7 @@ class NeedsServiceTests(SimpleTestCase):
 
         with (
             patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set())),
+            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
         ):
             summaries = get_need_response_summaries_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -428,7 +429,7 @@ class NeedsServiceTests(SimpleTestCase):
 
         with (
             patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set())),
+            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
         ):
             active = get_active_need_response_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -460,7 +461,7 @@ class NeedsServiceTests(SimpleTestCase):
             return_value=[listing],
         ), patch(
             "apps.needs.services._get_need_response_order_state_listing_ids",
-            return_value=(set(), {listing_id}),
+            return_value=(set(), {listing_id}, set()),
         ):
             responses = list_need_responses_for_owner(
                 owner_producer=SimpleNamespace(id="owner-1"),
@@ -472,6 +473,107 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(response.response_status_label, "Cancelada")
         self.assertFalse(response.can_buy)
         self.assertFalse(response.can_reject)
+
+    def test_need_response_completed_order_is_concluded_state(self):
+        listing_id = uuid4()
+        need_id = uuid4()
+        listing = SimpleNamespace(
+            id=listing_id,
+            need_id=need_id,
+            need=SimpleNamespace(producer=SimpleNamespace(display_name="Produtor A")),
+            producer=SimpleNamespace(display_name="Produtor B"),
+            product=SimpleNamespace(name="Tomate", unit="kg"),
+            stock_id="stock-1",
+            forecast_id=None,
+            quantity_available=Decimal("5.000"),
+            unit_price=Decimal("2.50"),
+            status=ListingStatus.ACTIVE,
+            need_response_status=NeedResponseStatus.PENDING,
+            notes="",
+            get_status_display=lambda: "Ativo",
+        )
+
+        with patch(
+            "apps.needs.services._get_need_response_listings_for_owner",
+            return_value=[listing],
+        ), patch(
+            "apps.needs.services._get_need_response_order_state_listing_ids",
+            return_value=(set(), set(), {listing_id}),
+        ):
+            responses = list_need_responses_for_owner(
+                owner_producer=SimpleNamespace(id="owner-1"),
+                need_id=str(need_id),
+            )
+
+        response = responses[0]
+        self.assertEqual(response.response_status, "COMPLETED")
+        self.assertEqual(response.response_status_label, "Concluída")
+        self.assertFalse(response.can_buy)
+        self.assertFalse(response.can_reject)
+
+    def test_completed_response_is_not_public_active_responder_summary(self):
+        listing_id = uuid4()
+        need_id = uuid4()
+        listing = SimpleNamespace(
+            id=listing_id,
+            need_id=need_id,
+            producer=SimpleNamespace(display_name="Produtor B"),
+            product=SimpleNamespace(name="Tomate", unit="kg"),
+            stock_id="stock-1",
+            forecast_id=None,
+            quantity_available=Decimal("5.000"),
+            unit_price=Decimal("2.50"),
+            status=ListingStatus.ACTIVE,
+            need_response_status=NeedResponseStatus.PENDING,
+            notes="",
+            get_status_display=lambda: "Ativo",
+        )
+        qs = MagicMock()
+        qs.filter.return_value.order_by.return_value = [listing]
+
+        with (
+            patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
+            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
+        ):
+            summaries = get_need_response_summaries_for_responder(
+                responder_producer=SimpleNamespace(id="seller-1"),
+                need_ids=[need_id],
+            )
+
+        self.assertIsNone(summaries.get(str(need_id)))
+
+    def test_sent_need_responses_are_explicit_history_rows(self):
+        listing_id = uuid4()
+        need_id = uuid4()
+        listing = SimpleNamespace(
+            id=listing_id,
+            need_id=need_id,
+            need=SimpleNamespace(producer=SimpleNamespace(display_name="Produtor A")),
+            producer=SimpleNamespace(display_name="Produtor B"),
+            product=SimpleNamespace(name="Tomate", unit="kg"),
+            stock_id="stock-1",
+            forecast_id=None,
+            quantity_available=Decimal("5.000"),
+            unit_price=Decimal("2.50"),
+            status=ListingStatus.ACTIVE,
+            need_response_status=NeedResponseStatus.PENDING,
+            notes="",
+            get_status_display=lambda: "Ativo",
+        )
+        qs = MagicMock()
+        qs.filter.return_value.exclude.return_value.order_by.return_value = [listing]
+
+        with (
+            patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
+            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
+        ):
+            responses = list_need_responses_for_responder(
+                responder_producer=SimpleNamespace(id="seller-1"),
+            )
+
+        response = responses[0]
+        self.assertEqual(response.need_owner_label, "Produtor A")
+        self.assertEqual(response.response_status, "COMPLETED")
 
     def test_reject_need_response_marks_response_and_closes_listing(self):
         owner = SimpleNamespace(id="owner-1")
@@ -542,6 +644,7 @@ class NeedsServiceTests(SimpleTestCase):
             patch("apps.needs.views.get_critical_stock_product_ids", return_value={"product-1"}),
             patch("apps.needs.views.get_need_response_counts_for_owner", return_value={"need-1": 1}),
             patch("apps.needs.views.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
+            patch("apps.needs.views.list_need_responses_for_responder", return_value=[past_response]) as sent_responses,
         ):
             context = build_needs_index_context(
                 SimpleNamespace(id="owner-1"),
@@ -556,6 +659,8 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(context["active_need_response_rows"], [active_response])
         self.assertEqual(context["past_need_response_rows"], [past_response])
         self.assertEqual(context["all_past_need_response_rows"], [past_response])
+        self.assertEqual(context["received_past_need_response_rows"], [past_response])
+        self.assertEqual(context["sent_past_need_response_rows"], [past_response])
         self.assertTrue(context["need_products"][0].is_critical_stock)
         responses.assert_any_call(
             owner_producer=SimpleNamespace(id="owner-1"),
@@ -563,3 +668,4 @@ class NeedsServiceTests(SimpleTestCase):
             category_id="",
             need_id="need-1",
         )
+        sent_responses.assert_called_once()

@@ -27,6 +27,7 @@ from apps.needs.services import (
     get_need_response_counts_for_owner,
     ignore_need,
     list_need_responses_for_owner,
+    list_need_responses_for_responder,
     list_marketplace_my_needs,
     list_marketplace_public_needs,
     reject_need_response,
@@ -73,6 +74,10 @@ def build_selected_need_row(need):
         "completed_qty": coverage["completed_qty"],
         "remaining_to_plan": coverage["remaining_to_plan"],
         "remaining_to_receive": coverage["remaining_to_receive"],
+        "planned_excess_qty": max(
+            coverage["planned_qty"] - coverage["required_quantity"],
+            Decimal("0.000"),
+        ),
     }
 
 
@@ -192,6 +197,19 @@ def build_needs_index_context(
         response for response in all_need_response_rows
         if response.response_status != "PENDING"
     ]
+    sent_need_response_rows = (
+        list_need_responses_for_responder(
+            responder_producer=producer,
+            q=q,
+            category_id=category_id,
+        )
+        if producer
+        else []
+    )
+    sent_past_need_response_rows = [
+        response for response in sent_need_response_rows
+        if response.response_status != "PENDING"
+    ]
 
     return {
         "page_title": "Necessidades",
@@ -204,6 +222,8 @@ def build_needs_index_context(
         "active_need_response_rows": active_need_response_rows,
         "past_need_response_rows": past_need_response_rows,
         "all_past_need_response_rows": all_past_need_response_rows,
+        "received_past_need_response_rows": all_past_need_response_rows,
+        "sent_past_need_response_rows": sent_past_need_response_rows,
         "selected_need_id": validated_need_id,
         "selected_need_row": selected_need_row,
         "need_prefill_product_id": need_prefill_product_id,
