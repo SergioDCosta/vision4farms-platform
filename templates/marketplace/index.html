@@ -269,7 +269,7 @@
             </div>
           </div>
 
-          <div class="mk-card__footer">
+          <div class="mk-card__footer mk-card__footer--inline">
             <a href="{% url 'marketplace:detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
                hx-get="{% url 'marketplace:detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
                hx-target="#shellMain"
@@ -741,10 +741,15 @@
   border-top: 1px solid #e2e8f0;
 }
 
+.mk-card__footer--inline {
+  flex-direction: row;
+}
+
 .mk-card__footer > a,
 .mk-card__footer > form,
 .mk-card__footer > button {
   width: 100%;
+  min-width: 0;
 }
 
 .mk-card__footer form {
@@ -847,6 +852,9 @@
     grid-template-columns: 1fr;
   }
 
+  .mk-card__footer--inline {
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 780px) {
