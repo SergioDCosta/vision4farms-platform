@@ -7,9 +7,9 @@
     {% if max_quantity <= 0 %}
       Sem stock disponível neste anúncio.
     {% elif has_user_quantity_input and is_quantity_clamped %}
-      Quantidade ajustada para {{ quantity|floatformat:"-3" }} {{ listing.product.unit }}.
+      Quantidade ajustada para {{ quantity|quantity }} {{ listing.product.unit }}.
     {% else %}
-      Máx: {{ max_quantity|floatformat:"-3" }} {{ listing.product.unit }}
+      Máx: {{ max_quantity|quantity }} {{ listing.product.unit }}
     {% endif %}
   </p>
 </div>

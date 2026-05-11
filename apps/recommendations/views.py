@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.common.decorators import login_required, client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
+from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import NeedSourceSystem
 from apps.needs.services import create_or_update_need
 from apps.orders.services import (
@@ -107,7 +108,13 @@ def _remaining_deficit_from_recommendation(recommendation):
     return max(Decimal(str(deficit)), Decimal("0.000"))
 
 
-def _build_step_2_context(recommendation, *, market_options_expanded=False, alternative_items=None):
+def _build_step_2_context(
+    recommendation,
+    *,
+    market_options_expanded=False,
+    alternative_items=None,
+    need_prompt=None,
+):
     selected_items = get_selected_items(recommendation)
     remaining_deficit = _remaining_deficit_from_recommendation(recommendation)
     return {
@@ -118,6 +125,7 @@ def _build_step_2_context(recommendation, *, market_options_expanded=False, alte
         "market_options_expanded": market_options_expanded,
         "alternative_items": alternative_items or [],
         "can_accept": selected_items.exists(),
+        "need_prompt": need_prompt,
     }
 
 
@@ -345,7 +353,24 @@ def recommendations_create_need_view(request, recommendation_id):
     recommendation.save(update_fields=["need", "updated_at"])
     _sync_alerts_after_need_change(producer, request.current_user)
 
-    updated_context = _build_step_2_context(recommendation)
+    need_url = build_needs_index_url(
+        selected_need_id=str(need.id),
+    )
+    updated_context = _build_step_2_context(
+        recommendation,
+        need_prompt={
+            "title": "Necessidade criada" if created else "Necessidade atualizada",
+            "message": (
+                "A necessidade foi anunciada com o défice que ficou por cobrir. Quer abrir agora o detalhe desse pedido?"
+                if created
+                else "A necessidade associada foi atualizada com o défice mais recente. Quer abrir agora o detalhe desse pedido?"
+            ),
+            "url": need_url,
+            "product_name": recommendation.product.name,
+            "quantity": remaining_deficit,
+            "unit": recommendation.product.unit,
+        },
+    )
     response = _render_wizard(request, updated_context)
     return with_htmx_toast(
         response,

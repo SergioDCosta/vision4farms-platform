@@ -28,7 +28,7 @@
                 </div>
               {% endif %}
             </td>
-            <td>{{ listing.quantity_available|floatformat:"-3" }} {{ listing.product.unit }}</td>
+            <td>{{ listing.quantity_available|quantity }} {{ listing.product.unit }}</td>
             <td>{{ listing.unit_price|floatformat:2 }} €/{{ listing.product.unit }}</td>
             <td>
               {% if listing.delivery_mode %}

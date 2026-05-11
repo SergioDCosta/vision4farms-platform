@@ -51,26 +51,26 @@
 
   <div class="inv-stat-grid">
     <div class="inv-stat-card">
-      <p class="inv-stat-value">{{ stock.current_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-value">{{ stock.current_quantity|quantity }}</p>
       <p class="inv-stat-label">Stock total ({{ stock.product.unit }})</p>
     </div>
 
     <div class="inv-stat-card">
       <p class="inv-stat-value" style="{% if stock_state.key == 'critical' %}color:#dc2626;{% elif stock_state.key == 'excess' %}color:#16a34a;{% endif %}">
-        {{ stock.available_quantity|floatformat:"-3" }}
+        {{ stock.available_quantity|quantity }}
       </p>
       <p class="inv-stat-label">Disponível</p>
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="color:#d97706;">{{ stock.reserved_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-value" style="color:#d97706;">{{ stock.reserved_quantity|quantity }}</p>
       <p class="inv-stat-label">Reservado</p>
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|floatformat:"-3" }}</p>
+      <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|quantity }}</p>
       <p class="inv-stat-label">Stock de segurança</p>
-      <p class="inv-help" style="margin-top:.35rem;">Limiar de excedente: {{ stock.surplus_threshold|default:0|floatformat:"-3" }} {{ stock.product.unit }}</p>
+      <p class="inv-help" style="margin-top:.35rem;">Limiar de excedente: {{ stock.surplus_threshold|default:0|quantity }} {{ stock.product.unit }}</p>
     </div>
   </div>
 
@@ -105,7 +105,7 @@
     <div class="inv-card-body" style="display:flex;flex-direction:column;gap:.5rem;">
       {% if incoming_forecast_qty and incoming_forecast_qty != 0 %}
         <p class="inv-stat-value" style="font-size:1.35rem;color:#2563eb;margin:0;">
-          {{ incoming_forecast_qty|floatformat:"-3" }} {{ stock.product.unit }}
+          {{ incoming_forecast_qty|quantity }} {{ stock.product.unit }}
         </p>
         <p class="inv-help" style="margin:0;">
           {% if incoming_forecast_period_start or incoming_forecast_period_end %}
@@ -152,7 +152,7 @@
                     <td>{{ item.seller_name }}</td>
                     <td>{{ item.order_status_label }}</td>
                     <td>{{ item.delivery_mode_label|default:"—" }}</td>
-                    <td>{{ item.quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
+                    <td>{{ item.quantity|quantity }} {{ stock.product.unit }}</td>
                     <td>{{ item.listing_unit_price|floatformat:2 }} €/{{ stock.product.unit }}</td>
                     <td>
                       {% if item.period_start or item.period_end %}
@@ -306,9 +306,9 @@
                 <tbody>
                   {% for row in forecast_rows %}
                     <tr>
-                      <td>{{ row.forecast_quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
-                      <td>{{ row.reserved_quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
-                      <td>{{ row.forecast_saleable|floatformat:"-3" }} {{ stock.product.unit }}</td>
+                      <td>{{ row.forecast_quantity|quantity }} {{ stock.product.unit }}</td>
+                      <td>{{ row.reserved_quantity|quantity }} {{ stock.product.unit }}</td>
+                      <td>{{ row.forecast_saleable|quantity }} {{ stock.product.unit }}</td>
                       <td>
                         {% if row.forecast.period_start or row.forecast.period_end %}
                           {% if row.forecast.period_start %}{{ row.forecast.period_start|date:"d/m/Y" }}{% else %}—{% endif %}

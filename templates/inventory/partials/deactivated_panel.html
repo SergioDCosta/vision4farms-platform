@@ -71,10 +71,10 @@
 
                       <td>
                         {% if row.stock %}
-                          <span class="inv-value">{{ row.stock.current_quantity|default:0|floatformat:"-3" }}</span>
+                          <span class="inv-value">{{ row.stock.current_quantity|default:0|quantity }}</span>
                           <span class="inv-unit">{{ row.product.unit }}</span>
                           <span class="inv-subvalue">
-                            Reservado: {{ row.stock.reserved_quantity|default:0|floatformat:"-3" }} {{ row.product.unit }}
+                            Reservado: {{ row.stock.reserved_quantity|default:0|quantity }} {{ row.product.unit }}
                           </span>
                         {% else %}
                           <span class="inv-subvalue">Sem registo de stock</span>

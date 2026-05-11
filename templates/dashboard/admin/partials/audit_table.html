@@ -3,41 +3,133 @@
     <table class="adm-table">
       <thead>
         <tr>
+          <th style="width:2.4rem;"></th>
           <th>Data / Hora</th>
           <th>Utilizador</th>
           <th>Ação</th>
           <th>Entidade</th>
-          <th>Notas</th>
+          <th>Detalhes</th>
           <th>IP</th>
+          <th>Dispositivo</th>
         </tr>
       </thead>
       <tbody>
-        {% for log in logs %}
-        <tr>
-          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;">
-            {{ log.created_at|date:"d/m/Y H:i" }}
+        {% for row in audit_rows %}
+        <tr
+          class="adm-audit-row"
+          tabindex="0"
+          role="button"
+          aria-expanded="false"
+          data-detail-target="audit-detail-{{ row.log.id }}"
+          onclick="window.toggleAuditRow(this)"
+          onkeydown="window.handleAuditRowKeydown(event, this)"
+        >
+          <td>
+            <i class="bi bi-chevron-right adm-audit-chevron"></i>
           </td>
-          <td style="font-size:.84rem;">
-            {% if log.user %}
-              {{ log.user.first_name }} {{ log.user.last_name }}
-            {% else %}
-              Sistema
-            {% endif %}
+          <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;">
+            {{ row.log.created_at|date:"d/m/Y H:i" }}
+          </td>
+          <td style="font-size:.84rem;color:#334155;white-space:nowrap;">
+            {{ row.actor_label }}
           </td>
           <td>
-            <span style="display:inline-block;padding:.15rem .6rem;border-radius:.4rem;background:#f1f5f9;color:#374151;font-size:.75rem;font-weight:600;">
-              {{ log.action }}
+            <span style="display:inline-block;padding:.15rem .6rem;border-radius:.4rem;background:#f1f5f9;color:#374151;font-size:.75rem;font-weight:700;">
+              {{ row.action_label }}
             </span>
           </td>
-          <td style="font-size:.8rem;color:#64748b;">{{ log.entity_type|default:"—" }}</td>
-          <td style="font-size:.8rem;color:#64748b;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ log.notes }}">
-            {{ log.notes|default:"—" }}
+          <td style="font-size:.8rem;color:#64748b;">{{ row.log.entity_type|default:"—" }}</td>
+          <td style="font-size:.8rem;color:#64748b;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.log.notes|default:'' }}">
+            {% if row.log.notes %}
+              {{ row.log.notes }}
+            {% elif row.changes %}
+              {% if row.changes|length == 1 %}
+                1 alteração
+              {% else %}
+                {{ row.changes|length }} alterações
+              {% endif %}
+            {% else %}
+              —
+            {% endif %}
           </td>
-          <td style="font-size:.78rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ log.ip_address|default:"—" }}</td>
+          <td style="font-size:.78rem;color:#94a3b8;font-family:'DM Mono',monospace;white-space:nowrap;">{{ row.log.ip_address|default:"—" }}</td>
+          <td style="font-size:.8rem;color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.device_label }}">
+            {{ row.device_label }}
+          </td>
+        </tr>
+        <tr id="audit-detail-{{ row.log.id }}" class="adm-audit-detail-row" hidden>
+          <td colspan="8">
+            <div class="adm-audit-detail">
+              <div class="adm-audit-detail-box">
+                <div class="adm-audit-detail-section">
+                  <h4 class="adm-audit-detail-title">Informação do evento</h4>
+
+                  {% if row.log.notes %}
+                    <div class="adm-audit-note">{{ row.log.notes }}</div>
+                  {% else %}
+                    <div class="adm-audit-note">Sem notas adicionais.</div>
+                  {% endif %}
+                </div>
+
+                {% if row.changes %}
+                  <div class="adm-audit-detail-section">
+                    <h4 class="adm-audit-detail-title">Alterações registadas</h4>
+                    <div class="adm-audit-change-list">
+                      {% for change in row.changes %}
+                        <div class="adm-audit-change">
+                          <strong>{{ change.label }}</strong>
+                          <div class="adm-audit-change-values">
+                            <span class="adm-audit-change-value">{{ change.old }}</span>
+                            <i class="bi bi-arrow-right-short"></i>
+                            <span class="adm-audit-change-value">{{ change.new }}</span>
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="adm-audit-detail-box">
+                <div class="adm-audit-detail-section">
+                  <h4 class="adm-audit-detail-title">Contexto técnico</h4>
+                  <div class="adm-audit-meta-grid">
+                  <div class="adm-audit-meta-item">
+                    <div class="adm-audit-meta-label">Ação técnica</div>
+                    <div class="adm-audit-meta-value">{{ row.log.action }}</div>
+                  </div>
+                  <div class="adm-audit-meta-item">
+                    <div class="adm-audit-meta-label">Autor</div>
+                    <div class="adm-audit-meta-value">{{ row.actor_label }}</div>
+                  </div>
+                  <div class="adm-audit-meta-item adm-audit-meta-item--wide">
+                    <div class="adm-audit-meta-label">Entidade</div>
+                    <div class="adm-audit-meta-value">
+                      {{ row.log.entity_type|default:"—" }}
+                      {% if row.log.entity_id %}<br>{{ row.log.entity_id }}{% endif %}
+                    </div>
+                  </div>
+                  <div class="adm-audit-meta-item">
+                    <div class="adm-audit-meta-label">IP</div>
+                    <div class="adm-audit-meta-value">{{ row.log.ip_address|default:"—" }}</div>
+                  </div>
+                  <div class="adm-audit-meta-item">
+                    <div class="adm-audit-meta-label">Dispositivo</div>
+                    <div class="adm-audit-meta-value">{{ row.device_label }}</div>
+                  </div>
+                  <div class="adm-audit-meta-item adm-audit-meta-item--wide">
+                    <div class="adm-audit-meta-label">User-Agent</div>
+                    <div class="adm-audit-meta-value">{{ row.log.user_agent|default:"—" }}</div>
+                  </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="6">
+          <td colspan="8">
             <div class="adm-empty">
               <i class="bi bi-journal-x"></i>
               <p>Sem registos de auditoria.</p>
@@ -48,4 +140,57 @@
       </tbody>
     </table>
   </div>
+
+  {% if page_obj.paginator.count %}
+  <div class="adm-pagination">
+    <span style="margin-right:auto;font-size:.8rem;color:#64748b;">
+      A mostrar {{ page_obj.start_index }}-{{ page_obj.end_index }} de {{ page_obj.paginator.count }} registos.
+    </span>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    {% if page_obj.has_previous %}
+      <a
+        href="?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ page_obj.previous_page_number }}"
+        class="adm-page-btn"
+        hx-get="{% url 'dashboard:gestor_auditoria' %}?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ page_obj.previous_page_number }}"
+        hx-target="#audit-table"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >
+        <i class="bi bi-chevron-left"></i>
+      </a>
+    {% endif %}
+
+    {% for n in page_range %}
+      {% if n %}
+        <a
+          href="?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ n }}"
+          class="adm-page-btn {% if page_obj.number == n %}adm-page-btn--active{% endif %}"
+          hx-get="{% url 'dashboard:gestor_auditoria' %}?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ n }}"
+          hx-target="#audit-table"
+          hx-swap="outerHTML"
+          hx-push-url="true"
+        >
+          {{ n }}
+        </a>
+      {% else %}
+        <span class="adm-page-btn" style="pointer-events:none;opacity:.55;">...</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <a
+        href="?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ page_obj.next_page_number }}"
+        class="adm-page-btn"
+        hx-get="{% url 'dashboard:gestor_auditoria' %}?q={{ q|urlencode }}&per_page={{ per_page }}&page={{ page_obj.next_page_number }}"
+        hx-target="#audit-table"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >
+        <i class="bi bi-chevron-right"></i>
+      </a>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
 </div>

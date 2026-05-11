@@ -151,7 +151,7 @@
 
             <div class="mk-stock-box">
               <p>Quantidade disponível</p>
-              <strong>{{ item.quantity_available|floatformat:"-3" }} <span>{{ item.product.unit }}</span></strong>
+              <strong>{{ item.quantity_available|quantity }} <span>{{ item.product.unit }}</span></strong>
               {% if item.source_period %}
                 <p class="mk-source-period">{{ item.source_period }}</p>
               {% endif %}
@@ -262,7 +262,7 @@
 
             <div class="mk-stock-box">
               <p>Quantidade disponível</p>
-              <strong>{{ item.quantity_available|floatformat:"-3" }} <span>{{ item.product.unit }}</span></strong>
+              <strong>{{ item.quantity_available|quantity }} <span>{{ item.product.unit }}</span></strong>
               {% if item.source_period %}
                 <p class="mk-source-period">{{ item.source_period }}</p>
               {% endif %}

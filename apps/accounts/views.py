@@ -7,6 +7,7 @@ from django.shortcuts import render, redirect
 from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
 
+from apps.common.audit import describe_user_agent, log_audit_event
 from apps.accounts.forms import (
     LoginForm,
     RegisterForm,
@@ -99,6 +100,19 @@ def login_view(request):
                 user.save(update_fields=["last_login", "updated_at"])
 
                 login_user_manual(request, user, remember_me=remember_me)
+                device = describe_user_agent(request.META.get("HTTP_USER_AGENT"))
+                log_audit_event(
+                    request=request,
+                    user=user,
+                    action="USER_LOGIN",
+                    entity_type="users",
+                    entity_id=user.id,
+                    notes=f"Início de sessão em {device['label']}.",
+                    new_values={
+                        "device": device,
+                        "remember_me": bool(remember_me),
+                    },
+                )
 
                 if user.role == "ADMIN":
                     return redirect("dashboard:gestor")
@@ -240,6 +254,18 @@ def password_reset_confirm_view(request, token):
         token_obj.user.password = make_password(form.cleaned_data["password"])
         token_obj.user.updated_at = timezone.now()
         token_obj.user.save(update_fields=["password", "updated_at"])
+        log_audit_event(
+            request=request,
+            user=token_obj.user,
+            action="USER_PASSWORD_RESET_COMPLETED",
+            entity_type="users",
+            entity_id=token_obj.user.id,
+            notes="Utilizador redefiniu a palavra-passe através da recuperação de conta.",
+            new_values={
+                "password_reset_completed": True,
+                "sessions_invalidated": True,
+            },
+        )
 
         token_obj.used_at = timezone.now()
         token_obj.save(update_fields=["used_at"])

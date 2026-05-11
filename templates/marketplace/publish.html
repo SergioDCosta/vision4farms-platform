@@ -49,9 +49,9 @@
                   <span>Quantidade ainda por receber</span>
                   <strong>
                     {% if publish_need_coverage %}
-                      {{ publish_need_coverage.remaining_to_receive|floatformat:"-3" }} {{ publish_need.product.unit }}
+                      {{ publish_need_coverage.remaining_to_receive|quantity }} {{ publish_need.product.unit }}
                     {% else %}
-                      {{ publish_need.required_quantity|floatformat:"-3" }} {{ publish_need.product.unit }}
+                      {{ publish_need.required_quantity|quantity }} {{ publish_need.product.unit }}
                     {% endif %}
                   </strong>
                 </p>
@@ -116,7 +116,7 @@
                 <span>Qtd.</span>
               </div>
               {% if forecast_quantity_limit is not None %}
-                <div class="mkp-help">Máximo para esta pré-venda: {{ forecast_quantity_limit|floatformat:"-3" }} (quantidade prevista disponível).</div>
+                <div class="mkp-help">Máximo para esta pré-venda: {{ forecast_quantity_limit|quantity }} (quantidade prevista disponível).</div>
               {% endif %}
               {% if is_need_prefill_flow and publish_need and publish_need_coverage %}
                 <div class="mkp-form-notice mkp-form-notice--warning"
@@ -337,12 +337,12 @@
                   </div>
                   <div class="mkp-summary-item__meta">
                     {% if row.source == "forecast" %}
-                      <span>Previsto: {{ row.current_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                      <span>Previsto: {{ row.current_quantity|quantity }} {{ row.product.unit }}</span>
                     {% else %}
-                      <span>Stock: {{ row.current_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                      <span>Stock: {{ row.current_quantity|quantity }} {{ row.product.unit }}</span>
                     {% endif %}
-                    <span>Reservado: {{ row.reserved_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
-                    <span>Publicável: {{ row.publishable_quantity|floatformat:"-3" }} {{ row.product.unit }}</span>
+                    <span>Reservado: {{ row.reserved_quantity|quantity }} {{ row.product.unit }}</span>
+                    <span>Publicável: {{ row.publishable_quantity|quantity }} {{ row.product.unit }}</span>
                     {% if row.period_start or row.period_end %}
                       <span>
                         Período:

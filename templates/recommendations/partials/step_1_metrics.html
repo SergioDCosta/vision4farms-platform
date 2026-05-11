@@ -10,7 +10,7 @@
       <i class="bi bi-box-seam"></i>
       <span>Quantidade atual</span>
     </p>
-    <p class="rec-step1-kpi__value">{{ initial_current_quantity|default:"0"|floatformat:"-3" }}</p>
+    <p class="rec-step1-kpi__value">{{ initial_current_quantity|default:"0"|quantity }}</p>
     <p class="rec-step1-kpi__hint">Stock disponível neste momento para o produto selecionado.</p>
   </article>
 
@@ -19,7 +19,7 @@
       <i class="bi bi-exclamation-octagon"></i>
       <span>Défice atual</span>
     </p>
-    <p class="rec-step1-kpi__value">{{ initial_deficit_quantity|default:"0"|floatformat:"-3" }}</p>
+    <p class="rec-step1-kpi__value">{{ initial_deficit_quantity|default:"0"|quantity }}</p>
     <p class="rec-step1-kpi__hint">Défice é o valor de stock necessário para atender a demanda (requisitos mínimos).</p>
   </article>
 </div>

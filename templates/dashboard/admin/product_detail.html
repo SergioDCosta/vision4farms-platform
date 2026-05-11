@@ -130,14 +130,14 @@
                 </td>
                 <td style="font-size:.84rem;color:#0f172a;font-weight:700;">
                   {% if row.stock %}
-                    {{ row.stock.current_quantity|floatformat:"-3" }} {{ product_obj.unit }}
+                    {{ row.stock.current_quantity|quantity }} {{ product_obj.unit }}
                   {% else %}
                     —
                   {% endif %}
                 </td>
                 <td style="padding-right:1.25rem;font-size:.84rem;color:#64748b;">
                   {% if row.stock %}
-                    {{ row.stock.reserved_quantity|floatformat:"-3" }} {{ product_obj.unit }}
+                    {{ row.stock.reserved_quantity|quantity }} {{ product_obj.unit }}
                   {% else %}
                     —
                   {% endif %}

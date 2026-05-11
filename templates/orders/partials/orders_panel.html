@@ -75,7 +75,7 @@
 
             {% for item in order.items.all|slice:":3" %}
               <p>
-                {{ item.product.name }} — {{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}
+                {{ item.product.name }} — {{ item.quantity|quantity }} {{ item.product.unit }}
                 <span>({{ item.get_item_status_display }})</span>
               </p>
             {% endfor %}
@@ -211,7 +211,7 @@
             {% else %}
               {% for item in entry.order.items.all|slice:":3" %}
                 <p>
-                  {{ item.product.name }} — {{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}
+                  {{ item.product.name }} — {{ item.quantity|quantity }} {{ item.product.unit }}
                   <span>({{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:item.seller_producer.user.email }})</span>
                 </p>
               {% endfor %}

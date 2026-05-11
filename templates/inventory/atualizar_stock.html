@@ -21,22 +21,22 @@
 
   <div class="inv-stat-grid">
     <div class="inv-stat-card">
-      <p class="inv-stat-value">{{ stock.current_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-value">{{ stock.current_quantity|quantity }}</p>
       <p class="inv-stat-label">Stock atual</p>
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="color:#16a34a;">{{ stock.available_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-value" style="color:#16a34a;">{{ stock.available_quantity|quantity }}</p>
       <p class="inv-stat-label">Disponível</p>
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="color:#d97706;">{{ stock.reserved_quantity|floatformat:"-3" }}</p>
+      <p class="inv-stat-value" style="color:#d97706;">{{ stock.reserved_quantity|quantity }}</p>
       <p class="inv-stat-label">Reservado</p>
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|floatformat:"-3" }}</p>
+      <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|quantity }}</p>
       <p class="inv-stat-label">Stock de segurança</p>
     </div>
   </div>
@@ -152,7 +152,7 @@
           </div>
           <div>
             <div class="inv-help">Reservado</div>
-            <div style="font-weight:700;color:#0f172a;">{{ stock.reserved_quantity|floatformat:"-3" }} {{ stock.product.unit }}</div>
+            <div style="font-weight:700;color:#0f172a;">{{ stock.reserved_quantity|quantity }} {{ stock.product.unit }}</div>
           </div>
           <div>
             <div class="inv-help">Regra importante</div>

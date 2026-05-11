@@ -39,7 +39,7 @@
               <div class="adm-pie-legend-item">
                 <span class="adm-pie-dot" style="background: {{ slice.color }};"></span>
                 <span class="adm-pie-label">{{ slice.label }}</span>
-                <span class="adm-pie-value">{{ slice.quantity|floatformat:"-3" }} kg ({{ slice.percentage|floatformat:1 }}%)</span>
+                <span class="adm-pie-value">{{ slice.quantity|quantity }} kg ({{ slice.percentage|floatformat:1 }}%)</span>
               </div>
             {% endfor %}
           </div>
@@ -47,13 +47,13 @@
 
         <div class="adm-top-products">
           <h4>Categoria líder: {{ top_category_label }}</h4>
-          <p>Total vendido: {{ top_category_total_qty|floatformat:"-3" }}</p>
+          <p>Total vendido: {{ top_category_total_qty|quantity }}</p>
           {% if top_category_products %}
             <ul>
               {% for product in top_category_products %}
                 <li>
                   <span>{{ product.product__name }}</span>
-                  <strong>{{ product.total_qty|floatformat:"-3" }} {{ product.product__unit }}</strong>
+                  <strong>{{ product.total_qty|quantity }} {{ product.product__unit }}</strong>
                 </li>
               {% endfor %}
             </ul>

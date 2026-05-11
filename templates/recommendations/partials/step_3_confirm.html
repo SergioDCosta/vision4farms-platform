@@ -12,7 +12,7 @@
       </div>
       <div class="rec-stat">
         <p class="rec-stat__label">Quantidade total</p>
-        <p class="rec-stat__value">{{ selected_total_quantity|floatformat:"-3" }}</p>
+        <p class="rec-stat__value">{{ selected_total_quantity|quantity }}</p>
       </div>
       <div class="rec-stat">
         <p class="rec-stat__label">Produtores</p>
@@ -27,7 +27,7 @@
     {% if recommendation.deficit_quantity and recommendation.deficit_quantity > 0 %}
       <div class="rec-info rec-info--warning">
         Atenção: a recomendação continua com défice parcial de
-        <strong>{{ recommendation.deficit_quantity|floatformat:"-3" }}</strong>
+        <strong>{{ recommendation.deficit_quantity|quantity }}</strong>
         {{ recommendation.product.unit }}.
       </div>
     {% endif %}
@@ -48,7 +48,7 @@
               <td>
                 <strong>{{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:"Produtor" }}</strong>
               </td>
-              <td>{{ item.suggested_quantity|floatformat:"-3" }} {{ item.product.unit }}</td>
+              <td>{{ item.suggested_quantity|quantity }} {{ item.product.unit }}</td>
               <td>{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</td>
               <td><strong>{{ item.subtotal|floatformat:2 }} €</strong></td>
             </tr>

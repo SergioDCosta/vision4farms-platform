@@ -69,7 +69,7 @@
           <div class="mkd-stats">
             <div class="mkd-stat">
               <p>Disponível</p>
-              <strong>{{ listing.quantity_available|floatformat:"-3" }} <span>{{ listing.product.unit }}</span></strong>
+              <strong>{{ listing.quantity_available|quantity }} <span>{{ listing.product.unit }}</span></strong>
             </div>
             <div class="mkd-stat">
               <p>Preço unitário</p>
@@ -194,7 +194,7 @@
 
         {% if linked_need and linked_need_remaining %}
           <div class="mkd-total-hint" style="text-align:left;margin-top:.2rem;">
-            Compra associada à necessidade anunciada (em falta {{ linked_need_remaining|floatformat:"-3" }} {{ listing.product.unit }}).
+            Compra associada à necessidade anunciada (em falta {{ linked_need_remaining|quantity }} {{ listing.product.unit }}).
           </div>
         {% endif %}
 

@@ -10,6 +10,8 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from apps.common.decorators import login_required
+from apps.common.audit import log_audit_event
+from apps.accounts.services import send_password_changed_email
 from apps.accounts.models import UserRole
 from apps.inventory.models import ProducerProfile
 from apps.settings_app.forms import (
@@ -73,6 +75,16 @@ def _user_initials(user):
     last_initial = (user.last_name or "").strip()[:1]
     initials = f"{first_initial}{last_initial}".upper()
     return initials or "U"
+
+
+def _settings_snapshot(instance, fields):
+    snapshot = {}
+    for field in fields:
+        value = getattr(instance, field, None)
+        if field == "profile_photo":
+            value = str(value or "")
+        snapshot[field] = value
+    return snapshot
 
 
 def _save_profile_photo(user, uploaded_file):
@@ -169,6 +181,11 @@ def settings_view(request):
             account_form = AccountProfileForm(request.POST, user=user)
             if account_form.is_valid():
                 changed_fields = []
+                old_values = {
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "email": user.email,
+                }
                 first_name = account_form.cleaned_data["first_name"]
                 last_name = account_form.cleaned_data["last_name"]
 
@@ -184,6 +201,29 @@ def settings_view(request):
                     user.updated_at = timezone.now()
                     user.save(update_fields=changed_fields + ["updated_at"])
                     request.session["user_name"] = user.full_name
+                    changed_labels = {
+                        "first_name": "primeiro nome",
+                        "last_name": "último nome",
+                        "email": "email",
+                    }
+                    log_audit_event(
+                        request=request,
+                        user=user,
+                        action="USER_PROFILE_UPDATED",
+                        entity_type="users",
+                        entity_id=user.id,
+                        notes=(
+                            "Utilizador atualizou dados da conta: "
+                            + ", ".join(changed_labels.get(field, field) for field in changed_fields)
+                            + "."
+                        ),
+                        old_values=old_values,
+                        new_values={
+                            "first_name": user.first_name,
+                            "last_name": user.last_name,
+                            "email": user.email,
+                        },
+                    )
                     messages.success(request, "Dados da conta atualizados com sucesso.")
                 else:
                     messages.info(request, "Não foram detetadas alterações nos dados da conta.")
@@ -200,11 +240,22 @@ def settings_view(request):
             producer_profile_form = ProducerProfileSettingsForm(request.POST, instance=producer_profile)
             if producer_profile_form.is_valid():
                 changed_fields = list(producer_profile_form.changed_data)
+                old_values = _settings_snapshot(producer_profile, changed_fields)
 
                 if changed_fields:
                     updated_profile = producer_profile_form.save(commit=False)
                     updated_profile.updated_at = timezone.now()
                     updated_profile.save(update_fields=changed_fields + ["updated_at"])
+                    log_audit_event(
+                        request=request,
+                        user=user,
+                        action="USER_PRODUCER_PROFILE_UPDATED",
+                        entity_type="producer_profiles",
+                        entity_id=producer_profile.id,
+                        notes="Utilizador atualizou o perfil de produtor.",
+                        old_values=old_values,
+                        new_values=_settings_snapshot(updated_profile, changed_fields),
+                    )
                     messages.success(request, "Perfil de produtor atualizado com sucesso.")
                 else:
                     messages.info(request, "Não foram detetadas alterações no perfil de produtor.")
@@ -220,6 +271,16 @@ def settings_view(request):
                 preference.updated_at = timezone.now()
                 preference.save(update_fields=["profile_photo", "updated_at"])
                 _delete_profile_photo(old_photo)
+                log_audit_event(
+                    request=request,
+                    user=user,
+                    action="USER_PROFILE_PHOTO_REMOVED",
+                    entity_type="user_preferences",
+                    entity_id=preference.id,
+                    notes="Utilizador removeu a foto de perfil.",
+                    old_values={"profile_photo": str(old_photo or "")},
+                    new_values={"profile_photo": ""},
+                )
                 messages.success(request, "Foto de perfil removida com sucesso.")
             else:
                 messages.info(request, "Não existe foto de perfil para remover.")
@@ -240,6 +301,7 @@ def settings_view(request):
                     field for field in preferences_form.changed_data
                     if field in allowed_model_fields
                 ]
+                previous_preference_values = _settings_snapshot(preference, allowed_model_fields)
 
                 uploaded_photo = request.FILES.get("profile_photo")
                 old_photo = preference.profile_photo if uploaded_photo else None
@@ -255,6 +317,10 @@ def settings_view(request):
                         changed_fields.append("profile_photo")
 
                 if changed_fields:
+                    old_values = {
+                        field: previous_preference_values.get(field)
+                        for field in changed_fields
+                    }
                     updated_preference.updated_at = timezone.now()
 
                     update_fields = list(set(changed_fields + ["updated_at"]))
@@ -270,6 +336,16 @@ def settings_view(request):
                     if new_photo_path and old_photo and old_photo != new_photo_path:
                         _delete_profile_photo(old_photo)
 
+                    log_audit_event(
+                        request=request,
+                        user=user,
+                        action="USER_PREFERENCES_UPDATED",
+                        entity_type="user_preferences",
+                        entity_id=preference.id,
+                        notes="Utilizador atualizou preferências da conta.",
+                        old_values=old_values,
+                        new_values=_settings_snapshot(updated_preference, changed_fields),
+                    )
                     messages.success(request, "Preferências atualizadas com sucesso.")
                 else:
                     messages.info(request, "Não foram detetadas alterações nas preferências.")
@@ -291,8 +367,25 @@ def settings_view(request):
                     user.password = make_password(new_password)
                     user.updated_at = timezone.now()
                     user.save(update_fields=["password", "updated_at"])
-                    messages.success(request, "Palavra-passe alterada com sucesso.")
-                    return redirect("settings_app:settings_index")
+                    log_audit_event(
+                        request=request,
+                        user=user,
+                        action="USER_PASSWORD_CHANGED",
+                        entity_type="users",
+                        entity_id=user.id,
+                        notes="Utilizador alterou a palavra-passe nas definições.",
+                        new_values={
+                            "password_changed": True,
+                            "sessions_invalidated": True,
+                        },
+                    )
+                    send_password_changed_email(request, user, async_send=True)
+                    request.session.flush()
+                    messages.success(
+                        request,
+                        "Palavra-passe alterada com sucesso. Por segurança, inicia sessão novamente.",
+                    )
+                    return redirect("accounts:login")
             else:
                 messages.error(request, "Não foi possível alterar a palavra-passe. Verifica os campos.")
         else:

@@ -12,7 +12,11 @@ class SessionUserMiddleware:
         if user_id:
             user = User.objects.filter(id=user_id).first()
             if user and user.is_active and user.account_status == AccountStatus.ACTIVE:
-                request.current_user = user
+                session_password_hash = request.session.get("user_password_hash")
+                if session_password_hash and session_password_hash == user.password:
+                    request.current_user = user
+                else:
+                    request.session.flush()
             else:
                 request.session.flush()
 

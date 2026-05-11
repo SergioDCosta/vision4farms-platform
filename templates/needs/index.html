@@ -137,7 +137,7 @@
              class="nd-master-item{% if selected_need_id == row.need.id|stringformat:'s' %} is-selected{% endif %}">
             <span class="nd-master-item__title">{{ row.need.product.name }}</span>
             <span class="nd-master-item__meta">
-              {{ row.remaining_to_plan|floatformat:"-3" }} {{ row.need.product.unit }} em falta
+              {{ row.remaining_to_plan|quantity }} {{ row.need.product.unit }} em falta
             </span>
             <span class="nd-master-item__foot">
               <span class="nd-badge {% if row.status == 'COVERED' %}nd-badge--ok{% elif row.status == 'PARTIALLY_COVERED' %}nd-badge--info{% else %}nd-badge--warn{% endif %}">
@@ -181,17 +181,17 @@
                 <span style="width: {{ selected_need_row.progress_percent|floatformat:'0' }}%;"></span>
               </div>
               <div class="nd-progress__metrics">
-                <span>Necessário <strong>{{ selected_need_row.required_quantity|floatformat:"-3" }} {{ selected_need_row.need.product.unit }}</strong></span>
-                <span>Planeado <strong>{{ selected_need_row.planned_qty|floatformat:"-3" }} {{ selected_need_row.need.product.unit }}</strong></span>
-                <span>Recebido <strong>{{ selected_need_row.completed_qty|floatformat:"-3" }} {{ selected_need_row.need.product.unit }}</strong></span>
-                <span>Em falta <strong>{{ selected_need_row.remaining_to_plan|floatformat:"-3" }} {{ selected_need_row.need.product.unit }}</strong></span>
+                <span>Necessário <strong>{{ selected_need_row.required_quantity|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
+                <span>Planeado <strong>{{ selected_need_row.planned_qty|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
+                <span>Recebido <strong>{{ selected_need_row.completed_qty|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
+                <span>Em falta <strong>{{ selected_need_row.remaining_to_plan|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
               </div>
             </div>
 
             {% if selected_need_row.planned_excess_qty > 0 %}
               <div class="nd-note nd-note--warning">
                 <span>Aviso de quantidade</span>
-                <p>O total planeado excede a quantidade necessária em {{ selected_need_row.planned_excess_qty|floatformat:"-3" }} {{ selected_need_row.need.product.unit }}.</p>
+                <p>O total planeado excede a quantidade necessária em {{ selected_need_row.planned_excess_qty|quantity }} {{ selected_need_row.need.product.unit }}.</p>
               </div>
             {% endif %}
 
@@ -204,22 +204,58 @@
 
             <div class="nd-actions nd-actions--detail">
               <form method="post"
+                    id="nd-ignore-need-form"
                     action="{% url 'needs:ignore' selected_need_row.need.id %}"
                     hx-post="{% url 'needs:ignore' selected_need_row.need.id %}"
                     hx-target="#shellMain"
                     hx-select="#shellMain"
                     hx-swap="outerHTML"
-                    hx-push-url="false"
-                    onsubmit="return confirm('{% if selected_need_row.status == 'COVERED' %}Remover esta necessidade da lista?{% else %}Ignorar esta necessidade?{% endif %}');">
+                    hx-push-url="false">
                 {% csrf_token %}
                 <input type="hidden" name="q" value="{{ q }}">
                 <input type="hidden" name="category" value="{{ selected_category_id }}">
                 <input type="hidden" name="need" value="{{ selected_need_id }}">
                 {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
-                <button type="submit" class="nd-btn nd-btn--ghost">
+                <button type="button"
+                        class="nd-btn nd-btn--ghost"
+                        data-nd-open-ignore-modal>
                   {% if selected_need_row.status == 'COVERED' %}Remover da lista{% else %}Ignorar necessidade{% endif %}
                 </button>
               </form>
+            </div>
+
+            <div class="nd-confirm-modal" id="nd-ignore-need-modal" hidden>
+              <div class="nd-confirm-modal__backdrop" data-nd-close-ignore-modal></div>
+              <div class="nd-confirm-modal__card" role="dialog" aria-modal="true" aria-labelledby="nd-ignore-need-title">
+                <div class="nd-confirm-modal__icon">
+                  <i class="bi {% if selected_need_row.status == 'COVERED' %}bi-archive{% else %}bi-eye-slash{% endif %}"></i>
+                </div>
+                <div class="nd-confirm-modal__body">
+                  <span>{% if selected_need_row.status == 'COVERED' %}Remover necessidade{% else %}Ignorar necessidade{% endif %}</span>
+                  <h3 id="nd-ignore-need-title">
+                    {% if selected_need_row.status == 'COVERED' %}
+                      Remover "{{ selected_need_row.need.product.name }}" da lista?
+                    {% else %}
+                      Ignorar "{{ selected_need_row.need.product.name }}"?
+                    {% endif %}
+                  </h3>
+                  <p>
+                    {% if selected_need_row.status == 'COVERED' %}
+                      A necessidade fica fora da sua lista principal, mas o histórico associado mantém-se disponível.
+                    {% else %}
+                      A necessidade deixa de aparecer nas suas necessidades ativas e deixa de receber novas respostas visíveis.
+                    {% endif %}
+                  </p>
+                </div>
+                <div class="nd-confirm-modal__actions">
+                  <button type="button" class="nd-btn nd-btn--ghost" data-nd-close-ignore-modal>
+                    Cancelar
+                  </button>
+                  <button type="button" class="nd-btn nd-btn--danger" data-nd-confirm-ignore-modal>
+                    {% if selected_need_row.status == 'COVERED' %}Remover{% else %}Ignorar{% endif %}
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -242,7 +278,7 @@
                     <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
                   </div>
                   <div class="nd-metrics nd-metrics--response">
-                    <span>Disponível <strong>{{ response.quantity_available|floatformat:"-3" }} {{ response.product_unit }}</strong></span>
+                    <span>Disponível <strong>{{ response.quantity_available|quantity }} {{ response.product_unit }}</strong></span>
                     <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
                   </div>
                   {% if response.notes %}
@@ -333,8 +369,8 @@
             <span class="nd-badge nd-badge--warn">{{ row.public_status_label }}</span>
           </div>
           <div class="nd-metrics">
-            <span>Quantidade em falta <strong>{{ row.public_quantity|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
-            <span>Oferecido por outros <strong>{{ row.public_offered_quantity|default:0|floatformat:"-3" }} {{ row.need.product.unit }}</strong></span>
+            <span>Quantidade em falta <strong>{{ row.public_quantity|quantity }} {{ row.need.product.unit }}</strong></span>
+            <span>Oferecido por outros <strong>{{ row.public_offered_quantity|default:0|quantity }} {{ row.need.product.unit }}</strong></span>
             {% if row.need.needed_by_date %}
               <span>Data limite <strong>{{ row.need.needed_by_date|date:"d/m/Y" }}</strong></span>
             {% endif %}
@@ -397,7 +433,7 @@
             <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
           </div>
           <div class="nd-metrics nd-metrics--response">
-            <span>Quantidade <strong>{{ response.quantity_available|floatformat:"-3" }} {{ response.product_unit }}</strong></span>
+            <span>Quantidade <strong>{{ response.quantity_available|quantity }} {{ response.product_unit }}</strong></span>
             <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
           </div>
           <div class="nd-note">
@@ -450,7 +486,7 @@
             <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
           </div>
           <div class="nd-metrics nd-metrics--response">
-            <span>Quantidade <strong>{{ response.quantity_available|floatformat:"-3" }} {{ response.product_unit }}</strong></span>
+            <span>Quantidade <strong>{{ response.quantity_available|quantity }} {{ response.product_unit }}</strong></span>
             <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
           </div>
           <div class="nd-note">
@@ -503,6 +539,38 @@
 .nd-btn--soft { background:#f8fafc; }
 .nd-btn--ghost { background:#f1f5f9; }
 .nd-btn--danger { background:#dc2626; border-color:#dc2626; color:#fff; }
+.nd-confirm-modal[hidden] { display:none; }
+.nd-confirm-modal {
+  position:fixed; inset:0; z-index:1300; display:flex; align-items:center; justify-content:center;
+  padding:1rem;
+}
+.nd-confirm-modal__backdrop {
+  position:absolute; inset:0; background:rgba(15,23,42,.42); backdrop-filter:blur(3px);
+}
+.nd-confirm-modal__card {
+  position:relative; width:min(100%, 430px); background:#fff; border:1px solid #e2e8f0;
+  border-radius:.7rem; padding:1rem; box-shadow:0 18px 45px rgba(15,23,42,.2);
+  display:flex; flex-direction:column; gap:.9rem; animation:nd-modal-in .16s ease;
+}
+.nd-confirm-modal__icon {
+  width:2.65rem; height:2.65rem; border-radius:999px; display:flex; align-items:center; justify-content:center;
+  background:#fee2e2; color:#b91c1c; font-size:1.2rem;
+}
+.nd-confirm-modal__body span {
+  display:block; color:#b91c1c; font-size:.72rem; font-weight:900; text-transform:uppercase; letter-spacing:.04em;
+}
+.nd-confirm-modal__body h3 {
+  margin:.2rem 0 0; color:#0f172a; font-size:1.12rem; line-height:1.25; overflow-wrap:anywhere;
+}
+.nd-confirm-modal__body p {
+  margin:.45rem 0 0; color:#475569; font-size:.88rem; line-height:1.5; overflow-wrap:anywhere;
+}
+.nd-confirm-modal__actions { display:flex; justify-content:flex-end; gap:.55rem; flex-wrap:wrap; }
+.nd-confirm-modal__actions .nd-btn { min-width:8rem; }
+@keyframes nd-modal-in {
+  from { opacity:0; transform:translateY(8px) scale(.985); }
+  to { opacity:1; transform:translateY(0) scale(1); }
+}
 .nd-filters {
   display:grid; grid-template-columns:minmax(14rem, 1fr) minmax(12rem, 18rem);
   gap:.75rem; align-items:stretch;
@@ -653,6 +721,45 @@
   .nd-header .nd-btn, .nd-panel__head .nd-btn, .nd-btn { width:100%; }
   .nd-master-item__foot { align-items:flex-start; flex-direction:column; }
   .nd-badge { align-self:flex-start; }
+  .nd-confirm-modal__actions .nd-btn { width:100%; }
 }
 </style>
+<script>
+(function () {
+  function getModal() {
+    return document.getElementById("nd-ignore-need-modal");
+  }
+
+  function closeModal() {
+    const modal = getModal();
+    if (modal) modal.hidden = true;
+  }
+
+  document.body.addEventListener("click", function (event) {
+    const openButton = event.target.closest("[data-nd-open-ignore-modal]");
+    if (openButton) {
+      const modal = getModal();
+      if (modal) modal.hidden = false;
+      return;
+    }
+
+    const closeButton = event.target.closest("[data-nd-close-ignore-modal]");
+    if (closeButton) {
+      closeModal();
+      return;
+    }
+
+    const confirmButton = event.target.closest("[data-nd-confirm-ignore-modal]");
+    if (confirmButton) {
+      const form = document.getElementById("nd-ignore-need-form");
+      closeModal();
+      if (form) form.requestSubmit();
+    }
+  });
+
+  document.body.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeModal();
+  });
+})();
+</script>
 {% endblock %}

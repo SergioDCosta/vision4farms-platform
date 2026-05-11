@@ -192,13 +192,13 @@
               <div class="pnl-stock">
                 <div class="pnl-stock-row">
                   <span class="pnl-stock-name">{{ stock.product.name }}</span>
-                  <span class="pnl-stock-val">{{ stock.current_quantity }}<small> {{ stock.product.unit }}</small></span>
+                  <span class="pnl-stock-val">{{ stock.current_quantity|quantity }}<small> {{ stock.product.unit }}</small></span>
                 </div>
                 <div class="pnl-stock-track">
                   {% widthratio stock.current_quantity stock.safety_stock 100 as pct %}
                   <div class="pnl-stock-fill" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
                 </div>
-                <span class="pnl-stock-min">stock de segurança: {{ stock.safety_stock }} {{ stock.product.unit }}</span>
+                <span class="pnl-stock-min">stock de segurança: {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
               </div>
             {% endfor %}
           </div>

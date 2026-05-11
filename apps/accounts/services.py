@@ -358,6 +358,7 @@ def login_user_manual(request, user, remember_me=False):
     request.session["user_email"] = user.email
     request.session["user_role"] = user.role
     request.session["user_name"] = user.full_name
+    request.session["user_password_hash"] = user.password
 
     if remember_me:
         request.session.set_expiry(60 * 60 * 24 * 30)
@@ -402,6 +403,37 @@ def send_password_reset_email(request, user, reset_token, async_send=False):
         reset_token.id,
         reset_url,
     )
+
+    _send_system_email(
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        recipient_list=[user.email],
+        async_send=async_send,
+    )
+
+
+def _support_contact_email():
+    return (
+        (getattr(settings, "SUPPORT_CONTACT_EMAIL", "") or "").strip()
+        or (getattr(settings, "DEFAULT_REPLY_TO_EMAIL", "") or "").strip()
+        or "support@farm.vision4you.pt"
+    )
+
+
+def send_password_changed_email(request, user, *, async_send=False):
+    context = {
+        "first_name": user.first_name,
+        "support_email": _support_contact_email(),
+        "login_url": _build_public_absolute_url(request, reverse("accounts:login")),
+        "changed_at": timezone.localtime(timezone.now()),
+    }
+
+    subject = render_to_string("emails/password_changed_subject.txt", context).strip()
+    text_body = render_to_string("emails/password_changed.txt", context)
+    html_body = render_to_string("emails/password_changed.html", context)
+
+    logger.info("Password changed email prepared user_id=%s", user.id)
 
     _send_system_email(
         subject=subject,

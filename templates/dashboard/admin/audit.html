@@ -4,23 +4,245 @@
   <div class="adm-card-head">
     <form
       method="get"
-      class="adm-search"
+      class="adm-audit-filter-form"
       hx-get="{% url 'dashboard:gestor_auditoria' %}"
-      hx-trigger="keyup changed delay:300ms from:input[name='q']"
+      hx-trigger="keyup changed delay:300ms from:input[name='q'], change from:select[name='per_page'], submit"
       hx-target="#audit-table"
       hx-swap="outerHTML"
       hx-push-url="true"
     >
-      <i class="bi bi-search"></i>
-      <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar registos de auditoria..." autocomplete="off">
+      <div class="adm-search adm-audit-search">
+        <i class="bi bi-search"></i>
+        <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar por ação, utilizador, IP, dispositivo ou alteração..." autocomplete="off">
+      </div>
+
+      <label class="adm-audit-page-size">
+        <span>Mostrar</span>
+        <select name="per_page">
+          {% for option in per_page_options %}
+            <option value="{{ option }}" {% if option == per_page %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <button class="adm-btn-ghost" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
     </form>
 
     <div style="display:flex;gap:.5rem;">
-      <button class="adm-btn-ghost" type="button"><i class="bi bi-funnel"></i> Filtrar</button>
       <button class="adm-btn-ghost" type="button"><i class="bi bi-download"></i> Exportar</button>
     </div>
   </div>
 
   {% include "dashboard/admin/partials/audit_table.html" %}
 </div>
+
+<style>
+.adm-audit-filter-form{
+  display:flex;
+  align-items:center;
+  gap:.75rem;
+  flex:1;
+  min-width:0;
+  flex-wrap:wrap;
+}
+.adm-audit-search{
+  flex:1 1 28rem;
+  min-width:18rem;
+}
+.adm-audit-page-size{
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+  font-size:.78rem;
+  font-weight:700;
+  color:#64748b;
+}
+.adm-audit-page-size select{
+  min-height:2.45rem;
+  border:1px solid #dbe3ef;
+  border-radius:.65rem;
+  padding:0 .75rem;
+  font-weight:800;
+  color:#0f172a;
+  background:#fff;
+}
+.adm-audit-row{
+  cursor:pointer;
+}
+.adm-audit-row:hover{
+  background:#f8fafc;
+}
+.adm-audit-row.is-open{
+  background:#f8fafc;
+}
+.adm-audit-chevron{
+  transition:transform .15s ease;
+  color:#64748b;
+}
+.adm-audit-row.is-open .adm-audit-chevron{
+  transform:rotate(90deg);
+}
+.adm-table tbody tr.adm-audit-detail-row:hover td,
+.adm-audit-detail-row > td{
+  background:#f8fafc;
+  border-top:0;
+  text-align:left !important;
+  padding:0 !important;
+}
+.adm-audit-detail{
+  display:grid;
+  grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);
+  gap:1rem;
+  padding:1rem;
+  align-items:stretch;
+}
+.adm-audit-detail-box{
+  border:1px solid #e2e8f0;
+  border-radius:.75rem;
+  background:#fff;
+  padding:1rem;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:.9rem;
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+.adm-audit-detail-title{
+  margin:0;
+  font-size:.76rem;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:#64748b;
+  font-weight:800;
+}
+.adm-audit-detail-section{
+  display:flex;
+  flex-direction:column;
+  gap:.55rem;
+  min-width:0;
+}
+.adm-audit-change-list{
+  display:flex;
+  flex-direction:column;
+  gap:.45rem;
+}
+.adm-audit-change{
+  display:grid;
+  grid-template-columns:minmax(9rem,.55fr) minmax(0,1fr);
+  gap:.75rem;
+  align-items:start;
+  padding:.55rem .65rem;
+  border:1px solid #e2e8f0;
+  border-radius:.65rem;
+  background:#f8fafc;
+  font-size:.82rem;
+  color:#64748b;
+  overflow-wrap:anywhere;
+}
+.adm-audit-change strong{
+  color:#334155;
+}
+.adm-audit-change-values{
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+  flex-wrap:wrap;
+  min-width:0;
+}
+.adm-audit-change-value{
+  display:inline-flex;
+  max-width:100%;
+  padding:.12rem .4rem;
+  border-radius:.4rem;
+  background:#fff;
+  color:#334155;
+  border:1px solid #e2e8f0;
+  overflow-wrap:anywhere;
+}
+.adm-audit-meta-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.75rem;
+}
+.adm-audit-meta-item{
+  min-width:0;
+  padding:.65rem;
+  border:1px solid #e2e8f0;
+  border-radius:.65rem;
+  background:#f8fafc;
+}
+.adm-audit-meta-item--wide{
+  grid-column:1 / -1;
+}
+.adm-audit-meta-label{
+  font-size:.72rem;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:#94a3b8;
+  font-weight:800;
+  margin-bottom:.2rem;
+}
+.adm-audit-meta-value{
+  font-size:.82rem;
+  color:#334155;
+  overflow-wrap:anywhere;
+  line-height:1.4;
+}
+.adm-audit-note{
+  font-size:.84rem;
+  color:#475569;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+  padding:.7rem .8rem;
+  border:1px solid #e2e8f0;
+  border-radius:.65rem;
+  background:#f8fafc;
+}
+@media (max-width: 900px){
+  .adm-audit-detail{
+    grid-template-columns:1fr;
+  }
+  .adm-audit-meta-grid{
+    grid-template-columns:1fr;
+  }
+  .adm-audit-change{
+    grid-template-columns:1fr;
+    gap:.35rem;
+  }
+}
+@media (max-width: 700px){
+  .adm-audit-filter-form,
+  .adm-audit-filter-form .adm-btn-ghost,
+  .adm-audit-search{
+    width:100%;
+  }
+  .adm-audit-page-size{
+    width:100%;
+    justify-content:space-between;
+  }
+  .adm-audit-page-size select{
+    flex:1;
+  }
+}
+</style>
+
+<script>
+  window.toggleAuditRow = function(row) {
+    const detailId = row.getAttribute("data-detail-target");
+    const detailRow = document.getElementById(detailId);
+    if (!detailRow) return;
+
+    const willOpen = detailRow.hidden;
+    detailRow.hidden = !willOpen;
+    row.classList.toggle("is-open", willOpen);
+    row.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  };
+
+  window.handleAuditRowKeydown = function(event, row) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      window.toggleAuditRow(row);
+    }
+  };
+</script>
 {% endblock %}

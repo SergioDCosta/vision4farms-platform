@@ -216,7 +216,7 @@
     <div>
       <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Atividade relacionada</h3>
       <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
-        Últimos registos de auditoria associados a este utilizador.
+        Últimos 50 registos relevantes associados a este utilizador.
       </p>
     </div>
   </div>
@@ -227,35 +227,55 @@
         <tr>
           <th>Data / Hora</th>
           <th>Ação</th>
-          <th>Notas</th>
+          <th>Detalhes</th>
+          <th>IP</th>
+          <th>Dispositivo</th>
           <th>Autor</th>
         </tr>
       </thead>
       <tbody>
-        {% for log in related_logs %}
+        {% for row in related_activity_rows %}
         <tr>
           <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;">
-            {{ log.created_at|date:"d/m/Y H:i" }}
+            {{ row.log.created_at|date:"d/m/Y H:i" }}
           </td>
           <td>
             <span style="display:inline-block;padding:.15rem .6rem;border-radius:.4rem;background:#f1f5f9;color:#374151;font-size:.75rem;font-weight:600;">
-              {{ log.action }}
+              {{ row.action_label }}
             </span>
           </td>
-          <td style="font-size:.82rem;color:#64748b;">
-            {{ log.notes|default:"—" }}
+          <td class="adm-audit-details">
+            {% if row.log.notes %}
+              <div>{{ row.log.notes }}</div>
+            {% endif %}
+            {% if row.changes %}
+              <div class="adm-audit-change-list">
+                {% for change in row.changes %}
+                  <div class="adm-audit-change">
+                    <strong>{{ change.label }}:</strong>
+                    <span>{{ change.old }}</span>
+                    <i class="bi bi-arrow-right-short"></i>
+                    <span>{{ change.new }}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            {% elif not row.log.notes %}
+              —
+            {% endif %}
+          </td>
+          <td style="font-size:.82rem;color:#64748b;white-space:nowrap;">
+            {{ row.log.ip_address|default:"—" }}
+          </td>
+          <td class="adm-audit-device">
+            {{ row.device_label }}
           </td>
           <td style="font-size:.82rem;color:#64748b;">
-            {% if log.user %}
-              {{ log.user.first_name }} {{ log.user.last_name }}
-            {% else %}
-              Sistema
-            {% endif %}
+            {{ row.actor_label }}
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="4">
+          <td colspan="6">
             <div class="adm-empty">
               <i class="bi bi-journal-x"></i>
               <p>Sem atividade registada para este utilizador.</p>
@@ -311,6 +331,34 @@
   display:flex;
   flex-direction:column;
   gap:.75rem;
+}
+.adm-audit-details{
+  min-width:18rem;
+  font-size:.82rem;
+  color:#475569;
+  line-height:1.45;
+}
+.adm-audit-change-list{
+  display:flex;
+  flex-direction:column;
+  gap:.25rem;
+  margin-top:.4rem;
+}
+.adm-audit-change{
+  display:flex;
+  align-items:center;
+  gap:.25rem;
+  flex-wrap:wrap;
+  color:#64748b;
+}
+.adm-audit-change strong{
+  color:#334155;
+}
+.adm-audit-device{
+  max-width:14rem;
+  font-size:.82rem;
+  color:#64748b;
+  overflow-wrap:anywhere;
 }
 @media (max-width: 1200px){
   .adm-user-detail-layout{

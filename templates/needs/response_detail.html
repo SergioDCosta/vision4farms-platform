@@ -43,7 +43,7 @@
       <div class="nrd-metrics">
         <div>
           <span>Quantidade disponível</span>
-          <strong>{{ response.quantity_available|floatformat:"-3" }} {{ response.product_unit }}</strong>
+          <strong>{{ response.quantity_available|quantity }} {{ response.product_unit }}</strong>
         </div>
         <div>
           <span>Preço unitário</span>
@@ -87,7 +87,7 @@
         </div>
         <div>
           <span>Quantidade pedida</span>
-          <strong>{{ need.required_quantity|floatformat:"-3" }} {{ need.product.unit }}</strong>
+          <strong>{{ need.required_quantity|quantity }} {{ need.product.unit }}</strong>
         </div>
         {% if need.needed_by_date %}
           <div>

@@ -93,16 +93,16 @@
 
                       <td>
                         <span class="{{ row.state.text_class }}">
-                          {{ row.stock.current_quantity|default:0|floatformat:"-3" }}
+                          {{ row.stock.current_quantity|default:0|quantity }}
                         </span>
                         <span class="inv-unit">{{ row.product.unit }}</span>
 
                         <span class="inv-subvalue">
-                          Disponível: {{ row.stock.available_quantity|default:0|floatformat:"-3" }} {{ row.product.unit }}
+                          Disponível: {{ row.stock.available_quantity|default:0|quantity }} {{ row.product.unit }}
                         </span>
                         {% if row.incoming_forecast_qty and row.incoming_forecast_qty != 0 %}
                           <span class="inv-subvalue inv-subvalue--forecast">
-                            Previsto a receber: {{ row.incoming_forecast_qty|floatformat:"-3" }} {{ row.product.unit }}
+                            Previsto a receber: {{ row.incoming_forecast_qty|quantity }} {{ row.product.unit }}
                           </span>
                           <span class="inv-subvalue">
                             {% if row.incoming_forecast_period_start or row.incoming_forecast_period_end %}
@@ -119,23 +119,23 @@
 
                       <td>
                         <span class="inv-value">
-                          {{ row.stock.reserved_quantity|default:0|floatformat:"-3" }}
+                          {{ row.stock.reserved_quantity|default:0|quantity }}
                         </span>
                         <span class="inv-unit">{{ row.product.unit }}</span>
                       </td>
 
                       <td>
                         <span class="inv-value">
-                          {{ row.stock.safety_stock|default:0|floatformat:"-3" }}
+                          {{ row.stock.safety_stock|default:0|quantity }}
                         </span>
                         <span class="inv-unit">{{ row.product.unit }}</span>
                         <span class="inv-subvalue">
-                          Limiar excedente: {{ row.stock.surplus_threshold|default:0|floatformat:"-3" }} {{ row.product.unit }}
+                          Limiar excedente: {{ row.stock.surplus_threshold|default:0|quantity }} {{ row.product.unit }}
                         </span>
 
                         {% if row.state.key == "excess" %}
                           <span class="inv-subvalue">
-                            Publicável: {{ row.state.publishable_quantity|floatformat:"-3" }} {{ row.product.unit }}
+                            Publicável: {{ row.state.publishable_quantity|quantity }} {{ row.product.unit }}
                           </span>
                         {% endif %}
                       </td>

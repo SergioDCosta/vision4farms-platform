@@ -12,11 +12,11 @@
       </div>
       <div class="rec-stat">
         <p class="rec-stat__label">Quantidade pedida</p>
-        <p class="rec-stat__value">{{ recommendation.requested_quantity|floatformat:"-3" }}</p>
+        <p class="rec-stat__value">{{ recommendation.requested_quantity|quantity }}</p>
       </div>
       <div class="rec-stat">
         <p class="rec-stat__label">Défice restante</p>
-        <p class="rec-stat__value">{{ remaining_deficit|default:"0"|floatformat:"-3" }}</p>
+        <p class="rec-stat__value">{{ remaining_deficit|default:"0"|quantity }}</p>
       </div>
       <div class="rec-stat">
         <p class="rec-stat__label">Total estimado</p>
@@ -33,7 +33,7 @@
     {% if remaining_deficit and remaining_deficit > 0 %}
       <div class="rec-info rec-info--warning">
         A recomendação cobre apenas parte da necessidade. Continua a faltar
-        <strong>{{ remaining_deficit|floatformat:"-3" }}</strong>
+        <strong>{{ remaining_deficit|quantity }}</strong>
         {{ recommendation.product.unit }}.
       </div>
     {% endif %}
@@ -53,7 +53,7 @@
                 {{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:"Produtor" }}
               </p>
               <p class="rec-item__meta">
-                {{ item.suggested_quantity|floatformat:"-3" }} {{ item.product.unit }}
+                {{ item.suggested_quantity|quantity }} {{ item.product.unit }}
                 · {{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}
               </p>
             </div>
@@ -133,3 +133,37 @@
     </div>
   </div>
 </div>
+
+{% if need_prompt %}
+  <div class="rec-need-popup" role="dialog" aria-modal="true" aria-labelledby="rec-need-popup-title">
+    <div class="rec-need-popup__backdrop" data-rec-need-popup-close></div>
+    <div class="rec-need-popup__card">
+      <div class="rec-need-popup__icon">
+        <i class="bi bi-megaphone"></i>
+      </div>
+      <div class="rec-need-popup__body">
+        <p class="rec-need-popup__kicker">Necessidade</p>
+        <h3 id="rec-need-popup-title">{{ need_prompt.title }}</h3>
+        <p>{{ need_prompt.message }}</p>
+        <div class="rec-need-popup__summary">
+          <span>{{ need_prompt.product_name }}</span>
+          <strong>{{ need_prompt.quantity|quantity }} {{ need_prompt.unit }}</strong>
+        </div>
+      </div>
+      <div class="rec-need-popup__actions">
+        <button type="button" class="rec-btn-secondary" data-rec-need-popup-close>
+          Ficar aqui
+        </button>
+        <a href="{{ need_prompt.url }}"
+           hx-get="{{ need_prompt.url }}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="rec-btn-primary">
+          Ir para a necessidade
+        </a>
+      </div>
+    </div>
+  </div>
+{% endif %}

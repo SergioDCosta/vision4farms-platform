@@ -178,8 +178,8 @@
         <h3>Resumo da listing</h3>
         <ul class="mke-meta">
           <li><span>Produto</span><strong>{{ listing.product.name }}</strong></li>
-          <li><span>Reservado</span><strong>{{ listing.quantity_reserved|floatformat:"-3" }} {{ listing.product.unit }}</strong></li>
-          <li><span>Disponível atual</span><strong>{{ listing.quantity_available|floatformat:"-3" }} {{ listing.product.unit }}</strong></li>
+          <li><span>Reservado</span><strong>{{ listing.quantity_reserved|quantity }} {{ listing.product.unit }}</strong></li>
+          <li><span>Disponível atual</span><strong>{{ listing.quantity_available|quantity }} {{ listing.product.unit }}</strong></li>
           <li><span>Publicado em</span><strong>{{ listing.published_at|date:"d/m/Y H:i" }}</strong></li>
         </ul>
       </section>

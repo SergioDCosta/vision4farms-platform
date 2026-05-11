@@ -175,7 +175,7 @@
                 <tr>
                   <td>{{ item.product.name }}</td>
                   <td>{{ order.buyer_producer.display_name|default:order.buyer_producer.company_name|default:order.buyer_producer.user.email }}</td>
-                  <td>{{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}</td>
+                  <td>{{ item.quantity|quantity }} {{ item.product.unit }}</td>
                   <td>{{ item.unit_price|floatformat:2 }} €</td>
                   <td>{{ item.subtotal|floatformat:2 }} €</td>
                   <td>{{ item.get_item_status_display }}</td>
@@ -186,7 +186,7 @@
                 <tr>
                   <td>{{ item.product.name }}</td>
                   <td>{{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:item.seller_producer.user.email }}</td>
-                  <td>{{ item.quantity|floatformat:"-3" }} {{ item.product.unit }}</td>
+                  <td>{{ item.quantity|quantity }} {{ item.product.unit }}</td>
                   <td>{{ item.unit_price|floatformat:2 }} €</td>
                   <td>{{ item.subtotal|floatformat:2 }} €</td>
                   <td>{{ item.get_item_status_display }}</td>
