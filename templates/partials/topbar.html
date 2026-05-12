@@ -36,22 +36,46 @@
 
     <div class="topbar-divider"></div>
 
-    <a href="{% url 'settings_app:settings_index' %}" class="topbar-profile">
-      <div class="topbar-avatar">
-        {% if topbar_profile_photo_url %}
-          <img src="{{ topbar_profile_photo_url }}" alt="Foto de perfil">
-        {% else %}
-          {{ request.session.user_name|default:"U"|slice:":2"|upper }}
-        {% endif %}
+    <div class="topbar-profile-menu" id="topbarProfileMenu">
+      <button type="button"
+              class="topbar-profile"
+              id="topbarProfileBtn"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-controls="topbarProfileDropdown">
+        <div class="topbar-avatar">
+          {% if topbar_profile_photo_url %}
+            <img src="{{ topbar_profile_photo_url }}" alt="Foto de perfil">
+          {% else %}
+            {{ request.session.user_name|default:"U"|slice:":2"|upper }}
+          {% endif %}
+        </div>
+        <div class="topbar-profile-info topbar-hide-mobile">
+          <span class="topbar-profile-name">{{ request.session.user_name }}</span>
+          <span class="topbar-profile-role">
+            {% if request.session.user_role == "ADMIN" %}Administrador{% else %}Cliente{% endif %}
+          </span>
+        </div>
+        <i class="bi bi-chevron-down topbar-profile-caret topbar-hide-mobile"></i>
+      </button>
+
+      <div class="topbar-profile-dropdown" id="topbarProfileDropdown" role="menu" aria-labelledby="topbarProfileBtn">
+        <div class="topbar-profile-dropdown-head">
+          <span class="topbar-profile-dropdown-name">{{ request.session.user_name }}</span>
+          <span class="topbar-profile-dropdown-role">
+            {% if request.session.user_role == "ADMIN" %}Administrador{% else %}Cliente{% endif %}
+          </span>
+        </div>
+        <a href="{% url 'settings_app:settings_index' %}" class="topbar-profile-dropdown-item" role="menuitem">
+          <i class="bi bi-gear"></i>
+          <span>Definições</span>
+        </a>
+        <a href="{% url 'accounts:logout' %}" class="topbar-profile-dropdown-item is-danger" role="menuitem">
+          <i class="bi bi-box-arrow-right"></i>
+          <span>Terminar sessão</span>
+        </a>
       </div>
-      <div class="topbar-profile-info topbar-hide-mobile">
-        <span class="topbar-profile-name">{{ request.session.user_name }}</span>
-        <span class="topbar-profile-role">
-          {% if request.session.user_role == "ADMIN" %}Administrador{% else %}Cliente{% endif %}
-        </span>
-      </div>
-      <i class="bi bi-chevron-down topbar-profile-caret topbar-hide-mobile"></i>
-    </a>
+    </div>
   </div>
 
 </header>
