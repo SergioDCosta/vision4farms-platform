@@ -7,7 +7,9 @@ from apps.catalog.models import Product, ProductCategory
 from apps.catalog.services import (
     CatalogValidationError,
     build_unique_product_slug,
+    can_delete_category,
     create_product,
+    delete_category,
     normalize_text,
     normalize_unit,
     product_snapshot,
@@ -157,3 +159,28 @@ class CatalogServiceTests(SimpleTestCase):
                 "updated_at": None,
             },
         )
+
+    @patch("apps.catalog.services.Product")
+    def test_can_delete_category_when_no_active_inventory_usage(self, product_model_mock):
+        products_qs = MagicMock()
+        usage_qs = MagicMock()
+        products_qs.filter.return_value = usage_qs
+        usage_qs.values.return_value.distinct.return_value.count.return_value = 0
+        product_model_mock.objects.filter.return_value = products_qs
+
+        self.assertTrue(can_delete_category(ProductCategory(name="Fruta")))
+
+    @patch("apps.catalog.services.Product")
+    def test_delete_category_blocks_active_inventory_usage(self, product_model_mock):
+        products_qs = MagicMock()
+        usage_qs = MagicMock()
+        products_qs.filter.return_value = usage_qs
+        usage_qs.values.return_value.distinct.return_value.count.return_value = 1
+        product_model_mock.objects.filter.return_value = products_qs
+        category = ProductCategory(name="Fruta")
+        category.delete = MagicMock()
+
+        with self.assertRaises(CatalogValidationError):
+            delete_category(category)
+
+        category.delete.assert_not_called()

@@ -102,6 +102,36 @@ def category_snapshot(category):
     }
 
 
+def category_usage_counts(category):
+    products_qs = Product.objects.filter(category=category)
+    return {
+        "products_count": products_qs.count(),
+        "active_inventory_usage_count": (
+            products_qs
+            .filter(producer_links__is_active=True)
+            .values("producer_links__producer_id")
+            .distinct()
+            .count()
+        ),
+    }
+
+
+def can_delete_category(category):
+    usage = category_usage_counts(category)
+    return usage["active_inventory_usage_count"] == 0
+
+
+def delete_category(category):
+    usage = category_usage_counts(category)
+    if usage["active_inventory_usage_count"] > 0:
+        raise CatalogValidationError(
+            "category",
+            "Esta categoria está a ser usada no inventário de produtores.",
+        )
+    category.delete()
+    return usage
+
+
 def create_product(*, category, name, unit, description=None, is_active=True):
     name = normalize_text(name)
     unit = normalize_unit(unit)

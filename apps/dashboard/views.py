@@ -34,8 +34,10 @@ from apps.catalog.forms import AdminCategoryForm, AdminProductForm
 from apps.catalog.services import (
     CatalogValidationError,
     category_snapshot,
+    can_delete_category,
     create_category,
     create_product,
+    delete_category,
     product_snapshot,
     update_category,
     update_product,
@@ -76,6 +78,12 @@ AUDIT_ACTION_LABELS = {
     "SUPPORT_TICKET_CLAIMED": "Pedido de suporte assumido",
     "SUPPORT_TICKET_REPLIED": "Resposta ao suporte",
     "SUPPORT_TICKET_CLOSED": "Pedido de suporte fechado",
+    "PRODUCT_CREATED": "Produto criado",
+    "PRODUCT_UPDATED": "Produto atualizado",
+    "PRODUCT_DELETED": "Produto removido",
+    "CATEGORY_CREATED": "Categoria criada",
+    "CATEGORY_UPDATED": "Categoria atualizada",
+    "CATEGORY_DELETED": "Categoria removida",
 }
 
 AUDIT_FIELD_LABELS = {
@@ -993,13 +1001,7 @@ def admin_product_delete_view(request, product_id):
 def admin_categories_view(request):
     q = request.GET.get("q", "").strip()
 
-    categories = ProductCategory.objects.order_by("name")
-
-    if q:
-        categories = categories.filter(
-            Q(name__icontains=q)
-            | Q(slug__icontains=q)
-        )
+    categories = _get_admin_categories_queryset(q=q)
 
     context = {
         "admin_tab": "categorias",
@@ -1011,6 +1013,29 @@ def admin_categories_view(request):
         return render(request, "dashboard/admin/partials/categories_table.html", context)
 
     return render(request, "dashboard/admin/categories.html", context)
+
+
+def _get_admin_categories_queryset(q=""):
+    categories = (
+        ProductCategory.objects
+        .annotate(
+            products_count=Count("products", distinct=True),
+            active_inventory_usage_count=Count(
+                "products__producer_links__producer_id",
+                filter=Q(products__producer_links__is_active=True),
+                distinct=True,
+            ),
+        )
+        .order_by("name")
+    )
+
+    if q:
+        categories = categories.filter(
+            Q(name__icontains=q)
+            | Q(slug__icontains=q)
+        )
+
+    return categories
 
 
 @admin_required
@@ -1089,8 +1114,71 @@ def admin_category_update_view(request, category_id):
         "page_title": f"Editar Categoria — {category.name}",
         "submit_label": "Guardar alterações",
         "is_create": False,
+        "can_delete_category": can_delete_category(category),
     }
     return render(request, "dashboard/admin/category_form.html", context)
+
+
+@admin_required
+@require_POST
+def admin_category_delete_view(request, category_id):
+    category = get_object_or_404(ProductCategory, id=category_id)
+    q = request.POST.get("q", "").strip()
+    category_name = category.name
+    old_snapshot = category_snapshot(category)
+
+    try:
+        with transaction.atomic():
+            delete_category(category)
+    except CatalogValidationError as exc:
+        error_msg = exc.message
+        if request.htmx:
+            context = {
+                "admin_tab": "categorias",
+                "categories": _get_admin_categories_queryset(q=q),
+                "q": q,
+            }
+            response = render(request, "dashboard/admin/partials/categories_table.html", context)
+            return with_htmx_toast(response, "error", error_msg)
+        messages.error(request, error_msg)
+        return redirect("dashboard:gestor_categoria_editar", category_id=category_id)
+    except (ProtectedError, RestrictedError, IntegrityError):
+        error_msg = (
+            "Não foi possível remover esta categoria porque existem registos relacionados."
+        )
+        if request.htmx:
+            context = {
+                "admin_tab": "categorias",
+                "categories": _get_admin_categories_queryset(q=q),
+                "q": q,
+            }
+            response = render(request, "dashboard/admin/partials/categories_table.html", context)
+            return with_htmx_toast(response, "error", error_msg)
+        messages.error(request, error_msg)
+        return redirect("dashboard:gestor_categoria_editar", category_id=category_id)
+
+    _log_admin_action(
+        request=request,
+        action="CATEGORY_DELETED",
+        entity_type="categories",
+        entity_id=category_id,
+        notes=f"Administrador removeu a categoria {category_name}.",
+        old_values=old_snapshot,
+        new_values=None,
+    )
+
+    success_msg = f"Categoria {category_name} removida com sucesso."
+    if request.htmx:
+        context = {
+            "admin_tab": "categorias",
+            "categories": _get_admin_categories_queryset(q=q),
+            "q": q,
+        }
+        response = render(request, "dashboard/admin/partials/categories_table.html", context)
+        return with_htmx_toast(response, "success", success_msg)
+
+    messages.success(request, success_msg)
+    return redirect("dashboard:gestor_categorias")
 
 
 @admin_required

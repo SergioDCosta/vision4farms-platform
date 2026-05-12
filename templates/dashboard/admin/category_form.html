@@ -49,9 +49,65 @@
         <a href="{% url 'dashboard:gestor_categorias' %}" class="adm-btn-ghost">
           Cancelar
         </a>
+
+        {% if not is_create and can_delete_category %}
+          <button type="button"
+                  class="adm-btn-ghost"
+                  style="border-color:#fecaca;color:#b91c1c;background:#fff5f5;"
+                  data-bs-toggle="modal"
+                  data-bs-target="#deleteCategoryFormModal">
+            <i class="bi bi-trash"></i> Remover categoria
+          </button>
+        {% elif not is_create %}
+          <span style="display:inline-flex;align-items:center;color:#64748b;font-size:.82rem;">
+            Categoria usada no inventário de produtores: não pode ser removida.
+          </span>
+        {% endif %}
       </div>
     </form>
   </div>
 </div>
+
+{% if not is_create and can_delete_category %}
+  <div class="modal fade" id="deleteCategoryFormModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border-radius:1rem;border:none;overflow:hidden;">
+        <div class="modal-header" style="padding:1rem 1.2rem;border-bottom:1px solid #e2e8f0;">
+          <h5 class="modal-title fw-bold">Confirmar remoção</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body" style="padding:1.1rem 1.2rem;text-align:left;">
+          <p style="margin:0 0 .45rem 0;color:#334155;">
+            Tem a certeza que quer remover a categoria
+            <strong>{{ category_obj.name }}</strong>?
+          </p>
+          <p style="margin:0;font-size:.84rem;color:#b45309;">
+            Se existirem produtos nesta categoria sem uso no inventário, ficam sem categoria associada.
+          </p>
+        </div>
+
+        <div class="modal-footer" style="padding:1rem 1.2rem;border-top:1px solid #e2e8f0;display:flex;flex-direction:column;justify-content:flex-end;gap:.6rem;">
+          <button type="button"
+                  class="btn btn-success"
+                  data-bs-dismiss="modal"
+                  style="width:100%;">
+            Não
+          </button>
+          <form method="post"
+                action="{% url 'dashboard:gestor_categoria_remover' category_obj.id %}"
+                style="margin:0;width:100%;">
+            {% csrf_token %}
+            <button type="submit"
+                    class="btn btn-danger"
+                    style="width:100%;">
+              Sim, remover categoria
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
 
 {% endblock %}

@@ -4,6 +4,8 @@
       <thead>
         <tr>
           <th>Categoria</th>
+          <th>Produtos</th>
+          <th>Uso no inventário</th>
           <th>Slug</th>
           <th>Criado</th>
           <th></th>
@@ -13,6 +15,8 @@
         {% for cat in categories %}
         <tr>
           <td style="font-weight:600;color:#0f172a;">{{ cat.name }}</td>
+          <td style="font-size:.84rem;color:#64748b;font-weight:700;">{{ cat.products_count|default:0 }}</td>
+          <td style="font-size:.84rem;color:#64748b;font-weight:700;">{{ cat.active_inventory_usage_count|default:0 }}</td>
           <td style="font-size:.8rem;color:#94a3b8;font-family:'DM Mono',monospace;">{{ cat.slug }}</td>
           <td style="font-size:.8rem;color:#64748b;font-family:'DM Mono',monospace;">{{ cat.created_at|date:"d/m/Y" }}</td>
           <td>
@@ -20,12 +24,78 @@
               <a href="{% url 'dashboard:gestor_categoria_editar' cat.id %}" class="adm-act-btn" title="Editar">
                 <i class="bi bi-pencil"></i>
               </a>
+              {% if cat.active_inventory_usage_count == 0 %}
+                <button type="button"
+                        class="adm-act-btn adm-act-btn--danger"
+                        title="Remover categoria"
+                        data-bs-toggle="modal"
+                        data-bs-target="#deleteCategoryModal-{{ cat.id }}">
+                  <i class="bi bi-trash"></i>
+                </button>
+
+                <div class="modal fade" id="deleteCategoryModal-{{ cat.id }}" tabindex="-1" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="border-radius:1rem;border:none;overflow:hidden;">
+                      <div class="modal-header" style="padding:1rem 1.2rem;border-bottom:1px solid #e2e8f0;">
+                        <h5 class="modal-title fw-bold">Confirmar remoção</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                      </div>
+
+                      <div class="modal-body" style="padding:1.1rem 1.2rem;text-align:left;">
+                        <p style="margin:0 0 .45rem 0;color:#334155;">
+                          Tem a certeza que quer remover a categoria
+                          <strong>{{ cat.name }}</strong>?
+                        </p>
+                        {% if cat.products_count > 0 %}
+                          <p style="margin:0;font-size:.84rem;color:#b45309;">
+                            Os produtos desta categoria ficam sem categoria associada.
+                          </p>
+                        {% else %}
+                          <p style="margin:0;font-size:.84rem;color:#b91c1c;">
+                            Esta ação não pode ser anulada.
+                          </p>
+                        {% endif %}
+                      </div>
+
+                      <div class="modal-footer" style="padding:1rem 1.2rem;border-top:1px solid #e2e8f0;display:flex;flex-direction:column;justify-content:flex-end;gap:.6rem;">
+                        <button type="button"
+                                class="btn btn-success"
+                                data-bs-dismiss="modal"
+                                style="width:100%;">
+                          Não
+                        </button>
+                        <form method="post"
+                              action="{% url 'dashboard:gestor_categoria_remover' cat.id %}"
+                              hx-post="{% url 'dashboard:gestor_categoria_remover' cat.id %}"
+                              hx-target="#categories-table"
+                              hx-swap="outerHTML"
+                              style="margin:0;width:100%;">
+                          {% csrf_token %}
+                          <input type="hidden" name="q" value="{{ q }}">
+                          <button type="submit"
+                                  class="btn btn-danger"
+                                  data-bs-dismiss="modal"
+                                  style="width:100%;">
+                            Sim, remover categoria
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% else %}
+                <span class="adm-act-btn"
+                      title="Categoria usada no inventário de produtores."
+                      style="cursor:not-allowed;opacity:.55;">
+                  <i class="bi bi-lock"></i>
+                </span>
+              {% endif %}
             </div>
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="4">
+          <td colspan="6">
             <div class="adm-empty">
               <i class="bi bi-tags"></i>
               <p>Sem categorias registadas.</p>

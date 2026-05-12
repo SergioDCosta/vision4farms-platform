@@ -126,6 +126,11 @@
 - UI principal de gestão de catálogo vive atualmente em `apps.dashboard`:
   - `/gestor/produtos/`;
   - `/gestor/categorias/`.
+- CRUD admin de categorias:
+  - permite criar/editar categorias;
+  - permite remover categoria quando não existe uso ativo no inventário de produtores;
+  - se existirem produtos nessa categoria sem uso ativo no inventário, a remoção é permitida e os produtos ficam sem categoria (`SET_NULL`);
+  - se houver produtores ativos a usar produtos dessa categoria, a remoção é bloqueada.
 - Criação de produto pelo produtor no inventário pode criar produto global e associá-lo ao produtor.
 - Estado atual arquitetural:
   - modelos, forms admin, normalização, slugs, snapshots e criação/edição global vivem em `apps.catalog`;
