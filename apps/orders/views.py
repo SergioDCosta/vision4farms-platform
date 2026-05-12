@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 
-from apps.common.decorators import login_required, client_only_required
+from apps.common.decorators import client_only_required
 from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import get_need_for_producer
 from apps.marketplace.models import MarketplaceListing, ListingStatus
@@ -47,7 +47,6 @@ def _is_presale_purchase_entry(entry):
     return bool(order and is_order_forecast_only(order))
 
 
-@login_required
 @client_only_required
 def orders_index_view(request):
     producer = get_current_producer_for_user(request.current_user)
@@ -107,7 +106,6 @@ def orders_index_view(request):
 
     return render(request, "orders/index.html", context)
 
-@login_required
 @client_only_required
 def order_detail_view(request, order_id):
     producer = get_current_producer_for_user(request.current_user)
@@ -207,7 +205,6 @@ def order_detail_view(request, order_id):
     return render(request, "orders/detail.html", context)
 
 
-@login_required
 @client_only_required
 def order_group_detail_view(request, group_id):
     producer = get_current_producer_for_user(request.current_user)
@@ -269,7 +266,6 @@ def order_group_detail_view(request, group_id):
     return render(request, "orders/group_detail.html", context)
 
 
-@login_required
 @client_only_required
 def create_order_from_listing_view(request, listing_id):
     if request.method != "POST":
@@ -347,7 +343,6 @@ def create_order_from_listing_view(request, listing_id):
     return redirect("orders:group_detail", group_id=order_group.id)
 
 
-@login_required
 @client_only_required
 def confirm_order_receipt_view(request, order_id):
     if request.method != "POST":
@@ -376,7 +371,6 @@ def confirm_order_receipt_view(request, order_id):
     return _redirect_after_action()
 
 
-@login_required
 @client_only_required
 def seller_update_order_status_view(request, order_id, status):
     if request.method != "POST":

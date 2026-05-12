@@ -721,7 +721,6 @@ def marketplace_detail_total_view(request, listing_id):
     return render(request, "marketplace/partials/detail_total.html", context)
 
 
-@login_required
 @client_only_required
 def marketplace_publish_view(request):
     current_user = request.current_user
@@ -1044,7 +1043,6 @@ def marketplace_publish_view(request):
     return render(request, "marketplace/publish.html", context)
 
 
-@login_required
 @client_only_required
 def marketplace_edit_view(request, listing_id):
     current_user = request.current_user
@@ -1119,7 +1117,6 @@ def marketplace_edit_view(request, listing_id):
     return render(request, "marketplace/edit.html", context)
 
 
-@login_required
 @client_only_required
 def marketplace_delete_view(request, listing_id):
     if request.method != "POST":
@@ -1187,7 +1184,6 @@ def marketplace_delete_view(request, listing_id):
     return redirect(f"{reverse('marketplace:index')}?tab=meus")
 
 
-@login_required
 @client_only_required
 def marketplace_toggle_status_view(request, listing_id):
     if request.method != "POST":

@@ -9,8 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
+from apps.common.audit import get_client_ip, log_audit_event
 from apps.common.decorators import admin_required, login_required
-from apps.dashboard.models import AuditLog
 from apps.support.forms import SupportTicketCreateForm, SupportTicketReplyForm
 from apps.support.models import SupportTicket, SupportTicketStatus
 from apps.support.services import (
@@ -31,13 +31,6 @@ from apps.support.consumers import SUPPORT_ADMIN_BADGE_GROUP
 logger = logging.getLogger(__name__)
 
 
-def _get_client_ip(request):
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
-
-
 def _log_support_action(
     *,
     request,
@@ -47,15 +40,13 @@ def _log_support_action(
     old_values=None,
     new_values=None,
 ):
-    AuditLog.objects.create(
-        user=request.current_user,
+    log_audit_event(
+        request=request,
         action=action,
         entity_type="support_tickets",
         entity_id=ticket.id if ticket else None,
         old_values=old_values,
         new_values=new_values,
-        ip_address=_get_client_ip(request),
-        user_agent=request.META.get("HTTP_USER_AGENT"),
         notes=notes,
     )
 
@@ -64,7 +55,7 @@ def _support_rate_limit_key(group, request):
     user = getattr(request, "current_user", None)
     if user and getattr(user, "id", None):
         return f"user:{user.id}"
-    return f"ip:{_get_client_ip(request) or 'unknown'}"
+    return f"ip:{get_client_ip(request) or 'unknown'}"
 
 
 def _redirect_to_settings(request):

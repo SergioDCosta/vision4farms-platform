@@ -34,7 +34,7 @@ from apps.needs.models import Need, NeedResponseStatus, NeedStatus
 from apps.needs.services import calculate_need_coverage
 from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderStatus
 from apps.marketplace.services import get_forecast_available_quantity
-from apps.common.templatetags.quantity import format_quantity
+from apps.common.formatting import format_quantity
 
 
 ACTIVE_LIKE_ALERT_STATUSES = [AlertStatus.ACTIVE, AlertStatus.READ]

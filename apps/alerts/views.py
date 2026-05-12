@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from apps.common.decorators import client_only_required, login_required
+from apps.common.decorators import client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile
 from apps.notifications_app.services import list_recent_notifications_for_user
@@ -118,7 +118,6 @@ def _expire_ignored_alerts(producer, acting_user=None):
     expire_ignored_alerts_for_producer(producer=producer, acting_user=acting_user)
 
 
-@login_required
 @client_only_required
 def alerts_index_view(request):
     producer = _get_producer(request)
@@ -137,13 +136,11 @@ def alerts_index_view(request):
     return _render_alerts_page(request, producer, tab, alert_type, category, q, action_only)
 
 
-@login_required
 @client_only_required
 def alerts_sidebar_state_view(request):
     return JsonResponse(get_client_alerts_badge_state(request))
 
 
-@login_required
 @client_only_required
 def alert_ignore_view(request, alert_id):
     if request.method != "POST":
@@ -180,7 +177,6 @@ def alert_ignore_view(request, alert_id):
     return response
 
 
-@login_required
 @client_only_required
 def alert_resolve_view(request, alert_id):
     if request.method != "POST":
@@ -219,7 +215,6 @@ def alert_resolve_view(request, alert_id):
     return response
 
 
-@login_required
 @client_only_required
 def alert_reactivate_view(request, alert_id):
     if request.method != "POST":
@@ -254,7 +249,6 @@ def alert_reactivate_view(request, alert_id):
     return response
 
 
-@login_required
 @client_only_required
 def alert_ignore_all_view(request):
     if request.method != "POST":

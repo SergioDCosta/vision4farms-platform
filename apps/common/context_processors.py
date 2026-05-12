@@ -8,6 +8,28 @@ from apps.settings_app.models import UserPreference
 from apps.support.services import get_admin_support_badge_state
 
 
+EMPTY_BADGE = {"visible": False, "count": 0, "tone": "orange"}
+
+
+def _empty_badge():
+    return dict(EMPTY_BADGE)
+
+
+def _request_cache(request):
+    cache = getattr(request, "_common_context_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(request, "_common_context_cache", cache)
+    return cache
+
+
+def _cached(request, key, factory):
+    cache = _request_cache(request)
+    if key not in cache:
+        cache[key] = factory()
+    return cache[key]
+
+
 def _resolve_media_url(photo_path):
     if not photo_path:
         return None
@@ -37,37 +59,62 @@ def topbar_user_profile(request):
     if not user:
         return {"topbar_profile_photo_url": None}
 
-    preference = (
-        UserPreference.objects
-        .filter(user=user)
-        .only("profile_photo")
-        .first()
-    )
+    def _get_profile_photo_url():
+        preference = (
+            UserPreference.objects
+            .filter(user=user)
+            .only("profile_photo")
+            .first()
+        )
 
-    if not preference:
-        return {"topbar_profile_photo_url": None}
+        if not preference:
+            return None
+
+        return _resolve_media_url(preference.profile_photo)
 
     return {
-        "topbar_profile_photo_url": _resolve_media_url(preference.profile_photo),
+        "topbar_profile_photo_url": _cached(
+            request,
+            "topbar_profile_photo_url",
+            _get_profile_photo_url,
+        )
     }
 
 
 def admin_support_sidebar_badge(request):
     user = getattr(request, "current_user", None)
     if not user or getattr(user, "role", None) != UserRole.ADMIN:
-        return {"admin_support_badge": {"visible": False, "count": 0, "tone": "orange"}}
-    return {"admin_support_badge": get_admin_support_badge_state(request)}
+        return {"admin_support_badge": _empty_badge()}
+    return {
+        "admin_support_badge": _cached(
+            request,
+            "admin_support_badge",
+            lambda: get_admin_support_badge_state(request),
+        )
+    }
 
 
 def client_alerts_sidebar_badge(request):
     user = getattr(request, "current_user", None)
     if not user or getattr(user, "role", None) != UserRole.CLIENTE:
-        return {"client_alerts_badge": {"visible": False, "count": 0, "tone": "orange"}}
-    return {"client_alerts_badge": get_client_alerts_badge_state(request)}
+        return {"client_alerts_badge": _empty_badge()}
+    return {
+        "client_alerts_badge": _cached(
+            request,
+            "client_alerts_badge",
+            lambda: get_client_alerts_badge_state(request),
+        )
+    }
 
 
 def client_messages_sidebar_badge(request):
     user = getattr(request, "current_user", None)
     if not user or getattr(user, "role", None) != UserRole.CLIENTE:
-        return {"client_messages_badge": {"visible": False, "count": 0, "tone": "orange"}}
-    return {"client_messages_badge": get_client_messages_badge_state(user)}
+        return {"client_messages_badge": _empty_badge()}
+    return {
+        "client_messages_badge": _cached(
+            request,
+            "client_messages_badge",
+            lambda: get_client_messages_badge_state(user),
+        )
+    }

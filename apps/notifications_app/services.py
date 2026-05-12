@@ -3,7 +3,7 @@ import re
 from django.db import transaction
 from django.utils import timezone
 
-from apps.common.templatetags.quantity import format_quantity
+from apps.common.formatting import format_quantity
 from apps.notifications_app.models import Notification, NotificationType
 
 

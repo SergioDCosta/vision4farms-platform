@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from apps.common.decorators import login_required, client_only_required
+from apps.common.decorators import client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
 from apps.needs.navigation import build_needs_index_url
@@ -129,7 +129,6 @@ def _build_step_2_context(
     }
 
 
-@login_required
 @client_only_required
 def recommendations_index_view(request):
     producer = _get_current_producer(request)
@@ -167,7 +166,6 @@ def recommendations_index_view(request):
     return render(request, "recommendations/index.html", context)
 
 
-@login_required
 @client_only_required
 def recommendations_product_metrics_view(request):
     producer = _get_current_producer(request)
@@ -204,7 +202,6 @@ def recommendations_product_metrics_view(request):
     return render(request, "recommendations/partials/step_1_metrics.html", context)
 
 
-@login_required
 @client_only_required
 def recommendations_generate_view(request):
     if request.method != "POST":
@@ -274,7 +271,6 @@ def recommendations_generate_view(request):
     return _render_wizard(request, context)
 
 
-@login_required
 @client_only_required
 def recommendations_back_to_need_view(request, recommendation_id):
     producer = _get_current_producer(request)
@@ -307,7 +303,6 @@ def recommendations_back_to_need_view(request, recommendation_id):
     return _render_wizard(request, context)
 
 
-@login_required
 @client_only_required
 def recommendations_create_need_view(request, recommendation_id):
     if request.method != "POST":
@@ -381,7 +376,6 @@ def recommendations_create_need_view(request, recommendation_id):
     )
 
 
-@login_required
 @client_only_required
 def recommendations_prepare_confirm_view(request, recommendation_id):
     if request.method != "GET":
@@ -412,7 +406,6 @@ def recommendations_prepare_confirm_view(request, recommendation_id):
     return _render_wizard(request, context)
 
 
-@login_required
 @client_only_required
 def recommendations_accept_view(request, recommendation_id):
     if request.method != "POST":
@@ -483,7 +476,6 @@ def recommendations_accept_view(request, recommendation_id):
     return redirect(redirect_url)
 
 
-@login_required
 @client_only_required
 def recommendations_market_options_view(request, recommendation_id):
     producer = _get_current_producer(request)
@@ -507,7 +499,6 @@ def recommendations_market_options_view(request, recommendation_id):
     return render(request, "recommendations/partials/step_2_market_toggle.html", context)
 
 
-@login_required
 @client_only_required
 def recommendations_replace_item_view(request, recommendation_id):
     producer = _get_current_producer(request)

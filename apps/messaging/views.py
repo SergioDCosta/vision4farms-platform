@@ -5,7 +5,7 @@ from django.urls import reverse
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from apps.common.decorators import client_only_required, login_required
+from apps.common.decorators import client_only_required
 from apps.marketplace.models import MarketplaceListing
 from apps.orders.models import Order
 from apps.messaging.services import (
@@ -34,7 +34,6 @@ def _is_htmx(request):
     return request.headers.get("HX-Request") == "true"
 
 
-@login_required
 @client_only_required
 def messages_index_view(request):
     producer = get_current_producer_for_user(request.current_user)
@@ -113,7 +112,6 @@ def messages_index_view(request):
     return render(request, "messaging/index.html", context)
 
 
-@login_required
 @client_only_required
 def start_listing_contact_view(request, listing_id):
     producer = get_current_producer_for_user(request.current_user)
@@ -144,7 +142,6 @@ def start_listing_contact_view(request, listing_id):
     return redirect(target_url)
 
 
-@login_required
 @client_only_required
 def start_order_contact_view(request, order_id):
     producer = get_current_producer_for_user(request.current_user)
@@ -177,7 +174,6 @@ def start_order_contact_view(request, order_id):
     return redirect(target_url)
 
 
-@login_required
 @client_only_required
 def upload_attachment_view(request):
     if request.method != "POST":
@@ -250,7 +246,6 @@ def upload_attachment_view(request):
     )
 
 
-@login_required
 @client_only_required
 def archive_conversation_view(request, conversation_id):
     if request.method != "POST":
@@ -290,7 +285,6 @@ def archive_conversation_view(request, conversation_id):
     return redirect(target_url)
 
 
-@login_required
 @client_only_required
 def unarchive_conversation_view(request, conversation_id):
     if request.method != "POST":

@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
-from apps.common.decorators import client_only_required, login_required
+from apps.common.decorators import client_only_required
 from apps.inventory.models import ProducerProduct
 from apps.inventory import services
 from apps.inventory.forms import (
@@ -146,7 +146,6 @@ def _build_stock_detail_context(
     return context
 
 
-@login_required
 @client_only_required
 def meus_produtos(request):
     """
@@ -212,7 +211,6 @@ def meus_produtos(request):
     return render(request, "inventory/stocks_compras.html", context)
 
 
-@login_required
 @client_only_required
 def adicionar_produto(request):
     producer = _get_producer_or_redirect(request)
@@ -325,7 +323,6 @@ def adicionar_produto(request):
     }
     return render(request, "inventory/adicionar_produto.html", context)
 
-@login_required
 @client_only_required
 @require_POST
 def remover_produto(request, producer_product_id):
@@ -348,7 +345,6 @@ def remover_produto(request, producer_product_id):
     return redirect(f"{reverse('inventory:meus_produtos')}?tab=desativados")
 
 
-@login_required
 @client_only_required
 @require_POST
 def reativar_produto(request, producer_product_id):
@@ -371,7 +367,6 @@ def reativar_produto(request, producer_product_id):
     return redirect(f"{reverse('inventory:meus_produtos')}?tab=desativados")
 
 
-@login_required
 @client_only_required
 def stock_detalhe(request, product_id):
     producer = _get_producer_or_redirect(request)
@@ -425,7 +420,6 @@ def stock_detalhe(request, product_id):
     return render(request, "inventory/stock_detalhe.html", context)
 
 
-@login_required
 @client_only_required
 @require_POST
 def guardar_previsao(request, product_id):
@@ -490,7 +484,6 @@ def guardar_previsao(request, product_id):
     return render(request, "inventory/stock_detalhe.html", context, status=400)
 
 
-@login_required
 @client_only_required
 @require_POST
 def remover_previsao(request, product_id, forecast_id):
@@ -528,7 +521,6 @@ def remover_previsao(request, product_id, forecast_id):
     return redirect("inventory:stock_detalhe", product_id=product_id)
 
 
-@login_required
 @client_only_required
 @require_POST
 def assimilar_previsao(request, product_id, forecast_id):
@@ -570,7 +562,6 @@ def assimilar_previsao(request, product_id, forecast_id):
     return redirect("inventory:stock_detalhe", product_id=product_id)
 
 
-@login_required
 @client_only_required
 def atualizar_stock(request, product_id):
     producer = _get_producer_or_redirect(request)
@@ -629,7 +620,6 @@ def atualizar_stock(request, product_id):
     }
     return render(request, "inventory/atualizar_stock.html", context)
 
-@login_required
 @client_only_required
 def compras_export_pdf(request):
     producer = _get_producer_or_redirect(request)

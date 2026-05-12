@@ -6,7 +6,7 @@ from django.db.models import Max, Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from apps.common.templatetags.quantity import format_quantity
+from apps.common.formatting import format_quantity
 from apps.inventory.models import (
     ProductionForecast,
     ProducerProfile,

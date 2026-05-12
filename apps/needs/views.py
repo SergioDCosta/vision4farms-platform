@@ -8,7 +8,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.common.decorators import client_only_required, login_required
+from apps.common.decorators import client_only_required
 from apps.marketplace.services import (
     build_delivery_text,
     expire_due_active_listings,
@@ -242,7 +242,6 @@ def build_needs_index_context(
     }
 
 
-@login_required
 @client_only_required
 def needs_index_view(request):
     current_user = request.current_user
@@ -265,7 +264,6 @@ def needs_index_view(request):
     return render(request, "needs/index.html", context)
 
 
-@login_required
 @client_only_required
 def need_create_view(request):
     if request.method != "POST":
@@ -353,7 +351,6 @@ def need_create_view(request):
     )
 
 
-@login_required
 @client_only_required
 def need_ignore_view(request, need_id):
     if request.method != "POST":
@@ -411,7 +408,6 @@ def need_ignore_view(request, need_id):
     )
 
 
-@login_required
 @client_only_required
 def need_response_detail_view(request, listing_id):
     current_user = request.current_user
@@ -447,7 +443,6 @@ def need_response_detail_view(request, listing_id):
     return render(request, "needs/response_detail.html", context)
 
 
-@login_required
 @client_only_required
 def need_response_reject_view(request, listing_id):
     if request.method != "POST":
