@@ -4,21 +4,7 @@ from django.utils.text import slugify
 from apps.catalog.models import Product, ProductCategory
 
 
-UNIT_ALIASES = {
-    "kg": "kg",
-    "kgs": "kg",
-    "quilo": "kg",
-    "quilos": "kg",
-    "quilograma": "kg",
-    "quilogramas": "kg",
-    "un": "un",
-    "un.": "un",
-    "unid": "un",
-    "unidade": "un",
-    "unidades": "un",
-    "caixa": "caixa",
-    "caixas": "caixa",
-}
+DEFAULT_PRODUCT_UNIT = "kg"
 
 
 class CatalogValidationError(ValidationError):
@@ -36,11 +22,6 @@ def normalize_optional_text(value):
         return None
     normalized = normalize_text(value)
     return normalized or None
-
-
-def normalize_unit(value):
-    normalized = normalize_text(value).lower()
-    return UNIT_ALIASES.get(normalized, normalized)
 
 
 def build_unique_product_slug(base_slug, exclude_id=None):
@@ -132,12 +113,11 @@ def delete_category(category):
     return usage
 
 
-def create_product(*, category, name, unit, description=None, is_active=True):
+def create_product(*, category, name, description=None, is_active=True):
     name = normalize_text(name)
-    unit = normalize_unit(unit)
     description = normalize_optional_text(description)
 
-    _validate_product_fields(category=category, name=name, unit=unit)
+    _validate_product_fields(category=category, name=name)
     if not getattr(category, "is_active", False):
         raise CatalogValidationError("category", "Seleciona uma categoria ativa.")
 
@@ -148,18 +128,17 @@ def create_product(*, category, name, unit, description=None, is_active=True):
         category=category,
         name=name,
         slug=build_unique_product_slug(slugify(name)),
-        unit=unit,
+        unit=DEFAULT_PRODUCT_UNIT,
         description=description,
         is_active=bool(is_active),
     )
 
 
-def update_product(*, product, category, name, unit, description=None, is_active=True):
+def update_product(*, product, category, name, description=None, is_active=True):
     name = normalize_text(name)
-    unit = normalize_unit(unit)
     description = normalize_optional_text(description)
 
-    _validate_product_fields(category=category, name=name, unit=unit)
+    _validate_product_fields(category=category, name=name)
     if not getattr(category, "is_active", False) and category.id != product.category_id:
         raise CatalogValidationError("category", "Seleciona uma categoria ativa.")
 
@@ -180,8 +159,8 @@ def update_product(*, product, category, name, unit, description=None, is_active
             product.slug = new_slug
             changed_fields.append("slug")
 
-    if product.unit != unit:
-        product.unit = unit
+    if product.unit != DEFAULT_PRODUCT_UNIT:
+        product.unit = DEFAULT_PRODUCT_UNIT
         changed_fields.append("unit")
 
     if product.description != description:
@@ -237,10 +216,9 @@ def update_category(*, category, name):
     return category, changed_fields
 
 
-def get_or_create_product_for_inventory(*, category, name, unit):
+def get_or_create_product_for_inventory(*, category, name):
     name = normalize_text(name)
-    unit = normalize_unit(unit)
-    _validate_product_fields(category=category, name=name, unit=unit)
+    _validate_product_fields(category=category, name=name)
 
     if not getattr(category, "is_active", False):
         raise CatalogValidationError("category", "Seleciona uma categoria ativa.")
@@ -252,26 +230,27 @@ def get_or_create_product_for_inventory(*, category, name, unit):
                 "name",
                 f"Já existe um produto com o nome '{existing_product.name}', mas está inativo.",
             )
+        if existing_product.unit != DEFAULT_PRODUCT_UNIT:
+            existing_product.unit = DEFAULT_PRODUCT_UNIT
+            existing_product.save(update_fields=["unit", "updated_at"])
         return existing_product, False
 
     product = Product.objects.create(
         category=category,
         name=name,
         slug=build_unique_product_slug(slugify(name)),
-        unit=unit,
+        unit=DEFAULT_PRODUCT_UNIT,
         description=None,
         is_active=True,
     )
     return product, True
 
 
-def _validate_product_fields(*, category, name, unit):
+def _validate_product_fields(*, category, name):
     if not category or not isinstance(category, ProductCategory):
         raise CatalogValidationError("category", "Seleciona uma categoria válida.")
     if not name:
         raise CatalogValidationError("name", "Indica o nome do produto.")
-    if not unit:
-        raise CatalogValidationError("unit", "Indica a unidade do produto.")
     if not slugify(name):
         raise CatalogValidationError(
             "name",

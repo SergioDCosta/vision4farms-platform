@@ -5,11 +5,15 @@ from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase
 
 from apps.catalog.services import CatalogValidationError
+from apps.inventory.forms import CreateCustomProductForm
 from apps.inventory.services import create_custom_product_for_producer
 
 
 class InventoryCatalogIntegrationTests(SimpleTestCase):
     databases = {"default"}
+
+    def test_custom_product_form_does_not_expose_unit(self):
+        self.assertNotIn("unit", CreateCustomProductForm().fields)
 
     @patch("apps.inventory.services._ensure_stock_for_product")
     @patch("apps.inventory.services.ProducerProduct")
@@ -37,7 +41,6 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
             producer=producer,
             category=SimpleNamespace(id="category-1"),
             name="Pera Rocha",
-            unit="KG",
             initial_quantity=10,
             safety_stock=2,
             surplus_threshold=5,
@@ -49,7 +52,10 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
         self.assertIs(result_stock, stock)
         self.assertTrue(product_created)
         self.assertTrue(link_created)
-        get_or_create_product_mock.assert_called_once()
+        get_or_create_product_mock.assert_called_once_with(
+            category=SimpleNamespace(id="category-1"),
+            name="Pera Rocha",
+        )
         producer_product_model_mock.objects.get_or_create.assert_called_once()
         ensure_stock_mock.assert_called_once()
 
@@ -65,7 +71,6 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
                 producer=SimpleNamespace(id="producer-1"),
                 category=SimpleNamespace(id="category-1"),
                 name="Pera Rocha",
-                unit="kg",
                 initial_quantity=0,
                 safety_stock=0,
                 surplus_threshold=0,

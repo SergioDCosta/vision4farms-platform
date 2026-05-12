@@ -78,15 +78,6 @@ class CreateCustomProductForm(forms.Form):
         }),
     )
 
-    unit = forms.CharField(
-        label="Unidade",
-        max_length=50,
-        widget=forms.TextInput(attrs={
-            "class": "form-control",
-            "placeholder": "Ex: kg, un, caixa",
-        }),
-    )
-
     producer_description = forms.CharField(
         label="Descrição do produtor (opcional)",
         required=False,
@@ -143,12 +134,6 @@ class CreateCustomProductForm(forms.Form):
         value = " ".join((self.cleaned_data.get("name") or "").split()).strip()
         if not value:
             raise forms.ValidationError("Indica o nome do produto.")
-        return value
-
-    def clean_unit(self):
-        value = " ".join((self.cleaned_data.get("unit") or "").split()).strip()
-        if not value:
-            raise forms.ValidationError("Indica a unidade do produto.")
         return value
 
 

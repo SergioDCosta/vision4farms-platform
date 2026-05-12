@@ -122,7 +122,7 @@
   - `ProductCategory` -> tabela `product_categories`;
   - `Product` -> tabela `products`.
 - Ambos continuam `managed = False`.
-- `Product.unit` é global e usado transversalmente em inventário, marketplace, needs, encomendas e recomendações.
+- `Product.unit` continua na BD por compatibilidade e é usado transversalmente em inventário, marketplace, needs, encomendas e recomendações, mas passou a ser unidade técnica fixa (`kg`).
 - UI principal de gestão de catálogo vive atualmente em `apps.dashboard`:
   - `/gestor/produtos/`;
   - `/gestor/categorias/`.
@@ -137,15 +137,16 @@
   - `dashboard` mantém as URLs/UI admin e delega regras para `apps.catalog.services`;
   - `inventory` delega a criação/reutilização de produto global para `apps.catalog.services` e mantém apenas a associação ao produtor/stock.
 - Unidades:
-  - `Product.unit` continua texto livre;
-  - aliases comuns são normalizados (`KG`, `quilo`, `quilogramas` -> `kg`; `unidades` -> `un`; `caixas` -> `caixa`);
-  - valores desconhecidos continuam permitidos, compactados e em lowercase.
+  - a unidade operacional global do catálogo é sempre `kg`;
+  - admin e produtores já não escolhem unidade ao criar/editar produtos;
+  - detalhes comerciais como "5 caixas de 20kg", molhos ou embalagens ficam nas descrições/observações;
+  - `CATALOG_UNIT_KG_SQL.txt` normaliza produtos antigos cujo `products.unit <> 'kg'`.
 - SQL opcional:
   - `CATALOG_HARDENING_SQL.txt` inclui preflight de duplicados e índices únicos case-insensitive por `LOWER(name)`;
   - aplicar manualmente apenas se os preflights não devolverem duplicados.
 
 ## 7) Inventory
-- `products.unit` é global.
+- `products.unit` é global e fixo em `kg`.
 - `producer_products.producer_description` é descrição específica do produtor.
 - `stocks` usa:
   - `current_quantity`;

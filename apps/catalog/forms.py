@@ -2,7 +2,7 @@ from django import forms
 from django.db.models import Q
 
 from apps.catalog.models import ProductCategory
-from apps.catalog.services import normalize_text, normalize_unit
+from apps.catalog.services import normalize_text
 
 
 class AdminCategoryForm(forms.Form):
@@ -39,15 +39,6 @@ class AdminProductForm(forms.Form):
         }),
     )
 
-    unit = forms.CharField(
-        label="Unidade",
-        max_length=50,
-        widget=forms.TextInput(attrs={
-            "class": "form-control",
-            "placeholder": "Ex: kg, un, caixa",
-        }),
-    )
-
     description = forms.CharField(
         label="Descrição genérica do catálogo (opcional)",
         required=False,
@@ -78,10 +69,4 @@ class AdminProductForm(forms.Form):
         value = normalize_text(self.cleaned_data.get("name"))
         if not value:
             raise forms.ValidationError("Indica o nome do produto.")
-        return value
-
-    def clean_unit(self):
-        value = normalize_unit(self.cleaned_data.get("unit"))
-        if not value:
-            raise forms.ValidationError("Indica a unidade do produto.")
         return value

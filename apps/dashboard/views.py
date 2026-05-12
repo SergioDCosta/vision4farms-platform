@@ -828,7 +828,6 @@ def admin_product_create_view(request):
             product = create_product(
                 category=form.cleaned_data["category"],
                 name=form.cleaned_data["name"],
-                unit=form.cleaned_data["unit"],
                 description=form.cleaned_data.get("description"),
                 is_active=form.cleaned_data["is_active"],
             )
@@ -870,7 +869,6 @@ def admin_product_update_view(request, product_id):
                     product=product,
                     category=form.cleaned_data["category"],
                     name=form.cleaned_data["name"],
-                    unit=form.cleaned_data["unit"],
                     description=form.cleaned_data.get("description"),
                     is_active=form.cleaned_data["is_active"],
                 )
@@ -899,7 +897,6 @@ def admin_product_update_view(request, product_id):
             initial={
                 "category": product.category,
                 "name": product.name,
-                "unit": product.unit,
                 "description": product.description,
                 "is_active": product.is_active,
             },

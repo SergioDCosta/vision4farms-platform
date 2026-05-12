@@ -239,7 +239,6 @@ def adicionar_produto(request):
                         producer=producer,
                         category=custom_form.cleaned_data["category"],
                         name=custom_form.cleaned_data["name"],
-                        unit=custom_form.cleaned_data["unit"],
                         producer_description=custom_form.cleaned_data.get("producer_description", ""),
                         initial_quantity=custom_form.cleaned_data["initial_quantity"],
                         safety_stock=custom_form.cleaned_data["safety_stock"],

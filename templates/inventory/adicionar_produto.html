@@ -86,7 +86,7 @@
                         {{ cat_group.grouper.name|default:"Sem categoria" }}
                       </p>
                       <p class="inv-product-card-meta">
-                        Unidade global: {{ product.unit }}
+                        Unidade operacional: {{ product.unit }}
                       </p>
                     </div>
 
@@ -266,8 +266,8 @@
 
         <div class="modal-body" style="padding:1.1rem 1.2rem;">
           <p class="text-muted small mb-3">
-            Cria um produto novo e associa-o logo ao teu inventário. A unidade fica global no catálogo;
-            a descrição preenchida aqui será específica do produtor.
+            Cria um produto novo e associa-o logo ao teu inventário. As quantidades são sempre registadas em kg;
+            detalhes como caixas, molhos ou embalagens devem ir na descrição.
           </p>
 
           <div class="row g-3">
@@ -288,16 +288,6 @@
               {{ custom_form.name }}
               {% if custom_form.name.errors %}
                 <div class="text-danger small mt-1">{{ custom_form.name.errors.0 }}</div>
-              {% endif %}
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label fw-semibold" for="{{ custom_form.unit.id_for_label }}">
-                {{ custom_form.unit.label }}
-              </label>
-              {{ custom_form.unit }}
-              {% if custom_form.unit.errors %}
-                <div class="text-danger small mt-1">{{ custom_form.unit.errors.0 }}</div>
               {% endif %}
             </div>
 

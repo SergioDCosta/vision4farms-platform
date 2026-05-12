@@ -48,12 +48,13 @@
           {% endif %}
         </div>
 
-        <div>
-          <label class="form-label" for="{{ form.unit.id_for_label }}">{{ form.unit.label }}</label>
-          {{ form.unit }}
-          {% if form.unit.errors %}
-            <div class="errorlist">{{ form.unit.errors }}</div>
-          {% endif %}
+        <div style="padding:.8rem .9rem;border:1px solid #dbeafe;border-radius:.9rem;background:#eff6ff;color:#1e3a8a;">
+          <div style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.25rem;">
+            Unidade operacional
+          </div>
+          <div style="font-size:.92rem;line-height:1.35;">
+            As quantidades são sempre registadas em <strong>kg</strong>. Detalhes como caixas, molhos ou embalagens devem ir na descrição.
+          </div>
         </div>
 
         <div style="display:flex;align-items:flex-end;">

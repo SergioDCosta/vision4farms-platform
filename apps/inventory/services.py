@@ -505,7 +505,6 @@ def create_custom_product_for_producer(
     producer,
     category,
     name,
-    unit,
     initial_quantity,
     safety_stock,
     surplus_threshold,
@@ -516,7 +515,7 @@ def create_custom_product_for_producer(
     Cria um novo produto no catálogo (se não existir) e associa-o ao produtor.
     Se o produto já existir pelo slug, usa o existente em vez de duplicar.
 
-    - Dados globais: nome/categoria/unidade no Product.
+    - Dados globais: nome/categoria no Product; a unidade operacional é sempre kg.
     - Dado específico do produtor: descrição em ProducerProduct.producer_description.
     """
     has_producer_description_input = producer_description is not None
@@ -526,7 +525,6 @@ def create_custom_product_for_producer(
         product, product_created = get_or_create_product_for_inventory(
             category=category,
             name=name,
-            unit=unit,
         )
     except CatalogValidationError as exc:
         raise ValidationError(exc.message) from exc

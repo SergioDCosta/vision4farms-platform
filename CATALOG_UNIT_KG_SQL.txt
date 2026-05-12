@@ -1,0 +1,21 @@
+-- CATALOG_UNIT_KG_SQL.txt
+-- Objetivo: normalizar a unidade operacional de todos os produtos para kg.
+-- Executar primeiro em local, validar fluxos, depois repetir em Railway.
+
+-- 1) Preflight: ver produtos que ainda não estão em kg.
+SELECT id, name, slug, unit
+FROM products
+WHERE unit IS DISTINCT FROM 'kg'
+ORDER BY name;
+
+-- 2) Atualização manual.
+UPDATE products
+SET unit = 'kg',
+    updated_at = NOW()
+WHERE unit IS DISTINCT FROM 'kg';
+
+-- 3) Verificação final: deve devolver apenas unit = 'kg'.
+SELECT unit, COUNT(*) AS total
+FROM products
+GROUP BY unit
+ORDER BY unit;

@@ -3,15 +3,17 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.catalog.forms import AdminProductForm
 from apps.catalog.models import Product, ProductCategory
 from apps.catalog.services import (
     CatalogValidationError,
+    DEFAULT_PRODUCT_UNIT,
     build_unique_product_slug,
     can_delete_category,
     create_product,
     delete_category,
+    get_or_create_product_for_inventory,
     normalize_text,
-    normalize_unit,
     product_snapshot,
     update_product,
 )
@@ -33,14 +35,11 @@ class CatalogNormalizationTests(SimpleTestCase):
     def test_normalize_text_collapses_whitespace(self):
         self.assertEqual(normalize_text("  Pera   Rocha  "), "Pera Rocha")
 
-    def test_normalize_unit_handles_known_aliases(self):
-        self.assertEqual(normalize_unit("KG"), "kg")
-        self.assertEqual(normalize_unit("quilogramas"), "kg")
-        self.assertEqual(normalize_unit("Unidades"), "un")
-        self.assertEqual(normalize_unit("Caixas"), "caixa")
+    def test_default_product_unit_is_kg(self):
+        self.assertEqual(DEFAULT_PRODUCT_UNIT, "kg")
 
-    def test_normalize_unit_keeps_unknown_units_lowercase(self):
-        self.assertEqual(normalize_unit("  Molho  Grande "), "molho grande")
+    def test_admin_product_form_does_not_expose_unit(self):
+        self.assertNotIn("unit", AdminProductForm().fields)
 
 
 class CatalogServiceTests(SimpleTestCase):
@@ -67,7 +66,6 @@ class CatalogServiceTests(SimpleTestCase):
             create_product(
                 category=category,
                 name="pera rocha",
-                unit="KG",
                 description="",
                 is_active=True,
             )
@@ -77,7 +75,7 @@ class CatalogServiceTests(SimpleTestCase):
 
     @patch("apps.catalog.services.build_unique_product_slug", return_value="maca-gala")
     @patch("apps.catalog.services.Product")
-    def test_create_product_normalizes_unit_and_description(self, product_model_mock, slug_mock):
+    def test_create_product_forces_default_unit_and_normalizes_description(self, product_model_mock, slug_mock):
         category = ProductCategory(id="11111111-1111-1111-1111-111111111111", name="Fruta", slug="fruta", is_active=True)
         product_model_mock.objects.filter.return_value.first.return_value = None
         created_product = Product(name="Maçã Gala", slug="maca-gala", unit="kg")
@@ -86,7 +84,6 @@ class CatalogServiceTests(SimpleTestCase):
         result = create_product(
             category=category,
             name="  Maçã   Gala ",
-            unit="Quilogramas",
             description="  Boa   para venda ",
             is_active=True,
         )
@@ -107,7 +104,7 @@ class CatalogServiceTests(SimpleTestCase):
             category=category,
             name="Maçã",
             slug="maca",
-            unit="kg",
+            unit="caixa",
             description=None,
             is_active=True,
         )
@@ -118,7 +115,6 @@ class CatalogServiceTests(SimpleTestCase):
             product=product,
             category=category,
             name="Maçã Gala",
-            unit="KG",
             description="",
             is_active=True,
         )
@@ -126,8 +122,28 @@ class CatalogServiceTests(SimpleTestCase):
         self.assertIs(updated, product)
         self.assertIn("name", changed_fields)
         self.assertIn("slug", changed_fields)
+        self.assertIn("unit", changed_fields)
         self.assertEqual(product.slug, "maca-gala")
+        self.assertEqual(product.unit, DEFAULT_PRODUCT_UNIT)
         product.save.assert_called_once_with(update_fields=changed_fields + ["updated_at"])
+
+    @patch("apps.catalog.services.build_unique_product_slug", return_value="soja")
+    @patch("apps.catalog.services.Product")
+    def test_inventory_product_creation_uses_default_unit(self, product_model_mock, slug_mock):
+        category = ProductCategory(id="11111111-1111-1111-1111-111111111111", name="Leguminosas", slug="leguminosas", is_active=True)
+        product_model_mock.objects.filter.return_value.first.return_value = None
+        created_product = Product(name="Soja", slug="soja", unit="kg")
+        product_model_mock.objects.create.return_value = created_product
+
+        product, created = get_or_create_product_for_inventory(
+            category=category,
+            name="Soja",
+        )
+
+        self.assertIs(product, created_product)
+        self.assertTrue(created)
+        create_kwargs = product_model_mock.objects.create.call_args.kwargs
+        self.assertEqual(create_kwargs["unit"], DEFAULT_PRODUCT_UNIT)
 
     def test_product_snapshot_is_plain_audit_data(self):
         category = SimpleNamespace(id="cat-1", name="Fruta")
