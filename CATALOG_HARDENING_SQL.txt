@@ -1,0 +1,30 @@
+-- CATALOG HARDENING SQL
+-- Executar primeiro os SELECT de preflight. Se devolverem linhas, resolver
+-- duplicados antes de criar os indices unicos.
+
+-- 1) Preflight: produtos com nome duplicado ignorando maiusculas/minusculas.
+SELECT
+    LOWER(name) AS normalized_name,
+    COUNT(*) AS duplicate_count,
+    ARRAY_AGG(id ORDER BY created_at, id) AS product_ids,
+    ARRAY_AGG(name ORDER BY created_at, id) AS product_names
+FROM products
+GROUP BY LOWER(name)
+HAVING COUNT(*) > 1;
+
+-- 2) Preflight: categorias com nome duplicado ignorando maiusculas/minusculas.
+SELECT
+    LOWER(name) AS normalized_name,
+    COUNT(*) AS duplicate_count,
+    ARRAY_AGG(id ORDER BY created_at, id) AS category_ids,
+    ARRAY_AGG(name ORDER BY created_at, id) AS category_names
+FROM product_categories
+GROUP BY LOWER(name)
+HAVING COUNT(*) > 1;
+
+-- 3) Aplicar apenas se os preflights acima nao devolverem duplicados.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_lower_name_unique
+ON products (LOWER(name));
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_categories_lower_name_unique
+ON product_categories (LOWER(name));

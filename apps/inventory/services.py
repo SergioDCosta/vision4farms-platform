@@ -3,13 +3,17 @@ from collections import defaultdict
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.utils.text import slugify
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
-from apps.catalog.models import Product, ProductCategory
+from apps.catalog.models import Product
+from apps.catalog.services import (
+    CatalogValidationError,
+    get_or_create_product_for_inventory,
+    normalize_optional_text,
+)
 from apps.inventory.models import (
     ForecastSourceSystem,
     ProductionForecast,
@@ -143,29 +147,6 @@ def _stock_state(stock):
 # Produtos do produtor / inventário operacional
 # ---------------------------------------------------------------------------
 ZERO = Decimal("0")
-
-
-def _normalize_text(value):
-    return " ".join((value or "").split()).strip()
-
-
-def _normalize_optional_text(value):
-    if value is None:
-        return None
-    normalized = _normalize_text(value)
-    return normalized or None
-
-
-def _build_unique_slug(base_slug):
-    slug = base_slug or "produto"
-    candidate = slug
-    counter = 2
-
-    while Product.objects.filter(slug=candidate).exists():
-        candidate = f"{slug}-{counter}"
-        counter += 1
-
-    return candidate
 
 
 def _build_category_groups(rows):
@@ -477,7 +458,7 @@ def add_product_to_producer(
     """
     product = Product.objects.get(id=product_id, is_active=True)
     has_producer_description_input = producer_description is not None
-    normalized_producer_description = _normalize_optional_text(producer_description)
+    normalized_producer_description = normalize_optional_text(producer_description)
 
     defaults = {"is_active": True}
     if has_producer_description_input:
@@ -538,44 +519,17 @@ def create_custom_product_for_producer(
     - Dados globais: nome/categoria/unidade no Product.
     - Dado específico do produtor: descrição em ProducerProduct.producer_description.
     """
-    if not category or not isinstance(category, ProductCategory):
-        raise ValidationError("Seleciona uma categoria válida.")
-
-    name = _normalize_text(name)
-    unit = _normalize_text(unit)
-
     has_producer_description_input = producer_description is not None
-    normalized_producer_description = _normalize_optional_text(producer_description)
+    normalized_producer_description = normalize_optional_text(producer_description)
 
-    if not name:
-        raise ValidationError("Indica o nome do produto.")
-
-    if not unit:
-        raise ValidationError("Indica a unidade do produto.")
-
-    existing_product = Product.objects.filter(name__iexact=name).first()
-
-    product_created = False
-    if existing_product:
-        if not existing_product.is_active:
-            raise ValidationError(
-                f"Já existe um produto com o nome '{existing_product.name}', mas está inativo."
-            )
-        product = existing_product
-    else:
-        base_slug = slugify(name)
-        if not base_slug:
-            raise ValidationError("Não foi possível gerar um identificador válido para o produto.")
-
-        product = Product.objects.create(
+    try:
+        product, product_created = get_or_create_product_for_inventory(
             category=category,
             name=name,
-            slug=_build_unique_slug(base_slug),
             unit=unit,
-            description=None,
-            is_active=True,
         )
-        product_created = True
+    except CatalogValidationError as exc:
+        raise ValidationError(exc.message) from exc
 
     pp_defaults = {"is_active": True}
     if has_producer_description_input:

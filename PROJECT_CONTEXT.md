@@ -128,9 +128,16 @@
   - `/gestor/categorias/`.
 - Criação de produto pelo produtor no inventário pode criar produto global e associá-lo ao produtor.
 - Estado atual arquitetural:
-  - modelos estão em `catalog`;
-  - regras de criação/edição/listagem ainda estão repartidas por `dashboard` e `inventory`;
-  - próximo refactor recomendado é extrair serviços/forms de catálogo para `apps.catalog`, mantendo as URLs admin atuais.
+  - modelos, forms admin, normalização, slugs, snapshots e criação/edição global vivem em `apps.catalog`;
+  - `dashboard` mantém as URLs/UI admin e delega regras para `apps.catalog.services`;
+  - `inventory` delega a criação/reutilização de produto global para `apps.catalog.services` e mantém apenas a associação ao produtor/stock.
+- Unidades:
+  - `Product.unit` continua texto livre;
+  - aliases comuns são normalizados (`KG`, `quilo`, `quilogramas` -> `kg`; `unidades` -> `un`; `caixas` -> `caixa`);
+  - valores desconhecidos continuam permitidos, compactados e em lowercase.
+- SQL opcional:
+  - `CATALOG_HARDENING_SQL.txt` inclui preflight de duplicados e índices únicos case-insensitive por `LOWER(name)`;
+  - aplicar manualmente apenas se os preflights não devolverem duplicados.
 
 ## 7) Inventory
 - `products.unit` é global.

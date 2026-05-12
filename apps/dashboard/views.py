@@ -11,7 +11,6 @@ from django.db.models.functions import Cast, TruncWeek
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
-from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from apps.common.audit import describe_user_agent, get_client_ip
@@ -31,8 +30,18 @@ from apps.alerts.models import Alert, AlertStatus, AlertSeverity
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import Order, OrderStatus, OrderItem, OrderItemStatus, OrderSourceType, DeliveryMethod
 from apps.catalog.models import Product, ProductCategory
+from apps.catalog.forms import AdminCategoryForm, AdminProductForm
+from apps.catalog.services import (
+    CatalogValidationError,
+    category_snapshot,
+    create_category,
+    create_product,
+    product_snapshot,
+    update_category,
+    update_product,
+)
 from apps.dashboard.models import AuditLog
-from apps.dashboard.forms import AdminUserCreateForm, AdminCategoryForm, AdminProductForm
+from apps.dashboard.forms import AdminUserCreateForm
 from apps.dashboard.services.weather import get_dashboard_weather_snapshot
 
 def _log_admin_action(request, action, entity_type, entity_id=None, notes=None, old_values=None, new_values=None):
@@ -231,27 +240,8 @@ def _user_snapshot(user, producer_profile=None):
         "user_type": getattr(producer_profile, "user_type", None) if producer_profile else None,
     }
 
-def _normalize_text(value):
-    return " ".join((value or "").split()).strip()
-
-
 def _htmx_target(request):
     return (request.headers.get("HX-Target") or "").lstrip("#")
-
-
-def _build_unique_product_slug(base_slug, exclude_id=None):
-    slug = base_slug or "produto"
-    candidate = slug
-    counter = 2
-
-    while True:
-        qs = Product.objects.filter(slug=candidate)
-        if exclude_id:
-            qs = qs.exclude(id=exclude_id)
-        if not qs.exists():
-            return candidate
-        candidate = f"{slug}-{counter}"
-        counter += 1
 
 
 def _get_admin_products_queryset(q=""):
@@ -278,47 +268,6 @@ def _get_admin_products_queryset(q=""):
         )
 
     return products
-
-
-def _product_snapshot(product):
-    return {
-        "id": str(product.id),
-        "name": product.name,
-        "slug": product.slug,
-        "category_id": str(product.category_id) if product.category_id else None,
-        "category_name": product.category.name if product.category else None,
-        "unit": product.unit,
-        "description": product.description,
-        "is_active": product.is_active,
-        "created_at": product.created_at.isoformat() if product.created_at else None,
-        "updated_at": product.updated_at.isoformat() if product.updated_at else None,
-    }
-
-
-def _build_unique_category_slug(base_slug, exclude_id=None):
-    slug = base_slug or "categoria"
-    candidate = slug
-    counter = 2
-
-    while True:
-        qs = ProductCategory.objects.filter(slug=candidate)
-        if exclude_id:
-            qs = qs.exclude(id=exclude_id)
-        if not qs.exists():
-            return candidate
-        candidate = f"{slug}-{counter}"
-        counter += 1
-
-
-def _category_snapshot(category):
-    return {
-        "id": str(category.id),
-        "name": category.name,
-        "slug": category.slug,
-        "is_active": category.is_active,
-        "created_at": category.created_at.isoformat() if category.created_at else None,
-        "updated_at": category.updated_at.isoformat() if category.updated_at else None,
-    }
 
 
 def _build_weather_operational_hints(
@@ -867,34 +816,24 @@ def admin_product_create_view(request):
     form = AdminProductForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        name = _normalize_text(form.cleaned_data["name"])
-        unit = _normalize_text(form.cleaned_data["unit"])
-        category = form.cleaned_data["category"]
-        description = (form.cleaned_data.get("description") or "").strip() or None
-        is_active = form.cleaned_data["is_active"]
-
-        existing_by_name = Product.objects.filter(name__iexact=name).first()
-        if existing_by_name:
-            form.add_error("name", "Já existe um produto com esse nome.")
-        else:
-            slug = _build_unique_product_slug(slugify(name))
-
-            product = Product.objects.create(
-                category=category,
-                name=name,
-                slug=slug,
-                unit=unit,
-                description=description,
-                is_active=is_active,
+        try:
+            product = create_product(
+                category=form.cleaned_data["category"],
+                name=form.cleaned_data["name"],
+                unit=form.cleaned_data["unit"],
+                description=form.cleaned_data.get("description"),
+                is_active=form.cleaned_data["is_active"],
             )
-
+        except CatalogValidationError as exc:
+            form.add_error(exc.field, exc.message)
+        else:
             _log_admin_action(
                 request=request,
                 action="PRODUCT_CREATED",
                 entity_type="products",
                 entity_id=product.id,
                 notes=f"Administrador criou o produto {product.name}.",
-                new_values=_product_snapshot(product),
+                new_values=product_snapshot(product),
             )
 
             messages.success(request, "Produto criado com sucesso.")
@@ -915,49 +854,22 @@ def admin_product_update_view(request, product_id):
     product = get_object_or_404(Product.objects.select_related("category"), id=product_id)
 
     if request.method == "POST":
-        form = AdminProductForm(request.POST)
+        form = AdminProductForm(request.POST, product=product)
         if form.is_valid():
-            name = _normalize_text(form.cleaned_data["name"])
-            unit = _normalize_text(form.cleaned_data["unit"])
-            category = form.cleaned_data["category"]
-            description = (form.cleaned_data.get("description") or "").strip() or None
-            is_active = form.cleaned_data["is_active"]
-
-            existing_by_name = Product.objects.filter(name__iexact=name).exclude(id=product.id).first()
-            if existing_by_name:
-                form.add_error("name", "Já existe outro produto com esse nome.")
+            old_snapshot = product_snapshot(product)
+            try:
+                product, changed_fields = update_product(
+                    product=product,
+                    category=form.cleaned_data["category"],
+                    name=form.cleaned_data["name"],
+                    unit=form.cleaned_data["unit"],
+                    description=form.cleaned_data.get("description"),
+                    is_active=form.cleaned_data["is_active"],
+                )
+            except CatalogValidationError as exc:
+                form.add_error(exc.field, exc.message)
             else:
-                old_snapshot = _product_snapshot(product)
-                changed_fields = []
-
-                if product.category_id != category.id:
-                    product.category = category
-                    changed_fields.append("category")
-
-                if product.name != name:
-                    product.name = name
-                    changed_fields.append("name")
-
-                    new_slug = _build_unique_product_slug(slugify(name), exclude_id=product.id)
-                    if product.slug != new_slug:
-                        product.slug = new_slug
-                        changed_fields.append("slug")
-
-                if product.unit != unit:
-                    product.unit = unit
-                    changed_fields.append("unit")
-
-                if product.description != description:
-                    product.description = description
-                    changed_fields.append("description")
-
-                if product.is_active != is_active:
-                    product.is_active = is_active
-                    changed_fields.append("is_active")
-
                 if changed_fields:
-                    product.save(update_fields=changed_fields + ["updated_at"])
-
                     _log_admin_action(
                         request=request,
                         action="PRODUCT_UPDATED",
@@ -965,7 +877,7 @@ def admin_product_update_view(request, product_id):
                         entity_id=product.id,
                         notes=f"Administrador atualizou o produto {product.name}.",
                         old_values=old_snapshot,
-                        new_values=_product_snapshot(product),
+                        new_values=product_snapshot(product),
                     )
 
                     messages.success(request, "Produto atualizado com sucesso.")
@@ -974,13 +886,16 @@ def admin_product_update_view(request, product_id):
 
                 return redirect("dashboard:gestor_produto_detalhe", product_id=product.id)
     else:
-        form = AdminProductForm(initial={
-            "category": product.category,
-            "name": product.name,
-            "unit": product.unit,
-            "description": product.description,
-            "is_active": product.is_active,
-        })
+        form = AdminProductForm(
+            product=product,
+            initial={
+                "category": product.category,
+                "name": product.name,
+                "unit": product.unit,
+                "description": product.description,
+                "is_active": product.is_active,
+            },
+        )
 
     context = {
         "admin_tab": "produtos",
@@ -1022,7 +937,7 @@ def admin_product_delete_view(request, product_id):
         return redirect("dashboard:gestor_produto_detalhe", product_id=product.id)
 
     product_name = product.name
-    old_snapshot = _product_snapshot(product)
+    old_snapshot = product_snapshot(product)
 
     try:
         with transaction.atomic():
@@ -1103,27 +1018,18 @@ def admin_category_create_view(request):
     form = AdminCategoryForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        name = _normalize_text(form.cleaned_data["name"])
-
-        existing_by_name = ProductCategory.objects.filter(name__iexact=name).first()
-        if existing_by_name:
-            form.add_error("name", "Já existe uma categoria com esse nome.")
+        try:
+            category = create_category(name=form.cleaned_data["name"])
+        except CatalogValidationError as exc:
+            form.add_error(exc.field, exc.message)
         else:
-            slug = _build_unique_category_slug(slugify(name))
-
-            category = ProductCategory.objects.create(
-                name=name,
-                slug=slug,
-                is_active=True,
-            )
-
             _log_admin_action(
                 request=request,
                 action="CATEGORY_CREATED",
                 entity_type="categories",
                 entity_id=category.id,
                 notes=f"Administrador criou a categoria {category.name}.",
-                new_values=_category_snapshot(category),
+                new_values=category_snapshot(category),
             )
 
             messages.success(request, "Categoria criada com sucesso.")
@@ -1146,27 +1052,16 @@ def admin_category_update_view(request, category_id):
     if request.method == "POST":
         form = AdminCategoryForm(request.POST)
         if form.is_valid():
-            name = _normalize_text(form.cleaned_data["name"])
-
-            existing_by_name = ProductCategory.objects.filter(name__iexact=name).exclude(id=category.id).first()
-            if existing_by_name:
-                form.add_error("name", "Já existe outra categoria com esse nome.")
+            old_snapshot = category_snapshot(category)
+            try:
+                category, changed_fields = update_category(
+                    category=category,
+                    name=form.cleaned_data["name"],
+                )
+            except CatalogValidationError as exc:
+                form.add_error(exc.field, exc.message)
             else:
-                old_snapshot = _category_snapshot(category)
-                changed_fields = []
-
-                if category.name != name:
-                    category.name = name
-                    changed_fields.append("name")
-
-                    new_slug = _build_unique_category_slug(slugify(name), exclude_id=category.id)
-                    if category.slug != new_slug:
-                        category.slug = new_slug
-                        changed_fields.append("slug")
-
                 if changed_fields:
-                    category.save(update_fields=changed_fields + ["updated_at"])
-
                     _log_admin_action(
                         request=request,
                         action="CATEGORY_UPDATED",
@@ -1174,7 +1069,7 @@ def admin_category_update_view(request, category_id):
                         entity_id=category.id,
                         notes=f"Administrador atualizou a categoria {category.name}.",
                         old_values=old_snapshot,
-                        new_values=_category_snapshot(category),
+                        new_values=category_snapshot(category),
                     )
 
                     messages.success(request, "Categoria atualizada com sucesso.")
