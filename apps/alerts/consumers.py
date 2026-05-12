@@ -3,26 +3,15 @@ import json
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from apps.accounts.models import User, UserRole
+from apps.accounts.models import UserRole
 from apps.alerts.services import get_alerts_badge_group_name
+from apps.common.session import resolve_active_session_user
 
 
 class AlertsSidebarConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _resolve_current_user(self):
-        scope_user = self.scope.get("user")
-        if scope_user is not None and getattr(scope_user, "is_authenticated", False):
-            return scope_user
-
-        session = self.scope.get("session")
-        if not session:
-            return None
-
-        user_id = session.get("user_id")
-        if not user_id:
-            return None
-
-        return User.objects.filter(id=user_id).first()
+        return resolve_active_session_user(self.scope.get("session"))
 
     async def connect(self):
         self.current_user = await self._resolve_current_user()

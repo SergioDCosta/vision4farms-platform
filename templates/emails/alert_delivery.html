@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt">
+<body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc;padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+          <tr>
+            <td style="padding:20px 22px;">
+              <p style="margin:0 0 8px;color:#16a34a;font-size:12px;font-weight:bold;text-transform:uppercase;">Alerta operacional</p>
+              <h1 style="margin:0 0 12px;font-size:22px;line-height:1.25;color:#0f172a;">{{ alert.title }}</h1>
+              {% if alert.description %}
+                <p style="margin:0 0 14px;color:#475569;line-height:1.5;">{{ alert.description }}</p>
+              {% endif %}
+              {% if reason %}
+                <p style="margin:0 0 14px;color:#334155;line-height:1.5;"><strong>Porque apareceu:</strong> {{ reason }}</p>
+              {% endif %}
+              {% if action_url %}
+                <p style="margin:22px 0 0;">
+                  <a href="{{ action_url }}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 16px;border-radius:6px;">Abrir na plataforma</a>
+                </p>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 22px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.5;">
+              Este email foi enviado porque tem alertas por email ativos nas suas preferências.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

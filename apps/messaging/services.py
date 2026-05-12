@@ -235,7 +235,7 @@ def _safe_upsert_message_unread_alerts_for_message(*, conversation, message, sen
         return
 
     try:
-        from apps.alerts.services import upsert_message_unread_alert
+        from apps.notifications_app.services import create_message_notification
     except Exception:
         return
 
@@ -264,40 +264,23 @@ def _safe_upsert_message_unread_alerts_for_message(*, conversation, message, sen
     action_url = f"/mensagens/?tab={MESSAGE_TAB_ACTIVE}&c={conversation.id}"
 
     for producer in recipient_profiles:
+        user = getattr(producer, "user", None)
+        if not user:
+            continue
         try:
-            upsert_message_unread_alert(
-                target_producer=producer,
-                conversation_id=conversation.id,
-                conversation_type=conversation.conversation_type,
+            create_message_notification(
+                user=user,
+                message=message,
                 sender_name=sender_label,
                 preview_text=preview,
                 action_url=action_url,
-                acting_user=sender_user,
             )
         except Exception:
             continue
 
 
 def _safe_resolve_message_unread_alert_for_read(*, user, conversation):
-    if not user or not conversation:
-        return
-    try:
-        from apps.alerts.services import resolve_message_unread_alert
-    except Exception:
-        return
-
-    producer = ProducerProfile.objects.filter(user=user).first()
-    if not producer:
-        return
-
-    try:
-        resolve_message_unread_alert(
-            target_producer=producer,
-            conversation_id=conversation.id,
-            acting_user=user,
-        )
-    except Exception:
-        return
+    return
 
 
 def broadcast_unread_totals_for_user_ids(user_ids):

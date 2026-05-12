@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth.password_validation import validate_password
 import re
 
 from apps.accounts.models import User
@@ -256,6 +257,10 @@ class ChangePasswordForm(forms.Form):
         }),
     )
 
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
     def clean(self):
         cleaned_data = super().clean()
         current_password = cleaned_data.get("current_password")
@@ -267,5 +272,11 @@ class ChangePasswordForm(forms.Form):
 
         if current_password and new_password and current_password == new_password:
             self.add_error("new_password", "A nova palavra-passe deve ser diferente da atual.")
+
+        if new_password and not self.errors.get("new_password"):
+            try:
+                validate_password(new_password, user=self.user)
+            except forms.ValidationError as exc:
+                self.add_error("new_password", exc)
 
         return cleaned_data

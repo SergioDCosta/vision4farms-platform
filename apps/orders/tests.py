@@ -8,6 +8,7 @@ from apps.needs.models import NeedResponseStatus
 from apps.orders.models import Order, OrderItem, OrderStatus
 from apps.orders.services import (
     OrderServiceError,
+    _quantity_label,
     _notify_order_purchase_created,
     build_presale_timeline_context,
     create_order_from_listing,
@@ -15,6 +16,11 @@ from apps.orders.services import (
     is_order_from_need_response,
     is_order_forecast_only,
 )
+
+
+class OrderQuantityLabelTests(SimpleTestCase):
+    def test_quantity_label_trims_unneeded_decimal_places(self):
+        self.assertEqual(_quantity_label("200.000", "kg"), "200 kg")
 
 
 class PresaleOrderClassificationTests(SimpleTestCase):

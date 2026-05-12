@@ -168,7 +168,7 @@ def get_base_listing_queryset():
 
 def expire_due_active_listings():
     now = timezone.now()
-    MarketplaceListing.objects.filter(
+    return MarketplaceListing.objects.filter(
         status=ListingStatus.ACTIVE,
         expires_at__isnull=False,
         expires_at__lte=now,

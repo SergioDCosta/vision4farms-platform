@@ -6,6 +6,7 @@ from django.db.models import Max, Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
+from apps.common.templatetags.quantity import format_quantity
 from apps.inventory.models import (
     ProductionForecast,
     ProducerProfile,
@@ -50,6 +51,12 @@ def quantize_qty(value):
 
 def quantize_money(value):
     return Decimal(str(value)).quantize(MONEY_DECIMAL, rounding=ROUND_HALF_UP)
+
+
+def _quantity_label(value, unit=""):
+    unit_label = (unit or "").strip()
+    quantity = format_quantity(value)
+    return f"{quantity} {unit_label}".strip()
 
 
 def get_current_producer_for_user(user):
@@ -109,6 +116,28 @@ def _safe_emit_order_interaction_alert(
         return
 
 
+def _safe_create_order_update_notification(*, target_producer, order, title, body, action_url):
+    user = getattr(target_producer, "user", None)
+    if not user:
+        return
+
+    try:
+        from apps.notifications_app.services import create_order_update_notification
+    except Exception:
+        return
+
+    try:
+        create_order_update_notification(
+            user=user,
+            order=order,
+            title=title,
+            body=body,
+            action_url=action_url,
+        )
+    except Exception:
+        return
+
+
 def _order_detail_url_for_alert(order, *, viewer_role):
     if viewer_role == "buyer":
         return f"/encomendas/{order.id}/?force_single=1"
@@ -131,7 +160,7 @@ def _build_order_alert_summary(order, *, seller_producer=None):
         quantity = quantize_qty(item.quantity or 0)
         unit = getattr(getattr(item, "product", None), "unit", "") or ""
         product_name = getattr(getattr(item, "product", None), "name", "") or "Produto"
-        quantity_label = f"{quantity} {unit}".strip()
+        quantity_label = _quantity_label(quantity, unit)
         return f"{quantity_label} de {product_name}"
 
     return f"{len(items)} itens"
@@ -149,7 +178,7 @@ def _notify_order_purchase_created(*, order, buyer_producer, seller_producer, ac
     _safe_emit_order_interaction_alert(
         target_producer=seller_producer,
         order=order,
-        alert_type=AlertType.ORDER_PURCHASE_CREATED,
+        alert_type=AlertType.ORDER_REQUIRES_CONFIRMATION,
         title=(
             f"A sua oferta foi aceite na encomenda #{order.order_number}"
             if is_need_response_order
@@ -175,33 +204,35 @@ def _notify_order_status_changed_to_buyer(
     status,
     acting_user,
 ):
+    status_label = dict(OrderStatus.choices).get(status, str(status))
+    counterpart_name = _producer_display_name(seller_producer)
+    summary_label = _build_order_alert_summary(order, seller_producer=seller_producer)
+    title = f"Encomenda #{order.order_number}: {status_label}"
+    description = (
+        f"{counterpart_name} atualizou a encomenda para "
+        f"\"{status_label}\" ({summary_label})."
+    )
+    if status != OrderStatus.CANCELLED:
+        _safe_create_order_update_notification(
+            target_producer=buyer_producer,
+            order=order,
+            title=title,
+            body=description,
+            action_url=_order_detail_url_for_alert(order, viewer_role="buyer"),
+        )
+        return
+
     try:
         from apps.alerts.models import AlertType
     except Exception:
         return
 
-    status_map = {
-        OrderStatus.CONFIRMED: AlertType.ORDER_CONFIRMED,
-        OrderStatus.IN_PROGRESS: AlertType.ORDER_IN_PROGRESS,
-        OrderStatus.DELIVERING: AlertType.ORDER_DELIVERING,
-        OrderStatus.CANCELLED: AlertType.ORDER_CANCELLED,
-    }
-    alert_type = status_map.get(status)
-    if not alert_type:
-        return
-
-    status_label = dict(OrderStatus.choices).get(status, str(status))
-    counterpart_name = _producer_display_name(seller_producer)
-    summary_label = _build_order_alert_summary(order, seller_producer=seller_producer)
     _safe_emit_order_interaction_alert(
         target_producer=buyer_producer,
         order=order,
-        alert_type=alert_type,
-        title=f"Encomenda #{order.order_number}: {status_label}",
-        description=(
-            f"{counterpart_name} atualizou a encomenda para "
-            f"\"{status_label}\" ({summary_label})."
-        ),
+        alert_type=AlertType.ORDER_CANCELLED,
+        title=title,
+        description=description,
         counterpart_name=counterpart_name,
         summary_label=summary_label,
         action_url=_order_detail_url_for_alert(order, viewer_role="buyer"),
@@ -210,23 +241,14 @@ def _notify_order_status_changed_to_buyer(
 
 
 def _notify_order_completed_to_seller(*, order, buyer_producer, seller_producer, acting_user):
-    try:
-        from apps.alerts.models import AlertType
-    except Exception:
-        return
-
     counterpart_name = _producer_display_name(buyer_producer)
     summary_label = _build_order_alert_summary(order, seller_producer=seller_producer)
-    _safe_emit_order_interaction_alert(
+    _safe_create_order_update_notification(
         target_producer=seller_producer,
         order=order,
-        alert_type=AlertType.ORDER_COMPLETED,
         title=f"Receção confirmada na encomenda #{order.order_number}",
-        description=f"{counterpart_name} confirmou a receção ({summary_label}).",
-        counterpart_name=counterpart_name,
-        summary_label=summary_label,
+        body=f"{counterpart_name} confirmou a receção ({summary_label}).",
         action_url=_order_detail_url_for_alert(order, viewer_role="seller"),
-        acting_user=acting_user,
     )
 
 
@@ -1439,10 +1461,10 @@ def _build_presale_order_entry(*, order, viewer_role):
 
     if item_count == 1 and first_item:
         product_label = getattr(getattr(first_item, "product", None), "name", "") or "Produto"
-        quantity_label = (
-            f"{quantize_qty(first_item.quantity or 0)} "
-            f"{getattr(getattr(first_item, 'product', None), 'unit', '')}"
-        ).strip()
+        quantity_label = _quantity_label(
+            quantize_qty(first_item.quantity or 0),
+            getattr(getattr(first_item, "product", None), "unit", ""),
+        )
     else:
         product_label = f"Múltiplos produtos ({item_count})" if item_count > 1 else "Produto"
         quantity_label = "Vários itens"

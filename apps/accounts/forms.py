@@ -1,6 +1,29 @@
+from types import SimpleNamespace
+
 from django import forms
+from django.contrib.auth.password_validation import validate_password
+
 from apps.accounts.models import UserRole
-from apps.inventory.models import ProducerUserType, ProducerProfile
+from apps.inventory.models import ProducerUserType
+
+
+def _password_validation_user(*, first_name="", last_name="", email="", user=None):
+    return SimpleNamespace(
+        first_name=first_name if first_name is not None else getattr(user, "first_name", ""),
+        last_name=last_name if last_name is not None else getattr(user, "last_name", ""),
+        email=email if email is not None else getattr(user, "email", ""),
+        username=email if email is not None else getattr(user, "email", ""),
+    )
+
+
+def _add_password_validation_error(form, password, user):
+    if not password:
+        return
+
+    try:
+        validate_password(password, user=user)
+    except forms.ValidationError as exc:
+        form.add_error("password", exc)
 
 
 class LoginForm(forms.Form):
@@ -111,6 +134,13 @@ class RegisterForm(forms.Form):
 
         if password and confirm_password and password != confirm_password:
             self.add_error("confirm_password", "As palavras-passe não coincidem.")
+        else:
+            validation_user = _password_validation_user(
+                first_name=cleaned_data.get("first_name"),
+                last_name=cleaned_data.get("last_name"),
+                email=cleaned_data.get("email"),
+            )
+            _add_password_validation_error(self, password, validation_user)
 
         return cleaned_data
 
@@ -147,6 +177,10 @@ class PasswordResetConfirmForm(forms.Form):
         })
     )
 
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
     def clean(self):
         cleaned_data = super().clean()
         password = cleaned_data.get("password")
@@ -154,6 +188,8 @@ class PasswordResetConfirmForm(forms.Form):
 
         if password and confirm_password and password != confirm_password:
             self.add_error("confirm_password", "As palavras-passe não coincidem.")
+        else:
+            _add_password_validation_error(self, password, self.user)
 
         return cleaned_data
 
@@ -221,9 +257,10 @@ class AdminInviteCompleteForm(forms.Form):
         })
     )
 
-    def __init__(self, *args, user_role=None, **kwargs):
+    def __init__(self, *args, user_role=None, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.user_role = user_role
+        self.user = user
         if user_role == UserRole.ADMIN:
             self.fields.pop("user_type", None)
 
@@ -234,5 +271,13 @@ class AdminInviteCompleteForm(forms.Form):
 
         if password and confirm_password and password != confirm_password:
             self.add_error("confirm_password", "As palavras-passe não coincidem.")
+        else:
+            validation_user = _password_validation_user(
+                first_name=cleaned_data.get("first_name"),
+                last_name=cleaned_data.get("last_name"),
+                email=getattr(self.user, "email", ""),
+                user=self.user,
+            )
+            _add_password_validation_error(self, password, validation_user)
 
         return cleaned_data

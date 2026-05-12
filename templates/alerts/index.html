@@ -68,16 +68,51 @@
           hx-swap="outerHTML"
           hx-push-url="true">
       <input type="hidden" name="tab" value="{{ active_tab }}">
-      <label for="alert-type-filter">Tipo</label>
-      <select id="alert-type-filter" name="type" onchange="this.form.requestSubmit()">
-        <option value="" {% if not active_type %}selected{% endif %}>Todos os tipos</option>
-        {% for option in type_options %}
-          <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
-            {{ option.label }}{% if option.count %} ({{ option.count }}){% endif %}
-          </option>
-        {% endfor %}
-      </select>
+      <div class="alt-filter__field alt-filter__field--search">
+        <label for="alert-search">Pesquisar</label>
+        <input id="alert-search"
+               type="search"
+               name="q"
+               value="{{ search_query }}"
+               placeholder="Produto, produtor ou texto...">
+      </div>
+      <div class="alt-filter__field">
+        <label for="alert-category-filter">Categoria</label>
+        <select id="alert-category-filter" name="category" onchange="this.form.requestSubmit()">
+          <option value="" {% if not active_category %}selected{% endif %}>Todas</option>
+          {% for option in category_options %}
+            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+              {{ option.label }}{% if option.count %} ({{ option.count }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="alt-filter__field">
+        <label for="alert-type-filter">Tipo</label>
+        <select id="alert-type-filter" name="type" onchange="this.form.requestSubmit()">
+          <option value="" {% if not active_type %}selected{% endif %}>Todos os tipos</option>
+          {% for option in type_options %}
+            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+              {{ option.label }}{% if option.count %} ({{ option.count }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <label class="alt-filter__check">
+        <input type="checkbox" name="action" value="1" {% if action_only %}checked{% endif %} onchange="this.form.requestSubmit()">
+        Só ação
+      </label>
       <noscript><button type="submit" class="alt-btn alt-btn--soft">Filtrar</button></noscript>
+      <button type="submit" class="alt-btn alt-btn--soft alt-filter__submit">Filtrar</button>
+      <a href="{% url 'alerts:index' %}?tab={{ active_tab }}"
+         hx-get="{% url 'alerts:index' %}?tab={{ active_tab }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="alt-btn alt-btn--ghost alt-filter__reset">
+        Limpar
+      </a>
     </form>
   </section>
 
@@ -86,6 +121,8 @@
       <strong>{{ filtered_count }}</strong>
       alerta{{ filtered_count|pluralize:"s" }}
       {% if active_type %}do tipo <strong>{{ active_type_label }}</strong>{% endif %}
+      {% if active_category %}na categoria <strong>{{ active_category_label }}</strong>{% endif %}
+      {% if action_only %}que exigem ação{% endif %}
       nesta vista.
     </p>
 
@@ -97,117 +134,191 @@
             hx-select="#shellMain"
             hx-swap="outerHTML"
             hx-push-url="{{ current_url }}"
-            onsubmit="return confirm('{% if active_type %}Ignorar todos os alertas visíveis?{% else %}Ignorar todos os alertas ativos?{% endif %}');">
+            onsubmit="return confirm('{% if active_type or active_category or search_query or action_only %}Adiar todos os alertas visíveis?{% else %}Adiar todos os alertas ativos?{% endif %}');">
         {% csrf_token %}
         <input type="hidden" name="tab" value="{{ active_tab }}">
         <input type="hidden" name="type" value="{{ active_type }}">
+        <input type="hidden" name="category" value="{{ active_category }}">
+        <input type="hidden" name="q" value="{{ search_query }}">
+        <input type="hidden" name="action" value="{% if action_only %}1{% endif %}">
         <button type="submit" class="alt-btn alt-btn--soft">
-          {% if active_type %}Ignorar visíveis{% else %}Ignorar todos{% endif %}
+          {% if active_type or active_category or search_query or action_only %}Adiar visíveis{% else %}Adiar todos{% endif %}
         </button>
       </form>
     {% endif %}
   </div>
 
-  <section class="alt-list">
-    {% for alert in alerts %}
-      <article class="alt-card alt-card--{{ alert.severity|lower }}">
-        <div class="alt-card__stripe" aria-hidden="true"></div>
-        <div class="alt-card__main">
-          <div class="alt-card__head">
-            <div class="alt-badges">
-              <span class="alt-badge alt-badge--{{ alert.severity|lower }}">{{ alert.severity_label }}</span>
-              <span class="alt-badge alt-badge--muted">{{ alert.type_label }}</span>
-            </div>
-            <time datetime="{{ alert.created_at|date:'c' }}">{{ alert.created_at|date:"d/m/Y H:i" }}</time>
-          </div>
-
-          <div class="alt-card__body">
-            <h3>{{ alert.title }}</h3>
-            {% if alert.description %}
-              <p class="alt-description">{{ alert.description }}</p>
-            {% endif %}
-            {% if alert.related_product_name %}
-              <p class="alt-related">Produto: <strong>{{ alert.related_product_name }}</strong></p>
-            {% endif %}
-          </div>
-
-          <div class="alt-actions">
-            <div class="alt-actions__primary">
-              {% if alert.action_url %}
-                <a href="{{ alert.action_url }}"
-                   hx-get="{{ alert.action_url }}"
-                   hx-target="#shellMain"
-                   hx-select="#shellMain"
-                   hx-swap="outerHTML"
-                   hx-push-url="true"
-                   class="alt-btn alt-btn--primary">
-                  {{ alert.action_label }}
-                </a>
-              {% endif %}
-
-              {% if alert.secondary_action_url %}
-                <a href="{{ alert.secondary_action_url }}"
-                   hx-get="{{ alert.secondary_action_url }}"
-                   hx-target="#shellMain"
-                   hx-select="#shellMain"
-                   hx-swap="outerHTML"
-                   hx-push-url="true"
-                   class="alt-btn alt-btn--ghost">
-                  {{ alert.secondary_action_label }}
-                </a>
-              {% endif %}
-            </div>
-
-            <div class="alt-actions__state">
-              {% if active_tab == "active" %}
-                <form method="post"
-                      action="{% url 'alerts:resolve' alert.id %}"
-                      hx-post="{% url 'alerts:resolve' alert.id %}"
-                      hx-target="#shellMain"
-                      hx-select="#shellMain"
-                      hx-swap="outerHTML"
-                      hx-push-url="{{ current_url }}">
-                  {% csrf_token %}
-                  <input type="hidden" name="tab" value="{{ active_tab }}">
-                  <input type="hidden" name="type" value="{{ active_type }}">
-                  <button type="submit"
-                          class="alt-btn alt-btn--soft"
-                          title="Em alertas automáticos, resolver oculta o alerta enquanto a mesma condição persistir.">
-                    Resolver
-                  </button>
-                </form>
-
-                <form method="post"
-                      action="{% url 'alerts:ignore' alert.id %}"
-                      hx-post="{% url 'alerts:ignore' alert.id %}"
-                      hx-target="#shellMain"
-                      hx-select="#shellMain"
-                      hx-swap="outerHTML"
-                      hx-push-url="{{ current_url }}"
-                      onsubmit="return confirm('Ignorar este alerta durante 30 minutos?');">
-                  {% csrf_token %}
-                  <input type="hidden" name="tab" value="{{ active_tab }}">
-                  <input type="hidden" name="type" value="{{ active_type }}">
-                  <button type="submit" class="alt-btn alt-btn--soft">Ignorar 30 min</button>
-                </form>
-              {% elif active_tab == "ignored" %}
-                <form method="post"
-                      action="{% url 'alerts:reactivate' alert.id %}"
-                      hx-post="{% url 'alerts:reactivate' alert.id %}"
-                      hx-target="#shellMain"
-                      hx-select="#shellMain"
-                      hx-swap="outerHTML"
-                      hx-push-url="{{ current_url }}">
-                  {% csrf_token %}
-                  <input type="hidden" name="tab" value="{{ active_tab }}">
-                  <input type="hidden" name="type" value="{{ active_type }}">
-                  <button type="submit" class="alt-btn alt-btn--soft">Reativar</button>
-                </form>
-              {% endif %}
-            </div>
-          </div>
+  {% if recent_notifications %}
+    <section class="alt-notifications" aria-label="Notificações recentes">
+      <div class="alt-notifications__head">
+        <div>
+          <h2>Notificações recentes</h2>
+          <p>Eventos informativos separados dos alertas operacionais.</p>
         </div>
-      </article>
+      </div>
+      <div class="alt-notifications__list">
+        {% for notification in recent_notifications %}
+          <a class="alt-notification {% if not notification.is_read %}is-unread{% endif %}"
+             {% if notification.action_url %}
+               href="{{ notification.action_url }}"
+               hx-get="{{ notification.action_url }}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+             {% else %}
+               href="#"
+             {% endif %}>
+            <span class="alt-notification__dot" aria-hidden="true"></span>
+            <span class="alt-notification__body">
+              <strong>{{ notification.title }}</strong>
+              {% if notification.body %}<small>{{ notification.body }}</small>{% endif %}
+            </span>
+            <time datetime="{{ notification.created_at|date:'c' }}">{{ notification.created_at|date:"d/m H:i" }}</time>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="alt-list">
+    {% for section in alert_sections %}
+      <div class="alt-section alt-section--{{ section.key }}">
+        <div class="alt-section__head">
+          <div>
+            <h2>{{ section.title }}</h2>
+            <p>{{ section.description }}</p>
+          </div>
+          <span>{{ section.alerts|length }}</span>
+        </div>
+
+        {% for alert in section.alerts %}
+          <article class="alt-card alt-card--{{ alert.severity|lower }}">
+            <div class="alt-card__stripe" aria-hidden="true"></div>
+            <div class="alt-card__main">
+              <div class="alt-card__head">
+                <div class="alt-badges">
+                  <span class="alt-badge alt-badge--{{ alert.severity|lower }}">{{ alert.severity_label }}</span>
+                  <span class="alt-badge alt-badge--category">{{ alert.category_label }}</span>
+                  <span class="alt-badge alt-badge--muted">{{ alert.type_label }}</span>
+                  {% if alert.requires_action %}<span class="alt-badge alt-badge--action">Exige ação</span>{% endif %}
+                </div>
+                <time datetime="{{ alert.created_at|date:'c' }}">{{ alert.created_at|date:"d/m/Y H:i" }}</time>
+              </div>
+
+              <div class="alt-card__body">
+                <h3>{{ alert.title }}</h3>
+                {% if alert.description %}
+                  <p class="alt-description">{{ alert.description }}</p>
+                {% endif %}
+                <div class="alt-meta">
+                  {% if alert.related_product_name %}
+                    <span>Produto: <strong>{{ alert.related_product_name }}</strong></span>
+                  {% endif %}
+                  {% if alert.due_at %}
+                    <span>Prazo: <strong>{{ alert.due_at|date:"d/m/Y H:i" }}</strong></span>
+                  {% endif %}
+                  {% if alert.snoozed_until %}
+                    <span>Adiado até: <strong>{{ alert.snoozed_until|date:"d/m/Y H:i" }}</strong></span>
+                  {% endif %}
+                </div>
+                {% if alert.reason %}
+                  <p class="alt-reason"><strong>Porque apareceu:</strong> {{ alert.reason }}</p>
+                {% endif %}
+              </div>
+
+              <div class="alt-actions">
+                <div class="alt-actions__primary">
+                  {% if alert.action_url %}
+                    <a href="{{ alert.action_url }}"
+                       hx-get="{{ alert.action_url }}"
+                       hx-target="#shellMain"
+                       hx-select="#shellMain"
+                       hx-swap="outerHTML"
+                       hx-push-url="true"
+                       class="alt-btn alt-btn--primary">
+                      {{ alert.action_label }}
+                    </a>
+                  {% endif %}
+
+                  {% if alert.secondary_action_url %}
+                    <a href="{{ alert.secondary_action_url }}"
+                       hx-get="{{ alert.secondary_action_url }}"
+                       hx-target="#shellMain"
+                       hx-select="#shellMain"
+                       hx-swap="outerHTML"
+                       hx-push-url="true"
+                       class="alt-btn alt-btn--ghost">
+                      {{ alert.secondary_action_label }}
+                    </a>
+                  {% endif %}
+                </div>
+
+                <div class="alt-actions__state">
+                  {% if active_tab == "active" %}
+                    <form method="post"
+                          action="{% url 'alerts:ignore' alert.id %}"
+                          hx-post="{% url 'alerts:ignore' alert.id %}"
+                          hx-target="#shellMain"
+                          hx-select="#shellMain"
+                          hx-swap="outerHTML"
+                          hx-push-url="{{ current_url }}">
+                      {% csrf_token %}
+                      <input type="hidden" name="tab" value="{{ active_tab }}">
+                      <input type="hidden" name="type" value="{{ active_type }}">
+                      <input type="hidden" name="category" value="{{ active_category }}">
+                      <input type="hidden" name="q" value="{{ search_query }}">
+                      <input type="hidden" name="action" value="{% if action_only %}1{% endif %}">
+                      <select name="snooze" aria-label="Adiar alerta">
+                        <option value="1h">1 hora</option>
+                        <option value="tomorrow">Amanhã</option>
+                        <option value="1w">1 semana</option>
+                      </select>
+                      <button type="submit" class="alt-btn alt-btn--soft">Adiar</button>
+                    </form>
+
+                    <form method="post"
+                          action="{% url 'alerts:resolve' alert.id %}"
+                          hx-post="{% url 'alerts:resolve' alert.id %}"
+                          hx-target="#shellMain"
+                          hx-select="#shellMain"
+                          hx-swap="outerHTML"
+                          hx-push-url="{{ current_url }}">
+                      {% csrf_token %}
+                      <input type="hidden" name="tab" value="{{ active_tab }}">
+                      <input type="hidden" name="type" value="{{ active_type }}">
+                      <input type="hidden" name="category" value="{{ active_category }}">
+                      <input type="hidden" name="q" value="{{ search_query }}">
+                      <input type="hidden" name="action" value="{% if action_only %}1{% endif %}">
+                      <button type="submit"
+                              class="alt-btn alt-btn--soft"
+                              title="Em alertas automáticos, resolver oculta o alerta enquanto a mesma condição persistir.">
+                        Resolver
+                      </button>
+                    </form>
+                  {% elif active_tab == "ignored" %}
+                    <form method="post"
+                          action="{% url 'alerts:reactivate' alert.id %}"
+                          hx-post="{% url 'alerts:reactivate' alert.id %}"
+                          hx-target="#shellMain"
+                          hx-select="#shellMain"
+                          hx-swap="outerHTML"
+                          hx-push-url="{{ current_url }}">
+                      {% csrf_token %}
+                      <input type="hidden" name="tab" value="{{ active_tab }}">
+                      <input type="hidden" name="type" value="{{ active_type }}">
+                      <input type="hidden" name="category" value="{{ active_category }}">
+                      <input type="hidden" name="q" value="{{ search_query }}">
+                      <input type="hidden" name="action" value="{% if action_only %}1{% endif %}">
+                      <button type="submit" class="alt-btn alt-btn--soft">Reativar</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
     {% empty %}
       <article class="alt-empty">
         <i class="bi bi-check-circle-fill"></i>
@@ -291,9 +402,9 @@
 }
 
 .alt-toolbar {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
+  display:grid;
+  grid-template-columns:minmax(18rem, auto) minmax(24rem, 1fr);
+  align-items:end;
   gap:.8rem;
 }
 .alt-tabs {
@@ -301,6 +412,7 @@
   gap:.5rem;
   flex-wrap:wrap;
   min-width:0;
+  align-items:end;
 }
 .alt-tab {
   display:inline-flex;
@@ -334,25 +446,52 @@
   color:#fff;
 }
 .alt-filter {
-  display:flex;
-  align-items:center;
+  display:grid;
+  grid-template-columns:minmax(14rem, 1fr) minmax(9rem, .7fr) minmax(12rem, .8fr) auto auto auto;
+  align-items:end;
   gap:.5rem;
-  flex:0 0 auto;
 }
-.alt-filter label {
+.alt-filter__field {
+  display:flex;
+  flex-direction:column;
+  gap:.25rem;
+  min-width:0;
+}
+.alt-filter label,
+.alt-filter__check {
   color:#475569;
   font-size:.82rem;
   font-weight:800;
 }
+.alt-filter input[type="search"],
 .alt-filter select {
   min-height:2.35rem;
-  max-width:18rem;
   border:1px solid #cbd5e1;
   border-radius:.5rem;
   background:#fff;
   color:#0f172a;
   font-weight:700;
   padding:.45rem 2rem .45rem .7rem;
+  width:100%;
+  min-width:0;
+}
+.alt-filter input[type="search"] {
+  padding-right:.7rem;
+}
+.alt-filter__check {
+  min-height:2.35rem;
+  display:inline-flex;
+  align-items:center;
+  gap:.4rem;
+  padding:.45rem .65rem;
+  border:1px solid #e2e8f0;
+  border-radius:.5rem;
+  background:#fff;
+  white-space:nowrap;
+}
+.alt-filter__submit,
+.alt-filter__reset {
+  min-height:2.35rem;
 }
 
 .alt-results-bar {
@@ -372,10 +511,124 @@
 }
 .alt-results-bar form { margin:0; }
 
+.alt-notifications {
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.55rem;
+  padding:.85rem .9rem;
+  display:flex;
+  flex-direction:column;
+  gap:.65rem;
+}
+.alt-notifications__head {
+  display:flex;
+  justify-content:space-between;
+  gap:.8rem;
+}
+.alt-notifications__head h2 {
+  margin:0;
+  font-size:1rem;
+  line-height:1.2;
+}
+.alt-notifications__head p {
+  margin:.25rem 0 0;
+  color:#64748b;
+  font-size:.86rem;
+}
+.alt-notifications__list {
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:.5rem;
+}
+.alt-notification {
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr) auto;
+  align-items:start;
+  gap:.55rem;
+  color:#334155;
+  text-decoration:none;
+  border:1px solid #e2e8f0;
+  border-radius:.45rem;
+  padding:.55rem .65rem;
+  background:#f8fafc;
+  min-width:0;
+}
+.alt-notification.is-unread {
+  background:#eff6ff;
+  border-color:#bfdbfe;
+}
+.alt-notification__dot {
+  width:.5rem;
+  height:.5rem;
+  border-radius:999px;
+  background:#94a3b8;
+  margin-top:.35rem;
+}
+.alt-notification.is-unread .alt-notification__dot { background:#2563eb; }
+.alt-notification__body {
+  min-width:0;
+}
+.alt-notification__body strong,
+.alt-notification__body small {
+  display:block;
+  overflow-wrap:anywhere;
+}
+.alt-notification__body strong {
+  color:#0f172a;
+  font-size:.88rem;
+  line-height:1.25;
+}
+.alt-notification__body small {
+  margin-top:.15rem;
+  color:#64748b;
+  line-height:1.35;
+}
+.alt-notification time {
+  color:#64748b;
+  font-size:.76rem;
+  white-space:nowrap;
+}
+
 .alt-list {
   display:flex;
   flex-direction:column;
-  gap:.75rem;
+  gap:1rem;
+}
+.alt-section {
+  display:flex;
+  flex-direction:column;
+  gap:.65rem;
+}
+.alt-section__head {
+  display:flex;
+  justify-content:space-between;
+  gap:.8rem;
+  align-items:flex-start;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.55rem;
+  padding:.8rem .9rem;
+}
+.alt-section__head h2 {
+  margin:0;
+  font-size:1rem;
+  line-height:1.2;
+}
+.alt-section__head p {
+  margin:.25rem 0 0;
+  color:#64748b;
+  font-size:.88rem;
+}
+.alt-section__head > span {
+  min-width:2rem;
+  min-height:2rem;
+  display:inline-flex;
+  justify-content:center;
+  align-items:center;
+  border-radius:999px;
+  background:#f1f5f9;
+  color:#0f172a;
+  font-weight:900;
 }
 .alt-card {
   background:#fff;
@@ -423,6 +676,8 @@
 .alt-badge--warning { background:#fef3c7; color:#92400e; }
 .alt-badge--info { background:#dbeafe; color:#1d4ed8; }
 .alt-badge--muted { background:#f1f5f9; color:#334155; }
+.alt-badge--category { background:#ecfdf5; color:#047857; }
+.alt-badge--action { background:#fee2e2; color:#b91c1c; }
 
 .alt-card__body {
   min-width:0;
@@ -439,10 +694,23 @@
   line-height:1.45;
   overflow-wrap:anywhere;
 }
-.alt-related {
+.alt-meta {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.35rem .8rem;
   margin:.4rem 0 0;
   color:#64748b;
   font-size:.88rem;
+  overflow-wrap:anywhere;
+}
+.alt-reason {
+  margin:.5rem 0 0;
+  color:#334155;
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:.45rem;
+  padding:.55rem .65rem;
+  line-height:1.4;
   overflow-wrap:anywhere;
 }
 
@@ -460,6 +728,20 @@
   align-items:center;
 }
 .alt-actions form { margin:0; }
+.alt-actions__state form {
+  display:flex;
+  gap:.4rem;
+  align-items:center;
+}
+.alt-actions__state select {
+  min-height:2.25rem;
+  border:1px solid #cbd5e1;
+  border-radius:.45rem;
+  background:#fff;
+  color:#0f172a;
+  font-weight:800;
+  padding:.4rem .65rem;
+}
 .alt-btn {
   min-height:2.25rem;
   display:inline-flex;
@@ -517,15 +799,19 @@
     grid-template-columns:repeat(3, minmax(0, 1fr));
   }
   .alt-toolbar {
+    display:flex;
     align-items:stretch;
     flex-direction:column;
   }
   .alt-filter {
+    grid-template-columns:1fr 1fr 1fr;
     width:100%;
   }
-  .alt-filter select {
-    flex:1;
-    max-width:none;
+  .alt-filter__field--search {
+    grid-column:1 / -1;
+  }
+  .alt-filter__check {
+    justify-content:center;
   }
   .alt-actions {
     align-items:stretch;
@@ -534,6 +820,12 @@
   .alt-actions__primary,
   .alt-actions__state {
     width:100%;
+  }
+  .alt-actions__state form {
+    flex:1 1 auto;
+  }
+  .alt-notifications__list {
+    grid-template-columns:1fr;
   }
 }
 
@@ -549,15 +841,21 @@
   .alt-tabs,
   .alt-filter,
   .alt-results-bar {
+    display:flex;
     flex-direction:column;
     align-items:stretch;
   }
   .alt-tab,
+  .alt-filter input[type="search"],
   .alt-filter select,
   .alt-btn,
   .alt-actions form,
   .alt-actions__primary a {
     width:100%;
+  }
+  .alt-actions__state form {
+    flex-direction:column;
+    align-items:stretch;
   }
   .alt-card__head {
     flex-direction:column;

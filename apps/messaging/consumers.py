@@ -3,7 +3,7 @@ import json
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from apps.accounts.models import User
+from apps.common.session import resolve_active_session_user
 from apps.messaging.models import (
     Conversation,
     ConversationParticipant,
@@ -21,19 +21,7 @@ from apps.messaging.services import (
 class _BaseMessagingConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _resolve_current_user(self):
-        scope_user = self.scope.get("user")
-        if scope_user is not None and getattr(scope_user, "is_authenticated", False):
-            return scope_user
-
-        session = self.scope.get("session")
-        if not session:
-            return None
-
-        user_id = session.get("user_id")
-        if not user_id:
-            return None
-
-        return User.objects.filter(id=user_id).first()
+        return resolve_active_session_user(self.scope.get("session"))
 
     async def _send_json(self, payload):
         await self.send(text_data=json.dumps(payload))

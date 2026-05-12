@@ -914,4 +914,22 @@ def reject_need_response(*, listing, owner_producer):
     listing.status = ListingStatus.CANCELLED
     listing.updated_at = timezone.now()
     listing.save(update_fields=["need_response_status", "status", "updated_at"])
+    try:
+        from apps.alerts.models import AlertSeverity, AlertType
+        from apps.alerts.services import create_need_response_event_alert
+
+        create_need_response_event_alert(
+            target_producer=listing.producer,
+            listing=listing,
+            alert_type=AlertType.OFFER_REJECTED,
+            title=f"Oferta rejeitada: {listing.product.name}",
+            description="O produtor da necessidade rejeitou a sua proposta. Pode enviar uma nova proposta se fizer sentido.",
+            action_url=f"/necessidades/?need={listing.need_id}",
+            action_label="Ver necessidade",
+            acting_user=getattr(owner_producer, "user", None),
+            severity=AlertSeverity.INFO,
+            requires_action=False,
+        )
+    except Exception:
+        pass
     return True

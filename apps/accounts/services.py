@@ -10,6 +10,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.crypto import constant_time_compare, salted_hmac
 from django.utils import timezone
 
 from apps.accounts.models import (
@@ -97,6 +98,19 @@ def _render_verification_email_bundle(*, purpose, context):
     }
 
 
+def build_session_auth_fingerprint(user):
+    return salted_hmac(
+        "accounts.session_auth_fingerprint",
+        user.password,
+    ).hexdigest()
+
+
+def is_valid_session_auth_fingerprint(user, fingerprint):
+    if not fingerprint:
+        return False
+    return constant_time_compare(str(fingerprint), build_session_auth_fingerprint(user))
+
+
 def create_user_and_profile(form_data):
     email = form_data["email"].strip().lower()
     first_name = form_data["first_name"].strip()
@@ -173,12 +187,11 @@ def send_signup_confirmation_email(request, user, verification_token, async_send
     email_bundle = _render_verification_email_bundle(purpose=purpose, context=context)
 
     logger.info(
-        "Verification email prepared purpose=%s user_id=%s token_id=%s template=%s verify_url=%s",
+        "Verification email prepared purpose=%s user_id=%s token_id=%s template=%s",
         purpose,
         user.id,
         verification_token.id,
         email_bundle["template_label"],
-        verify_url,
     )
 
     _send_system_email(
@@ -204,12 +217,11 @@ def send_admin_invite_email(request, user, verification_token, async_send=False)
     email_bundle = _render_verification_email_bundle(purpose=purpose, context=context)
 
     logger.info(
-        "Verification email prepared purpose=%s user_id=%s token_id=%s template=%s verify_url=%s",
+        "Verification email prepared purpose=%s user_id=%s token_id=%s template=%s",
         purpose,
         user.id,
         verification_token.id,
         email_bundle["template_label"],
-        verify_url,
     )
 
     _send_system_email(
@@ -308,6 +320,15 @@ def invalidate_pending_admin_invite_tokens(user, used_at=None):
     ).update(used_at=mark_time)
 
 
+def invalidate_pending_password_reset_tokens(user, used_at=None):
+    mark_time = used_at or timezone.now()
+    return AccountVerificationToken.objects.filter(
+        user=user,
+        purpose=VerificationPurpose.PASSWORD_RESET,
+        used_at__isnull=True,
+    ).update(used_at=mark_time)
+
+
 def complete_invited_user_account(user, form_data):
     now = timezone.now()
 
@@ -358,7 +379,8 @@ def login_user_manual(request, user, remember_me=False):
     request.session["user_email"] = user.email
     request.session["user_role"] = user.role
     request.session["user_name"] = user.full_name
-    request.session["user_password_hash"] = user.password
+    request.session["session_auth_fingerprint"] = build_session_auth_fingerprint(user)
+    request.session.pop("user_password_hash", None)
 
     if remember_me:
         request.session.set_expiry(60 * 60 * 24 * 30)
@@ -373,12 +395,15 @@ def logout_user_manual(request):
 def create_password_reset_token(user):
     token = secrets.token_urlsafe(48)
 
-    reset_token = AccountVerificationToken.objects.create(
-        user=user,
-        token=token,
-        purpose=VerificationPurpose.PASSWORD_RESET,
-        expires_at=timezone.now() + timedelta(hours=2),
-    )
+    with transaction.atomic():
+        now = timezone.now()
+        invalidate_pending_password_reset_tokens(user, used_at=now)
+        reset_token = AccountVerificationToken.objects.create(
+            user=user,
+            token=token,
+            purpose=VerificationPurpose.PASSWORD_RESET,
+            expires_at=now + timedelta(hours=2),
+        )
     return reset_token
 
 
@@ -398,10 +423,9 @@ def send_password_reset_email(request, user, reset_token, async_send=False):
     html_body = render_to_string("emails/password_reset.html", context)
 
     logger.info(
-        "Password reset email prepared user_id=%s token_id=%s verify_url=%s",
+        "Password reset email prepared user_id=%s token_id=%s",
         user.id,
         reset_token.id,
-        reset_url,
     )
 
     _send_system_email(

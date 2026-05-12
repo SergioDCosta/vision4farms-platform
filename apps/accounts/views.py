@@ -30,6 +30,7 @@ from apps.accounts.services import (
     mark_user_as_verified,
     create_password_reset_token,
     send_password_reset_email,
+    send_password_changed_email,
     validate_password_reset_token,
     validate_admin_invite_token,
     complete_invited_user_account,
@@ -184,7 +185,7 @@ def admin_invite_complete_view(request, token):
 
     user = token_obj.user
     show_user_type = user.role != "ADMIN"
-    form = AdminInviteCompleteForm(request.POST or None, user_role=user.role)
+    form = AdminInviteCompleteForm(request.POST or None, user_role=user.role, user=user)
 
     if request.method == "POST" and form.is_valid():
         complete_invited_user_account(user, form.cleaned_data)
@@ -248,12 +249,13 @@ def password_reset_confirm_view(request, token):
         messages.error(request, "O link de recuperação é inválido ou expirou.")
         return redirect("accounts:login")
 
-    form = PasswordResetConfirmForm(request.POST or None)
+    form = PasswordResetConfirmForm(request.POST or None, user=token_obj.user)
 
     if request.method == "POST" and form.is_valid():
         token_obj.user.password = make_password(form.cleaned_data["password"])
         token_obj.user.updated_at = timezone.now()
         token_obj.user.save(update_fields=["password", "updated_at"])
+        send_password_changed_email(request, token_obj.user, async_send=True)
         log_audit_event(
             request=request,
             user=token_obj.user,

@@ -1,0 +1,14 @@
+Olá {{ user.first_name|default:"" }},
+
+Existe um alerta que pode precisar da sua atenção:
+
+{{ alert.title }}
+
+{% if alert.description %}{{ alert.description }}
+{% endif %}
+{% if reason %}Porque apareceu: {{ reason }}
+{% endif %}
+{% if action_url %}Abrir na plataforma: {{ action_url }}
+{% endif %}
+
+Este email foi enviado porque tem alertas por email ativos nas suas preferências.

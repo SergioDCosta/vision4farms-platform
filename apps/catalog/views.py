@@ -1,3 +1,1 @@
-from django.shortcuts import render
-
-# Create your views here.
+"""Catalog currently exposes its UI through the admin dashboard."""

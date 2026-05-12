@@ -958,6 +958,7 @@ def marketplace_publish_view(request):
         else:
             _sync_alerts_after_marketplace_change(producer, request.current_user)
             if is_need_prefill_flow and linked_need:
+                _sync_alerts_after_marketplace_change(linked_need.producer, request.current_user)
                 messages.success(
                     request,
                     "Resposta enviada. A oferta ficou ligada à necessidade selecionada.",

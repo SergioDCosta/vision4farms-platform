@@ -1,302 +1,519 @@
-# COOPERATIVA — Contexto Atual do Projeto (Resumo Técnico)
+# COOPERATIVA - Contexto Atual do Projeto
+
+## 0) Estado GitHub
+- Repositório remoto: `origin` -> `https://github.com/SergioDCosta/vision4farms-platform.git`.
+- Branch principal local: `main`.
+- Após `git fetch origin` em 2026-05-11, `main` está alinhado com `origin/main`.
+- Últimos commits da última semana no `main`:
+  - `aa4493f` (2026-05-11): email ao utilizador quando a palavra-passe muda e melhorias em forms/auditoria.
+  - `e3e9af9` (2026-05-11): melhorias frontend do marketplace.
+  - `309f005` (2026-05-06): melhorias e consistências nas necessidades.
+  - `788215f` (2026-05-06): melhorias globais na lógica e templates das necessidades.
+  - `12a2c9b` (2026-05-06): overhaul dos needs.
+  - `3c5ddcf` (2026-05-05): extração arquitetural da app `needs`.
+  - `1d9ed14` (2026-05-05): correções e melhoria da página de alertas.
 
 ## 1) Visão Geral
 - Plataforma B2B entre produtores para:
   - gestão de inventário e previsão de produção;
-  - marketplace (stock atual + pré-venda);
+  - marketplace de stock atual e pré-venda;
+  - necessidades/procura anunciada entre produtores;
   - recomendações de compra/venda;
   - encomendas com workflow operacional;
-  - mensagens em tempo real entre produtores.
-- Fonte de verdade do domínio: SQL manual (`sqlscript.sql` + alterações aplicadas diretamente na BD).
-- Modelos de negócio Django usam `managed = False` (sem migrations nessas tabelas).
+  - alertas, mensagens e suporte.
+- Fonte de verdade estrutural: SQL manual (`sqlscript.sql` + alterações aplicadas diretamente na BD).
+- Modelos Django de negócio usam maioritariamente `managed = False`; alterações de schema devem ser aplicadas manualmente na BD e refletidas nos models.
 
-## 2) Stack e Aplicação
+## 2) Stack
 - Backend: Django 6.0.3.
 - DB: PostgreSQL.
 - Realtime: Django Channels + Redis + Daphne.
-- Frontend: Django Templates + HTMX (shell server-rendered).
-- Storage: `default_storage` via Cloudinary (`MediaCloudinaryStorage`) em produção.
+- Frontend: Django Templates + HTMX.
+- Storage media: `default_storage`; Cloudinary em produção.
 - Static: WhiteNoise (`CompressedManifestStaticFilesStorage`).
-- Imagem/crop: Pillow (crop de foto de anúncio).
-- Config/env: `python-decouple` (`.env`).
-- Segurança recente:
-  - `django-ratelimit` em login/registo;
-  - `django-ratelimit` em submissão de tickets de suporte (`5/30m`, chave por user/IP);
-  - validação de anexos por extensão + MIME (`content_type`) + limite 10MB.
-  - `SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"` para compatibilidade com tiles de mapas cross-origin.
+- Config/env: `python-decouple`.
+- Upload/crop: Pillow.
+- Email: templates Django em `templates/emails/`; envio assíncrono quando indicado pelos serviços.
+  - Config atual continua compatível com SMTP.
+  - `django-anymail` e `resend` estão disponíveis no `requirements.txt`, permitindo usar Resend por API HTTP em produção.
+  - Para Railway Hobby, solução recomendada: `EMAIL_BACKEND="anymail.backends.resend.EmailBackend"` + `RESEND_API_KEY`.
+- Formatação de quantidades:
+  - filtro global `quantity` em `apps/common/templatetags/quantity.py`;
+  - registado em `TEMPLATES["OPTIONS"]["builtins"]`;
+  - mostra `20 kg`, `20,5 kg`, `20,55 kg` ou `20,345 kg` conforme necessário, evitando `20.000 kg`.
 
 ## 3) Organização do Código
 - `config/`
-  - `settings.py`: apps, middleware, DB, storages, channels.
-  - `urls.py`: composição de rotas por app.
-  - `asgi.py`: HTTP + WS (`ProtocolTypeRouter`).
+  - `settings.py`: apps, middleware, DB, storages, channels e template builtins.
+  - `urls.py`: composição de rotas.
+  - `asgi.py`: HTTP + WS.
 - `apps/`
-  - `accounts`: autenticação/registo/verificação/reset.
-  - `inventory`: produtos do produtor, stocks, movimentos, previsões.
-  - `marketplace`: publicação, detalhe, edição, gestão de anúncios.
-  - `recommendations`: wizard e recomendações persistidas.
-  - `orders`: encomendas, grupos, status, reservas.
-  - `messaging`: conversas 1:1, texto+anexo, WS.
-  - `support`: ticketing de suporte utilizador->admin (criação, claim, resposta/fecho).
-  - `dashboard`, `settings_app`, `alerts`, `notifications_app`, `integrations`, `catalog`.
-- `templates/`: estrutura por domínio (`inventory/`, `marketplace/`, `orders/`, `messaging/`, etc.).
-- `static/`: assets globais.
+  - `catalog`: modelos globais de categorias/produtos.
+  - `accounts`: autenticação, registo, convites, recuperação de palavra-passe.
+  - `inventory`: stocks, produtos do produtor, movimentos e previsões.
+  - `needs`: domínio próprio de necessidades, respostas, views e serviços.
+  - `marketplace`: anúncios públicos e listing técnica usada por respostas a necessidades.
+  - `recommendations`: wizard e criação/atualização de necessidades a partir de recomendações.
+  - `orders`: encomendas, grupos, status, reservas e integração com needs.
+  - `alerts`: alertas e eventos.
+  - `dashboard`: dashboard admin/cliente, auditoria e gestão.
+  - `settings_app`: definições de conta/perfil/preferências/segurança.
+  - `messaging`, `support`, `notifications_app`, `integrations`.
+- `templates/`: templates por domínio (`needs/`, `marketplace/`, `orders/`, `alerts/`, `dashboard/`, etc.).
 
 ## 4) Convenções Arquiteturais
 - Views tendencialmente finas; regras em `services.py`.
-- Autenticação principal custom:
-  - `request.current_user` (middleware de sessão próprio).
-  - decorators custom (`login_required`, `client_only_required`, `admin_required`).
-- Para uploads/URLs, usar sempre `default_storage` (nunca hardcode `/media/...`).
+- Autenticação custom:
+  - `request.current_user` via middleware;
+  - decorators `login_required`, `client_only_required`, `admin_required`.
+- Para uploads/URLs, usar `default_storage`, não paths `/media/...` hardcoded.
+- Para quantidades em templates, usar `|quantity`.
+- Para navegação canonical das necessidades, usar `apps.needs.navigation.build_needs_index_url`.
+- Não importar views como helpers em apps externas.
 
-## 5) Módulos e Estado Funcional
-
-### 5.1 Accounts / Segurança
-- Login, registo, verificação por token, convite admin, reset password.
-- Rate limit ativo:
+## 5) Segurança, Sessões e Auditoria
+- Rate limits:
   - login por IP: `10/5m`;
   - login por email: `5/5m`;
   - registo por IP: `5/30m`;
-  - modo `block=False` com mensagem amigável.
-- NIF continua em texto simples (sem encriptação nesta iteração).
+  - tickets suporte: `5/30m`.
+- Após alteração de palavra-passe nas definições:
+  - é enviado email ao utilizador;
+  - a sessão atual é terminada;
+  - sessões antigas são invalidadas por comparação de `session_auth_fingerprint`;
+  - o fingerprint é um HMAC derivado de `user.password`, não o hash real guardado no cookie.
+- Sessões HTTP e WebSocket:
+  - helper partilhado `apps.common.session.resolve_active_session_user`;
+  - valida `is_active`, `account_status == ACTIVE` e `session_auth_fingerprint`;
+  - usado pelo middleware HTTP e consumers WebSocket de alertas, mensagens e suporte.
+- Política de passwords:
+  - usa `AUTH_PASSWORD_VALIDATORS`;
+  - valida similaridade com dados do utilizador, comprimento mínimo, passwords comuns e passwords só numéricas;
+  - aplicada em registo, convite admin, reset de password e alteração nas definições.
+- Recuperação de password:
+  - antes de emitir novo token `PASSWORD_RESET`, tokens pendentes anteriores do mesmo utilizador são invalidados.
+  - após gravar nova password via reset, é enviado o mesmo email de segurança de "palavra-passe alterada".
+- Email de palavra-passe alterada:
+  - templates: `password_changed_subject.txt`, `password_changed.txt`, `password_changed.html`;
+  - inclui indicação para contactar suporte se a alteração não foi feita pelo utilizador.
+- Auditoria comum:
+  - helper `apps.common.audit.log_audit_event`;
+  - helper `describe_user_agent` para device/browser/SO;
+  - regista IP via `X-Forwarded-For` ou `REMOTE_ADDR`.
+- Eventos de utilizador auditados:
+  - `USER_LOGIN`;
+  - `USER_PROFILE_UPDATED`;
+  - `USER_PRODUCER_PROFILE_UPDATED`;
+  - `USER_PREFERENCES_UPDATED`;
+  - `USER_PROFILE_PHOTO_REMOVED`;
+  - `USER_PASSWORD_CHANGED`;
+  - `USER_PASSWORD_RESET_COMPLETED`.
+- Auditoria admin:
+  - `/gestor/auditoria/`;
+  - pesquisa por ação, label traduzida, utilizador, email, IP, User-Agent e valores JSON antigos/novos;
+  - linhas expansíveis com detalhes e contexto técnico;
+  - paginação `10/25/50`.
+- Detalhe de utilizador admin:
+  - card "Atividade relacionada" mostra eventos relevantes do próprio utilizador e ações admin sobre esse utilizador;
+  - inclui alterações `antes -> depois`, IP, dispositivo e autor.
 
-### 5.2 Inventory
+## 6) Catalog
+- App `apps.catalog` é dona dos modelos globais:
+  - `ProductCategory` -> tabela `product_categories`;
+  - `Product` -> tabela `products`.
+- Ambos continuam `managed = False`.
+- `Product.unit` é global e usado transversalmente em inventário, marketplace, needs, encomendas e recomendações.
+- UI principal de gestão de catálogo vive atualmente em `apps.dashboard`:
+  - `/gestor/produtos/`;
+  - `/gestor/categorias/`.
+- Criação de produto pelo produtor no inventário pode criar produto global e associá-lo ao produtor.
+- Estado atual arquitetural:
+  - modelos estão em `catalog`;
+  - regras de criação/edição/listagem ainda estão repartidas por `dashboard` e `inventory`;
+  - próximo refactor recomendado é extrair serviços/forms de catálogo para `apps.catalog`, mantendo as URLs admin atuais.
+
+## 7) Inventory
 - `products.unit` é global.
 - `producer_products.producer_description` é descrição específica do produtor.
 - `stocks` usa:
-  - `current_quantity`, `reserved_quantity`, `safety_stock`, `surplus_threshold`.
-- Regra de estado (apenas stock atual):
-  - `available = current - reserved`
-  - `real_surplus = max(available - safety_stock, 0)`
-  - Crítico: `available <= safety_stock`
-  - Normal: `available > safety_stock` e `real_surplus < surplus_threshold`
-  - Excedente: `real_surplus >= surplus_threshold`
-- Previsão futura (`production_forecasts`) separada do stock real.
-- Previsão por produto/produtor funciona com unicidade funcional (update do mesmo registo quando existe 1).
-- Card "Produção futura" (detalhe de stock):
-  - `Reservada` reflete `production_forecasts.reserved_quantity`;
-  - `Disponível pré-venda` reflete quantidade ainda disponível nos anúncios do marketplace associados à previsão
-    (`sum(listing.quantity_available)` para listings `ACTIVE/RESERVED` dessa previsão).
-- “Stock previsto” do comprador calculado em runtime via orders (não persistido em coluna).
-- Needs (`needs`) como procura anunciada:
-  - estados: `OPEN`, `PARTIALLY_COVERED`, `COVERED`, `IGNORED`;
-  - cobertura conservadora:
-    - `planned_qty`: itens `CONFIRMED/IN_DELIVERY/COMPLETED` com order elegível (`CONFIRMED/IN_PROGRESS/DELIVERING`);
-    - `completed_qty`: apenas itens `COMPLETED`;
-    - `PENDING` não conta para cobertura.
-- Recalculo de need é idempotente e, quando há cobertura planeada/em curso, sincroniza projeção no stock do comprador com log:
-  - `StockMovement.reference_type="NEED"` + `reference_id=<need.id>`;
-  - notas explicam origem do ajuste por necessidade.
+  - `current_quantity`;
+  - `reserved_quantity`;
+  - `safety_stock`;
+  - `surplus_threshold`.
+- Estado de stock:
+  - `available = current_quantity - reserved_quantity`;
+  - crítico se `available <= safety_stock`;
+  - excedente real se `max(available - safety_stock, 0) >= surplus_threshold`;
+  - normal nos restantes casos.
+- Previsões futuras vivem em `production_forecasts`, separadas do stock real.
 - Assimilação de previsão para stock atual:
-  - usa a quantidade disponível pré-venda (do(s) anúncio(s) aberto(s) da previsão), não o `forecast_quantity` bruto;
-  - fecha listings abertas associadas (`quantity_available=0`, `status=CLOSED`);
-  - mantém a previsão (não faz delete), reduzindo `forecast_quantity` pelo valor assimilado;
-  - se a previsão ficar sem quantidade, desativa `is_marketplace_enabled`.
+  - usa quantidade ainda disponível nos anúncios abertos da previsão;
+  - fecha listings abertas associadas;
+  - mantém a previsão e reduz `forecast_quantity`;
+  - se ficar sem quantidade, desativa `is_marketplace_enabled`.
 
-### 5.3 Marketplace
-- `marketplace_listings` suporta 2 origens:
+## 8) Needs
+- App própria: `apps.needs`.
+- Modelo dono do domínio: `apps.needs.models.Need`.
+- Tabela SQL mantida: `needs`.
+- `Need` continua `managed = False`.
+- App label atual: `needs.Need`.
+- Estados:
+  - `OPEN`;
+  - `PARTIALLY_COVERED`;
+  - `COVERED`;
+  - `IGNORED`;
+  - `CANCELLED`.
+- Origens:
+  - `MANUAL`;
+  - `VISION4FARMS`;
+  - `ALERT`.
+- URLs públicas canónicas:
+  - `/necessidades/` -> `needs:index`;
+  - `/necessidades/criar/` -> `needs:create`;
+  - `/necessidades/<uuid>/ignorar/` -> `needs:ignore`;
+  - `/necessidades/respostas/<listing_id>/` -> `needs:response_detail`;
+  - `/necessidades/respostas/<listing_id>/rejeitar/` -> `needs:response_reject`.
+- Compatibilidade:
+  - `/marketplace/?tab=necessidades` redireciona para `/necessidades/`;
+  - aliases legados de marketplace podem existir, mas templates novos devem usar namespace `needs`.
+- Cobertura:
+  - `calculate_need_coverage` calcula:
+    - `required_quantity`;
+    - `planned_qty`;
+    - `completed_qty`;
+    - `remaining_to_plan`;
+    - `remaining_to_receive`;
+    - excesso planeado.
+  - `COMPLETED` conta como planeado e recebido;
+  - `IN_DELIVERY` conta como planeado;
+  - `CONFIRMED` conta como planeado se a encomenda estiver elegível;
+  - `PENDING` e `CANCELLED` não contam para cobertura.
+- Status:
+  - `COVERED` quando recebido/concluído cobre a quantidade necessária;
+  - `PARTIALLY_COVERED` quando há cobertura planeada mas ainda não concluída;
+  - `OPEN` quando ainda não há cobertura planeada relevante;
+  - `IGNORED` é preservado.
+- Página `/necessidades/`:
+  - layout master-detail;
+  - coluna "As minhas necessidades";
+  - painel "Detalhe da necessidade";
+  - "Ofertas ativas";
+  - "Responder a necessidades abertas";
+  - histórico global separado em:
+    - "Histórico de ofertas recebidas";
+    - "Histórico de ofertas enviadas".
+- Necessidades abertas para outros produtores:
+  - escondem o estado real `PARTIALLY_COVERED`; publicamente aparece como "Aberta";
+  - `public_quantity` usa `remaining_to_receive`, ou seja, quantidade ainda não recebida/concluída;
+  - `public_offered_quantity` mostra "Oferecido por outros";
+  - ofertas do próprio viewer não entram em "Oferecido por outros";
+  - ofertas rejeitadas/canceladas/expiradas/retiradas e encomendas concluídas não entram nessa métrica.
+- Produto no formulário "Anunciar necessidade":
+  - dropdown pode assinalar produtos do produtor com stock crítico.
+- Data limite no formulário:
+  - entrada visual em formato de data, sem hora.
+
+## 9) Respostas a Necessidades
+- Não existe nova tabela de resposta nesta iteração.
+- Uma resposta a necessidade continua tecnicamente a ser uma `MarketplaceListing` privada com `need_id`.
+- O domínio expõe essas listings através de DTOs/estruturas em `apps.needs.services`, não como listings cruas.
+- `NeedResponseStatus`:
+  - `PENDING`;
+  - `REJECTED`.
+- Campo técnico em `marketplace_listings`:
+  - `need_response_status`;
+  - vive em marketplace porque a resposta ainda é uma listing privada.
+- URLs de detalhe de resposta são de `needs`, não marketplace.
+- Dono da necessidade:
+  - vê respostas na página de necessidades;
+  - entra em `/necessidades/respostas/<listing_id>/`;
+  - pode comprar ou rejeitar;
+  - não pode rejeitar oferta já aceite/com encomenda ativa.
+- Produtor que respondeu:
+  - vê o estado da própria proposta: `Pendente`, `Aceite`, `Rejeitada`, `Expirada`, `Retirada`, `Cancelada` ou `Concluída`;
+  - se a oferta ativa foi rejeitada/concluída/cancelada, pode voltar a responder normalmente;
+  - se já tem oferta ativa, vê aviso mas pode enviar nova proposta.
+- Rejeição:
+  - só o dono da necessidade pode rejeitar;
+  - marca `need_response_status=REJECTED`;
+  - muda `listing.status=CANCELLED`;
+  - bloqueia compra futura;
+  - liberta a listing técnica.
+- Compra/aceitação:
+  - continua a criar encomenda pelo fluxo de orders;
+  - "Aceite" é derivado da existência/estado da encomenda associada;
+  - `COMPLETED` passa a "Concluída" e move para histórico.
+- Avisos de quantidade:
+  - ofertas acima da quantidade ainda por receber são permitidas, mas avisadas;
+  - aviso aparece ao responder;
+  - aviso aparece em ofertas ativas para o dono;
+  - se `planned_qty > required_quantity`, o detalhe mostra excesso planeado.
+
+## 10) Marketplace
+- `marketplace_listings` suporta:
   - stock atual (`stock_id`);
-  - pré-venda (`forecast_id`).
-- Listings também podem estar ligadas a necessidade:
-  - `need_id IS NULL` => anúncio público normal;
-  - `need_id IS NOT NULL` => resposta privada dirigida à need.
-- Regra XOR de origem aplicada no fluxo (stock XOR forecast).
-- Publicação:
-  - validações por origem;
-  - lock de origem/produto quando vem do inventário em flows guiados;
-  - no fluxo `from=need`, produto bloqueado e origem editável; anúncio é criado com `need_id`.
-  - recorte de imagem no publish/edit;
-  - tendência de preço por produto+origem (min/max/count de outros produtores).
-- Estados de listing:
-  - `ACTIVE`, `RESERVED`, `CLOSED`, `EXPIRED`, `CANCELLED`.
-- URLs de foto resolvidas por storage (Cloudinary/local) via `default_storage.url(...)`.
-- Visibilidade/autorização para respostas a need:
-  - não aparecem no feed público (`tab=todos`) nem entram em recomendações;
-  - aparecem em `tab=meus` para o criador;
-  - aparecem em “Respostas recebidas” para o dono da need;
-  - detalhe acessível apenas a criador e dono da need;
-  - compra permitida apenas ao dono da need.
-- UX atual da tab `necessidades`:
-  - botão “Ver respostas” filtra por `need=<id>` com destaque visual da need selecionada;
-  - para need `COVERED`, ação “Eliminar” faz soft delete via `IGNORED`;
-  - formulário “Anunciar necessidade” abre apenas por botão (`show_need_form=1`).
+  - pré-venda (`forecast_id`);
+  - resposta privada a necessidade (`need_id`).
+- Origem operacional deve respeitar XOR stock/forecast.
+- `need_id IS NULL`:
+  - anúncio público normal.
+- `need_id IS NOT NULL`:
+  - resposta privada dirigida a uma need;
+  - não aparece no feed público;
+  - não entra em recomendações públicas;
+  - detalhe/compra pelo necessitado usa páginas de `needs`.
+- Publicação normal mantém foto/crop/sucesso atual.
+- Fluxo `from=need`:
+  - título/copy próprios: responder a necessidade;
+  - sem foto do anúncio;
+  - cria listing privada ligada à need;
+  - redireciona para `/necessidades/?need=<id>`;
+  - botão e cancelamento mantêm utilizador no contexto de necessidades.
+- Detalhe marketplace público:
+  - mantém compra normal;
+  - mostra mapa Leaflet quando permitido;
+  - `show_location_on_map` controla privacidade da localização.
+- Cards marketplace:
+  - CTAs "Ver detalhes" e "Contactar Produtor" ficam lado a lado quando aplicável.
 
-### 5.4 Recommendations
+## 11) Recommendations
 - Wizard HTMX em 3 passos.
-- Passo 1 mostra défice e quantidade atual com pré-seleção por query param quando vem do inventário.
-- Passo 2 já considera listings de pré-venda.
-- Priorização: recomenda primeiro “disponível agora”, depois pré-venda para completar défice.
-- Badges distinguem disponibilidade imediata vs futura (data/período quando disponível).
-- Motor de recomendações exclui respostas privadas a needs (`need_id IS NULL` obrigatório nas candidatas).
+- Passo 1 mostra défice e quantidade atual; pode vir pré-preenchido do inventário.
+- Passo 2 considera listings de stock atual e pré-venda.
+- Motor exclui respostas privadas (`need_id IS NULL` obrigatório nas candidatas).
+- Ações de necessidade no passo 2:
+  - criar necessidade;
+  - atualizar necessidade.
+- Após criar/atualizar necessidade por recomendação:
+  - aparece popup simples perguntando se o utilizador quer ir para a necessidade na sua página;
+  - URL usa `build_needs_index_url`.
 
-### 5.5 Orders
-- Modelos: `order_groups`, `orders`, `order_items`, `order_status_history`.
+## 12) Orders
+- Entidades:
+  - `order_groups`;
+  - `orders`;
+  - `order_items`;
+  - `order_status_history`.
 - Criação:
-  - por listing: cria grupo + sub-encomenda.
-  - por recommendation: split por `(vendedor, origem)` dentro do mesmo grupo.
+  - por listing: cria grupo + encomenda;
+  - por recommendation: split por vendedor/origem dentro do mesmo grupo.
 - Buyer vê grupo; seller trabalha por encomenda individual.
-- Recálculo conservador de estado global + helper central para estado agregado do grupo.
-- Classificação de origem:
-  - helper central `forecast-only` para identificar pré-venda pura (sem mistura com stock).
-- Workflow operacional:
-  - `PENDING`: já reserva quantidade na origem correta (stock ou forecast) no momento da criação da encomenda;
-  - `CONFIRMED`: não volta a reservar; apenas avança estado dos items;
-  - `IN_PROGRESS` / `DELIVERING`: transições com guardas e idempotência;
-  - `COMPLETED` (confirm_receipt): consome reserva, debita stock do vendedor e dá entrada no inventário do comprador.
-- Reconciliação de reservas por listing:
-  - reserva efetiva é reconciliada por soma de `order_items` abertos (`PENDING/CONFIRMED/IN_DELIVERY`);
-  - evita dupla-reserva e garante release correto também em cancelamento de pendentes.
-- Integração com needs:
-  - `order_items.need_id` é propagado no fluxo por listing e por recommendation;
-  - recálculo de need ocorre em eventos de criação/transição/receção;
-  - compra de listing privada (`listing.need_id`) só pode ser feita pelo produtor dono da need.
-- Listings sincronizadas com reservas:
-  - esgotado em reserva pode ir para `RESERVED`;
-  - sem disponível e sem reservado fecha para `CLOSED`.
-- UX de encomendas para pré-venda:
-  - nova aba dedicada `tab=pre_vendas` com duas colunas: "Como comprador" e "Como vendedor";
-  - `compras` e `recebidas` excluem encomendas `forecast-only` para evitar duplicação visual;
-  - criar encomenda por anúncio forecast redireciona para `tab=pre_vendas`;
-  - no fluxo de recommendation, se todas as sub-encomendas criadas forem `forecast-only`, redireciona para `tab=pre_vendas`.
-- Comando de reconciliação existe para corrigir `orders.status` sem mexer em stock/reservas.
+- Reservas:
+  - `PENDING` reserva quantidade na origem correta;
+  - `CONFIRMED` não reserva novamente;
+  - cancelamento liberta reserva;
+  - receção/conclusão consome reserva e movimenta stock.
+- Integração needs:
+  - `order_items.need_id` rastreia cobertura;
+  - compra de resposta privada só é permitida ao dono da necessidade;
+  - compra de resposta rejeitada é bloqueada;
+  - cancelamento/receção recalculam status da need;
+  - timeline deve distinguir encomenda criada por resposta a necessidade, não "anúncio do marketplace" genérico.
+- Quando uma encomenda de resposta é concluída:
+  - a necessidade recalcula `completed_qty`;
+  - a oferta enviada passa para histórico como `Concluída`;
+  - a necessidade desaparece de "Responder a necessidades abertas" quando `remaining_to_receive <= 0`.
 
-### 5.6 Messaging
+## 13) Alerts
+- Página dedicada: `/alertas/`.
+- Tabs:
+  - `active`;
+  - `ignored`;
+  - `resolved`.
+- Filtro por tipo:
+  - query param público `type`;
+  - validado contra `AlertType`;
+  - inválido/vazio cai para "Todos";
+  - tabs, ações HTMX, formulários e URLs preservam `type`.
+- Filtros adicionais:
+  - `category`;
+  - pesquisa `q`;
+  - `action=1` para mostrar apenas alertas que exigem ação.
+- Metadados operacionais em `alerts`:
+  - `category`;
+  - `context_key`;
+  - `requires_action`;
+  - `due_at`;
+  - `read_at`;
+  - `snoozed_until`;
+  - `expires_at`;
+  - `priority`.
+- SQL manual de atualização:
+  - `ALERTS_PHASE_1_2_SQL.txt`;
+  - inclui campos operacionais dos alertas e a tabela `alert_deliveries`;
+  - apesar do nome, o ficheiro cobre também a entrega por canais das fases 3/4.
+- `tab_counts` são totais por estado, não filtrados.
+- Bloco de filtros mostra `filtered_count`.
+- `ignore_all_active_alerts(..., alert_type=None, category=None, q="", requires_action=False)`:
+  - sem filtro ignora todos ativos;
+  - com filtro adia apenas os visíveis daquele filtro.
+- Botão:
+  - "Adiar todos" sem filtro;
+  - "Adiar visíveis" com filtro.
+- Fluxo de refresh:
+  - expira ignorados antes do sync;
+  - alertas adiados usam `snoozed_until`;
+  - alertas antigos sem `snoozed_until` mantêm fallback de 30 minutos.
+- Ações manuais:
+  - `ignore_alert` e `resolve_alert` só aceitam estados interativos `ACTIVE` ou `READ`;
+  - `ignore_alert` funciona como "lembrar mais tarde" com opções 1h, amanhã e 1 semana;
+  - alertas `IGNORED`, `RESOLVED` ou `CLEARED` não podem ser alterados por POST manual fora do fluxo próprio.
+- Página:
+  - secções operacionais para alertas ativos:
+    - "A fazer agora";
+    - "Risco agrícola";
+    - "Oportunidades";
+    - "Informação";
+  - tabs ignorados/resolvidos continuam como histórico filtrável.
+- Notificações:
+  - app `notifications_app` passou a ser usada para eventos informativos;
+  - mensagens não lidas criam `Notification`, não alerta operacional;
+  - mudanças normais de encomenda criam `Notification`;
+  - cancelamentos e encomendas que exigem confirmação continuam em `alerts`.
+  - `/alertas/` mostra as últimas 6 notificações recentes do utilizador;
+  - não existe ainda limpeza automática por idade;
+  - notificações antigas ligadas a alertas usam o texto atual do alerta associado quando renderizadas;
+  - textos de notificações normalizam quantidades para evitar `200.000 kg`;
+  - notificações de encomendas usam labels de quantidade amigáveis (`200 kg`, `20,5 kg`, etc.).
+- Entregas:
+  - `alert_deliveries` regista canais `IN_APP`, `EMAIL`, `SMS`;
+  - notificações in-app são criadas para alertas quando `alerts_in_app=True`;
+  - email é enviado apenas para alertas relevantes/críticos/acionáveis quando `alerts_email=True`;
+  - SMS fica registado como `SKIPPED` enquanto não houver fornecedor configurado.
+  - falhas de Redis no ambiente local apenas afetam realtime do badge; a página continua funcional via HTTP/polling.
+- Tarefa agendada:
+  - comando `python manage.py sync_operational_alerts`;
+  - por omissão é dry-run;
+  - usar `--apply` para expirar anúncios, limpar alertas expirados, expirar adiamentos e recalcular alertas por produtor ativo;
+  - indicado para Railway Scheduler/cron.
+- Tipos geridos:
+  - `CRITICAL_STOCK`;
+  - `SURPLUS_AVAILABLE`;
+  - `NEED_UNDERCOVERED`;
+  - `NEED_RESPONSE_RECEIVED`;
+  - `NEED_DEADLINE_APPROACHING`;
+  - `BUY_OPPORTUNITY`;
+  - `SELL_SUGGESTION`;
+  - `ORDER_REQUIRES_CONFIRMATION`;
+  - `ORDER_DELIVERY_OVERDUE`;
+  - `LISTING_EXPIRING_SOON`.
+- Tipos orientados a evento:
+  - `OFFER_REJECTED`;
+  - mudanças informativas de encomendas;
+  - mensagens não lidas;
+  - eventos específicos de workflow.
+- Admin dashboard:
+  - link quebrado para `/alertas/` foi removido, porque alertas são rota de cliente.
+
+## 14) Messaging
 - Conversas 1:1 entre produtores.
 - HTTP:
-  - `/mensagens/` (inbox + thread);
-  - start/reuse por listing;
-  - start/reuse por encomenda (`ORDER_CONTACT`) em `/mensagens/encomenda/<uuid>/iniciar/`;
-  - upload de anexos.
+  - `/mensagens/`;
+  - iniciar/reutilizar por listing;
+  - iniciar/reutilizar por encomenda.
 - WebSocket:
   - `/ws/mensagens/<conversation_id>/`.
-  - consumer resolve utilizador por `scope["user"]` com fallback `scope["session"]["user_id"]`.
 - Mensagens:
-  - `TEXT`, `SYSTEM_EVENT`, `FILE`;
-  - anexos com `attachment_url`, `attachment_name`, `attachment_type`.
+  - `TEXT`;
+  - `SYSTEM_EVENT`;
+  - `FILE`.
 - Upload de anexos:
-  - `default_storage.save(...)`;
-  - valida extensão + MIME + tamanho 10MB.
-- Unread sem N+1 (agregação na listagem).
-- Delete de conversa:
-  - one-sided com `is_archived=True`;
-  - purge físico apenas quando ambos os participantes arquivarem.
-- Header da thread abre detalhe do anúncio quando a conversa está ligada a listing.
-- Conversa `ORDER_CONTACT`:
-  - criada lazy no primeiro clique em detalhe de encomenda de pré-venda;
-  - reutilizada nos cliques seguintes (1:1 comprador-vendedor por encomenda).
+  - `default_storage.save`;
+  - valida extensão, MIME e limite 10MB.
+- Delete de conversa é one-sided; purge físico só quando ambos arquivam.
 
-### 5.7 Alerts
-- Página dedicada `/alertas/` com tabs: `active`, `ignored`, `resolved`.
-- Sincronização automática no load (`sync_alerts_for_producer`) para gerar/atualizar/resolver alertas geridos.
-- Tipos geridos atualmente:
-  - `CRITICAL_STOCK` (stock disponível <= safety stock);
-  - `SURPLUS_AVAILABLE` (excedente real >= limiar);
-  - `EXTERNAL_DEFICIT` (need em aberto/parcial sem cobertura suficiente);
-  - `SELL_SUGGESTION` (previsão com quantidade vendável).
-- Tipos orientados a evento (fora do ciclo de sync gerido):
-  - encomendas: `ORDER_PURCHASE_CREATED`, `ORDER_CONFIRMED`, `ORDER_IN_PROGRESS`,
-    `ORDER_DELIVERING`, `ORDER_CANCELLED`, `ORDER_COMPLETED`;
-  - mensagens: `MESSAGE_UNREAD` (upsert por conversa).
-- Motor inclui deduplicação por contexto lógico (`product`, `need`, `forecast`, `listing`) e auto-resolução de duplicados.
-- Alertas ignorados não são recriados enquanto a condição persiste e o alerta ignorado não tiver sido limpo.
-- Regra de expiração de ignorados:
-  - `IGNORED` expira ao fim de 30 minutos e transita para `CLEARED` (limpeza lazy ao entrar/interagir em `/alertas/`).
-  - `CLEARED` não tem tab dedicada na UI.
-- Semântica de `RESOLVED` em alertas geridos (`CRITICAL_STOCK`, `SURPLUS_AVAILABLE`, `EXTERNAL_DEFICIT`, `SELL_SUGGESTION`):
-  - resolução manual define `status=RESOLVED` com `cleared_at=NULL` para suprimir reabertura enquanto a condição persistir;
-  - quando a condição deixa de existir, o `sync_alerts_for_producer` preenche `cleared_at` e regista evento `CLEARED`;
-  - se a condição voltar depois disso, pode ser criado novo alerta `ACTIVE`.
-- Ações utilizador:
-  - ignorar (`/alertas/<id>/ignorar/`);
-  - ignorar todos os ativos (`/alertas/ignorar-todos/`);
-  - reativar ignorado (`/alertas/<id>/reativar/`);
-  - resolver (`/alertas/<id>/resolver/`).
-- Eventos em `alert_events` são registados para criação/ignorar/resolução/limpeza (`CLEARED`).
-- Dashboard cliente consome `alerts` para KPI de ativos/críticos e lista de prioritários.
-
-### 5.8 Support
-- Nova app `support` com tabela `support_tickets` (SQL manual), modelo `managed=False`.
-- Estados finais do ticket:
+## 15) Support
+- App `support` com tabela `support_tickets`, `managed=False`.
+- Estados:
   - `OPEN`;
   - `CLAIMED`;
   - `CLOSED`.
-- Campos operacionais:
-  - `ticket_number` sequencial (sequence BD);
-  - snapshots do requerente no momento da criação;
-  - `claimed_at`, `admin_replied_at`, `closed_at`.
 - Fluxo utilizador:
-  - card “Contactar suporte” em Definições;
-  - submit para rota dedicada `POST /suporte/tickets/`;
-  - persistência do ticket acontece antes de tentar emails;
-  - falha de email não faz rollback do ticket.
+  - card "Contactar suporte" em Definições;
+  - ticket persiste antes do envio de emails;
+  - falha de email não faz rollback.
 - Fluxo admin:
-  - fila em `/gestor/suporte/` + detalhe em `/gestor/suporte/<uuid>/`;
-  - claim por `POST /gestor/suporte/<uuid>/claim/` com lock transacional;
-  - resposta por `POST /gestor/suporte/<uuid>/reply/` (fecha automaticamente na 1.ª resposta).
-- Badge realtime na sidebar admin:
-  - WebSocket dedicado em `/ws/suporte/sidebar/` (Channels);
-  - consumer de suporte adiciona admins ao grupo `support_admin_badge`;
-  - eventos emitidos em criação/claim/fecho de ticket fazem refresh imediato do estado do badge;
-  - polling contínuo removido do frontend (mantido refresh por navegação HTMX + evento realtime).
-- Auditoria obrigatória implementada:
-  - `SUPPORT_TICKET_CREATED`
-  - `SUPPORT_TICKET_CLAIMED`
-  - `SUPPORT_TICKET_REPLIED`
-  - `SUPPORT_TICKET_CLOSED`
-- Histórico em Definições e fila admin expõem `claimed_at`.
-- Nota técnica de concorrência:
-  - em operações com `select_for_update`, evitar `select_related` em FKs nullable (ex.: `assigned_admin`) para não disparar erro PostgreSQL em outer join com lock.
+  - fila `/gestor/suporte/`;
+  - detalhe `/gestor/suporte/<uuid>/`;
+  - claim transacional;
+  - resposta fecha automaticamente na primeira resposta.
+- Badge realtime admin:
+  - WebSocket `/ws/suporte/sidebar/`;
+  - grupo `support_admin_badge`.
+- Eventos auditados:
+  - `SUPPORT_TICKET_CREATED`;
+  - `SUPPORT_TICKET_CLAIMED`;
+  - `SUPPORT_TICKET_REPLIED`;
+  - `SUPPORT_TICKET_CLOSED`.
+- Nota PostgreSQL:
+  - evitar `select_related` em FKs nullable quando usado com `select_for_update`.
 
-### 5.9 Marketplace (Entrega + Mapa no detalhe)
-- Formulários publish/edit:
-  - quando `delivery_mode = PICKUP`, campos de `delivery_radius_km` e `delivery_fee` ficam ocultos no frontend;
-  - backend mantém limpeza defensiva de raio/taxa em pickup.
-  - novo toggle por anúncio `show_location_on_map` para o produtor escolher se quer expor localização no mapa.
-- Detalhe do anúncio:
-  - mapa Leaflet com marcador da exploração (modo `exact`, quando coordenadas válidas);
-  - fallback `approximate` por `cidade/distrito` via geocoding no frontend (Nominatim), com aviso de que a localização exata não foi divulgada;
-  - modo `hidden` quando o produtor desativa a exibição do mapa no anúncio;
-  - mensagem de indisponibilidade apenas quando não há coordenadas nem cidade/distrito;
-  - círculo de entrega quando há raio no anúncio;
-  - popup no marcador com produtor + produto do anúncio;
-  - marcador adicional do comprador (verde), quando coordenadas do comprador estão disponíveis no contexto;
-  - círculo de entrega também interativo (popup com raio).
-- Robustez frontend mapa:
-  - guard para evitar double-init em navegação HTMX (`_leaflet_id`);
-  - carregamento robusto do Leaflet no detalhe (inclui carregamento dinâmico do script quando necessário);
-  - reflow pós-swap HTMX (`htmx:afterSettle`) para evitar mapa cinza no primeiro load;
-  - ajuste de viewport com `invalidateSize` + `requestAnimationFrame`;
-  - fallback de provider de tiles em caso de erro.
+## 16) Modelo de Dados - Entidades-Chave
+- Identidade:
+  - `users`;
+  - `producer_profiles`;
+  - `user_preferences`;
+  - `account_verification_tokens`.
+- Catálogo:
+  - `product_categories`;
+  - `products`.
+- Inventário:
+  - `producer_products`;
+  - `stocks`;
+  - `stock_movements`;
+  - `production_forecasts`.
+- Needs:
+  - `needs`.
+- Marketplace:
+  - `marketplace_listings` com `need_id`, `need_response_status`, `show_location_on_map`.
+- Recomendações:
+  - `recommendations`;
+  - `recommendation_items`.
+- Encomendas:
+  - `order_groups`;
+  - `orders`;
+  - `order_items`;
+  - `order_status_history`.
+- Comunicação:
+  - `conversations`;
+  - `conversation_participants`;
+  - `messages`.
+- Alertas:
+  - `alerts`;
+  - `alert_events`.
+- Entregas/notificações:
+  - `alert_deliveries`;
+  - `notifications`.
+- Suporte:
+  - `support_tickets`.
+- Operacional:
+  - `audit_log`;
+  - `vision4farms_sync_log`.
 
-## 6) Modelo de Dados (Entidades-Chave)
-- Identidade: `users`, `producer_profiles`, `user_preferences`, `account_verification_tokens`.
-- Catálogo global: `product_categories`, `products`.
-- Inventário do produtor: `producer_products`, `stocks`, `stock_movements`, `production_forecasts`, `needs`.
-- Marketplace: `marketplace_listings` (inclui `need_id` nullable para resposta privada e `show_location_on_map` para controlo de privacidade no mapa).
-- Recomendações: `recommendations`, `recommendation_items`.
-- Encomendas: `order_groups`, `orders`, `order_items`, `order_status_history`.
-- Mensagens: `conversations`, `conversation_participants`, `messages`.
-- Alertas: `alerts`, `alert_events`.
-- Suporte: `support_tickets`.
-- Operacional/integrações: `notifications`, `audit_log`, `vision4farms_sync_log`.
-
-## 7) Relações e Regras-Chave
+## 17) Relações e Regras-Chave
 - `users` 1-1 `producer_profiles`.
 - `producer_profiles` N-N `products` via `producer_products`.
-- `stocks` e `production_forecasts` são por `(producer, product)`.
-- `marketplace_listings` referencia sempre uma origem operacional (stock ou forecast).
-- Constraint DB `marketplace_listings_source_xor_chk` impõe XOR estrito:
-  - `(stock_id IS NOT NULL AND forecast_id IS NULL) OR (stock_id IS NULL AND forecast_id IS NOT NULL)`.
-- `marketplace_listings.need_id` liga oferta privada ao dono de uma need.
-- `order_items.need_id` e `recommendations.need_id` suportam rastreio de cobertura da need.
-- `orders` pode ter `group_id` nulo (legado suportado).
-- `messages` pertence a `conversation`; acesso só para participantes não arquivados.
-- `support_tickets.requester_user_id` referencia `users` (cascade delete).
-- `support_tickets.assigned_admin_id` referencia `users` (set null).
+- `stocks` e `production_forecasts` são por produtor/produto.
+- `needs.producer_id` aponta para o produtor necessitado.
+- `marketplace_listings.need_id` aponta para `needs.Need`.
+- `marketplace_listings.need_response_status` controla rejeição técnica de resposta.
+- `order_items.need_id` permite recalcular cobertura.
+- `recommendations.need_id` permite criar/atualizar necessidade a partir do wizard.
+- `messages` pertence a `conversation`; acesso só a participantes não arquivados.
+- `support_tickets.requester_user_id` referencia `users`.
+- `support_tickets.assigned_admin_id` referencia `users`.
 
-## 8) Notas Operacionais
-- Sem migrations em tabelas de negócio: alterações estruturais via SQL manual + map em `models.py`.
-- Em produção com Cloudinary, render de media deve usar URL resolvida pela storage.
-- Padrão de autenticação no projeto: usar `request.current_user` (não `request.user`) nas views de negócio.
-- Atenção ao `.env`: `DEBUG` precisa de valor booleano parseável (`true/false`), não `"release"`.
-- Em produção, configurar `SUPPORT_CONTACT_EMAIL` como fallback quando não houver admins ativos com email para notificação de novo ticket.
+## 18) Notas Operacionais
+- Sem migrations para tabelas de negócio; aplicar SQL manual antes de refletir fields em models.
+- Atenção ao `.env`: `DEBUG` tem de ser booleano parseável (`true/false`), não `"release"`.
+- Em produção, configurar `SUPPORT_CONTACT_EMAIL` como fallback de suporte.
+- Ao alterar palavra-passe, não guardar hashes/segredos no `audit_log`; guardar apenas flags e notas.
+- Em templates, preferir `|quantity` para valores decimais de quantidade.
+- Em services que montam strings persistidas, usar helpers de formatação de quantidade antes de gravar notificações/alertas.
+- Para rotas de necessidades, usar namespace `needs`.
+- Respostas a necessidades não devem voltar a expor páginas/URLs de marketplace ao necessitado.
+- Railway:
+  - Hobby + Resend por API HTTP é opção recomendada de baixo custo para emails;
+  - Pro simplifica SMTP e colaboração, mas custa mais;
+  - Redis continua recomendado para Django Channels em produção.

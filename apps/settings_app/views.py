@@ -149,7 +149,7 @@ def settings_view(request):
         if producer_profile else None
     )
     preferences_form = UserPreferencesForm(instance=preference, user=user)
-    security_form = ChangePasswordForm()
+    security_form = ChangePasswordForm(user=user)
     support_form = SupportTicketCreateForm() if not is_admin_user else None
     support_tickets = []
     support_tickets_show_all = False
@@ -355,7 +355,7 @@ def settings_view(request):
             messages.error(request, "Não foi possível guardar as preferências. Verifica os campos.")
 
         elif form_type == "security":
-            security_form = ChangePasswordForm(request.POST)
+            security_form = ChangePasswordForm(request.POST, user=user)
             if security_form.is_valid():
                 current_password = security_form.cleaned_data["current_password"]
                 new_password = security_form.cleaned_data["new_password"]
