@@ -17,10 +17,9 @@ from PIL import Image, ImageOps
 from apps.common.decorators import login_required, client_only_required
 from apps.accounts.models import UserRole
 from apps.inventory.models import ProducerProduct, ProductionForecast
-from apps.needs.models import Need, NeedStatus
+from apps.needs.models import NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
-    get_active_need_response_for_responder,
     get_need_for_producer,
 )
 from apps.needs.navigation import build_needs_index_url
@@ -730,17 +729,29 @@ def marketplace_publish_view(request):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
+    legacy_need_id = (
+        request.POST.get("need_id")
+        or request.POST.get("need")
+        or request.GET.get("need")
+        or ""
+    )
+    legacy_origin = (request.POST.get("from") or request.GET.get("from") or "").strip().lower()
+    if legacy_origin == "need" or legacy_need_id:
+        query = {"from": "need"}
+        if legacy_need_id:
+            query["need"] = str(legacy_need_id).strip()
+        legacy_product_id = (request.POST.get("product") or request.GET.get("product") or "").strip()
+        if legacy_product_id:
+            query["product"] = legacy_product_id
+        return redirect(f"{reverse('needs:respond')}?{urlencode(query)}")
+
     success = request.GET.get("success") == "1"
     created_listing_id = request.GET.get("listing_id")
-    posted_need_id = (request.POST.get("need_id") or "").strip()
     requested_product_id = (request.POST.get("product") or request.GET.get("product") or "").strip()
     requested_source = (request.POST.get("listing_source") or request.GET.get("source") or LISTING_SOURCE_STOCK).strip().lower()
     requested_forecast_id = (request.POST.get("forecast") or request.GET.get("forecast") or "").strip()
-    requested_need_id = posted_need_id or (request.GET.get("need") or "").strip()
     prefill_origin = (request.POST.get("from") or request.GET.get("from") or "").strip().lower()
     forecast_quantity_limit = None
-    linked_need = None
-    need_context_error = None
 
     is_forecast_prefill_flow = (
         requested_source == LISTING_SOURCE_FORECAST
@@ -752,36 +763,6 @@ def marketplace_publish_view(request):
         and requested_source == LISTING_SOURCE_STOCK
         and bool(requested_product_id)
     )
-    is_need_prefill_flow = (
-        prefill_origin == "need"
-        and bool(requested_need_id)
-    )
-    if is_need_prefill_flow:
-        linked_need = (
-            Need.objects
-            .select_related("product", "producer")
-            .filter(
-                id=requested_need_id,
-                status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED],
-            )
-            .first()
-        )
-        if not linked_need:
-            need_context_error = (
-                "A necessidade já não está disponível para resposta "
-                "(pode ter sido coberta ou ignorada)."
-            )
-            is_need_prefill_flow = False
-        elif linked_need.producer_id == producer.id:
-            need_context_error = "Não pode responder à sua própria necessidade."
-            is_need_prefill_flow = False
-        elif requested_product_id and str(linked_need.product_id) != requested_product_id:
-            need_context_error = "Produto inválido para responder a esta necessidade."
-            is_need_prefill_flow = False
-        else:
-            requested_product_id = str(linked_need.product_id)
-    if need_context_error and request.method == "GET":
-        messages.error(request, need_context_error)
 
     if is_forecast_prefill_flow:
         activated_forecast, activation_error = _activate_forecast_for_marketplace_if_possible(
@@ -798,7 +779,7 @@ def marketplace_publish_view(request):
             forecast_quantity_limit = get_forecast_available_quantity(activated_forecast)
 
     lock_listing_source = is_forecast_prefill_flow or is_inventory_stock_prefill_flow
-    lock_product = lock_listing_source or is_need_prefill_flow
+    lock_product = lock_listing_source
 
     form_initial = {}
     if requested_product_id:
@@ -812,14 +793,12 @@ def marketplace_publish_view(request):
 
     form = MarketplacePublishForm(
         request.POST or None,
-        None if is_need_prefill_flow else request.FILES or None,
+        request.FILES or None,
         producer=producer,
         initial=form_initial,
         lock_listing_source=lock_listing_source,
         lock_product=lock_product,
     )
-    if request.method == "POST" and posted_need_id and need_context_error:
-        form.add_error(None, need_context_error)
     if is_forecast_prefill_flow and forecast_quantity_limit is not None:
         form.fields["quantity"].widget.attrs["max"] = str(forecast_quantity_limit)
         form.fields["quantity"].widget.attrs["data-max"] = str(forecast_quantity_limit)
@@ -911,8 +890,8 @@ def marketplace_publish_view(request):
             }
 
     if request.method == "POST" and form.is_valid():
-        uploaded_photo = None if is_need_prefill_flow else request.FILES.get("photo")
-        photo_crop = None if is_need_prefill_flow else form.cleaned_data.get("photo_crop")
+        uploaded_photo = request.FILES.get("photo")
+        photo_crop = form.cleaned_data.get("photo_crop")
         photo_path = None
         listing_source = form.cleaned_data.get("listing_source") or LISTING_SOURCE_STOCK
         selected_forecast = form.cleaned_data.get("forecast")
@@ -946,7 +925,7 @@ def marketplace_publish_view(request):
                 expires_at=form.cleaned_data.get("expires_at_final"),
                 listing_source=listing_source,
                 forecast=selected_forecast,
-                need=linked_need if is_need_prefill_flow else None,
+                need=None,
             )
         except MarketplaceServiceError as exc:
             _delete_uploaded_file(photo_path)
@@ -956,70 +935,18 @@ def marketplace_publish_view(request):
             form.add_error(None, "Não foi possível guardar a foto do anúncio.")
         else:
             _sync_alerts_after_marketplace_change(producer, request.current_user)
-            if is_need_prefill_flow and linked_need:
-                _sync_alerts_after_marketplace_change(linked_need.producer, request.current_user)
-                messages.success(
-                    request,
-                    "Resposta enviada. A oferta ficou ligada à necessidade selecionada.",
-                )
-                return redirect(
-                    build_needs_index_url(selected_need_id=str(linked_need.id))
-                )
 
             messages.success(request, "Anúncio publicado com sucesso.")
             url = reverse("marketplace:publish")
             return redirect(f"{url}?success=1&listing_id={listing.id}")
 
-    publish_cancel_url = (
-        build_needs_index_url(selected_need_id=requested_need_id)
-        if is_need_prefill_flow and requested_need_id
-        else reverse("marketplace:index")
-    )
-    publish_need_coverage = (
-        calculate_need_coverage(linked_need)
-        if is_need_prefill_flow and linked_need
-        else None
-    )
-    existing_need_response = (
-        get_active_need_response_for_responder(
-            responder_producer=producer,
-            need=linked_need,
-        )
-        if is_need_prefill_flow and linked_need
-        else None
-    )
-    existing_need_response_notice = (
-        "Já tem uma oferta ativa para esta necessidade. Pode enviar outra oferta se quiser ajustar quantidade, preço ou condições."
-        if existing_need_response
-        else ""
-    )
     context = {
-        "page_title": (
-            "Responder a necessidade"
-            if is_need_prefill_flow
-            else "Publicar Excedente"
-        ),
-        "publish_title": (
-            "Responder a necessidade"
-            if is_need_prefill_flow
-            else "Publicar Excedente"
-        ),
-        "publish_subtitle": (
-            "Envie uma oferta privada para cobrir a quantidade em falta deste pedido."
-            if is_need_prefill_flow
-            else "Venda os seus produtos no marketplace da cooperativa."
-        ),
-        "publish_submit_label": (
-            "Enviar resposta"
-            if is_need_prefill_flow
-            else "Publicar no marketplace"
-        ),
-        "publish_cancel_label": (
-            "Voltar às necessidades"
-            if is_need_prefill_flow
-            else "Cancelar"
-        ),
-        "publish_cancel_url": publish_cancel_url,
+        "page_title": "Publicar Excedente",
+        "publish_title": "Publicar Excedente",
+        "publish_subtitle": "Venda os seus produtos no marketplace da cooperativa.",
+        "publish_submit_label": "Publicar no marketplace",
+        "publish_cancel_label": "Cancelar",
+        "publish_cancel_url": reverse("marketplace:index"),
         "success": success,
         "form": form,
         "created_listing_id": created_listing_id,
@@ -1029,11 +956,6 @@ def marketplace_publish_view(request):
         "selected_source": selected_source,
         "initial_market_trend": initial_market_trend,
         "is_inventory_stock_prefill_flow": is_inventory_stock_prefill_flow,
-        "is_need_prefill_flow": is_need_prefill_flow,
-        "requested_need_id": requested_need_id,
-        "publish_need": linked_need if is_need_prefill_flow else None,
-        "publish_need_coverage": publish_need_coverage,
-        "existing_need_response_notice": existing_need_response_notice,
         "product_picker_options": [
             {"id": str(row["id"]), "label": row["name"]}
             for row in all_publishable_products

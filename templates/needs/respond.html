@@ -1,0 +1,265 @@
+{% extends "dashboard/base_app.html" %}
+{% load l10n %}
+{% block app_title %}Responder a necessidade{% endblock %}
+{% block app_content %}
+
+<div class="nr-page">
+  <header class="nr-header">
+    <div>
+      <span>Resposta a necessidade</span>
+      <h1>Oferta privada para {{ need.product.name }}</h1>
+      <p>Envie uma proposta diretamente para o produtor que anunciou esta necessidade.</p>
+    </div>
+    <a href="{{ back_to_needs_url }}" class="nr-btn nr-btn--ghost">
+      <i class="bi bi-arrow-left"></i>
+      <span>Voltar às necessidades</span>
+    </a>
+  </header>
+
+  <div class="nr-layout">
+    <section class="nr-card nr-card--form">
+      <div class="nr-card__head">
+        <h2>Enviar proposta</h2>
+        <p>A resposta fica privada e só pode ser comprada pelo produtor desta necessidade.</p>
+      </div>
+
+      {% if form.non_field_errors %}
+        <div class="nr-alert nr-alert--error">
+          {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if existing_response %}
+        <div class="nr-alert">
+          <i class="bi bi-info-circle"></i>
+          <p>Já tem uma oferta ativa para esta necessidade. Pode enviar outra proposta para ajustar quantidade, preço ou condições.</p>
+        </div>
+      {% endif %}
+
+      <form method="post" class="nr-form" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="need_id" value="{{ need.id }}">
+
+        <div class="nr-field{% if form.listing_source.errors %} has-error{% endif %}">
+          <label for="{{ form.listing_source.id_for_label }}">{{ form.listing_source.label }}</label>
+          {{ form.listing_source }}
+          {% if form.listing_source.errors %}<div class="nr-errors">{{ form.listing_source.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="nr-field{% if form.forecast.errors %} has-error{% endif %}" id="nrForecastWrap">
+          <label for="{{ form.forecast.id_for_label }}">{{ form.forecast.label }}</label>
+          {{ form.forecast }}
+          <div class="nr-help">Use apenas se a oferta vier de produção futura já ativa para pré-venda.</div>
+          {% if form.forecast.errors %}<div class="nr-errors">{{ form.forecast.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="nr-grid">
+          <div class="nr-field{% if form.quantity.errors %} has-error{% endif %}">
+            <label for="{{ form.quantity.id_for_label }}">{{ form.quantity.label }}</label>
+            <div class="nr-input-suffix">
+              {{ form.quantity }}
+              <span>{{ need.product.unit }}</span>
+            </div>
+            <div class="nr-alert nr-alert--warning"
+                 id="nrExcessWarning"
+                 data-remaining="{{ coverage.remaining_to_receive|unlocalize }}"
+                 hidden>
+              <i class="bi bi-exclamation-triangle"></i>
+              <p>A quantidade proposta excede o que ainda falta receber. A proposta será enviada, mas o produtor terá de decidir se aceita esse excesso.</p>
+            </div>
+            {% if form.quantity.errors %}<div class="nr-errors">{{ form.quantity.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="nr-field{% if form.unit_price.errors %} has-error{% endif %}">
+            <label for="{{ form.unit_price.id_for_label }}">{{ form.unit_price.label }}</label>
+            <div class="nr-input-suffix">
+              {{ form.unit_price }}
+              <span>€</span>
+            </div>
+            {% if form.unit_price.errors %}<div class="nr-errors">{{ form.unit_price.errors.0 }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="nr-field{% if form.delivery_mode.errors %} has-error{% endif %}">
+          <label for="{{ form.delivery_mode.id_for_label }}">{{ form.delivery_mode.label }}</label>
+          {{ form.delivery_mode }}
+          {% if form.delivery_mode.errors %}<div class="nr-errors">{{ form.delivery_mode.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="nr-grid" id="nrDeliveryFields">
+          <div class="nr-field{% if form.delivery_radius_km.errors %} has-error{% endif %}">
+            <label for="{{ form.delivery_radius_km.id_for_label }}">{{ form.delivery_radius_km.label }}</label>
+            {{ form.delivery_radius_km }}
+            {% if form.delivery_radius_km.errors %}<div class="nr-errors">{{ form.delivery_radius_km.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="nr-field{% if form.delivery_fee.errors %} has-error{% endif %}">
+            <label for="{{ form.delivery_fee.id_for_label }}">{{ form.delivery_fee.label }}</label>
+            {{ form.delivery_fee }}
+            {% if form.delivery_fee.errors %}<div class="nr-errors">{{ form.delivery_fee.errors.0 }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="nr-check{% if form.show_location_on_map.errors %} has-error{% endif %}">
+          {{ form.show_location_on_map }}
+          <label for="{{ form.show_location_on_map.id_for_label }}">{{ form.show_location_on_map.label }}</label>
+        </div>
+
+        <div class="nr-field{% if form.notes.errors %} has-error{% endif %}">
+          <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+          {{ form.notes }}
+          {% if form.notes.errors %}<div class="nr-errors">{{ form.notes.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="nr-actions">
+          <button type="submit" class="nr-btn nr-btn--primary">
+            <i class="bi bi-send"></i>
+            <span>Enviar proposta</span>
+          </button>
+          <a href="{{ back_to_needs_url }}" class="nr-btn nr-btn--ghost">Cancelar</a>
+        </div>
+      </form>
+    </section>
+
+    <aside class="nr-card nr-card--summary">
+      <div class="nr-card__head">
+        <h2>Necessidade</h2>
+        <p>Pedido de {{ need.producer.display_name|default:need.producer.company_name|default:need.producer.user.email|default:"Produtor" }}</p>
+      </div>
+
+      <div class="nr-summary-grid">
+        <div>
+          <span>Produto</span>
+          <strong>{{ need.product.name }}</strong>
+        </div>
+        <div>
+          <span>Quantidade pedida</span>
+          <strong>{{ coverage.required_quantity|quantity }} {{ need.product.unit }}</strong>
+        </div>
+        <div>
+          <span>Ainda por receber</span>
+          <strong>{{ coverage.remaining_to_receive|quantity }} {{ need.product.unit }}</strong>
+        </div>
+        {% if need.needed_by_date %}
+          <div>
+            <span>Data limite</span>
+            <strong>{{ need.needed_by_date|date:"d/m/Y" }}</strong>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if need.notes %}
+        <div class="nr-note">
+          <span>Observações da necessidade</span>
+          <p>{{ need.notes }}</p>
+        </div>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+
+<style>
+.nr-page { display:flex; flex-direction:column; gap:1rem; }
+.nr-header, .nr-card {
+  background:#fff; border:1px solid #dfe7ef; border-radius:8px;
+  box-shadow:0 1px 2px rgba(15,23,42,.03);
+}
+.nr-header {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:1rem; padding:1rem 1.1rem;
+}
+.nr-header span { color:#16a34a; font-size:.74rem; font-weight:800; text-transform:uppercase; }
+.nr-header h1 { margin:.2rem 0; color:#0f172a; font-size:1.35rem; line-height:1.2; }
+.nr-header p, .nr-card__head p, .nr-help { margin:0; color:#64748b; font-size:.88rem; }
+.nr-layout { display:grid; grid-template-columns:minmax(0, 1fr) 360px; gap:1rem; align-items:start; }
+.nr-card { padding:1rem; }
+.nr-card__head { margin-bottom:1rem; }
+.nr-card__head h2 { margin:0 0 .25rem; font-size:1rem; color:#0f172a; }
+.nr-form { display:flex; flex-direction:column; gap:1rem; }
+.nr-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1rem; }
+.nr-field { display:flex; flex-direction:column; gap:.35rem; min-width:0; }
+.nr-field label { font-size:.78rem; font-weight:800; color:#475569; text-transform:uppercase; }
+.nr-field input, .nr-field select, .nr-field textarea {
+  width:100%; border:1px solid #cbd5e1; border-radius:.6rem; padding:.65rem .75rem;
+  color:#0f172a; background:#fff; min-height:42px;
+}
+.nr-field textarea { resize:vertical; min-height:100px; }
+.nr-field.has-error input, .nr-field.has-error select, .nr-field.has-error textarea { border-color:#ef4444; }
+.nr-errors { color:#b91c1c; font-size:.82rem; }
+.nr-input-suffix { display:flex; align-items:center; border:1px solid #cbd5e1; border-radius:.6rem; overflow:hidden; }
+.nr-input-suffix input { border:0; border-radius:0; }
+.nr-input-suffix span { padding:0 .75rem; color:#64748b; font-weight:800; }
+.nr-check { display:flex; align-items:center; gap:.5rem; color:#334155; font-size:.88rem; }
+.nr-alert {
+  display:flex; gap:.55rem; align-items:flex-start; padding:.75rem .85rem;
+  border:1px solid #bfdbfe; background:#eff6ff; color:#1e3a8a; border-radius:.7rem;
+}
+.nr-alert p { margin:0; font-size:.86rem; line-height:1.4; }
+.nr-alert--warning { border-color:#fde68a; background:#fffbeb; color:#92400e; margin-top:.35rem; }
+.nr-alert--error { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+.nr-actions { display:flex; gap:.7rem; flex-wrap:wrap; margin-top:.25rem; }
+.nr-btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
+  border-radius:.6rem; border:1px solid #cbd5e1; padding:.7rem .95rem;
+  font-weight:800; text-decoration:none; cursor:pointer;
+}
+.nr-btn--primary { background:#16a34a; border-color:#16a34a; color:#fff; }
+.nr-btn--ghost { background:#fff; color:#0f172a; }
+.nr-summary-grid { display:grid; gap:.7rem; }
+.nr-summary-grid div, .nr-note {
+  border:1px solid #e2e8f0; background:#f8fafc; border-radius:.7rem; padding:.8rem;
+}
+.nr-summary-grid span, .nr-note span {
+  display:block; font-size:.72rem; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:.3rem;
+}
+.nr-summary-grid strong { color:#0f172a; font-size:.98rem; overflow-wrap:anywhere; }
+.nr-note { margin-top:.8rem; }
+.nr-note p { margin:0; color:#334155; overflow-wrap:anywhere; }
+@media (max-width: 960px) {
+  .nr-layout { grid-template-columns:1fr; }
+}
+@media (max-width: 640px) {
+  .nr-header { align-items:stretch; flex-direction:column; }
+  .nr-grid { grid-template-columns:1fr; }
+  .nr-btn { width:100%; }
+}
+</style>
+
+<script>
+(function () {
+  const source = document.getElementById("id_listing_source");
+  const forecastWrap = document.getElementById("nrForecastWrap");
+  const deliveryMode = document.getElementById("id_delivery_mode");
+  const deliveryFields = document.getElementById("nrDeliveryFields");
+  const quantity = document.getElementById("id_quantity");
+  const excessWarning = document.getElementById("nrExcessWarning");
+
+  function syncForecast() {
+    if (!source || !forecastWrap) return;
+    forecastWrap.hidden = source.value !== "forecast";
+  }
+
+  function syncDelivery() {
+    if (!deliveryMode || !deliveryFields) return;
+    deliveryFields.hidden = !["DELIVERY", "BOTH"].includes(deliveryMode.value);
+  }
+
+  function syncExcessWarning() {
+    if (!quantity || !excessWarning) return;
+    const remaining = Number(String(excessWarning.dataset.remaining || "0").replace(",", "."));
+    const proposed = Number(String(quantity.value || "0").replace(",", "."));
+    excessWarning.hidden = !(remaining > 0 && proposed > remaining);
+  }
+
+  source && source.addEventListener("change", syncForecast);
+  deliveryMode && deliveryMode.addEventListener("change", syncDelivery);
+  quantity && quantity.addEventListener("input", syncExcessWarning);
+  syncForecast();
+  syncDelivery();
+  syncExcessWarning();
+})();
+</script>
+
+{% endblock %}

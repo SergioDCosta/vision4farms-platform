@@ -3,10 +3,12 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 from django.urls import reverse
 
+from apps.accounts.models import AccountStatus, UserRole
 from apps.marketplace.models import ListingStatus
+from apps.marketplace.services import LISTING_SOURCE_STOCK
 from apps.needs.models import NeedResponseStatus, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
@@ -61,6 +63,9 @@ class NeedsRoutingTests(SimpleTestCase):
     def test_needs_index_url_is_public_needs_path(self):
         self.assertEqual(reverse("needs:index"), "/necessidades/")
 
+    def test_need_response_publish_url_is_public_needs_path(self):
+        self.assertEqual(reverse("needs:respond"), "/necessidades/responder/")
+
     def test_need_response_urls_are_public_needs_paths(self):
         listing_id = uuid4()
 
@@ -72,6 +77,74 @@ class NeedsRoutingTests(SimpleTestCase):
             reverse("needs:response_reject", args=[listing_id]),
             f"/necessidades/respostas/{listing_id}/rejeitar/",
         )
+
+
+class NeedResponsePublishViewTests(SimpleTestCase):
+    def _request(self):
+        request = RequestFactory().post(
+            "/necessidades/responder/?from=need&need=need-1&product=product-1",
+            data={
+                "need_id": "need-1",
+                "listing_source": LISTING_SOURCE_STOCK,
+                "quantity": "5",
+                "unit_price": "2.50",
+                "delivery_mode": "PICKUP",
+                "notes": "Posso entregar esta quantidade.",
+            },
+        )
+        request.current_user = SimpleNamespace(
+            is_active=True,
+            account_status=AccountStatus.ACTIVE,
+            role=UserRole.CLIENTE,
+        )
+        request.session = {}
+        return request
+
+    def test_need_response_publish_creates_private_listing_and_redirects_to_need(self):
+        producer = SimpleNamespace(id="seller-1")
+        need = SimpleNamespace(
+            id="need-1",
+            product_id="product-1",
+            producer_id="buyer-1",
+            product=SimpleNamespace(id="product-1", name="Tomate", unit="kg"),
+            producer=SimpleNamespace(id="buyer-1"),
+        )
+        need_model = MagicMock()
+        need_model.objects.select_related.return_value.filter.return_value.first.return_value = need
+        form = MagicMock()
+        form.is_valid.return_value = True
+        form.cleaned_data = {
+            "listing_source": LISTING_SOURCE_STOCK,
+            "forecast": None,
+            "quantity": Decimal("5"),
+            "unit_price": Decimal("2.50"),
+            "delivery_mode": "PICKUP",
+            "delivery_radius_km": None,
+            "delivery_fee": None,
+            "show_location_on_map": True,
+            "notes": "Posso entregar esta quantidade.",
+        }
+
+        with (
+            patch("apps.needs.views.Need", need_model),
+            patch("apps.needs.views.NeedResponsePublishForm", return_value=form),
+            patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
+            patch("apps.needs.views.expire_due_active_listings"),
+            patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
+            patch("apps.needs.views.get_active_need_response_for_responder", return_value=None),
+            patch("apps.needs.views.create_listing", return_value=SimpleNamespace(id="listing-1")) as create_listing,
+            patch("apps.needs.views.sync_alerts_after_need_change"),
+            patch("apps.needs.views.messages"),
+        ):
+            from apps.needs.views import need_response_publish_view
+
+            response = need_response_publish_view(self._request())
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/necessidades/?need=need-1")
+        self.assertEqual(create_listing.call_args.kwargs["need"], need)
+        self.assertIsNone(create_listing.call_args.kwargs["photo_path"])
+        self.assertEqual(create_listing.call_args.kwargs["status"], ListingStatus.ACTIVE)
 
 
 class NeedsServiceTests(SimpleTestCase):

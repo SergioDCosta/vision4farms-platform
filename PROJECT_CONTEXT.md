@@ -184,6 +184,7 @@
 - URLs públicas canónicas:
   - `/necessidades/` -> `needs:index`;
   - `/necessidades/criar/` -> `needs:create`;
+  - `/necessidades/responder/` -> `needs:respond`;
   - `/necessidades/<uuid>/ignorar/` -> `needs:ignore`;
   - `/necessidades/respostas/<listing_id>/` -> `needs:response_detail`;
   - `/necessidades/respostas/<listing_id>/rejeitar/` -> `needs:response_reject`.
@@ -238,6 +239,10 @@
   - `need_response_status`;
   - vive em marketplace porque a resposta ainda é uma listing privada.
 - URLs de detalhe de resposta são de `needs`, não marketplace.
+- Criação de resposta também é canónica em `needs`:
+  - `/necessidades/responder/?need=<id>&product=<id>`;
+  - view/form/template vivem em `apps.needs`;
+  - usa `marketplace.services.create_listing` apenas como operação técnica para criar a listing privada.
 - Dono da necessidade:
   - vê respostas na página de necessidades;
   - entra em `/necessidades/respostas/<listing_id>/`;
@@ -277,12 +282,9 @@
   - não entra em recomendações públicas;
   - detalhe/compra pelo necessitado usa páginas de `needs`.
 - Publicação normal mantém foto/crop/sucesso atual.
-- Fluxo `from=need`:
-  - título/copy próprios: responder a necessidade;
-  - sem foto do anúncio;
-  - cria listing privada ligada à need;
-  - redireciona para `/necessidades/?need=<id>`;
-  - botão e cancelamento mantêm utilizador no contexto de necessidades.
+- Fluxo `from=need` deixou de ser tratado pelo publish normal:
+  - `/marketplace/publicar/?from=need...` apenas redireciona por compatibilidade para `/necessidades/responder/`;
+  - `marketplace_publish_view` fica focada em excedentes normais.
 - Detalhe marketplace público:
   - mantém compra normal;
   - mostra mapa Leaflet quando permitido;

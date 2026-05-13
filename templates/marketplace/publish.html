@@ -1,5 +1,4 @@
 {% extends "dashboard/base_app.html" %}
-{% load l10n %}
 {% block app_title %}{{ page_title|default:"Publicar Excedente" }}{% endblock %}
 {% block app_content %}
 
@@ -16,58 +15,12 @@
       <section class="mkp-card">
         <form method="post" enctype="multipart/form-data" class="mkp-form" novalidate>
           {% csrf_token %}
-          {% if is_need_prefill_flow and requested_need_id %}
-            <input type="hidden" name="need_id" value="{{ requested_need_id }}">
-            <input type="hidden" name="from" value="need">
-          {% endif %}
 
           {% if form.non_field_errors %}
             <div class="mkp-form-error">
               {% for error in form.non_field_errors %}
                 <p>{{ error }}</p>
               {% endfor %}
-            </div>
-          {% endif %}
-          {% if existing_need_response_notice %}
-            <div class="mkp-form-notice">
-              <i class="bi bi-info-circle"></i>
-              <p>{{ existing_need_response_notice }}</p>
-            </div>
-          {% endif %}
-          {% if is_need_prefill_flow and publish_need %}
-            <div class="mkp-need-summary">
-              <div class="mkp-need-summary__head">
-                <span>Resumo da necessidade</span>
-                <strong>{{ publish_need.product.name }}</strong>
-              </div>
-              <div class="mkp-need-summary__grid">
-                <p>
-                  <span>Produtor</span>
-                  <strong>{{ publish_need.producer.display_name|default:publish_need.producer.company_name|default:publish_need.producer.user.email|default:"Produtor" }}</strong>
-                </p>
-                <p>
-                  <span>Quantidade ainda por receber</span>
-                  <strong>
-                    {% if publish_need_coverage %}
-                      {{ publish_need_coverage.remaining_to_receive|quantity }} {{ publish_need.product.unit }}
-                    {% else %}
-                      {{ publish_need.required_quantity|quantity }} {{ publish_need.product.unit }}
-                    {% endif %}
-                  </strong>
-                </p>
-                {% if publish_need.needed_by_date %}
-                  <p>
-                    <span>Data limite</span>
-                    <strong>{{ publish_need.needed_by_date|date:"d/m/Y" }}</strong>
-                  </p>
-                {% endif %}
-              </div>
-              {% if publish_need.notes %}
-                <div class="mkp-need-summary__notes">
-                  <span>Observações da necessidade</span>
-                  <p>{{ publish_need.notes }}</p>
-                </div>
-              {% endif %}
             </div>
           {% endif %}
 
@@ -117,16 +70,6 @@
               </div>
               {% if forecast_quantity_limit is not None %}
                 <div class="mkp-help">Máximo para esta pré-venda: {{ forecast_quantity_limit|quantity }} (quantidade prevista disponível).</div>
-              {% endif %}
-              {% if is_need_prefill_flow and publish_need and publish_need_coverage %}
-                <div class="mkp-form-notice mkp-form-notice--warning"
-                     id="mkp-need-quantity-warning"
-                     data-remaining="{{ publish_need_coverage.remaining_to_receive|unlocalize }}"
-                     data-unit="{{ publish_need.product.unit }}"
-                     hidden>
-                  <i class="bi bi-exclamation-triangle"></i>
-                  <p>Está a propor mais do que a quantidade ainda por receber. A oferta será enviada, mas o produtor deve confirmar se pretende aceitar esse excesso.</p>
-                </div>
               {% endif %}
               {% if form.quantity.errors %}
                 <div class="mkp-field-errors">
@@ -264,45 +207,36 @@
             {% endif %}
           </div>
 
-          {% if not is_need_prefill_flow %}
-            <div class="mkp-field{% if form.photo.errors %} has-error{% endif %}">
-              <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
-              <div class="mkp-photo-input">
-                {{ form.photo }}
-                {{ form.photo_crop }}
+          <div class="mkp-field{% if form.photo.errors %} has-error{% endif %}">
+            <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
+            <div class="mkp-photo-input">
+              {{ form.photo }}
+              {{ form.photo_crop }}
+            </div>
+            {% if form.photo.errors %}
+              <div class="mkp-field-errors">
+                {% for error in form.photo.errors %}
+                  <span>{{ error }}</span>
+                {% endfor %}
               </div>
-              {% if form.photo.errors %}
-                <div class="mkp-field-errors">
-                  {% for error in form.photo.errors %}
-                    <span>{{ error }}</span>
-                  {% endfor %}
-                </div>
-              {% endif %}
-              <div class="mkp-cropper" id="mkp-cropper" hidden>
-                <div class="mkp-help">Recorta a foto arrastando a área verde antes de publicar.</div>
-                <div class="mkp-crop-stage" id="mkp-crop-stage">
-                  <img id="mkp-crop-image" alt="Pré-visualização para recorte">
-                  <div class="mkp-crop-box" id="mkp-crop-box">
-                    <span class="mkp-crop-handle" id="mkp-crop-handle"></span>
-                  </div>
+            {% endif %}
+            <div class="mkp-cropper" id="mkp-cropper" hidden>
+              <div class="mkp-help">Recorta a foto arrastando a área verde antes de publicar.</div>
+              <div class="mkp-crop-stage" id="mkp-crop-stage">
+                <img id="mkp-crop-image" alt="Pré-visualização para recorte">
+                <div class="mkp-crop-box" id="mkp-crop-box">
+                  <span class="mkp-crop-handle" id="mkp-crop-handle"></span>
                 </div>
               </div>
             </div>
-          {% endif %}
+          </div>
 
           <div class="mkp-actions">
-            <a href="{{ publish_cancel_url }}" class="mkp-btn-secondary"
-               {% if is_need_prefill_flow %}
-                 hx-get="{{ publish_cancel_url }}"
-                 hx-target="#shellMain"
-                 hx-select="#shellMain"
-                 hx-swap="outerHTML"
-                 hx-push-url="true"
-               {% endif %}>
+            <a href="{{ publish_cancel_url }}" class="mkp-btn-secondary">
               {{ publish_cancel_label|default:"Cancelar" }}
             </a>
             <button type="submit" class="mkp-btn-primary">
-              <i class="bi {% if is_need_prefill_flow %}bi-send{% else %}bi-upload{% endif %}"></i>
+              <i class="bi bi-upload"></i>
               {{ publish_submit_label|default:"Publicar no marketplace" }}
             </button>
           </div>
@@ -447,8 +381,6 @@
   const deliveryOptionsWrap = document.getElementById("mkp-delivery-options-wrap");
   const forecastWrap = document.getElementById("mkp-forecast-wrap");
   const modeField = document.getElementById("{{ form.expiration_mode.id_for_label }}");
-  const quantityField = document.getElementById("{{ form.quantity.id_for_label }}");
-  const needQuantityWarning = document.getElementById("mkp-need-quantity-warning");
   const dateWrap = document.getElementById("mkp-date-wrap");
   const summaryList = document.getElementById("mkp-summary-list");
   const summaryItems = summaryList ? Array.from(summaryList.querySelectorAll(".mkp-summary-item")) : [];
@@ -650,19 +582,6 @@
     });
   }
   syncSummaryAndTrend();
-
-  function syncNeedQuantityWarning() {
-    if (!quantityField || !needQuantityWarning) return;
-    const remaining = Number(String(needQuantityWarning.dataset.remaining || "0").replace(",", "."));
-    const quantity = Number(String(quantityField.value || "0").replace(",", "."));
-    needQuantityWarning.hidden = !(remaining > 0 && quantity > remaining);
-  }
-
-  if (quantityField) {
-    quantityField.addEventListener("input", syncNeedQuantityWarning);
-    quantityField.addEventListener("change", syncNeedQuantityWarning);
-  }
-  syncNeedQuantityWarning();
 
   const photoInput = document.getElementById("{{ form.photo.id_for_label }}");
   const photoCropInput = document.getElementById("{{ form.photo_crop.id_for_label }}");
@@ -925,62 +844,6 @@
 
 .mkp-form-error p + p {
   margin-top: 0.35rem;
-}
-
-.mkp-need-summary {
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
-  color: #1e3a8a;
-  border-radius: 0.9rem;
-  padding: 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.mkp-need-summary__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  align-items: flex-start;
-}
-
-.mkp-need-summary__head span,
-.mkp-need-summary__notes span,
-.mkp-need-summary__grid span {
-  display: block;
-  color: #2563eb;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.mkp-need-summary__head strong,
-.mkp-need-summary__grid strong {
-  color: #0f172a;
-  overflow-wrap: anywhere;
-}
-
-.mkp-need-summary__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
-}
-
-.mkp-need-summary__grid p,
-.mkp-need-summary__notes p {
-  margin: 0;
-}
-
-.mkp-need-summary__notes {
-  border-top: 1px solid #bfdbfe;
-  padding-top: 0.65rem;
-}
-
-.mkp-need-summary__notes p {
-  color: #334155;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
 }
 
 .mkp-grid-2 {
@@ -1399,12 +1262,6 @@
 
   .mkp-grid-2 {
     grid-template-columns: 1fr;
-  }
-
-  .mkp-need-summary__head,
-  .mkp-need-summary__grid {
-    grid-template-columns: 1fr;
-    flex-direction: column;
   }
 
   .mkp-actions .mkp-btn-primary,

@@ -707,8 +707,6 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   if (!shell) return;
 
   const overlay = document.getElementById('shellOverlay');
-  const profileMenu = document.getElementById('topbarProfileMenu');
-  const profileButton = document.getElementById('topbarProfileBtn');
   const COLLAPSED_KEY = 'sidebar_collapsed';
   const SUPPORT_BADGE_MIN_REFRESH_GAP_MS = 800;
   const ALERTS_BADGE_MIN_REFRESH_GAP_MS = 800;
@@ -729,31 +727,45 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   const ALERTS_BADGE_SOCKET_BACKOFF_MS = [1000, 2000, 5000, 10000];
   const MESSAGING_UNREAD_SOCKET_BACKOFF_MS = [1000, 2000, 5000, 10000];
 
+  function getProfileMenu() {
+    return document.getElementById('topbarProfileMenu');
+  }
+
+  function getProfileButton() {
+    return document.getElementById('topbarProfileBtn');
+  }
+
   function setProfileMenuOpen(isOpen) {
+    const profileMenu = getProfileMenu();
+    const profileButton = getProfileButton();
     if (!profileMenu || !profileButton) return;
     profileMenu.classList.toggle('is-open', isOpen);
     profileButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   }
 
-  if (profileMenu && profileButton) {
-    profileButton.addEventListener('click', function (event) {
+  document.addEventListener('click', function (event) {
+    const profileMenu = getProfileMenu();
+    const profileButton = event.target.closest('#topbarProfileBtn');
+
+    if (profileMenu && profileButton && profileMenu.contains(profileButton)) {
       event.stopPropagation();
       setProfileMenuOpen(!profileMenu.classList.contains('is-open'));
-    });
+      return;
+    }
 
-    document.addEventListener('click', function (event) {
-      if (!profileMenu.contains(event.target)) {
-        setProfileMenuOpen(false);
-      }
-    });
+    if (profileMenu && !profileMenu.contains(event.target)) {
+      setProfileMenuOpen(false);
+    }
+  });
 
-    document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') {
-        setProfileMenuOpen(false);
-        profileButton.focus();
-      }
-    });
-  }
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    const profileButton = getProfileButton();
+    setProfileMenuOpen(false);
+    if (profileButton) {
+      profileButton.focus();
+    }
+  });
 
   const isMobile = () => window.innerWidth < 768;
   const isAutoCollapse = () => window.innerWidth < 1280 && window.innerWidth >= 768;

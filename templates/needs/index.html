@@ -389,8 +389,8 @@
               <p>{{ row.viewer_response_summary.message }}</p>
             </div>
           {% endif %}
-          <a href="{% url 'marketplace:publish' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
-             hx-get="{% url 'marketplace:publish' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
+          <a href="{% url 'needs:respond' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
+             hx-get="{% url 'needs:respond' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
              hx-target="#shellMain"
              hx-select="#shellMain"
              hx-swap="outerHTML"

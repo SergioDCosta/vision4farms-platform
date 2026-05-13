@@ -9,17 +9,22 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.common.decorators import client_only_required
+from apps.marketplace.models import ListingStatus
 from apps.marketplace.services import (
+    MarketplaceServiceError,
     build_delivery_text,
+    create_listing,
     expire_due_active_listings,
     get_current_producer_for_user,
 )
+from apps.needs.forms import NeedResponsePublishForm
 from apps.needs.navigation import build_needs_index_url
-from apps.needs.models import NeedSourceSystem, NeedStatus
+from apps.needs.models import Need, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     create_or_update_need,
     build_need_response_for_listing,
+    get_active_need_response_for_responder,
     get_critical_stock_product_ids,
     get_need_response_listing_for_viewer,
     get_need_candidate_products,
@@ -262,6 +267,91 @@ def needs_index_view(request):
         show_need_form=show_need_form,
     )
     return render(request, "needs/index.html", context)
+
+
+@client_only_required
+def need_response_publish_view(request):
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    expire_due_active_listings()
+    requested_need_id = (
+        request.POST.get("need_id")
+        or request.POST.get("need")
+        or request.GET.get("need")
+        or ""
+    )
+    requested_need_id = str(requested_need_id).strip()
+    requested_product_id = str(request.POST.get("product") or request.GET.get("product") or "").strip()
+    if not requested_need_id:
+        messages.error(request, "Necessidade não indicada.")
+        return redirect("needs:index")
+
+    try:
+        need = (
+            Need.objects
+            .select_related("product", "producer", "producer__user", "product__category")
+            .filter(id=requested_need_id, status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED])
+            .first()
+        )
+    except (TypeError, ValueError, ValidationError):
+        need = None
+    if not need:
+        messages.error(request, "A necessidade já não está disponível para resposta.")
+        return redirect("needs:index")
+    if need.producer_id == producer.id:
+        messages.error(request, "Não pode responder à sua própria necessidade.")
+        return redirect(build_needs_index_url(selected_need_id=str(need.id)))
+    if requested_product_id and str(need.product_id) != requested_product_id:
+        messages.error(request, "Produto inválido para responder a esta necessidade.")
+        return redirect("needs:index")
+
+    form = NeedResponsePublishForm(request.POST or None, producer=producer, need=need)
+    coverage = calculate_need_coverage(need)
+    existing_response = get_active_need_response_for_responder(
+        responder_producer=producer,
+        need=need,
+    )
+
+    if request.method == "POST" and form.is_valid():
+        try:
+            listing = create_listing(
+                producer=producer,
+                product=need.product,
+                quantity=form.cleaned_data["quantity"],
+                unit_price=form.cleaned_data["unit_price"],
+                delivery_mode=form.cleaned_data["delivery_mode"],
+                delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
+                delivery_fee=form.cleaned_data.get("delivery_fee"),
+                show_location_on_map=form.cleaned_data.get("show_location_on_map", True),
+                notes=form.cleaned_data.get("notes"),
+                photo_path=None,
+                status=ListingStatus.ACTIVE,
+                expires_at=None,
+                listing_source=form.cleaned_data["listing_source"],
+                forecast=form.cleaned_data.get("forecast"),
+                need=need,
+            )
+        except MarketplaceServiceError as exc:
+            form.add_error(None, str(exc))
+        else:
+            sync_alerts_after_need_change(producer, request.current_user)
+            sync_alerts_after_need_change(need.producer, request.current_user)
+            messages.success(request, "Resposta enviada. A oferta ficou ligada à necessidade selecionada.")
+            return redirect(build_needs_index_url(selected_need_id=str(need.id)))
+
+    context = {
+        "page_title": "Responder a necessidade",
+        "form": form,
+        "need": need,
+        "coverage": coverage,
+        "existing_response": existing_response,
+        "back_to_needs_url": build_needs_index_url(),
+    }
+    return render(request, "needs/respond.html", context)
 
 
 @client_only_required
