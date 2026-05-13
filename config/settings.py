@@ -1,6 +1,8 @@
-from pathlib import Path
-from decouple import config
 import os
+from pathlib import Path
+
+from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -29,6 +31,7 @@ INSTALLED_APPS = [
     "django_htmx",
     "rest_framework",
     "channels",
+    "anymail",
 
     "apps.accounts",
     "apps.catalog",
@@ -193,17 +196,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# Email / SMTP real
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = config("EMAIL_HOST")
-EMAIL_PORT = config("EMAIL_PORT", cast=int, default=465)
-
-EMAIL_USE_SSL = config("EMAIL_USE_SSL", cast=bool, default=True)
-EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool, default=False)
-
-EMAIL_HOST_USER = config("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
-
 DEFAULT_FROM_EMAIL = config(
     "DEFAULT_FROM_EMAIL",
     default="VISION4FARMS <no-reply@farm.vision4you.pt>",
@@ -220,3 +212,26 @@ SUPPORT_CONTACT_EMAIL = config(
 
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 EMAIL_TIMEOUT = 20
+
+EMAIL_PROVIDER = config("EMAIL_PROVIDER", default="smtp").strip().lower()
+
+if EMAIL_PROVIDER == "resend":
+    EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+    ANYMAIL = {
+        "RESEND_API_KEY": config("RESEND_API_KEY"),
+    }
+elif EMAIL_PROVIDER == "smtp":
+    EMAIL_BACKEND = config(
+        "EMAIL_BACKEND",
+        default="django.core.mail.backends.smtp.EmailBackend",
+    )
+    EMAIL_HOST = config("EMAIL_HOST")
+    EMAIL_PORT = config("EMAIL_PORT", cast=int, default=465)
+    EMAIL_USE_SSL = config("EMAIL_USE_SSL", cast=bool, default=True)
+    EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool, default=False)
+    EMAIL_HOST_USER = config("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+else:
+    raise ImproperlyConfigured(
+        "EMAIL_PROVIDER deve ser 'resend' ou 'smtp'."
+    )
