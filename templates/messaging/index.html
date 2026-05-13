@@ -7,7 +7,7 @@
        data-current-user-id="{{ request.current_user.id }}"
        data-selected-tab="{{ selected_tab }}">
   </div>
-  <section class="msg-layout">
+  <section class="msg-layout {% if active_conversation %}has-active{% endif %}">
 
     <!-- SIDEBAR -->
     <aside class="msg-sidebar">
@@ -46,6 +46,11 @@
         </a>
       </div>
 
+      <div class="msg-search">
+        <i class="bi bi-search"></i>
+        <input type="search" id="msgConversationSearch" placeholder="Pesquisar conversas..." autocomplete="off">
+      </div>
+
       <div class="msg-conversation-list">
         {% for entry in conversation_entries %}
           <a href="{% url 'messaging:index' %}?tab={{ selected_tab }}&c={{ entry.conversation.id }}"
@@ -54,7 +59,8 @@
              hx-select="#shellMain"
              hx-swap="outerHTML"
              hx-push-url="true"
-             class="msg-conversation-item {% if active_conversation and active_conversation.id == entry.conversation.id %}is-active{% endif %}">
+             class="msg-conversation-item {% if active_conversation and active_conversation.id == entry.conversation.id %}is-active{% endif %}"
+             data-search="{{ entry.counterpart_name }} {{ entry.context_label }} {{ entry.preview_text }}">
 
             <div class="msg-conv-avatar">
               {{ entry.counterpart_name|first|upper }}
@@ -85,6 +91,13 @@
           </div>
         {% endfor %}
       </div>
+      <div class="msg-empty msg-empty--side msg-empty--search" id="msgSearchEmpty" hidden>
+        <div class="msg-empty-icon">
+          <i class="bi bi-search"></i>
+        </div>
+        <p>Sem resultados</p>
+        <span>Ajuste a pesquisa para encontrar a conversa.</span>
+      </div>
     </aside>
 
     <!-- THREAD -->
@@ -92,6 +105,17 @@
       {% if active_conversation %}
 
         <header class="msg-thread__head">
+          <a href="{% url 'messaging:index' %}?tab={{ selected_tab }}"
+             hx-get="{% url 'messaging:index' %}?tab={{ selected_tab }}"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="msg-thread__back">
+            <i class="bi bi-arrow-left"></i>
+            Conversas
+          </a>
+
           {% if active_conversation.listing_id %}
             <a href="{% url 'marketplace:detail' active_conversation.listing_id %}"
                hx-get="{% url 'marketplace:detail' active_conversation.listing_id %}"
@@ -150,25 +174,28 @@
             </div>
           {% endif %}
 
-          <form method="post"
-                action="{% if selected_tab == 'archived' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
-                class="msg-thread__archive-form"
-                hx-post="{% if selected_tab == 'archived' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
-                hx-target="#shellMain"
-                hx-select="#shellMain"
-                hx-swap="outerHTML"
-                hx-push-url="true">
-            {% csrf_token %}
-            <button type="submit" class="msg-thread__archive-btn">
-              <i class="bi {% if selected_tab == 'archived' %}bi-inbox{% else %}bi-archive{% endif %}"></i>
-              {% if selected_tab == 'archived' %}Desarquivar{% else %}Arquivar{% endif %}
-            </button>
-          </form>
+          <div class="msg-thread__actions">
+            <span class="msg-connection-status" id="msgConnectionStatus">A ligar...</span>
+            <form method="post"
+                  action="{% if selected_tab == 'archived' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
+                  class="msg-thread__archive-form"
+                  hx-post="{% if selected_tab == 'archived' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
+                  hx-target="#shellMain"
+                  hx-select="#shellMain"
+                  hx-swap="outerHTML"
+                  hx-push-url="true">
+              {% csrf_token %}
+              <button type="submit" class="msg-thread__archive-btn">
+                <i class="bi {% if selected_tab == 'archived' %}bi-inbox{% else %}bi-archive{% endif %}"></i>
+                <span>{% if selected_tab == 'archived' %}Desarquivar{% else %}Arquivar{% endif %}</span>
+              </button>
+            </form>
+          </div>
         </header>
 
         <div class="msg-thread__messages" id="msgMessages">
           {% for message in active_messages %}
-            <div class="msg-bubble-wrap {% if message.sender_user_id == request.current_user.id %}is-me{% else %}is-other{% endif %}">
+            <div class="msg-bubble-wrap {% if message.sender_user_id == request.current_user.id %}is-me{% else %}is-other{% endif %}" data-message-id="{{ message.id }}">
               {% if not forloop.first %}{% else %}
                 <span class="msg-date-divider">{{ message.created_at|date:"d \d\e F" }}</span>
               {% endif %}
@@ -219,7 +246,7 @@
             </label>
 
             <div class="msg-input-wrap">
-              <input type="text" id="msgInput" placeholder="Escreva uma mensagem..." maxlength="2000">
+              <textarea id="msgInput" placeholder="Escreva uma mensagem..." maxlength="2000" rows="1"></textarea>
             </div>
 
             <button type="submit" class="msg-send-btn" id="msgSendBtn">
@@ -227,6 +254,8 @@
             </button>
           </form>
         </div>
+
+        <div class="msg-toast" id="msgToast" hidden></div>
 
         <div id="msgThreadData"
              data-conversation-id="{{ active_conversation.id }}"
@@ -364,6 +393,48 @@
   display: none;
 }
 
+.msg-search {
+  position: relative;
+  padding: .65rem .75rem;
+  border-bottom: 1px solid #edf0f5;
+  background: #fff;
+}
+
+.msg-search i {
+  position: absolute;
+  left: 1.05rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: .82rem;
+  pointer-events: none;
+}
+
+.msg-search input {
+  width: 100%;
+  min-height: 2.35rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .75rem;
+  padding: .55rem .8rem .55rem 2rem;
+  outline: none;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: .82rem;
+  font-weight: 600;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+
+.msg-search input::placeholder {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.msg-search input:focus {
+  border-color: #16a34a;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(22,163,74,.1);
+}
+
 .msg-conversation-list {
   flex: 1;
   overflow-y: auto;
@@ -478,6 +549,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
   background: #fff;
 }
 
@@ -489,6 +561,25 @@
   justify-content: space-between;
   gap: .9rem;
   background: #fff;
+}
+
+.msg-thread__back {
+  display: none;
+  align-items: center;
+  gap: .35rem;
+  color: #166534;
+  text-decoration: none;
+  font-size: .78rem;
+  font-weight: 800;
+  padding: .45rem .6rem;
+  border-radius: .65rem;
+  background: #f0faf4;
+  border: 1px solid #bbf7d0;
+}
+
+.msg-thread__back:hover {
+  color: #14532d;
+  background: #dcfce7;
 }
 
 .msg-thread__head-main {
@@ -563,6 +654,39 @@
 .msg-thread__head-meta svg {
   color: #16a34a;
   flex-shrink: 0;
+}
+
+.msg-thread__actions {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  flex-shrink: 0;
+}
+
+.msg-connection-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: .25rem .55rem;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  font-size: .68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.msg-connection-status.is-online {
+  color: #166534;
+  background: #f0faf4;
+  border-color: #bbf7d0;
+}
+
+.msg-connection-status.is-offline {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
 }
 
 .msg-thread__archive-form {
@@ -795,21 +919,27 @@
   min-width: 0;
 }
 
-.msg-input-wrap input {
+.msg-input-wrap textarea {
   width: 100%;
+  min-height: 40px;
+  max-height: 128px;
   border: 1px solid #e2e8f0;
   border-radius: .85rem;
   background: #f8fafc;
-  padding: .65rem .95rem;
+  padding: .62rem .95rem;
   font-size: .875rem;
+  line-height: 1.45;
   outline: none;
   transition: border-color .15s, box-shadow .15s, background .15s;
   color: #0f172a;
+  resize: none;
+  overflow-y: auto;
+  font-family: inherit;
 }
 
-.msg-input-wrap input::placeholder { color: #94a3b8; }
+.msg-input-wrap textarea::placeholder { color: #94a3b8; }
 
-.msg-input-wrap input:focus {
+.msg-input-wrap textarea:focus {
   border-color: #16a34a;
   box-shadow: 0 0 0 3px rgba(22,163,74,.1);
   background: #fff;
@@ -884,6 +1014,10 @@
   color: #94a3b8;
 }
 
+.msg-empty--search {
+  border-top: 1px solid #edf0f5;
+}
+
 .msg-empty--thread {
   margin: auto;
   padding: 2rem;
@@ -919,6 +1053,30 @@
   margin: 0;
 }
 
+.msg-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 5.4rem;
+  transform: translateX(-50%);
+  max-width: min(420px, calc(100% - 2rem));
+  padding: .65rem .85rem;
+  border-radius: .75rem;
+  background: #0f172a;
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 700;
+  box-shadow: 0 12px 28px rgba(15,23,42,.24);
+  z-index: 5;
+}
+
+.msg-toast.is-error {
+  background: #991b1b;
+}
+
+.msg-toast.is-success {
+  background: #166534;
+}
+
 /* ─── SCROLLBAR ────────────────────────────────────────────── */
 .msg-conversation-list::-webkit-scrollbar,
 .msg-thread__messages::-webkit-scrollbar { width: 4px; }
@@ -932,32 +1090,125 @@
 
 /* ─── RESPONSIVE ───────────────────────────────────────────── */
 @media (max-width: 900px) {
+  .msg-page {
+    height: calc(100dvh - 74px);
+    min-height: 520px;
+  }
+
   .msg-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: 240px 1fr;
+    display: block;
+    position: relative;
+    min-height: 0;
+    height: 100%;
+    border-radius: .9rem;
   }
 
   .msg-sidebar {
+    height: 100%;
     border-right: none;
-    border-bottom: 1px solid #edf0f5;
   }
 
-  .msg-page {
-    height: calc(100vh - 80px);
+  .msg-layout.has-active .msg-sidebar {
+    display: none;
+  }
+
+  .msg-layout:not(.has-active) .msg-thread {
+    display: none;
+  }
+
+  .msg-thread {
+    height: 100%;
   }
 
   .msg-thread__head {
-    flex-direction: column;
-    align-items: stretch;
+    padding: .7rem .75rem;
+    gap: .55rem;
+    align-items: center;
+  }
+
+  .msg-thread__back {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  .msg-thread__head-avatar {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+  }
+
+  .msg-thread__head-main {
+    gap: .55rem;
+  }
+
+  .msg-thread__head-main.is-clickable {
+    padding: .25rem .35rem;
+    margin: -.25rem -.35rem;
+  }
+
+  .msg-thread__head-info h2 {
+    font-size: .88rem;
+  }
+
+  .msg-thread__head-meta {
+    max-width: 42vw;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .msg-thread__head-meta span {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .msg-thread__archive-form {
-    width: 100%;
+    width: auto;
   }
 
   .msg-thread__archive-btn {
-    width: 100%;
+    width: 2.35rem;
+    height: 2.35rem;
     justify-content: center;
+    padding: 0;
+    border-radius: .75rem;
+  }
+
+  .msg-thread__archive-btn span,
+  .msg-connection-status {
+    display: none;
+  }
+
+  .msg-thread__messages {
+    padding: .9rem .75rem .65rem;
+    background-size: 20px 20px;
+  }
+
+  .msg-bubble {
+    max-width: min(86%, 520px);
+    padding: .62rem .78rem;
+  }
+
+  .msg-composer {
+    padding: .6rem .65rem;
+    align-items: flex-end;
+  }
+
+  .msg-attach-btn,
+  .msg-send-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .msg-input-wrap textarea {
+    min-height: 40px;
+  }
+
+  .msg-file-preview {
+    padding: .55rem .65rem 0;
+  }
+
+  .msg-toast {
+    bottom: 4.8rem;
   }
 }
 </style>
@@ -972,6 +1223,10 @@
   const fileInput  = document.getElementById("msgFileInput");
   const filePreview = document.getElementById("msgFilePreview");
   const filePreviewInner = document.getElementById("msgFilePreviewInner");
+  const searchInput = document.getElementById("msgConversationSearch");
+  const searchEmpty = document.getElementById("msgSearchEmpty");
+  const connectionStatus = document.getElementById("msgConnectionStatus");
+  const toast = document.getElementById("msgToast");
   const uploadEndpoint = "{% url 'messaging:upload_attachment' %}";
   const currentUserId = pageData ? pageData.dataset.currentUserId : null;
   const selectedTab = String(
@@ -980,6 +1235,50 @@
   const archivedTabBadge = document.getElementById("msgArchivedTabBadge");
 
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  let toastTimer = null;
+
+  const showToast = (message, type = "error") => {
+    if (!toast) return;
+    window.clearTimeout(toastTimer);
+    toast.textContent = message;
+    toast.classList.toggle("is-error", type === "error");
+    toast.classList.toggle("is-success", type === "success");
+    toast.hidden = false;
+    toastTimer = window.setTimeout(() => {
+      toast.hidden = true;
+    }, 4200);
+  };
+
+  const setConnectionStatus = (label, state) => {
+    if (!connectionStatus) return;
+    connectionStatus.textContent = label;
+    connectionStatus.classList.toggle("is-online", state === "online");
+    connectionStatus.classList.toggle("is-offline", state === "offline");
+  };
+
+  const normalizeSearch = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (searchInput) {
+    const conversationItems = Array.from(document.querySelectorAll(".msg-conversation-item"));
+    searchInput.addEventListener("input", () => {
+      const query = normalizeSearch(searchInput.value);
+      let visibleCount = 0;
+      conversationItems.forEach((item) => {
+        const haystack = normalizeSearch(item.dataset.search || item.textContent || "");
+        const visible = !query || haystack.includes(query);
+        item.hidden = !visible;
+        if (visible) visibleCount += 1;
+      });
+      if (searchEmpty) {
+        searchEmpty.hidden = !query || visibleCount > 0;
+      }
+    });
+  }
+
   const updateArchivedBadge = (value) => {
     if (!archivedTabBadge) return;
     const unreadValue = Number(value || 0);
@@ -1006,6 +1305,9 @@
       }
     } catch (_) {}
   });
+  unreadSocket.addEventListener("error", () => {
+    updateArchivedBadge(0);
+  });
 
   if (!threadData || !composer || !input || !messagesBox) {
     if (window.__msgThreadSocket && window.__msgThreadSocket.readyState <= 1) {
@@ -1026,6 +1328,19 @@
     `${protocol}://${window.location.host}/ws/mensagens/${conversationId}/`
   );
   window.__msgThreadSocket = socket;
+  setConnectionStatus("A ligar...", "connecting");
+
+  socket.addEventListener("open", () => {
+    setConnectionStatus("Online", "online");
+  });
+
+  socket.addEventListener("close", () => {
+    setConnectionStatus("Offline", "offline");
+  });
+
+  socket.addEventListener("error", () => {
+    setConnectionStatus("Offline", "offline");
+  });
 
   const getCookie = (name) => {
     const value = `; ${document.cookie}`;
@@ -1035,6 +1350,14 @@
   };
 
   const csrfToken = getCookie("csrftoken");
+
+  const autosizeInput = () => {
+    if (!input || input.tagName !== "TEXTAREA") return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 128)}px`;
+  };
+  input.addEventListener("input", autosizeInput);
+  autosizeInput();
 
   const scrollToBottom = (smooth = false) => {
     messagesBox.scrollTo({
@@ -1224,11 +1547,12 @@
     // Send text message
     if (value) {
       if (socket.readyState !== WebSocket.OPEN) {
-        window.alert("A ligação de mensagens está offline. Atualiza a página para voltar a enviar texto.");
+        showToast("A ligação de mensagens está offline. Atualize a página para voltar a enviar texto.");
         return;
       }
       socket.send(JSON.stringify({ type: "message.send", content: value }));
       input.value = "";
+      autosizeInput();
       if (selectedTab === "archived") {
         shouldRedirectToActive = true;
       }
@@ -1252,7 +1576,7 @@
             shouldRedirectToActive = true;
           }
         } catch (error) {
-          window.alert(error.message || "Falha no envio do anexo.");
+          showToast(error.message || "Falha no envio do anexo.");
         }
       }
     }
@@ -1263,6 +1587,7 @@
     }
 
     input.focus();
+    autosizeInput();
   });
 
   // Enter to send, Shift+Enter for newline

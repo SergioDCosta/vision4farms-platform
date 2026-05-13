@@ -14,6 +14,7 @@ from apps.common.context_processors import (
 from apps.common.decorators import admin_required, client_only_required, login_required
 from apps.common.formatting import format_quantity
 from apps.common.htmx import with_htmx_toast, with_htmx_trigger
+from apps.common.redirects import get_safe_next_url
 from apps.common.session import resolve_active_session_user
 from apps.common.templatetags.quantity import quantity
 from apps.notifications_app.services import _normalize_quantity_text
@@ -150,6 +151,21 @@ class HtmxTests(SimpleTestCase):
         payload = json.loads(response["HX-Trigger"])
         self.assertEqual(payload["app:refresh"], {})
         self.assertEqual(payload["app:toast"], {"level": "info", "message": "Atualizado."})
+
+
+class SafeRedirectTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_allows_local_next_url(self):
+        request = self.factory.post("/submit/", HTTP_HOST="testserver")
+
+        self.assertEqual(get_safe_next_url(request, "/definicoes/"), "/definicoes/")
+
+    def test_rejects_external_next_url(self):
+        request = self.factory.post("/submit/", HTTP_HOST="testserver")
+
+        self.assertEqual(get_safe_next_url(request, "https://evil.example/phish"), "")
 
 
 class CommonContextProcessorTests(SimpleTestCase):

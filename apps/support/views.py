@@ -11,6 +11,7 @@ from django_ratelimit.decorators import ratelimit
 
 from apps.common.audit import get_client_ip, log_audit_event
 from apps.common.decorators import admin_required, login_required
+from apps.common.redirects import get_safe_next_url
 from apps.support.forms import SupportTicketCreateForm, SupportTicketReplyForm
 from apps.support.models import SupportTicket, SupportTicketStatus
 from apps.support.services import (
@@ -59,7 +60,7 @@ def _support_rate_limit_key(group, request):
 
 
 def _redirect_to_settings(request):
-    next_url = (request.POST.get("next") or "").strip()
+    next_url = get_safe_next_url(request, request.POST.get("next"))
     if next_url:
         return redirect(next_url)
     return redirect("settings_app:settings_index")
