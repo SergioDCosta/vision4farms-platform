@@ -62,6 +62,8 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+.cache/
+
 
 # -----------------------------
 # FILES TEMP / EXPORTS

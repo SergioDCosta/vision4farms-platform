@@ -33,10 +33,15 @@
 - Static: WhiteNoise (`CompressedManifestStaticFilesStorage`).
 - Config/env: `python-decouple`.
 - Upload/crop: Pillow.
-- Email: templates Django em `templates/emails/`; envio assíncrono quando indicado pelos serviços.
-  - Config atual continua compatível com SMTP.
-  - `django-anymail` e `resend` estão disponíveis no `requirements.txt`, permitindo usar Resend por API HTTP em produção.
-  - Para Railway Hobby, solução recomendada: `EMAIL_BACKEND="anymail.backends.resend.EmailBackend"` + `RESEND_API_KEY`.
+- Email:
+  - templates Django em `templates/emails/`;
+  - produção usa Resend via API HTTP através de `django-anymail`;
+  - dependências: `django-anymail[resend]` e `resend` em `requirements.txt`;
+  - configuração principal: `EMAIL_PROVIDER=resend`;
+  - com `EMAIL_PROVIDER=resend`, `settings.py` força `EMAIL_BACKEND="anymail.backends.resend.EmailBackend"` e lê `RESEND_API_KEY`;
+  - SMTP ficou apenas como fallback local explícito quando `EMAIL_PROVIDER=smtp`;
+  - `DEFAULT_FROM_EMAIL`, `DEFAULT_REPLY_TO_EMAIL`, `SUPPORT_CONTACT_EMAIL`, `SERVER_EMAIL` e `EMAIL_TIMEOUT` continuam centralizados em `settings.py`;
+  - enquanto o domínio próprio não estiver validado no Resend, usa-se temporariamente `VISION4FARMS <onboarding@resend.dev>`.
 - Formatação de quantidades:
   - filtro global `quantity` em `apps/common/templatetags/quantity.py`;
   - registado em `TEMPLATES["OPTIONS"]["builtins"]`;
@@ -547,15 +552,22 @@
 ## 18) Notas Operacionais
 - Sem migrations para tabelas de negócio; aplicar SQL manual antes de refletir fields em models.
 - Atenção ao `.env`: `DEBUG` tem de ser booleano parseável (`true/false`), não `"release"`.
-- Em produção, configurar `SUPPORT_CONTACT_EMAIL` como fallback de suporte.
+- Em produção, email deve usar Resend:
+  - `EMAIL_PROVIDER=resend`;
+  - `RESEND_API_KEY=<api key do Resend>`;
+  - `DEFAULT_FROM_EMAIL=VISION4FARMS <onboarding@resend.dev>` temporariamente;
+  - `DEFAULT_REPLY_TO_EMAIL=vision4farms@gmail.com`;
+  - `SUPPORT_CONTACT_EMAIL=vision4farms@gmail.com`.
+- Quando o DNS/domínio próprio estiver validado no Resend, trocar o remetente para domínio próprio, por exemplo `VISION4FARMS <no-reply@farm.vision4you.pt>`.
+- Variáveis SMTP antigas (`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_SSL`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`) não são necessárias em Railway quando `EMAIL_PROVIDER=resend`.
 - Ao alterar palavra-passe, não guardar hashes/segredos no `audit_log`; guardar apenas flags e notas.
 - Em templates, preferir `|quantity` para valores decimais de quantidade.
 - Em services que montam strings persistidas, usar helpers de formatação de quantidade antes de gravar notificações/alertas.
 - Para rotas de necessidades, usar namespace `needs`.
 - Respostas a necessidades não devem voltar a expor páginas/URLs de marketplace ao necessitado.
 - Railway:
-  - Hobby + Resend por API HTTP é opção recomendada de baixo custo para emails;
-  - Pro simplifica SMTP e colaboração, mas custa mais;
+  - Hobby + Resend por API HTTP é a opção recomendada de baixo custo para emails;
+  - Pro pode ser útil para colaboração/recursos, mas já não é necessário para viabilizar email via SMTP;
   - Redis continua recomendado para Django Channels em produção.
 
 ## 19) Dashboard
