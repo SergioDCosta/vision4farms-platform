@@ -60,6 +60,10 @@
   - `settings_app`: definições de conta/perfil/preferências/segurança.
   - `messaging`, `support`, `notifications_app`, `integrations`.
 - `templates/`: templates por domínio (`needs/`, `marketplace/`, `orders/`, `alerts/`, `dashboard/`, etc.).
+- Revisão recente de arquitetura:
+  - `apps.dashboard.views` foi reduzida e passou a delegar contexto/lógica para serviços internos;
+  - `apps.common.redirects.get_safe_next_url` centraliza validação de `next`/`next_url`;
+  - `support` usa redirect seguro no retorno do formulário de ticket.
 
 ## 4) Convenções Arquiteturais
 - Views tendencialmente finas; regras em `services.py`.
@@ -100,6 +104,10 @@
   - helper `apps.common.audit.log_audit_event`;
   - helper `describe_user_agent` para device/browser/SO;
   - regista IP via `X-Forwarded-For` ou `REMOTE_ADDR`.
+- Redirects seguros:
+  - helper `apps.common.redirects.get_safe_next_url`;
+  - usado para evitar redirecionamentos externos via campos `next`;
+  - fallback deve ser sempre uma rota interna conhecida.
 - Eventos de utilizador auditados:
   - `USER_LOGIN`;
   - `USER_PROFILE_UPDATED`;
@@ -113,6 +121,10 @@
   - pesquisa por ação, label traduzida, utilizador, email, IP, User-Agent e valores JSON antigos/novos;
   - linhas expansíveis com detalhes e contexto técnico;
   - paginação `10/25/50`.
+- Auditoria admin foi extraída para `apps.dashboard.services.admin_audit`:
+  - labels de ações/campos;
+  - construção de linhas de atividade;
+  - pesquisa e paginação da tabela.
 - Detalhe de utilizador admin:
   - card "Atividade relacionada" mostra eventos relevantes do próprio utilizador e ações admin sobre esse utilizador;
   - inclui alterações `antes -> depois`, IP, dispositivo e autor.
@@ -126,6 +138,7 @@
 - UI principal de gestão de catálogo vive atualmente em `apps.dashboard`:
   - `/gestor/produtos/`;
   - `/gestor/categorias/`.
+- Querysets/listagens admin de catálogo no dashboard vivem em `apps.dashboard.services.admin_catalog`.
 - CRUD admin de categorias:
   - permite criar/editar categorias;
   - permite remover categoria quando não existe uso ativo no inventário de produtores;
@@ -437,6 +450,15 @@
   - `default_storage.save`;
   - valida extensão, MIME e limite 10MB.
 - Delete de conversa é one-sided; purge físico só quando ambos arquivam.
+- UI `/mensagens/`:
+  - desktop mantém lista + thread lado a lado;
+  - mobile usa master-detail: lista de conversas ou conversa aberta, evitando duas áreas espremidas no mesmo ecrã;
+  - thread mobile tem botão "Conversas" para voltar à lista;
+  - pesquisa local filtra conversas por produtor/contexto/preview;
+  - composer usa `textarea` com auto-resize;
+  - anexos continuam via endpoint HTTP;
+  - erros de envio aparecem em toast visual em vez de `window.alert`;
+  - indicador `Online/Offline` mostra o estado da ligação WebSocket do utilizador atual à conversa, não presença real do outro utilizador.
 
 ## 15) Support
 - App `support` com tabela `support_tickets`, `managed=False`.
@@ -453,6 +475,9 @@
   - detalhe `/gestor/suporte/<uuid>/`;
   - claim transacional;
   - resposta fecha automaticamente na primeira resposta.
+- Dashboard admin:
+  - KPI "Suporte ativo" substitui a antiga KPI "Alertas críticos";
+  - conta tickets `OPEN` e `CLAIMED`.
 - Badge realtime admin:
   - WebSocket `/ws/suporte/sidebar/`;
   - grupo `support_admin_badge`.
@@ -532,3 +557,28 @@
   - Hobby + Resend por API HTTP é opção recomendada de baixo custo para emails;
   - Pro simplifica SMTP e colaboração, mas custa mais;
   - Redis continua recomendado para Django Channels em produção.
+
+## 19) Dashboard
+- App `apps.dashboard` mantém a experiência cliente/admin:
+  - `/painel/`;
+  - `/painel/weather-card/`;
+  - `/gestor/`;
+  - `/gestor/produtos/`;
+  - `/gestor/categorias/`;
+  - `/gestor/utilizadores/`;
+  - `/gestor/auditoria/`.
+- `views.py` deve ficar fino, delegando lógica para:
+  - `services.client_dashboard`: contexto do painel cliente e card meteorológico;
+  - `services.admin_metrics`: KPIs, gráficos e feeds do gestor;
+  - `services.admin_users`: convite, confirmação, suspensão/reativação e detalhe de utilizadores;
+  - `services.admin_audit`: pesquisa, labels e apresentação da auditoria;
+  - `services.admin_catalog`: querysets admin de produtos/categorias.
+- Convite admin:
+  - cria utilizador/token dentro de transação;
+  - envia email apenas com `transaction.on_commit`;
+  - falha de envio é registada e apresentada como aviso, sem rollback da criação.
+- Dashboard gestor:
+  - gráfico "Compras vs vendas por semana" cobre as últimas 12 semanas;
+  - "Compras" = encomendas criadas por semana com origem `MARKETPLACE` ou `RECOMMENDATION`;
+  - "Vendas concluídas" = itens de encomenda `COMPLETED` por semana nas mesmas origens;
+  - se não existirem encomendas/itens concluídos no período, o gráfico mostra estado vazio.

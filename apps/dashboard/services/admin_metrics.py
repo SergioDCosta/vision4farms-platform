@@ -6,9 +6,10 @@ from django.db.models.functions import TruncWeek
 from django.utils import timezone
 
 from apps.accounts.models import AccountStatus, User
-from apps.alerts.models import Alert, AlertSeverity, AlertStatus
+from apps.alerts.models import Alert
 from apps.marketplace.models import ListingStatus, MarketplaceListing
 from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderSourceType
+from apps.support.models import SupportTicket, SupportTicketStatus
 
 
 def build_admin_dashboard_context():
@@ -56,9 +57,8 @@ def build_admin_dashboard_context():
         "monthly_orders_count": monthly_orders_qs.count(),
         "monthly_volume": monthly_orders_qs.aggregate(total=Sum("total_amount"))["total"]
         or Decimal("0.00"),
-        "critical_alerts_count": Alert.objects.filter(
-            severity=AlertSeverity.CRITICAL,
-            status=AlertStatus.ACTIVE,
+        "active_support_tickets_count": SupportTicket.objects.filter(
+            status__in=[SupportTicketStatus.OPEN, SupportTicketStatus.CLAIMED],
         ).count(),
         "active_users_count": active_users_count,
         "online_users_count": online_users_count,

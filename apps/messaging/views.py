@@ -43,6 +43,7 @@ def messages_index_view(request):
 
     selected_tab = normalize_messages_tab(request.GET.get("tab"))
     requested_conversation_id = (request.GET.get("c") or "").strip()
+    force_list_view = (request.GET.get("view") or "").strip().lower() == "list"
     is_archived_tab = selected_tab == MESSAGE_TAB_ARCHIVED
 
     listing_context = list_conversations_for_user(request.current_user, archived=is_archived_tab)
@@ -76,7 +77,7 @@ def messages_index_view(request):
         else:
             messages.warning(request, "Não foi possível abrir esta conversa.")
 
-    if not active_conversation and conversation_entries:
+    if not force_list_view and not active_conversation and conversation_entries:
         active_conversation = get_conversation_for_user(
             user=request.current_user,
             conversation_id=conversation_entries[0]["conversation"].id,
@@ -105,6 +106,7 @@ def messages_index_view(request):
         "active_conversation": active_conversation,
         "active_entry": active_entry,
         "active_messages": active_messages,
+        "force_list_view": force_list_view,
         "total_unread": tab_unread_total,
         "active_unread_total": unread_totals["active_unread_total"],
         "archived_unread_total": unread_totals["archived_unread_total"],

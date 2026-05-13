@@ -7,7 +7,7 @@
        data-current-user-id="{{ request.current_user.id }}"
        data-selected-tab="{{ selected_tab }}">
   </div>
-  <section class="msg-layout {% if active_conversation %}has-active{% endif %}">
+  <section class="msg-layout {% if active_conversation and not force_list_view %}has-active{% endif %}">
 
     <!-- SIDEBAR -->
     <aside class="msg-sidebar">
@@ -105,8 +105,8 @@
       {% if active_conversation %}
 
         <header class="msg-thread__head">
-          <a href="{% url 'messaging:index' %}?tab={{ selected_tab }}"
-             hx-get="{% url 'messaging:index' %}?tab={{ selected_tab }}"
+          <a href="{% url 'messaging:index' %}?tab={{ selected_tab }}&view=list"
+             hx-get="{% url 'messaging:index' %}?tab={{ selected_tab }}&view=list"
              hx-target="#shellMain"
              hx-select="#shellMain"
              hx-swap="outerHTML"
