@@ -12,10 +12,12 @@
           <span>Adicionar Produto</span>
         </a>
 
-        <a href="/marketplace/" class="inv-btn inv-btn--primary">
-          <i class="bi bi-storefront"></i>
-          <span>Publicar Excedente</span>
-        </a>
+        {% if has_active_inventory_products %}
+          <a href="/marketplace/" class="inv-btn inv-btn--primary">
+            <i class="bi bi-storefront"></i>
+            <span>Publicar Excedente</span>
+          </a>
+        {% endif %}
       {% elif active_tab == "compras" %}
         <a href="{% url 'inventory:compras_export_pdf' %}" target="_blank" class="inv-btn inv-btn--ghost">
           <i class="bi bi-file-earmark-pdf"></i>

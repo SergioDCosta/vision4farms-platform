@@ -173,6 +173,7 @@ def meus_produtos(request):
         "active_tab": active_tab,
         "q": q,
         "sort": sort,
+        "has_active_inventory_products": services.producer_has_active_inventory_products(producer),
     }
     incoming_projection = {}
     incoming_by_product = {}

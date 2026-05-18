@@ -3,7 +3,8 @@ from types import SimpleNamespace
 from django import forms
 from django.contrib.auth.password_validation import validate_password
 
-from apps.accounts.models import UserRole
+from apps.accounts.models import AccountStatus, UserRole
+from apps.accounts.services import get_support_contact_email
 from apps.inventory.models import ProducerUserType
 
 
@@ -123,7 +124,13 @@ class RegisterForm(forms.Form):
         from apps.accounts.models import User
 
         email = self.cleaned_data["email"].strip().lower()
-        if User.objects.filter(email=email).exists():
+        existing_user = User.objects.filter(email=email).first()
+        if existing_user:
+            if existing_user.account_status == AccountStatus.PENDING_EMAIL_CONFIRMATION:
+                raise forms.ValidationError(
+                    "Este email já tem uma conta pendente de confirmação. "
+                    f"Se não recebeu o email, contacte o suporte em {get_support_contact_email()}."
+                )
             raise forms.ValidationError("Este email já está registado.")
         return email
 

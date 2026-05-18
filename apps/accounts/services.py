@@ -437,7 +437,7 @@ def send_password_reset_email(request, user, reset_token, async_send=False):
     )
 
 
-def _support_contact_email():
+def get_support_contact_email():
     return (
         (getattr(settings, "SUPPORT_CONTACT_EMAIL", "") or "").strip()
         or (getattr(settings, "DEFAULT_REPLY_TO_EMAIL", "") or "").strip()
@@ -448,7 +448,7 @@ def _support_contact_email():
 def send_password_changed_email(request, user, *, async_send=False):
     context = {
         "first_name": user.first_name,
-        "support_email": _support_contact_email(),
+        "support_email": get_support_contact_email(),
         "login_url": _build_public_absolute_url(request, reverse("accounts:login")),
         "changed_at": timezone.localtime(timezone.now()),
     }

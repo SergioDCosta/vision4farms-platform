@@ -2,11 +2,15 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.core.exceptions import ValidationError
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 
 from apps.catalog.services import CatalogValidationError
 from apps.inventory.forms import CreateCustomProductForm
-from apps.inventory.services import create_custom_product_for_producer
+from apps.inventory import views
+from apps.inventory.services import (
+    create_custom_product_for_producer,
+    producer_has_active_inventory_products,
+)
 
 
 class InventoryCatalogIntegrationTests(SimpleTestCase):
@@ -76,3 +80,51 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
                 surplus_threshold=0,
                 user=SimpleNamespace(id="user-1"),
             )
+
+    @patch("apps.inventory.services.ProducerProduct")
+    def test_active_inventory_product_flag_uses_active_producer_products(self, producer_product_mock):
+        filter_mock = producer_product_mock.objects.filter
+        filter_mock.return_value.exists.return_value = True
+        producer = SimpleNamespace(id="producer-1")
+
+        self.assertTrue(producer_has_active_inventory_products(producer))
+        filter_mock.assert_called_once_with(producer=producer, is_active=True)
+
+
+class InventoryViewContextTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch("apps.inventory.views.render")
+    @patch("apps.inventory.views.services.get_stock_dashboard")
+    @patch("apps.inventory.views.get_buyer_incoming_forecast_projection")
+    @patch("apps.inventory.views.services.producer_has_active_inventory_products")
+    @patch("apps.inventory.views._get_producer_or_redirect")
+    def test_meus_produtos_context_includes_active_product_flag(
+        self,
+        get_producer_mock,
+        active_product_flag_mock,
+        incoming_projection_mock,
+        stock_dashboard_mock,
+        render_mock,
+    ):
+        producer = SimpleNamespace(id="producer-1")
+        request = self.factory.get("/inventario/produtos/?tab=stock")
+        request.current_user = SimpleNamespace(id="user-1")
+        request.htmx = False
+        get_producer_mock.return_value = producer
+        active_product_flag_mock.return_value = False
+        incoming_projection_mock.return_value = {"by_product": {}}
+        stock_dashboard_mock.return_value = {
+            "rows": [],
+            "category_groups": [],
+            "stock_total_count": 0,
+            "critical_count": 0,
+            "excess_count": 0,
+        }
+        render_mock.return_value = SimpleNamespace(status_code=200)
+
+        views.meus_produtos.__wrapped__(request)
+
+        context = render_mock.call_args.args[2]
+        self.assertFalse(context["has_active_inventory_products"])

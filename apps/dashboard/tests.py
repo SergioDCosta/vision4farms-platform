@@ -4,12 +4,17 @@ from unittest.mock import patch
 
 from django.core.cache import caches
 from django.http import HttpResponse
+from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase, override_settings
 from django.utils import timezone
 
 from apps.accounts.models import AccountStatus, RegistrationSource, UserRole
 from apps.dashboard import views
 from apps.dashboard.services import admin_audit, admin_users
+from apps.dashboard.services.client_dashboard import (
+    build_weather_operational_summary,
+    build_weather_quick_actions,
+)
 from apps.dashboard.services import weather as weather_service
 
 
@@ -197,6 +202,58 @@ class DashboardWeatherCardViewTests(SimpleTestCase):
         render_args = render_mock.call_args[0]
         self.assertEqual(render_args[1], "dashboard/partials/weather_card.html")
         weather_context_mock.assert_called_once_with(request.current_user)
+
+
+class DashboardWeatherCardContextTests(SimpleTestCase):
+    def test_weather_card_degraded_without_location_links_to_settings(self):
+        html = render_to_string(
+            "dashboard/partials/weather_card.html",
+            {
+                "weather_state": "degraded",
+                "weather_needs_location": True,
+                "weather": {
+                    "location_context": "",
+                    "message": "Sem localização definida no perfil.",
+                },
+            },
+        )
+
+        self.assertIn("Definir localização", html)
+        self.assertIn("/definicoes/#perfil-produtor", html)
+
+    def test_weather_quick_actions_do_not_include_marketplace_fallback(self):
+        actions = build_weather_quick_actions(
+            active_delivery_orders_count=0,
+            presale_starting_soon_count=0,
+        )
+
+        self.assertEqual(actions, [])
+
+    def test_weather_quick_actions_are_contextual(self):
+        actions = build_weather_quick_actions(
+            active_delivery_orders_count=1,
+            presale_starting_soon_count=1,
+        )
+
+        self.assertEqual([action["label"] for action in actions], ["Ver encomendas", "Ver pré-vendas"])
+        self.assertNotIn("/marketplace/", [action["url"] for action in actions])
+
+    def test_weather_operational_summary_flags_delivery_rain_risk(self):
+        summary = build_weather_operational_summary(
+            weather={
+                "state": "success",
+                "daily_forecast": [
+                    {"is_today": True, "offset_days": 0, "is_wet_risk": False},
+                    {"is_today": False, "offset_days": 1, "is_wet_risk": True},
+                ],
+            },
+            active_delivery_orders_count=1,
+            active_delivery_or_mixed_exists=True,
+            presale_starting_soon_count=0,
+        )
+
+        self.assertEqual(summary["key"], "risk")
+        self.assertEqual(summary["label"], "Atenção à logística")
 
 
 class _DummyAtomic:

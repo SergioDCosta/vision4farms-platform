@@ -1,8 +1,8 @@
 import logging
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import make_password
+from django.db import transaction
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
@@ -31,6 +31,7 @@ from apps.accounts.services import (
     create_password_reset_token,
     send_password_reset_email,
     send_password_changed_email,
+    get_support_contact_email,
     validate_password_reset_token,
     validate_admin_invite_token,
     complete_invited_user_account,
@@ -41,11 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 def _support_contact_email():
-    return (
-        (getattr(settings, "SUPPORT_CONTACT_EMAIL", "") or "").strip()
-        or (getattr(settings, "DEFAULT_REPLY_TO_EMAIL", "") or "").strip()
-        or "support@farm.vision4you.pt"
-    )
+    return get_support_contact_email()
 
 
 def _support_contact_message(prefix):
@@ -142,11 +139,34 @@ def register_view(request):
         return render(request, "accounts/register.html", {"form": form})
 
     if request.method == "POST" and form.is_valid():
-        user = create_user_and_profile(form.cleaned_data)
-        token = create_signup_verification_token(user)
-        send_signup_confirmation_email(request, user, token, async_send=True)
+        email_delivery_failed = False
+
+        try:
+            with transaction.atomic():
+                user = create_user_and_profile(form.cleaned_data)
+                token = create_signup_verification_token(user)
+        except Exception:
+            logger.exception("Erro ao criar conta por registo público.")
+            messages.error(
+                request,
+                _support_contact_message(
+                    "Não foi possível criar a conta de momento."
+                ),
+            )
+            return render(request, "accounts/register.html", {"form": form})
+
+        try:
+            send_signup_confirmation_email(request, user, token, async_send=False)
+        except Exception:
+            logger.exception(
+                "Conta criada, mas falhou o envio do email de confirmação. user_id=%s",
+                user.id,
+            )
+            email_delivery_failed = True
 
         request.session["registration_email"] = user.email
+        request.session["registration_email_delivery_failed"] = email_delivery_failed
+        request.session["registration_support_email"] = _support_contact_email()
         return redirect("accounts:register_success")
 
     return render(request, "accounts/register.html", {"form": form})
@@ -154,7 +174,22 @@ def register_view(request):
 
 def register_success_view(request):
     email = request.session.get("registration_email")
-    return render(request, "accounts/register_success.html", {"email": email})
+    email_delivery_failed = bool(
+        request.session.get("registration_email_delivery_failed")
+    )
+    support_email = (
+        request.session.get("registration_support_email")
+        or _support_contact_email()
+    )
+    return render(
+        request,
+        "accounts/register_success.html",
+        {
+            "email": email,
+            "email_delivery_failed": email_delivery_failed,
+            "support_email": support_email,
+        },
+    )
 
 
 def verify_email_view(request, token):

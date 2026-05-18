@@ -48,6 +48,13 @@ def get_producer_profile(user_id):
         return None
 
 
+def producer_has_active_inventory_products(producer):
+    return ProducerProduct.objects.filter(
+        producer=producer,
+        is_active=True,
+    ).exists()
+
+
 # ---------------------------------------------------------------------------
 # Helpers internos
 # ---------------------------------------------------------------------------

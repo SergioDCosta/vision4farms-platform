@@ -19,12 +19,21 @@
       </p>
     </div>
     <div class="pnl-hero-btns">
+      {% if has_active_inventory_products %}
       <a href="/recomendacoes/" class="pnl-hero-btn pnl-hero-btn--white">
         <i class="bi bi-magic"></i> Recomendações
       </a>
       <a href="/marketplace/publicar/" class="pnl-hero-btn pnl-hero-btn--ghost">
         <i class="bi bi-plus-lg"></i> Publicar excedente
       </a>
+      {% else %}
+      <a href="{% url 'inventory:adicionar_produto' %}" class="pnl-hero-btn pnl-hero-btn--white">
+        <i class="bi bi-plus-circle"></i> Adicionar produto
+      </a>
+      <a href="{% url 'inventory:meus_produtos' %}?tab=stock" class="pnl-hero-btn pnl-hero-btn--ghost">
+        <i class="bi bi-box-seam"></i> Ver inventário
+      </a>
+      {% endif %}
     </div>
   </div>
 
@@ -155,6 +164,7 @@
       <div class="pnl-card">
         <div class="pnl-card-head"><h2 class="pnl-card-title">Ações rápidas</h2></div>
         <div class="pnl-qa-list">
+          {% if has_active_inventory_products %}
           <a href="/recomendacoes/" class="pnl-qa pnl-qa--blue">
             <div class="pnl-qa-ico"><i class="bi bi-magic"></i></div>
             <div class="pnl-qa-txt"><b>Recomendações</b><span>Sugestões de compra</span></div>
@@ -165,6 +175,13 @@
             <div class="pnl-qa-txt"><b>Publicar excedente</b><span>Gerir anúncios</span></div>
             <i class="bi bi-chevron-right pnl-qa-arr"></i>
           </a>
+          {% else %}
+          <a href="{% url 'inventory:adicionar_produto' %}" class="pnl-qa pnl-qa--green">
+            <div class="pnl-qa-ico"><i class="bi bi-plus-circle"></i></div>
+            <div class="pnl-qa-txt"><b>Adicionar produto</b><span>Começar a gerir stock</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          {% endif %}
           <a href="{% url 'inventory:meus_produtos' %}?tab=stock" class="pnl-qa pnl-qa--amber">
             <div class="pnl-qa-ico"><i class="bi bi-box-seam-fill"></i></div>
             <div class="pnl-qa-txt"><b>Atualizar stock</b><span>Registar consumos</span></div>
@@ -379,10 +396,7 @@
   font-weight: 700;
 }
 
-.pnl-weather-badge-offline {
-  color: #92400e;
-  background: #fef3c7;
-}
+.pnl-weather-badge-offline { color: #92400e; background: #fef3c7; }
 
 .pnl-weather-thermal {
   display: inline-flex;
@@ -428,24 +442,31 @@
   gap: .45rem;
   font-size: .82rem;
   color: #475569;
+  min-width: 0;
+}
+
+.pnl-weather-line span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .pnl-weather-today {
   display: flex;
   align-items: center;
   gap: .75rem;
+  padding: .25rem 0 .1rem;
 }
 
 .pnl-weather-today__icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: #eef6ff;
+  color: #0369a1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   flex-shrink: 0;
 }
 
@@ -468,7 +489,7 @@
   font-family: 'DM Mono', monospace;
   font-weight: 800;
   font-size: 2rem;
-  letter-spacing: -.03em;
+  letter-spacing: 0;
 }
 
 .pnl-weather-temp .is-min {
@@ -489,6 +510,12 @@
   margin: 0;
   font-size: .82rem;
   color: #334155;
+}
+
+.pnl-weather-signals {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
 }
 
 .pnl-weather-trend {
@@ -517,6 +544,69 @@
   background: #e2e8f0;
 }
 
+.pnl-weather-summary {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: .6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .75rem;
+  padding: .6rem .7rem;
+  background: #f8fafc;
+}
+
+.pnl-weather-summary > i {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #475569;
+}
+
+.pnl-weather-summary strong,
+.pnl-weather-summary span {
+  display: block;
+  min-width: 0;
+}
+
+.pnl-weather-summary strong {
+  color: #0f172a;
+  font-size: .8rem;
+  line-height: 1.25;
+}
+
+.pnl-weather-summary span {
+  color: #475569;
+  font-size: .74rem;
+  line-height: 1.35;
+}
+
+.pnl-weather-summary--risk {
+  border-color: #fecaca;
+  background: #fff7ed;
+}
+
+.pnl-weather-summary--risk > i { color: #b91c1c; }
+
+.pnl-weather-summary--watch {
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+.pnl-weather-summary--watch > i { color: #0369a1; }
+
+.pnl-weather-summary--good {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.pnl-weather-summary--good > i { color: #15803d; }
+
+.pnl-weather-summary--neutral > i { color: #475569; }
+
 .pnl-weather-ops {
   margin: 0;
   font-size: .78rem;
@@ -532,12 +622,13 @@
 
 .pnl-weather-day {
   border: 1px solid #e2e8f0;
-  border-radius: .75rem;
+  border-radius: .6rem;
   padding: .5rem .55rem;
   background: #fff;
   display: flex;
   flex-direction: column;
   gap: .25rem;
+  min-width: 0;
 }
 
 .pnl-weather-day.is-today {
@@ -556,6 +647,7 @@
   font-size: .74rem;
   font-weight: 800;
   color: #0f172a;
+  overflow-wrap: anywhere;
 }
 
 .pnl-weather-day__date {
@@ -607,6 +699,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: .35rem;
   border-radius: .65rem;
   padding: .42rem .72rem;
   font-size: .78rem;
@@ -624,6 +717,11 @@
 .pnl-weather-action--ghost {
   background: #fff;
   color: #334155;
+}
+
+.pnl-weather-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
 }
 
 .pnl-weather-meta {

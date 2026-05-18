@@ -7,9 +7,14 @@
       <div class="auth-panel-inner">
         <div class="auth-logo"><i class="bi bi-leaf-fill"></i></div>
         <h2 class="auth-panel-title">Quase lá!</h2>
-        <p class="auth-panel-sub">O seu registo foi recebido. Confirme o seu email para ativar o acesso à plataforma.</p>
+        <p class="auth-panel-sub">O seu registo foi recebido. A conta fica protegida até ser confirmada.</p>
         <div class="auth-panel-features">
+          {% if email_delivery_failed %}
+          <div class="auth-feat"><i class="bi bi-exclamation-triangle"></i><span>Conta criada, mas confirmação por email indisponível</span></div>
+          <div class="auth-feat"><i class="bi bi-headset"></i><span>Suporte pode ajudar a ativar a conta</span></div>
+          {% else %}
           <div class="auth-feat"><i class="bi bi-envelope-check"></i><span>Email enviado para a sua caixa de entrada</span></div>
+          {% endif %}
           <div class="auth-feat"><i class="bi bi-clock"></i><span>Link válido durante 24 horas</span></div>
           <div class="auth-feat"><i class="bi bi-shield-lock"></i><span>Ativação segura em um clique</span></div>
         </div>
@@ -17,20 +22,39 @@
     </div>
     <div class="auth-form-side">
       <div class="auth-form-wrap">
-        <div class="af-success-icon"><i class="bi bi-envelope-check-fill"></i></div>
-        <h1 class="af-success-title">Verifique o seu email</h1>
+        <div class="af-success-icon">
+          <i class="bi {% if email_delivery_failed %}bi-exclamation-triangle-fill{% else %}bi-envelope-check-fill{% endif %}"></i>
+        </div>
+        <h1 class="af-success-title">
+          {% if email_delivery_failed %}Conta criada, email não enviado{% else %}Verifique o seu email{% endif %}
+        </h1>
+        {% if email_delivery_failed %}
+        <p class="af-success-text">
+          A conta para
+          <span class="af-success-email">{{ email }}</span>
+          foi criada e ficou pendente de confirmação, mas não conseguimos enviar o email de ativação neste momento.
+        </p>
+        <p class="af-success-text">
+          Contacte o suporte em
+          <a href="mailto:{{ support_email }}" style="color:#16a34a;font-weight:700;text-decoration:none;">{{ support_email }}</a>
+          para pedir ajuda na ativação. Não tente criar nova conta com o mesmo email.
+        </p>
+        {% else %}
         <p class="af-success-text">
           Enviámos um link de confirmação para
           <span class="af-success-email">{{ email }}</span>.
           Por favor, verifique a sua caixa de entrada e clique no link para ativar a conta.
         </p>
+        {% endif %}
         <a href="{% url 'accounts:login' %}" class="af-submit" style="text-decoration:none;justify-content:center">
           <i class="bi bi-arrow-left"></i> Voltar ao login
         </a>
+        {% if not email_delivery_failed %}
         <p style="text-align:center;margin-top:1.25rem;font-size:.82rem;color:#94a3b8;">
           Não recebeu? Verifique a pasta de spam ou
           <a href="{% url 'accounts:register' %}" style="color:#16a34a;font-weight:600;text-decoration:none;">tente novamente</a>.
         </p>
+        {% endif %}
       </div>
     </div>
   </div>

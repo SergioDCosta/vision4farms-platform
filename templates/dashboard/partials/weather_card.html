@@ -53,9 +53,20 @@
         </div>
       </div>
 
-      <div class="pnl-weather-trend pnl-weather-trend--{{ weather.temperature_trend.key|default:'stable' }}">
-        <i class="bi {% if weather.temperature_trend.key == 'rising' %}bi-graph-up-arrow{% elif weather.temperature_trend.key == 'falling' %}bi-graph-down-arrow{% else %}bi-dash-lg{% endif %}"></i>
-        <span>Tendência térmica: {{ weather.temperature_trend.label|default:"Estável" }}</span>
+      <div class="pnl-weather-signals">
+        <div class="pnl-weather-trend pnl-weather-trend--{{ weather.temperature_trend.key|default:'stable' }}">
+          <i class="bi {% if weather.temperature_trend.key == 'rising' %}bi-graph-up-arrow{% elif weather.temperature_trend.key == 'falling' %}bi-graph-down-arrow{% else %}bi-dash-lg{% endif %}"></i>
+          <span>Tendência: {{ weather.temperature_trend.label|default:"Estável" }}</span>
+        </div>
+        {% if weather_operational_summary %}
+          <div class="pnl-weather-summary pnl-weather-summary--{{ weather_operational_summary.key|default:'neutral' }}">
+            <i class="bi {{ weather_operational_summary.icon|default:'bi-info-circle' }}"></i>
+            <div>
+              <strong>{{ weather_operational_summary.label }}</strong>
+              <span>{{ weather_operational_summary.description }}</span>
+            </div>
+          </div>
+        {% endif %}
       </div>
 
       {% if active_delivery_orders_count or presale_starting_soon_count %}
@@ -114,6 +125,7 @@
                hx-swap="outerHTML"
                hx-push-url="true"
                class="pnl-weather-action pnl-weather-action--{{ action.style|default:'ghost' }}">
+              {% if action.icon %}<i class="bi {{ action.icon }}"></i>{% endif %}
               {{ action.label }}
             </a>
           {% endfor %}
@@ -146,15 +158,23 @@
         </span>
       </div>
       <p class="pnl-weather-note">{{ weather.message }}</p>
-      <button
-        type="button"
-        class="pnl-cta-ghost pnl-weather-retry"
-        hx-get="{% url 'dashboard:painel_weather_card' %}"
-        hx-target="#pnlWeatherCardSlot"
-        hx-swap="innerHTML"
-      >
-        <i class="bi bi-arrow-repeat"></i> Tentar novamente
-      </button>
+      <div class="pnl-weather-actions">
+        {% if weather_needs_location %}
+          <a href="{% url 'settings_app:settings_index' %}#perfil-produtor"
+             class="pnl-weather-action pnl-weather-action--primary">
+            <i class="bi bi-geo-alt"></i> Definir localização
+          </a>
+        {% endif %}
+        <button
+          type="button"
+          class="pnl-cta-ghost pnl-weather-retry"
+          hx-get="{% url 'dashboard:painel_weather_card' %}"
+          hx-target="#pnlWeatherCardSlot"
+          hx-swap="innerHTML"
+        >
+          <i class="bi bi-arrow-repeat"></i> Tentar novamente
+        </button>
+      </div>
     </div>
   </div>
 {% endif %}
