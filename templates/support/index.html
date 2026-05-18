@@ -1,0 +1,214 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Ajuda e suporte{% endblock %}
+{% block app_content %}
+
+<div class="sup-page">
+  <header class="sup-header">
+    <div>
+      <p class="sup-eyebrow">Centro de ajuda</p>
+      <h1>Ajuda e suporte</h1>
+      <p>Envie pedidos à equipa, acompanhe respostas e consulte orientações rápidas da plataforma.</p>
+    </div>
+  </header>
+
+  <div class="sup-layout">
+    <main class="sup-main">
+      <section class="sup-card">
+        <div class="sup-card-head">
+          <div>
+            <h2>Como podemos ajudar?</h2>
+            <p>Descreva o problema ou dúvida com o máximo de contexto possível.</p>
+          </div>
+          <div class="sup-card-icon"><i class="bi bi-life-preserver"></i></div>
+        </div>
+
+        <form method="post" action="{% url 'support:ticket_create' %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'support:index' %}#historico-suporte">
+
+          <div class="sup-grid-1">
+            <div class="sup-field">
+              <label for="{{ support_form.subject.id_for_label }}">{{ support_form.subject.label }}</label>
+              {{ support_form.subject }}
+            </div>
+            <div class="sup-field">
+              <label for="{{ support_form.message.id_for_label }}">{{ support_form.message.label }}</label>
+              {{ support_form.message }}
+            </div>
+          </div>
+
+          <div class="sup-actions">
+            <button type="submit" class="sup-btn-primary">
+              <i class="bi bi-send"></i> Enviar pedido
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section id="historico-suporte" class="sup-card">
+        <div class="sup-card-head">
+          <div>
+            <h2>Os meus pedidos</h2>
+            <p>Histórico de pedidos enviados e respostas da equipa.</p>
+          </div>
+          <div class="sup-card-icon"><i class="bi bi-clock-history"></i></div>
+        </div>
+
+        {% if support_tickets %}
+          <div class="sup-ticket-list">
+            {% for ticket in support_tickets %}
+              <article class="sup-ticket-card">
+                <div class="sup-ticket-top">
+                  <div>
+                    <h3>#{{ ticket.ticket_number }} · {{ ticket.subject }}</h3>
+                    <div class="sup-ticket-meta">
+                      <span>Criado {{ ticket.created_at|date:"d/m/Y H:i" }}</span>
+                      {% if ticket.closed_at %}<span>Fechado {{ ticket.closed_at|date:"d/m/Y H:i" }}</span>{% endif %}
+                    </div>
+                  </div>
+                  <span class="sup-ticket-status">{{ ticket.get_status_display }}</span>
+                </div>
+
+                {% if ticket.admin_reply_message %}
+                  <div class="sup-ticket-reply">{{ ticket.admin_reply_message }}</div>
+                {% else %}
+                  <div class="sup-ticket-reply is-empty">Ainda sem resposta da equipa.</div>
+                {% endif %}
+              </article>
+            {% endfor %}
+          </div>
+
+          {% if support_tickets_has_more %}
+            <div class="sup-actions sup-actions--left">
+              {% if support_tickets_show_all %}
+                <a href="{% url 'support:index' %}#historico-suporte" class="sup-btn-ghost">
+                  <i class="bi bi-eye-slash"></i> Mostrar apenas recentes
+                </a>
+              {% else %}
+                <a href="{% url 'support:index' %}?all=1#historico-suporte" class="sup-btn-ghost">
+                  <i class="bi bi-eye"></i> Mostrar todos
+                </a>
+              {% endif %}
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="sup-empty">
+            <i class="bi bi-inbox"></i>
+            <strong>Ainda não enviou pedidos de suporte.</strong>
+            <span>Quando criar um pedido, ele aparece aqui com o respetivo estado.</span>
+          </div>
+        {% endif %}
+      </section>
+    </main>
+
+    <aside class="sup-aside">
+      <section class="sup-card">
+        <div class="sup-card-head">
+          <div>
+            <h2>Perguntas frequentes</h2>
+            <p>Respostas rápidas para dúvidas comuns.</p>
+          </div>
+        </div>
+        <div class="sup-faq-list">
+          <details>
+            <summary>Como recupero o acesso à conta?</summary>
+            <p>Use a recuperação de palavra-passe no ecrã de login. Se a conta estiver pendente, contacte o suporte.</p>
+          </details>
+          <details>
+            <summary>Como reporto um problema numa encomenda?</summary>
+            <p>Indique o número da encomenda, produto, produtor envolvido e o estado atual do pedido.</p>
+          </details>
+          <details>
+            <summary>Como pedir ajuda sobre marketplace ou necessidades?</summary>
+            <p>Explique o produto, quantidade e a ação que estava a tentar realizar.</p>
+          </details>
+          <details>
+            <summary>Quanto tempo demora a resposta?</summary>
+            <p>O tempo de resposta será definido pela empresa. Por agora, acompanhe o estado nesta página.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="sup-card">
+        <div class="sup-card-head">
+          <div>
+            <h2>Contactos</h2>
+            <p>Informação de apoio configurável pela empresa.</p>
+          </div>
+        </div>
+        <div class="sup-contact-box">
+          <span>Email de suporte</span>
+          {% if support_contact_email %}
+            <a href="mailto:{{ support_contact_email }}">{{ support_contact_email }}</a>
+          {% else %}
+            <strong>Por configurar</strong>
+          {% endif %}
+        </div>
+        <div class="sup-note">
+          <i class="bi bi-info-circle"></i>
+          <span>Horários, telefone e documentação interna podem ser adicionados aqui quando a empresa definir esses dados.</span>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<style>
+.sup-page{display:flex;flex-direction:column;gap:1.15rem;font-family:'DM Sans',system-ui,sans-serif;}
+.sup-header,.sup-card{background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+.sup-header{padding:1.25rem 1.35rem;}
+.sup-eyebrow{margin:0 0 .25rem;color:#16a34a;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;}
+.sup-header h1{margin:0;font-size:1.55rem;font-weight:850;color:#0f172a;letter-spacing:0;line-height:1.15;}
+.sup-header p:last-child{margin:.35rem 0 0;color:#64748b;font-size:.9rem;line-height:1.45;}
+.sup-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:1rem;align-items:start;}
+.sup-main,.sup-aside{display:flex;flex-direction:column;gap:1rem;min-width:0;}
+.sup-aside{position:sticky;top:78px;}
+.sup-card{padding:1.15rem;}
+.sup-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem;}
+.sup-card-head h2{margin:0;font-size:1.02rem;font-weight:850;color:#0f172a;letter-spacing:0;}
+.sup-card-head p{margin:.25rem 0 0;color:#64748b;font-size:.84rem;line-height:1.42;}
+.sup-card-icon{width:38px;height:38px;border-radius:.75rem;background:#dcfce7;color:#15803d;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.sup-grid-1{display:grid;grid-template-columns:1fr;gap:.85rem;}
+.sup-field{display:flex;flex-direction:column;gap:.35rem;min-width:0;}
+.sup-field label{font-size:.79rem;font-weight:800;color:#334155;}
+.sup-field input,.sup-field textarea{width:100%;max-width:100%;}
+.sup-actions{display:flex;justify-content:flex-end;gap:.55rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #f1f5f9;flex-wrap:wrap;}
+.sup-actions--left{justify-content:flex-start;}
+.sup-btn-primary,.sup-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;min-height:38px;padding:.55rem 1rem;border-radius:.65rem;font-size:.84rem;font-weight:800;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s;}
+.sup-btn-primary{border:1px solid #16a34a;background:#16a34a;color:#fff;}
+.sup-btn-primary:hover{background:#15803d;border-color:#15803d;color:#fff;}
+.sup-btn-ghost{border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;}
+.sup-btn-ghost:hover{background:#f8fafc;border-color:#94a3b8;color:#0f172a;}
+.sup-ticket-list{display:grid;gap:.75rem;}
+.sup-ticket-card{border:1px solid #e2e8f0;border-radius:.78rem;background:#fff;padding:.85rem;display:grid;gap:.65rem;}
+.sup-ticket-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;}
+.sup-ticket-top h3{margin:0;color:#0f172a;font-size:.92rem;font-weight:850;overflow-wrap:anywhere;}
+.sup-ticket-meta{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.25rem;color:#64748b;font-size:.76rem;}
+.sup-ticket-status{display:inline-flex;align-items:center;border-radius:999px;padding:.2rem .55rem;font-size:.72rem;font-weight:850;background:#e2e8f0;color:#334155;white-space:nowrap;}
+.sup-ticket-reply{border-radius:.65rem;background:#f8fafc;padding:.65rem;color:#334155;font-size:.82rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
+.sup-ticket-reply.is-empty{color:#64748b;}
+.sup-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.4rem;padding:1.5rem;border:1px dashed #cbd5e1;border-radius:.8rem;background:#f8fafc;color:#64748b;}
+.sup-empty i{font-size:1.55rem;color:#16a34a;}
+.sup-empty strong{color:#0f172a;}
+.sup-faq-list{display:grid;gap:.55rem;}
+.sup-faq-list details{border:1px solid #e2e8f0;border-radius:.7rem;background:#f8fafc;padding:.7rem .8rem;}
+.sup-faq-list summary{cursor:pointer;font-size:.84rem;font-weight:850;color:#0f172a;}
+.sup-faq-list p{margin:.55rem 0 0;color:#475569;font-size:.8rem;line-height:1.45;}
+.sup-contact-box{display:flex;flex-direction:column;gap:.25rem;padding:.75rem;border:1px solid #e2e8f0;border-radius:.72rem;background:#f8fafc;}
+.sup-contact-box span{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:850;}
+.sup-contact-box a,.sup-contact-box strong{font-size:.86rem;font-weight:850;color:#0f172a;overflow-wrap:anywhere;}
+.sup-note{display:flex;gap:.55rem;align-items:flex-start;margin-top:.75rem;padding:.75rem;border:1px solid #dbeafe;border-radius:.72rem;background:#eff6ff;color:#1e3a8a;font-size:.8rem;line-height:1.45;}
+.sup-note i{flex:0 0 auto;margin-top:.05rem;}
+@media (max-width:1080px){
+  .sup-layout{grid-template-columns:1fr;}
+  .sup-aside{position:static;}
+}
+@media (max-width:720px){
+  .sup-header,.sup-card{padding:1rem;}
+  .sup-card-head,.sup-ticket-top{flex-direction:column;}
+  .sup-actions{justify-content:stretch;}
+  .sup-btn-primary,.sup-btn-ghost{width:100%;}
+}
+</style>
+
+{% endblock %}

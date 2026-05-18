@@ -2,6 +2,7 @@ import logging
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
 from django.http import JsonResponse
@@ -10,7 +11,7 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from apps.common.audit import get_client_ip, log_audit_event
-from apps.common.decorators import admin_required, login_required
+from apps.common.decorators import admin_required, client_only_required
 from apps.common.redirects import get_safe_next_url
 from apps.support.forms import SupportTicketCreateForm, SupportTicketReplyForm
 from apps.support.models import SupportTicket, SupportTicketStatus
@@ -20,6 +21,7 @@ from apps.support.services import (
     claim_support_ticket,
     create_support_ticket,
     get_admin_support_badge_state,
+    get_support_tickets_context,
     mark_admin_support_seen,
     reply_support_ticket,
     send_support_ticket_acknowledgement,
@@ -59,11 +61,15 @@ def _support_rate_limit_key(group, request):
     return f"ip:{get_client_ip(request) or 'unknown'}"
 
 
-def _redirect_to_settings(request):
+def _redirect_to_support(request):
     next_url = get_safe_next_url(request, request.POST.get("next"))
     if next_url:
         return redirect(next_url)
-    return redirect("settings_app:settings_index")
+    return redirect("support:index")
+
+
+def _redirect_to_settings(request):
+    return _redirect_to_support(request)
 
 
 def _broadcast_support_badge_changed():
@@ -79,7 +85,7 @@ def _broadcast_support_badge_changed():
         logger.exception("Falha ao emitir atualização realtime do badge de suporte.")
 
 
-@login_required
+@client_only_required
 @require_POST
 @ratelimit(key=_support_rate_limit_key, rate="5/30m", method="POST", block=False)
 def support_ticket_create_view(request):
@@ -88,7 +94,7 @@ def support_ticket_create_view(request):
             request,
             "Demasiados pedidos de suporte em pouco tempo. Tenta novamente daqui a alguns minutos.",
         )
-        return _redirect_to_settings(request)
+        return _redirect_to_support(request)
 
     form = SupportTicketCreateForm(request.POST or None)
     if not form.is_valid():
@@ -99,7 +105,7 @@ def support_ticket_create_view(request):
             request,
             errors[0] if errors else "Não foi possível enviar o pedido de suporte.",
         )
-        return _redirect_to_settings(request)
+        return _redirect_to_support(request)
 
     subject = form.cleaned_data["subject"]
     body = form.cleaned_data["message"]
@@ -135,7 +141,24 @@ def support_ticket_create_view(request):
     if email_failures:
         messages.warning(request, " ".join(email_failures))
 
-    return _redirect_to_settings(request)
+    return _redirect_to_support(request)
+
+
+@client_only_required
+def support_index_view(request):
+    show_all = (request.GET.get("all") or "").strip() == "1"
+    support_context = get_support_tickets_context(
+        request.current_user,
+        show_all=show_all,
+        limit=5,
+    )
+    context = {
+        "page_title": "Ajuda e suporte",
+        "support_form": SupportTicketCreateForm(),
+        "support_contact_email": getattr(settings, "SUPPORT_CONTACT_EMAIL", ""),
+        **support_context,
+    }
+    return render(request, "support/index.html", context)
 
 
 @admin_required

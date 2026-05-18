@@ -1,0 +1,67 @@
+<section id="seguranca" class="stg-section">
+  <div class="stg-card">
+    <div class="stg-card-head">
+      <div>
+        <h2>Segurança</h2>
+        <p>Altere a palavra-passe quando suspeitar de acesso indevido ou por rotina de segurança.</p>
+      </div>
+      <div class="stg-card-head__icon"><i class="bi bi-shield-lock"></i></div>
+    </div>
+
+    <div class="stg-note">
+      <i class="bi bi-info-circle"></i>
+      <span>Depois de alterar a palavra-passe, será necessário iniciar sessão novamente. Também será enviado um email de aviso de segurança.</span>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="security">
+
+      {% if security_form.non_field_errors %}
+        <div class="stg-error-box">{{ security_form.non_field_errors|join:" " }}</div>
+      {% endif %}
+
+      <div class="stg-grid-1" style="margin-top:1rem;">
+        <div class="stg-field">
+          <label for="{{ security_form.current_password.id_for_label }}">{{ security_form.current_password.label }}</label>
+          <div class="stg-password-wrap">
+            {{ security_form.current_password }}
+            <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_current_password">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+          {% if security_form.current_password.errors %}<div class="stg-error">{{ security_form.current_password.errors|join:" " }}</div>{% endif %}
+        </div>
+
+        <div class="stg-field">
+          <label for="{{ security_form.new_password.id_for_label }}">{{ security_form.new_password.label }}</label>
+          <div class="stg-password-wrap">
+            {{ security_form.new_password }}
+            <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_new_password">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+          {% if security_form.new_password.errors %}<div class="stg-error">{{ security_form.new_password.errors|join:" " }}</div>{% endif %}
+        </div>
+
+        <div class="stg-field">
+          <label for="{{ security_form.confirm_password.id_for_label }}">{{ security_form.confirm_password.label }}</label>
+          <div class="stg-password-wrap">
+            {{ security_form.confirm_password }}
+            <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_confirm_password_settings">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+          {% if security_form.confirm_password.errors %}<div class="stg-error">{{ security_form.confirm_password.errors|join:" " }}</div>{% endif %}
+          <div class="stg-help">A nova palavra-passe deve cumprir as regras de segurança da plataforma.</div>
+        </div>
+      </div>
+
+      <div class="stg-actions">
+        <button type="submit" class="stg-btn-primary">
+          <i class="bi bi-shield-check"></i> Alterar palavra-passe
+        </button>
+      </div>
+    </form>
+  </div>
+</section>

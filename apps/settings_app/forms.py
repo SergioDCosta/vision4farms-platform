@@ -2,12 +2,11 @@ from django import forms
 from django.contrib.auth.password_validation import validate_password
 import re
 
-from apps.accounts.models import User
 from apps.inventory.models import ProducerProfile, ProducerUserType
 from apps.settings_app.models import UserPreference
 
 
-class AccountProfileForm(forms.Form):
+class IdentityProfileForm(forms.Form):
     first_name = forms.CharField(
         label="Primeiro nome",
         max_length=150,
@@ -28,14 +27,70 @@ class AccountProfileForm(forms.Form):
         label="Email",
         widget=forms.EmailInput(attrs={
             "class": "form-control",
-            "placeholder": "utilizador@exemplo.pt",
             "readonly": "readonly",
         }),
+    )
+    company_name = forms.CharField(
+        label="Empresa",
+        required=False,
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Nome da empresa ou exploração",
+        }),
+    )
+    phone = forms.CharField(
+        label="Telemóvel",
+        required=False,
+        max_length=20,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "912345678",
+        }),
+    )
+    nif = forms.CharField(
+        label="NIF",
+        required=False,
+        max_length=20,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "123456789",
+        }),
+    )
+    user_type = forms.ChoiceField(
+        label="Tipo de utilizador",
+        required=False,
+        choices=[
+            ("", "Selecionar tipo"),
+            (ProducerUserType.AGRICULTOR, "Agricultor / Produtor"),
+            (ProducerUserType.DISTRIBUIDOR, "Distribuidor"),
+            (ProducerUserType.VENDEDOR, "Vendedor / Retalhista"),
+        ],
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop("user", None)
+        self.producer_profile = kwargs.pop("producer_profile", None)
+        initial = dict(kwargs.pop("initial", {}) or {})
+
+        if self.user:
+            initial.setdefault("first_name", self.user.first_name)
+            initial.setdefault("last_name", self.user.last_name)
+            initial.setdefault("email", self.user.email)
+
+        if self.producer_profile:
+            initial.setdefault("company_name", self.producer_profile.company_name)
+            initial.setdefault("phone", self.producer_profile.phone)
+            initial.setdefault("nif", self.producer_profile.nif)
+            initial.setdefault("user_type", self.producer_profile.user_type)
+
+        kwargs["initial"] = initial
         super().__init__(*args, **kwargs)
+
+        if not self.producer_profile:
+            for field in ("company_name", "phone", "nif", "user_type"):
+                self.fields.pop(field, None)
 
     def clean_first_name(self):
         value = " ".join((self.cleaned_data.get("first_name") or "").split()).strip()
@@ -50,90 +105,11 @@ class AccountProfileForm(forms.Form):
         return value
 
     def clean_email(self):
+        if self.user:
+            return self.user.email
         value = (self.cleaned_data.get("email") or "").strip().lower()
         if not value:
             raise forms.ValidationError("Indica um email válido.")
-
-        qs = User.objects.filter(email=value)
-        if self.user:
-            qs = qs.exclude(id=self.user.id)
-        if qs.exists():
-            raise forms.ValidationError("Este email já está a ser utilizado por outra conta.")
-        return value
-
-
-class ProducerProfileSettingsForm(forms.ModelForm):
-    user_type = forms.ChoiceField(
-        label="Tipo de utilizador",
-        required=False,
-        choices=[
-            ("", "Selecionar tipo"),
-            (ProducerUserType.AGRICULTOR, "Agricultor / Produtor"),
-            (ProducerUserType.DISTRIBUIDOR, "Distribuidor"),
-            (ProducerUserType.VENDEDOR, "Vendedor / Retalhista"),
-        ],
-        widget=forms.Select(attrs={"class": "form-select"}),
-    )
-
-    class Meta:
-        model = ProducerProfile
-        fields = [
-            "display_name",
-            "company_name",
-            "phone",
-            "nif",
-            "address_line",
-            "postal_code",
-            "city",
-            "district",
-            "latitude",
-            "longitude",
-            "user_type",
-            "is_active_marketplace",
-        ]
-        widgets = {
-            "display_name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Nome público"}),
-            "company_name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Empresa"}),
-            "phone": forms.TextInput(attrs={"class": "form-control", "placeholder": "912345678"}),
-            "nif": forms.TextInput(attrs={"class": "form-control", "placeholder": "123456789"}),
-            "address_line": forms.TextInput(attrs={"class": "form-control", "placeholder": "Morada"}),
-            "postal_code": forms.TextInput(attrs={"class": "form-control", "placeholder": "3510-000"}),
-            "city": forms.TextInput(attrs={"class": "form-control", "placeholder": "Cidade"}),
-            "district": forms.TextInput(attrs={"class": "form-control", "placeholder": "Distrito"}),
-            "latitude": forms.NumberInput(attrs={"class": "form-control", "step": "0.000001", "placeholder": "Ex: 41.157944"}),
-            "longitude": forms.NumberInput(attrs={"class": "form-control", "step": "0.000001", "placeholder": "Ex: -8.629105"}),
-            "is_active_marketplace": forms.CheckboxInput(attrs={"class": "form-check-input"}),
-        }
-        labels = {
-            "display_name": "Nome de exibição",
-            "company_name": "Empresa",
-            "phone": "Telemóvel",
-            "nif": "NIF",
-            "address_line": "Morada",
-            "postal_code": "Código-postal",
-            "city": "Cidade",
-            "district": "Distrito",
-            "latitude": "Latitude",
-            "longitude": "Longitude",
-            "is_active_marketplace": "Ativo no marketplace",
-        }
-
-    def clean_display_name(self):
-        value = " ".join((self.cleaned_data.get("display_name") or "").split()).strip()
-        if not value:
-            raise forms.ValidationError("Indica o nome de exibição.")
-        return value
-
-    def clean_user_type(self):
-        value = (self.cleaned_data.get("user_type") or "").strip()
-        return value or None
-
-    def clean_nif(self):
-        value = (self.cleaned_data.get("nif") or "").strip()
-        if not value:
-            return None
-        if not re.fullmatch(r"\d{9}", value):
-            raise forms.ValidationError("O NIF deve ter exatamente 9 dígitos.")
         return value
 
     def clean_phone(self):
@@ -143,6 +119,51 @@ class ProducerProfileSettingsForm(forms.ModelForm):
         if not re.fullmatch(r"\d{9}", value):
             raise forms.ValidationError("O telemóvel deve ter exatamente 9 dígitos.")
         return value
+
+    def clean_nif(self):
+        value = (self.cleaned_data.get("nif") or "").strip()
+        if not value:
+            return None
+        if not re.fullmatch(r"\d{9}", value):
+            raise forms.ValidationError("O NIF deve ter exatamente 9 dígitos.")
+        return value
+
+    def clean_user_type(self):
+        value = (self.cleaned_data.get("user_type") or "").strip()
+        return value or None
+
+    def clean_company_name(self):
+        value = " ".join((self.cleaned_data.get("company_name") or "").split()).strip()
+        return value or None
+
+
+class ProducerLocationForm(forms.ModelForm):
+    class Meta:
+        model = ProducerProfile
+        fields = [
+            "address_line",
+            "postal_code",
+            "city",
+            "district",
+            "latitude",
+            "longitude",
+        ]
+        widgets = {
+            "address_line": forms.TextInput(attrs={"class": "form-control", "placeholder": "Morada"}),
+            "postal_code": forms.TextInput(attrs={"class": "form-control", "placeholder": "3510-000"}),
+            "city": forms.TextInput(attrs={"class": "form-control", "placeholder": "Cidade"}),
+            "district": forms.TextInput(attrs={"class": "form-control", "placeholder": "Distrito"}),
+            "latitude": forms.NumberInput(attrs={"class": "form-control", "step": "0.000001", "placeholder": "Ex: 41.157944"}),
+            "longitude": forms.NumberInput(attrs={"class": "form-control", "step": "0.000001", "placeholder": "Ex: -8.629105"}),
+        }
+        labels = {
+            "address_line": "Morada",
+            "postal_code": "Código-postal",
+            "city": "Cidade",
+            "district": "Distrito",
+            "latitude": "Latitude",
+            "longitude": "Longitude",
+        }
 
     def clean_postal_code(self):
         value = (self.cleaned_data.get("postal_code") or "").strip().upper()
@@ -170,22 +191,11 @@ class ProducerProfileSettingsForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        optional_text_fields = [
-            "company_name",
-            "phone",
-            "nif",
-            "address_line",
-            "postal_code",
-            "city",
-            "district",
-        ]
-
-        for field in optional_text_fields:
+        for field in ("address_line", "postal_code", "city", "district"):
             value = cleaned_data.get(field)
             if isinstance(value, str):
                 value = " ".join(value.split()).strip()
                 cleaned_data[field] = value or None
-
         return cleaned_data
 
 
@@ -226,6 +236,19 @@ class UserPreferencesForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
+
+
+class ProfilePhotoForm(forms.Form):
+    profile_photo = forms.ImageField(
+        label="Foto de perfil",
+        required=True,
+        widget=forms.ClearableFileInput(
+            attrs={
+                "class": "form-control",
+                "accept": "image/*",
+            }
+        ),
+    )
 
 
 class ChangePasswordForm(forms.Form):

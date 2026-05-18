@@ -87,11 +87,11 @@ def _build_ticket_urls(request, ticket):
         request,
         reverse("support:admin_ticket_detail", kwargs={"ticket_id": ticket.id}),
     )
-    settings_url = _build_public_absolute_url(
+    support_url = _build_public_absolute_url(
         request,
-        reverse("settings_app:settings_index"),
+        reverse("support:index"),
     )
-    return admin_detail_url, settings_url
+    return admin_detail_url, support_url
 
 
 def _ticket_snapshot(ticket):
@@ -147,6 +147,28 @@ def mark_admin_support_seen(request):
         return
     request.session[SUPPORT_ADMIN_LAST_SEEN_SESSION_KEY] = timezone.now().isoformat()
     request.session.modified = True
+
+
+def get_support_tickets_context(user, *, show_all=False, limit=5):
+    try:
+        tickets_qs = (
+            SupportTicket.objects.filter(requester_user=user)
+            .select_related("assigned_admin")
+            .order_by("-created_at")
+        )
+        total = tickets_qs.count()
+        tickets = list(tickets_qs if show_all else tickets_qs[:limit])
+        return {
+            "support_tickets": tickets,
+            "support_tickets_show_all": bool(show_all),
+            "support_tickets_has_more": total > limit,
+        }
+    except Exception:
+        return {
+            "support_tickets": [],
+            "support_tickets_show_all": False,
+            "support_tickets_has_more": False,
+        }
 
 
 def create_support_ticket(*, requester_user, subject, message):
@@ -276,10 +298,10 @@ def send_support_ticket_created_to_admins(request, ticket):
 
 
 def send_support_ticket_acknowledgement(request, ticket):
-    _, settings_url = _build_ticket_urls(request, ticket)
+    _, support_url = _build_ticket_urls(request, ticket)
     context = {
         "ticket": ticket,
-        "settings_url": settings_url,
+        "support_url": support_url,
     }
     subject = render_to_string("emails/support_ticket_ack_subject.txt", context).strip()
     text_body = render_to_string("emails/support_ticket_ack.txt", context)
@@ -293,10 +315,10 @@ def send_support_ticket_acknowledgement(request, ticket):
 
 
 def send_support_ticket_reply_to_requester(request, ticket):
-    _, settings_url = _build_ticket_urls(request, ticket)
+    _, support_url = _build_ticket_urls(request, ticket)
     context = {
         "ticket": ticket,
-        "settings_url": settings_url,
+        "support_url": support_url,
     }
     subject = render_to_string("emails/support_ticket_reply_subject.txt", context).strip()
     text_body = render_to_string("emails/support_ticket_reply.txt", context)

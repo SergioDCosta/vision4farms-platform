@@ -1,702 +1,123 @@
 {% extends "dashboard/base_app.html" %}
-{% block app_title %}Definições e Perfil{% endblock %}
+{% block app_title %}Definições{% endblock %}
 {% block app_content %}
 
 <div class="stg-page">
   <header class="stg-header">
     <div>
-      <h1>Definições e Perfil</h1>
-      <p>Gere os dados da tua conta, preferências e segurança.</p>
+      <p class="stg-eyebrow">Conta e preferências</p>
+      <h1>Definições</h1>
+      <p>Atualize identidade, perfil operacional, localização, notificações e segurança.</p>
     </div>
   </header>
 
   <div class="stg-layout">
-    <aside class="stg-side">
-      <div class="stg-side-card">
-        <div class="stg-side-title">Navegação</div>
-        <a href="#perfil" class="stg-side-link"><i class="bi bi-person"></i> Perfil</a>
-        <a href="#notificacoes" class="stg-side-link"><i class="bi bi-bell"></i> Notificações</a>
-        {% if not is_admin_user %}
-          <a href="#suporte" class="stg-side-link"><i class="bi bi-life-preserver"></i> Suporte</a>
+    <aside class="stg-side" aria-label="Navegação das definições">
+      <nav class="stg-side-card">
+        <span class="stg-side-title">Secções</span>
+        <a href="#perfil-produtor" class="stg-side-link"><i class="bi bi-person-badge"></i><span>Identidade</span></a>
+        <a href="#foto" class="stg-side-link"><i class="bi bi-image"></i><span>Foto</span></a>
+        <a href="#notificacoes" class="stg-side-link"><i class="bi bi-bell"></i><span>Notificações</span></a>
+        {% if is_client_user %}
+          <a href="#localizacao" class="stg-side-link"><i class="bi bi-geo-alt"></i><span>Localização</span></a>
         {% endif %}
-        <a href="#seguranca" class="stg-side-link"><i class="bi bi-shield-lock"></i> Segurança</a>
-      </div>
+        <a href="#seguranca" class="stg-side-link"><i class="bi bi-shield-lock"></i><span>Segurança</span></a>
+      </nav>
     </aside>
 
-    <div class="stg-main">
-      <form method="post" enctype="multipart/form-data" class="stg-preferences-form">
-        {% csrf_token %}
-        <input type="hidden" name="form_type" value="preferences">
+    <main class="stg-main">
+      {% include "settings/partials/identity_profile.html" %}
+      {% include "settings/partials/photo.html" %}
+      {% include "settings/partials/notifications.html" %}
 
-        <section id="perfil" class="stg-section">
-          <div class="stg-card">
-            <div class="stg-card-head">
-              <h2>Perfil</h2>
-              <p>Foto e identificação visual da tua conta.</p>
-            </div>
-
-            {% if preferences_form.non_field_errors %}
-              <div class="stg-error-box">{{ preferences_form.non_field_errors|join:" " }}</div>
-            {% endif %}
-
-            <div class="stg-profile-wrap">
-              <div class="stg-avatar-box">
-                {% if profile_photo_url %}
-                  <img src="{{ profile_photo_url }}" alt="Foto de perfil" class="stg-avatar-image">
-                {% else %}
-                  <div class="stg-avatar-fallback">{{ avatar_initials }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-profile-meta">
-                <h3>{{ request.current_user.full_name|default:request.current_user.email }}</h3>
-                <p>Atualiza a foto de perfil para personalizar o teu painel.</p>
-
-                <div class="stg-field">
-                  <label for="{{ preferences_form.profile_photo.id_for_label }}">{{ preferences_form.profile_photo.label }}</label>
-                  {{ preferences_form.profile_photo }}
-                  {% if preferences_form.profile_photo.errors %}
-                    <div class="stg-error">{{ preferences_form.profile_photo.errors|join:" " }}</div>
-                  {% endif %}
-                </div>
-
-                <div class="stg-help" style="margin-top:.55rem;">
-                  Ao carregar uma nova foto, a anterior será substituída automaticamente.
-                </div>
-
-                <div class="stg-actions">
-                  <button type="submit" class="stg-btn-primary">
-                    <i class="bi bi-image"></i> Guardar foto e preferências
-                  </button>
-                  {% if profile_photo_url %}
-                    <button
-                      type="submit"
-                      class="stg-btn-danger"
-                      name="form_type"
-                      value="remove_photo"
-                      onclick="return confirm('Queres remover a foto de perfil agora?');">
-                      <i class="bi bi-trash"></i> Remover foto
-                    </button>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="notificacoes" class="stg-section">
-          <div class="stg-card">
-            <div class="stg-card-head">
-              <h2>Notificações</h2>
-              {% if is_client_user %}
-              <p>Define como queres receber alertas da plataforma.</p>
-            {% else %}
-              <p>Define como queres receber notificações de gestão e auditoria.</p>
-            {% endif %}
-            </div>
-
-            <div class="stg-checkbox-grid">
-              <label class="stg-check-item">
-                {{ preferences_form.alerts_in_app }}
-                <span>App</span>
-              </label>
-              <label class="stg-check-item">
-                {{ preferences_form.alerts_email }}
-                <span>Email</span>
-              </label>
-              <label class="stg-check-item">
-                {{ preferences_form.alerts_sms }}
-                <span>SMS</span>
-              </label>
-            </div>
-
-            {% if preferences_form.alerts_in_app.errors or preferences_form.alerts_email.errors or preferences_form.alerts_sms.errors %}
-              <div class="stg-error">Verifica as opções de alertas selecionadas.</div>
-            {% endif %}
-
-            <div class="stg-actions">
-              <button type="submit" class="stg-btn-primary">
-                <i class="bi bi-check-circle"></i> Guardar preferências
-              </button>
-            </div>
-          </div>
-        </section>
-      </form>
-
-      <section class="stg-section">
-        <div class="stg-card">
-          <div class="stg-card-head">
-            <h2>Dados da conta</h2>
-            <p>Informação principal associada ao teu utilizador.</p>
-          </div>
-
-          <form method="post" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="form_type" value="account">
-
-            {% if account_form.non_field_errors %}
-              <div class="stg-error-box">{{ account_form.non_field_errors|join:" " }}</div>
-            {% endif %}
-
-            <div class="stg-grid-2">
-              <div class="stg-field">
-                <label for="{{ account_form.first_name.id_for_label }}">{{ account_form.first_name.label }}</label>
-                {{ account_form.first_name }}
-                {% if account_form.first_name.errors %}
-                  <div class="stg-error">{{ account_form.first_name.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ account_form.last_name.id_for_label }}">{{ account_form.last_name.label }}</label>
-                {{ account_form.last_name }}
-                {% if account_form.last_name.errors %}
-                  <div class="stg-error">{{ account_form.last_name.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-            </div>
-
-            <div class="stg-field">
-              <label for="{{ account_form.email.id_for_label }}">{{ account_form.email.label }}</label>
-              {{ account_form.email }}
-              {% if account_form.email.errors %}
-                <div class="stg-error">{{ account_form.email.errors|join:" " }}</div>
-              {% endif %}
-              <div class="stg-help">
-                O email está temporariamente bloqueado para edição direta.
-              </div>
-            </div>
-
-            <div class="stg-actions">
-              <button type="submit" class="stg-btn-primary">
-                <i class="bi bi-check2"></i> Guardar dados da conta
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      {% if is_client_user and producer_profile_form %}
-      <section id="perfil-produtor" class="stg-section">
-        <div class="stg-card">
-          <div class="stg-card-head">
-            <h2>Perfil do produtor</h2>
-            <p>Dados comerciais e operacionais usados no marketplace.</p>
-          </div>
-
-          <form method="post" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="form_type" value="producer_profile">
-
-            {% if producer_profile_form.non_field_errors %}
-              <div class="stg-error-box">{{ producer_profile_form.non_field_errors|join:" " }}</div>
-            {% endif %}
-
-            <div class="stg-grid-2">
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.display_name.id_for_label }}">{{ producer_profile_form.display_name.label }}</label>
-                {{ producer_profile_form.display_name }}
-                {% if producer_profile_form.display_name.errors %}
-                  <div class="stg-error">{{ producer_profile_form.display_name.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.company_name.id_for_label }}">{{ producer_profile_form.company_name.label }}</label>
-                {{ producer_profile_form.company_name }}
-                {% if producer_profile_form.company_name.errors %}
-                  <div class="stg-error">{{ producer_profile_form.company_name.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.phone.id_for_label }}">{{ producer_profile_form.phone.label }}</label>
-                {{ producer_profile_form.phone }}
-                {% if producer_profile_form.phone.errors %}
-                  <div class="stg-error">{{ producer_profile_form.phone.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.nif.id_for_label }}">{{ producer_profile_form.nif.label }}</label>
-                {{ producer_profile_form.nif }}
-                {% if producer_profile_form.nif.errors %}
-                  <div class="stg-error">{{ producer_profile_form.nif.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field stg-span-2">
-                <label for="{{ producer_profile_form.address_line.id_for_label }}">{{ producer_profile_form.address_line.label }}</label>
-                {{ producer_profile_form.address_line }}
-                {% if producer_profile_form.address_line.errors %}
-                  <div class="stg-error">{{ producer_profile_form.address_line.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.postal_code.id_for_label }}">{{ producer_profile_form.postal_code.label }}</label>
-                {{ producer_profile_form.postal_code }}
-                {% if producer_profile_form.postal_code.errors %}
-                  <div class="stg-error">{{ producer_profile_form.postal_code.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.city.id_for_label }}">{{ producer_profile_form.city.label }}</label>
-                {{ producer_profile_form.city }}
-                {% if producer_profile_form.city.errors %}
-                  <div class="stg-error">{{ producer_profile_form.city.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.district.id_for_label }}">{{ producer_profile_form.district.label }}</label>
-                {{ producer_profile_form.district }}
-                {% if producer_profile_form.district.errors %}
-                  <div class="stg-error">{{ producer_profile_form.district.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.user_type.id_for_label }}">{{ producer_profile_form.user_type.label }}</label>
-                {{ producer_profile_form.user_type }}
-                {% if producer_profile_form.user_type.errors %}
-                  <div class="stg-error">{{ producer_profile_form.user_type.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.latitude.id_for_label }}">{{ producer_profile_form.latitude.label }}</label>
-                {{ producer_profile_form.latitude }}
-                {% if producer_profile_form.latitude.errors %}
-                  <div class="stg-error">{{ producer_profile_form.latitude.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ producer_profile_form.longitude.id_for_label }}">{{ producer_profile_form.longitude.label }}</label>
-                {{ producer_profile_form.longitude }}
-                {% if producer_profile_form.longitude.errors %}
-                  <div class="stg-error">{{ producer_profile_form.longitude.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-            </div>
-
-            <div class="stg-geo-actions">
-              <button type="button" id="autoLocationBtn" class="stg-btn-ghost">
-                <i class="bi bi-geo-alt"></i> Obter localização automaticamente
-              </button>
-              <div id="autoLocationStatus" class="stg-geo-status" aria-live="polite"></div>
-            </div>
-
-            <div class="stg-check-inline">
-              {{ producer_profile_form.is_active_marketplace }}
-              <label for="{{ producer_profile_form.is_active_marketplace.id_for_label }}">{{ producer_profile_form.is_active_marketplace.label }}</label>
-            </div>
-
-            <div class="stg-actions">
-              <button type="submit" class="stg-btn-primary">
-                <i class="bi bi-check-circle"></i> Guardar perfil do produtor
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
+      {% if is_client_user and location_form %}
+        {% include "settings/partials/location.html" %}
       {% endif %}
 
-      {% if not is_admin_user %}
-        <section id="suporte" class="stg-section">
-          <div class="stg-card">
-            <div class="stg-card-head">
-              <h2>Contactar suporte</h2>
-              <p>Envia um pedido para a equipa de administração da plataforma.</p>
-            </div>
-
-            <form method="post" action="{% url 'support:ticket_create' %}" novalidate>
-              {% csrf_token %}
-              <input type="hidden" name="next" value="{% url 'settings_app:settings_index' %}#suporte">
-
-              <div class="stg-support-meta">
-                <div class="stg-support-meta-item">
-                  <span>Nome</span>
-                  <strong>{{ request.current_user.full_name|default:request.current_user.email }}</strong>
-                </div>
-                <div class="stg-support-meta-item">
-                  <span>Email</span>
-                  <strong>{{ request.current_user.email }}</strong>
-                </div>
-                <div class="stg-support-meta-item">
-                  <span>Role</span>
-                  <strong>{{ request.current_user.role }}</strong>
-                </div>
-                <div class="stg-support-meta-item">
-                  <span>Empresa</span>
-                  <strong>{{ support_company_snapshot|default:"—" }}</strong>
-                </div>
-                <div class="stg-support-meta-item">
-                  <span>Telefone</span>
-                  <strong>{{ support_phone_snapshot|default:"—" }}</strong>
-                </div>
-              </div>
-
-              <div class="stg-grid-1" style="margin-top:1rem;">
-                <div class="stg-field">
-                  <label for="{{ support_form.subject.id_for_label }}">{{ support_form.subject.label }}</label>
-                  {{ support_form.subject }}
-                </div>
-                <div class="stg-field">
-                  <label for="{{ support_form.message.id_for_label }}">{{ support_form.message.label }}</label>
-                  {{ support_form.message }}
-                </div>
-              </div>
-
-              <div class="stg-actions">
-                <button type="submit" class="stg-btn-primary">
-                  <i class="bi bi-send"></i> Enviar pedido
-                </button>
-              </div>
-            </form>
-
-            <div class="stg-subsection">
-              <h3>Histórico de suporte</h3>
-              {% if support_tickets %}
-                <div class="stg-support-history-wrap">
-                  <table class="stg-support-history">
-                    <thead>
-                      <tr>
-                        <th>Ticket</th>
-                        <th>Assunto</th>
-                        <th>Estado</th>
-                        <th>Criado</th>
-                        <th>Claimed</th>
-                        <th>Fechado</th>
-                        <th>Admin</th>
-                        <th>Resposta admin</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for ticket in support_tickets %}
-                        <tr>
-                          <td>#{{ ticket.ticket_number }}</td>
-                          <td>{{ ticket.subject }}</td>
-                          <td>{{ ticket.get_status_display }}</td>
-                          <td>{{ ticket.created_at|date:"d/m/Y H:i" }}</td>
-                          <td>{{ ticket.claimed_at|date:"d/m/Y H:i"|default:"—" }}</td>
-                          <td>{{ ticket.closed_at|date:"d/m/Y H:i"|default:"—" }}</td>
-                          <td>
-                            {% if ticket.assigned_admin %}
-                              {{ ticket.assigned_admin.full_name|default:ticket.assigned_admin.email }}
-                            {% else %}
-                              —
-                            {% endif %}
-                          </td>
-                          <td class="stg-ticket-reply-cell">
-                            {% if ticket.admin_reply_message %}
-                              <div class="stg-ticket-reply-content">{{ ticket.admin_reply_message }}</div>
-                            {% else %}
-                              <span class="stg-ticket-reply-empty">Sem resposta do admin ainda.</span>
-                            {% endif %}
-                          </td>
-                        </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-                {% if support_tickets_has_more %}
-                  <div class="stg-actions stg-actions--support-history">
-                    {% if support_tickets_show_all %}
-                      <a href="{% url 'settings_app:settings_index' %}#suporte" class="stg-btn-ghost">
-                        <i class="bi bi-eye-slash"></i> Mostrar apenas os últimos 3
-                      </a>
-                    {% else %}
-                      <a href="{% url 'settings_app:settings_index' %}?support_all=1#suporte" class="stg-btn-ghost">
-                        <i class="bi bi-eye"></i> Mostrar todos os tickets
-                      </a>
-                    {% endif %}
-                  </div>
-                {% endif %}
-              {% else %}
-                <p class="stg-help" style="margin:0;">Ainda não tens pedidos de suporte enviados.</p>
-              {% endif %}
-            </div>
-          </div>
-        </section>
-      {% endif %}
-
-      <section id="seguranca" class="stg-section">
-        <div class="stg-card">
-          <div class="stg-card-head">
-            <h2>Segurança</h2>
-            <p>Altera a tua palavra-passe para manter a conta protegida.</p>
-          </div>
-
-          <form method="post" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="form_type" value="security">
-
-            {% if security_form.non_field_errors %}
-              <div class="stg-error-box">{{ security_form.non_field_errors|join:" " }}</div>
-            {% endif %}
-
-            <div class="stg-grid-1">
-              <div class="stg-field">
-                <label for="{{ security_form.current_password.id_for_label }}">{{ security_form.current_password.label }}</label>
-                <div class="stg-password-wrap">
-                  {{ security_form.current_password }}
-                  <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_current_password">
-                    <i class="bi bi-eye"></i>
-                  </button>
-                </div>
-                {% if security_form.current_password.errors %}
-                  <div class="stg-error">{{ security_form.current_password.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ security_form.new_password.id_for_label }}">{{ security_form.new_password.label }}</label>
-                <div class="stg-password-wrap">
-                  {{ security_form.new_password }}
-                  <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_new_password">
-                    <i class="bi bi-eye"></i>
-                  </button>
-                </div>
-                {% if security_form.new_password.errors %}
-                  <div class="stg-error">{{ security_form.new_password.errors|join:" " }}</div>
-                {% endif %}
-              </div>
-
-              <div class="stg-field">
-                <label for="{{ security_form.confirm_password.id_for_label }}">{{ security_form.confirm_password.label }}</label>
-                <div class="stg-password-wrap">
-                  {{ security_form.confirm_password }}
-                  <button type="button" class="stg-eye-btn" data-toggle-password data-target="id_confirm_password_settings">
-                    <i class="bi bi-eye"></i>
-                  </button>
-                </div>
-                {% if security_form.confirm_password.errors %}
-                  <div class="stg-error">{{ security_form.confirm_password.errors|join:" " }}</div>
-                {% endif %}
-                <div class="stg-help">A nova palavra-passe deve ter pelo menos 8 caracteres.</div>
-              </div>
-            </div>
-
-            <div class="stg-actions">
-              <button type="submit" class="stg-btn-primary">
-                <i class="bi bi-shield-check"></i> Alterar palavra-passe
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
-    </div>
+      {% include "settings/partials/security.html" %}
+    </main>
   </div>
 </div>
 
 <style>
-.stg-page{display:flex;flex-direction:column;gap:1.2rem;}
-.stg-header h1{margin:0;font-size:1.55rem;font-weight:800;color:#0f172a;letter-spacing:-.02em;}
-.stg-header p{margin:.35rem 0 0 0;color:#64748b;font-size:.9rem;}
-
-.stg-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:1rem;align-items:start;}
+.stg-page{display:flex;flex-direction:column;gap:1.15rem;font-family:'DM Sans',system-ui,sans-serif;}
+.stg-header{background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;padding:1.25rem 1.35rem;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+.stg-eyebrow{margin:0 0 .25rem;color:#16a34a;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;}
+.stg-header h1{margin:0;font-size:1.55rem;font-weight:850;color:#0f172a;letter-spacing:0;line-height:1.15;}
+.stg-header p:last-child{margin:.35rem 0 0;color:#64748b;font-size:.9rem;line-height:1.45;}
+.stg-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:1rem;align-items:start;}
 .stg-side{position:sticky;top:78px;}
-.stg-side-card{background:#fff;border:1px solid #e2e8f0;border-radius:.95rem;padding:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 4px 10px rgba(15,23,42,.04);display:flex;flex-direction:column;gap:.45rem;}
-.stg-side-title{font-size:.74rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;font-weight:700;padding:.1rem .35rem;}
-.stg-side-link{display:flex;align-items:center;gap:.55rem;text-decoration:none;color:#334155;background:#fff;border:1px solid #e2e8f0;border-radius:.65rem;padding:.5rem .7rem;font-size:.84rem;font-weight:600;transition:all .15s;}
-.stg-side-link:hover{background:#f8fafc;color:#0f172a;border-color:#cbd5e1;}
-.stg-side-link i{font-size:.9rem;color:#16a34a;}
-
-.stg-main{display:flex;flex-direction:column;gap:1rem;}
-.stg-preferences-form{display:flex;flex-direction:column;gap:1.35rem;}
+.stg-side-card{background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;padding:.75rem;box-shadow:0 1px 3px rgba(15,23,42,.04);display:flex;flex-direction:column;gap:.4rem;}
+.stg-side-title{font-size:.72rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;font-weight:800;padding:.15rem .35rem;}
+.stg-side-link{display:flex;align-items:center;gap:.55rem;text-decoration:none;color:#334155;background:#fff;border:1px solid transparent;border-radius:.65rem;padding:.52rem .65rem;font-size:.84rem;font-weight:700;transition:background .15s,border-color .15s,color .15s;}
+.stg-side-link i{width:18px;color:#16a34a;text-align:center;}
+.stg-side-link:hover{background:#f8fafc;border-color:#cbd5e1;color:#0f172a;}
+.stg-main{display:flex;flex-direction:column;gap:1rem;min-width:0;}
 .stg-section{scroll-margin-top:88px;}
-.stg-card{background:#fff;border:1px solid #e2e8f0;border-radius:.95rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04);padding:1.15rem;}
-.stg-card-head{margin-bottom:1rem;}
-.stg-card-head h2{margin:0;font-size:1.05rem;font-weight:800;color:#0f172a;}
-.stg-card-head p{margin:.3rem 0 0 0;color:#64748b;font-size:.84rem;}
-
-.stg-profile-wrap{display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;}
-.stg-avatar-box{flex-shrink:0;}
-.stg-avatar-image,.stg-avatar-fallback{width:92px;height:92px;border-radius:50%;border:3px solid #dcfce7;box-shadow:0 2px 8px rgba(22,163,74,.18);}
-.stg-avatar-image{object-fit:cover;display:block;}
-.stg-avatar-fallback{display:flex;align-items:center;justify-content:center;background:#16a34a;color:#fff;font-size:1.25rem;font-weight:800;}
-.stg-profile-meta{flex:1;min-width:220px;}
-.stg-profile-meta h3{margin:0;font-size:1rem;font-weight:800;color:#0f172a;}
-.stg-profile-meta p{margin:.25rem 0 0 0;color:#64748b;font-size:.82rem;}
-
-.stg-subsection{margin-top:1.1rem;padding-top:1rem;border-top:1px solid #f1f5f9;}
-.stg-subsection h3{margin:0 0 .7rem 0;font-size:.94rem;color:#0f172a;font-weight:800;}
-
+.stg-card{background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.04),0 6px 14px rgba(15,23,42,.035);padding:1.15rem;}
+.stg-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem;}
+.stg-card-head h2{margin:0;font-size:1.02rem;font-weight:850;color:#0f172a;letter-spacing:0;}
+.stg-card-head p{margin:.25rem 0 0;color:#64748b;font-size:.84rem;line-height:1.42;}
+.stg-card-head__icon{width:38px;height:38px;border-radius:.75rem;background:#dcfce7;color:#15803d;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .stg-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;}
 .stg-grid-1{display:grid;grid-template-columns:1fr;gap:.85rem;}
 .stg-span-2{grid-column:span 2;}
-
-.stg-field{display:flex;flex-direction:column;gap:.35rem;}
-.stg-field label{font-size:.79rem;font-weight:700;color:#334155;}
-.stg-field-sm{max-width:220px;}
-
-.stg-checkbox-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;}
-.stg-check-item{display:flex;align-items:center;gap:.45rem;padding:.6rem .7rem;border:1px solid #e2e8f0;border-radius:.65rem;background:#f8fafc;font-size:.84rem;color:#334155;font-weight:600;}
-.stg-check-inline{display:flex;align-items:center;gap:.5rem;margin-top:.95rem;padding:.65rem .8rem;border:1px solid #e2e8f0;border-radius:.65rem;background:#f8fafc;font-size:.84rem;color:#334155;font-weight:600;}
-
-.stg-password-wrap{position:relative;}
-.stg-password-wrap input{padding-right:2.6rem;}
-.stg-eye-btn{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);width:30px;height:30px;border:none;background:transparent;color:#64748b;border-radius:.45rem;display:inline-flex;align-items:center;justify-content:center;}
-.stg-eye-btn:hover{background:#f1f5f9;color:#0f172a;}
-
-.stg-actions{display:flex;justify-content:flex-end;gap:.55rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #f1f5f9;flex-wrap:wrap;}
-.stg-btn-primary{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:none;border-radius:.65rem;background:#16a34a;color:#fff;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:background .15s;}
-.stg-btn-primary:hover{background:#15803d;}
-.stg-btn-ghost{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:1.5px solid #cbd5e1;border-radius:.65rem;background:#fff;color:#0f172a;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all .15s;}
-.stg-btn-ghost:hover{background:#f8fafc;border-color:#94a3b8;}
-.stg-btn-ghost:disabled{opacity:.7;cursor:not-allowed;}
-.stg-btn-danger{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1rem;border:1px solid #fecaca;border-radius:.65rem;background:#fff;color:#b91c1c;font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all .15s;}
-.stg-btn-danger:hover{background:#fef2f2;border-color:#fca5a5;color:#991b1b;}
-
-.stg-help{font-size:.77rem;color:#64748b;line-height:1.4;}
+.stg-field{display:flex;flex-direction:column;gap:.35rem;min-width:0;}
+.stg-field label{font-size:.79rem;font-weight:800;color:#334155;}
+.stg-field input,.stg-field select,.stg-field textarea{width:100%;max-width:100%;}
+.stg-field input[readonly]{background:#f8fafc;color:#64748b;cursor:not-allowed;}
+.stg-help{font-size:.77rem;color:#64748b;line-height:1.45;}
+.stg-note{display:flex;gap:.55rem;align-items:flex-start;padding:.75rem .85rem;border:1px solid #dbeafe;border-radius:.75rem;background:#eff6ff;color:#1e3a8a;font-size:.82rem;line-height:1.45;}
+.stg-note i{margin-top:.05rem;flex:0 0 auto;}
 .stg-error{font-size:.78rem;color:#dc2626;}
 .stg-error-box{margin-bottom:1rem;padding:.85rem .95rem;border-radius:.8rem;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;font-size:.82rem;line-height:1.45;}
-.stg-field input[readonly]{background:#f8fafc;color:#64748b;cursor:not-allowed;}
-.stg-geo-actions{display:flex;flex-direction:column;gap:.5rem;margin-top:.95rem;padding:.85rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc;}
+.stg-actions{display:flex;justify-content:flex-end;gap:.55rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #f1f5f9;flex-wrap:wrap;}
+.stg-actions--left{justify-content:flex-start;}
+.stg-btn-primary,.stg-btn-ghost,.stg-btn-danger{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;min-height:38px;padding:.55rem 1rem;border-radius:.65rem;font-size:.84rem;font-weight:800;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s,box-shadow .15s;}
+.stg-btn-primary{border:1px solid #16a34a;background:#16a34a;color:#fff;}
+.stg-btn-primary:hover{background:#15803d;border-color:#15803d;color:#fff;}
+.stg-btn-ghost{border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;}
+.stg-btn-ghost:hover{background:#f8fafc;border-color:#94a3b8;color:#0f172a;}
+.stg-btn-ghost:disabled{opacity:.7;cursor:not-allowed;}
+.stg-btn-danger{border:1px solid #fecaca;background:#fff;color:#b91c1c;}
+.stg-btn-danger:hover{background:#fef2f2;border-color:#fca5a5;color:#991b1b;}
+.stg-profile-wrap{display:grid;grid-template-columns:104px minmax(0,1fr);gap:1rem;align-items:start;}
+.stg-avatar-image,.stg-avatar-fallback{width:96px;height:96px;border-radius:50%;border:3px solid #dcfce7;box-shadow:0 2px 8px rgba(22,163,74,.18);}
+.stg-avatar-image{object-fit:cover;display:block;}
+.stg-avatar-fallback{display:flex;align-items:center;justify-content:center;background:#16a34a;color:#fff;font-size:1.35rem;font-weight:850;}
+.stg-upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;align-items:end;}
+.stg-checkbox-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;}
+.stg-check-item{display:flex;align-items:center;gap:.5rem;padding:.7rem .75rem;border:1px solid #e2e8f0;border-radius:.72rem;background:#f8fafc;font-size:.84rem;color:#334155;font-weight:700;}
+.stg-location-card{border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc;padding:.9rem;margin-top:.9rem;}
+.stg-location-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:.85rem;margin-bottom:.85rem;}
+.stg-location-card__head h3,.stg-location-card__head strong{margin:0;color:#0f172a;font-size:.95rem;font-weight:850;}
+.stg-location-card__head p{margin:.2rem 0 0;color:#64748b;font-size:.8rem;line-height:1.4;}
+.stg-geo-actions{display:flex;flex-direction:column;gap:.5rem;margin:.85rem 0;padding:.75rem;border:1px dashed #cbd5e1;border-radius:.75rem;background:#fff;}
 .stg-geo-status{font-size:.8rem;color:#475569;line-height:1.35;}
 .stg-geo-status--success{color:#166534;}
 .stg-geo-status--error{color:#b91c1c;}
 .stg-geo-status--info{color:#1d4ed8;}
-.stg-support-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;}
-.stg-support-meta-item{padding:.65rem .75rem;border:1px solid #e2e8f0;background:#f8fafc;border-radius:.65rem;display:flex;flex-direction:column;gap:.25rem;}
-.stg-support-meta-item span{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
-.stg-support-meta-item strong{font-size:.84rem;color:#0f172a;word-break:break-word;}
-.stg-support-history-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:.75rem;}
-.stg-support-history{width:100%;border-collapse:collapse;min-width:980px;}
-.stg-support-history thead th{background:#f8fafc;font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:.6rem .75rem;border-bottom:1px solid #e2e8f0;}
-.stg-support-history tbody td{padding:.6rem .75rem;font-size:.82rem;color:#334155;border-bottom:1px solid #f1f5f9;}
-.stg-support-history tbody tr:last-child td{border-bottom:none;}
-.stg-actions--support-history{margin-top:.8rem;padding-top:0;border-top:none;justify-content:flex-start;}
-.stg-ticket-reply-cell{max-width:360px;}
-.stg-ticket-reply-content{white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-.stg-ticket-reply-empty{color:#64748b;font-size:.78rem;}
-
-@media (max-width: 1080px){
+.stg-password-wrap{position:relative;}
+.stg-password-wrap input{padding-right:2.6rem;}
+.stg-eye-btn{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);width:30px;height:30px;border:none;background:transparent;color:#64748b;border-radius:.45rem;display:inline-flex;align-items:center;justify-content:center;}
+.stg-eye-btn:hover{background:#f1f5f9;color:#0f172a;}
+@media (max-width:1080px){
   .stg-layout{grid-template-columns:1fr;}
   .stg-side{position:static;}
-  .stg-side-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;}
+  .stg-side-card{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem;}
   .stg-side-title{grid-column:1/-1;}
-  .stg-support-meta{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
-
-@media (max-width: 780px){
-  .stg-grid-2,.stg-checkbox-grid{grid-template-columns:1fr;}
+@media (max-width:720px){
+  .stg-header,.stg-card{padding:1rem;}
+  .stg-side-card,.stg-grid-2,.stg-checkbox-grid,.stg-upload-row{grid-template-columns:1fr;}
   .stg-span-2{grid-column:span 1;}
-  .stg-card{padding:1rem;}
-  .stg-support-meta{grid-template-columns:1fr;}
+  .stg-profile-wrap{grid-template-columns:1fr;}
+  .stg-actions{justify-content:stretch;}
+  .stg-btn-primary,.stg-btn-ghost,.stg-btn-danger{width:100%;}
+  .stg-card-head,.stg-location-card__head{flex-direction:column;}
 }
 </style>
 
-<script>
-(function () {
-  const button = document.getElementById("autoLocationBtn");
-  if (!button) return;
-
-  const statusEl = document.getElementById("autoLocationStatus");
-  const latitudeInput = document.getElementById("id_latitude");
-  const longitudeInput = document.getElementById("id_longitude");
-  const postalCodeInput = document.getElementById("id_postal_code");
-  const cityInput = document.getElementById("id_city");
-  const districtInput = document.getElementById("id_district");
-  const addressLineInput = document.getElementById("id_address_line");
-
-  function setStatus(level, message) {
-    if (!statusEl) return;
-    statusEl.className = "stg-geo-status";
-    if (level === "success") statusEl.classList.add("stg-geo-status--success");
-    if (level === "error") statusEl.classList.add("stg-geo-status--error");
-    if (level === "info") statusEl.classList.add("stg-geo-status--info");
-    statusEl.textContent = message;
-  }
-
-  function normalizePostalCode(value) {
-    const raw = (value || "").trim();
-    if (!raw) return "";
-
-    const digits = raw.replace(/\D/g, "");
-    if (digits.length === 7) {
-      return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-    }
-    return raw.toUpperCase();
-  }
-
-  function geolocationPromise(options) {
-    return new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, options);
-    });
-  }
-
-  button.addEventListener("click", async function () {
-    if (!navigator.geolocation) {
-      setStatus("error", "Este navegador não suporta geolocalização.");
-      return;
-    }
-
-    button.disabled = true;
-    setStatus("info", "A obter localização do dispositivo...");
-
-    try {
-      const position = await geolocationPromise({
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
-      });
-
-      const lat = Number(position.coords.latitude || 0);
-      const lon = Number(position.coords.longitude || 0);
-
-      if (latitudeInput) latitudeInput.value = lat.toFixed(6);
-      if (longitudeInput) longitudeInput.value = lon.toFixed(6);
-
-      setStatus("info", "A converter coordenadas em morada...");
-
-      const endpoint = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1&accept-language=pt-PT`;
-      const response = await fetch(endpoint, { method: "GET" });
-
-      if (!response.ok) {
-        throw new Error("Falha ao obter os dados de morada.");
-      }
-
-      const payload = await response.json();
-      const address = payload.address || {};
-
-      const postcode = normalizePostalCode(address.postcode);
-      const city = address.city || address.town || address.village || address.municipality || "";
-      const district = address.county || address.state_district || address.state || "";
-      const road = address.road || "";
-      const houseNumber = address.house_number || "";
-      const addressLine = [road, houseNumber].filter(Boolean).join(", ");
-
-      if (postalCodeInput && postcode) postalCodeInput.value = postcode;
-      if (cityInput && city) cityInput.value = city;
-      if (districtInput && district) districtInput.value = district;
-      if (addressLineInput && !addressLineInput.value.trim() && addressLine) {
-        addressLineInput.value = addressLine;
-      }
-
-      setStatus("success", "Localização preenchida. Confirma os dados e clica em \"Guardar perfil do produtor\".");
-    } catch (error) {
-      if (error && typeof error.code === "number") {
-        if (error.code === 1) {
-          setStatus("error", "Permissão de localização recusada.");
-        } else if (error.code === 2) {
-          setStatus("error", "Não foi possível determinar a localização atual.");
-        } else if (error.code === 3) {
-          setStatus("error", "Tempo limite excedido ao obter a localização.");
-        } else {
-          setStatus("error", "Erro ao obter localização automática.");
-        }
-      } else {
-        setStatus("error", "Não foi possível converter a localização em morada.");
-      }
-    } finally {
-      button.disabled = false;
-    }
-  });
-})();
-</script>
+{% include "settings/partials/location_script.html" %}
 
 {% endblock %}

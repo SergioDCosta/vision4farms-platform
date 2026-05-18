@@ -1,0 +1,49 @@
+<section id="notificacoes" class="stg-section">
+  <div class="stg-card">
+    <div class="stg-card-head">
+      <div>
+        <h2>Notificações</h2>
+        {% if is_client_user %}
+          <p>Escolha como quer receber alertas operacionais e avisos importantes.</p>
+        {% else %}
+          <p>Escolha como quer receber notificações de gestão e auditoria.</p>
+        {% endif %}
+      </div>
+      <div class="stg-card-head__icon"><i class="bi bi-bell"></i></div>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="preferences">
+
+      {% if preferences_form.non_field_errors %}
+        <div class="stg-error-box">{{ preferences_form.non_field_errors|join:" " }}</div>
+      {% endif %}
+
+      <div class="stg-checkbox-grid">
+        <label class="stg-check-item">
+          {{ preferences_form.alerts_in_app }}
+          <span>Na app</span>
+        </label>
+        <label class="stg-check-item">
+          {{ preferences_form.alerts_email }}
+          <span>Email</span>
+        </label>
+        <label class="stg-check-item">
+          {{ preferences_form.alerts_sms }}
+          <span>SMS</span>
+        </label>
+      </div>
+
+      {% if preferences_form.alerts_in_app.errors or preferences_form.alerts_email.errors or preferences_form.alerts_sms.errors %}
+        <div class="stg-error">Verifica as opções selecionadas.</div>
+      {% endif %}
+
+      <div class="stg-actions">
+        <button type="submit" class="stg-btn-primary">
+          <i class="bi bi-check-circle"></i> Guardar preferências
+        </button>
+      </div>
+    </form>
+  </div>
+</section>

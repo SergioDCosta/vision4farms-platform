@@ -5,5 +5,4 @@ Recebemos o teu pedido de suporte e já foi registado com o número #{{ ticket.t
 Assunto: {{ ticket.subject }}
 
 Podes acompanhar o estado em:
-{{ settings_url }}
-
+{{ support_url }}

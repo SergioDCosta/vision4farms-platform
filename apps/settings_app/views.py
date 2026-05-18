@@ -1,128 +1,53 @@
-import uuid
-from pathlib import Path
-
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
-from django.core.files.storage import default_storage
-from django.core.files.uploadedfile import UploadedFile
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from apps.common.decorators import login_required
-from apps.common.audit import log_audit_event
-from apps.accounts.services import send_password_changed_email
 from apps.accounts.models import UserRole
+from apps.accounts.services import send_password_changed_email
+from apps.common.audit import log_audit_event
+from apps.common.decorators import login_required
 from apps.inventory.models import ProducerProfile
 from apps.settings_app.forms import (
-    AccountProfileForm,
     ChangePasswordForm,
-    ProducerProfileSettingsForm,
+    IdentityProfileForm,
+    ProducerLocationForm,
+    ProfilePhotoForm,
     UserPreferencesForm,
 )
-from apps.settings_app.models import UserPreference
-from apps.support.forms import SupportTicketCreateForm
-from apps.support.models import SupportTicket
+from apps.settings_app.services import (
+    avatar_initials,
+    ensure_user_preference,
+    profile_photo_url,
+    remove_profile_photo,
+    update_identity_profile,
+    update_notification_preferences,
+    update_producer_location,
+    update_profile_photo,
+)
 
 
-def _ensure_user_preference(user):
-    preference = UserPreference.objects.filter(user=user).first()
-    if preference:
-        return preference
-
-    return UserPreference.objects.create(
-        id=uuid.uuid4(),
-        user=user,
-        alerts_in_app=True,
-        alerts_email=False,
-        alerts_sms=False,
-        created_at=timezone.now(),
-        updated_at=timezone.now(),
-    )
+def _settings_redirect(anchor=""):
+    response = redirect("settings_app:settings_index")
+    if anchor:
+        response["Location"] = f"{response['Location']}#{anchor}"
+    return response
 
 
-def _profile_photo_url(preference):
-    if not preference or not preference.profile_photo:
-        return None
-
-    photo_path = str(preference.profile_photo).strip()
-    if not photo_path:
-        return None
-
-    if photo_path.startswith(("http://", "https://")):
-        base_url = photo_path
-    else:
-        if photo_path.startswith(settings.MEDIA_URL):
-            photo_path = photo_path[len(settings.MEDIA_URL):]
-
-        normalized_path = photo_path.lstrip("/").strip()
-        if not normalized_path:
-            return None
-
-        try:
-            base_url = default_storage.url(normalized_path)
-        except Exception:
-            base_url = f"{settings.MEDIA_URL}{normalized_path}"
-
-    if preference.updated_at:
-        separator = "&" if "?" in base_url else "?"
-        return f"{base_url}{separator}v={int(preference.updated_at.timestamp())}"
-    return base_url
-
-
-def _user_initials(user):
-    first_initial = (user.first_name or "").strip()[:1]
-    last_initial = (user.last_name or "").strip()[:1]
-    initials = f"{first_initial}{last_initial}".upper()
-    return initials or "U"
-
-
-def _settings_snapshot(instance, fields):
-    snapshot = {}
-    for field in fields:
-        value = getattr(instance, field, None)
-        if field == "profile_photo":
-            value = str(value or "")
-        snapshot[field] = value
-    return snapshot
-
-
-def _save_profile_photo(user, uploaded_file):
-    if not isinstance(uploaded_file, UploadedFile):
-        raise ValueError("O ficheiro enviado para foto de perfil é inválido.")
-
-    extension = Path(uploaded_file.name).suffix.lower() or ".jpg"
-    filename = f"profile_photos/{user.id}/{timezone.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}{extension}"
-    return default_storage.save(filename, uploaded_file)
-
-def _delete_profile_photo(photo_path):
-    if not photo_path:
-        return False
-
-    photo_path = str(photo_path).strip()
-    if not photo_path:
-        return False
-
-    # Se por algum motivo vier com MEDIA_URL, limpar
-    if photo_path.startswith(settings.MEDIA_URL):
-        photo_path = photo_path[len(settings.MEDIA_URL):]
-
-    if photo_path.startswith(("http://", "https://")):
-        media_marker = f"{settings.MEDIA_URL.rstrip('/')}/"
-        if media_marker in photo_path:
-            photo_path = photo_path.split(media_marker, 1)[1]
-        else:
-            return False
-
-    photo_path = photo_path.lstrip("/").strip()
-    if not photo_path:
-        return False
-
-    try:
-        default_storage.delete(photo_path)
-        return True
-    except Exception:
-        return False
+def _build_base_forms(*, user, preference, producer_profile):
+    return {
+        "identity_form": IdentityProfileForm(
+            user=user,
+            producer_profile=producer_profile,
+        ),
+        "location_form": (
+            ProducerLocationForm(instance=producer_profile)
+            if producer_profile else None
+        ),
+        "photo_form": ProfilePhotoForm(),
+        "preferences_form": UserPreferencesForm(instance=preference, user=user),
+        "security_form": ChangePasswordForm(user=user),
+    }
 
 
 @login_required
@@ -131,237 +56,122 @@ def settings_view(request):
     if not user:
         return redirect("accounts:login")
 
-    preference = _ensure_user_preference(user)
+    preference = ensure_user_preference(user)
     is_admin_user = user.role == UserRole.ADMIN
     is_client_user = user.role == UserRole.CLIENTE
-    producer_profile = ProducerProfile.objects.filter(user=user).first() if is_client_user else None
+    producer_profile = (
+        ProducerProfile.objects.filter(user=user).first()
+        if is_client_user else None
+    )
 
-    account_form = AccountProfileForm(
+    forms = _build_base_forms(
         user=user,
-        initial={
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "email": user.email,
-        },
+        preference=preference,
+        producer_profile=producer_profile,
     )
-    producer_profile_form = (
-        ProducerProfileSettingsForm(instance=producer_profile)
-        if producer_profile else None
-    )
-    preferences_form = UserPreferencesForm(instance=preference, user=user)
-    security_form = ChangePasswordForm(user=user)
-    support_form = SupportTicketCreateForm() if not is_admin_user else None
-    support_tickets = []
-    support_tickets_show_all = False
-    support_tickets_has_more = False
-    if not is_admin_user:
-        try:
-            support_tickets_show_all = (request.GET.get("support_all") or "").strip() == "1"
-            support_tickets_qs = (
-                SupportTicket.objects.filter(requester_user=user)
-                .select_related("assigned_admin")
-                .order_by("-created_at")
-            )
-            support_tickets_total = support_tickets_qs.count()
-            support_tickets_has_more = support_tickets_total > 3
-
-            if support_tickets_show_all:
-                support_tickets = list(support_tickets_qs)
-            else:
-                support_tickets = list(support_tickets_qs[:3])
-        except Exception:
-            support_tickets = []
-            support_tickets_show_all = False
-            support_tickets_has_more = False
 
     if request.method == "POST":
         form_type = (request.POST.get("form_type") or "").strip()
 
-        if form_type == "account":
-            account_form = AccountProfileForm(request.POST, user=user)
-            if account_form.is_valid():
-                changed_fields = []
-                old_values = {
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "email": user.email,
-                }
-                first_name = account_form.cleaned_data["first_name"]
-                last_name = account_form.cleaned_data["last_name"]
-
-                if user.first_name != first_name:
-                    user.first_name = first_name
-                    changed_fields.append("first_name")
-
-                if user.last_name != last_name:
-                    user.last_name = last_name
-                    changed_fields.append("last_name")
-
-                if changed_fields:
-                    user.updated_at = timezone.now()
-                    user.save(update_fields=changed_fields + ["updated_at"])
-                    request.session["user_name"] = user.full_name
-                    changed_labels = {
-                        "first_name": "primeiro nome",
-                        "last_name": "último nome",
-                        "email": "email",
-                    }
-                    log_audit_event(
-                        request=request,
-                        user=user,
-                        action="USER_PROFILE_UPDATED",
-                        entity_type="users",
-                        entity_id=user.id,
-                        notes=(
-                            "Utilizador atualizou dados da conta: "
-                            + ", ".join(changed_labels.get(field, field) for field in changed_fields)
-                            + "."
-                        ),
-                        old_values=old_values,
-                        new_values={
-                            "first_name": user.first_name,
-                            "last_name": user.last_name,
-                            "email": user.email,
-                        },
-                    )
-                    messages.success(request, "Dados da conta atualizados com sucesso.")
-                else:
-                    messages.info(request, "Não foram detetadas alterações nos dados da conta.")
-
-                return redirect("settings_app:settings_index")
-
-            messages.error(request, "Não foi possível guardar os dados da conta. Verifica os campos.")
-
-        elif form_type == "producer_profile":
-            if not producer_profile:
-                messages.error(request, "Perfil de produtor não encontrado para esta conta.")
-                return redirect("settings_app:settings_index")
-
-            producer_profile_form = ProducerProfileSettingsForm(request.POST, instance=producer_profile)
-            if producer_profile_form.is_valid():
-                changed_fields = list(producer_profile_form.changed_data)
-                old_values = _settings_snapshot(producer_profile, changed_fields)
-
-                if changed_fields:
-                    updated_profile = producer_profile_form.save(commit=False)
-                    updated_profile.updated_at = timezone.now()
-                    updated_profile.save(update_fields=changed_fields + ["updated_at"])
-                    log_audit_event(
-                        request=request,
-                        user=user,
-                        action="USER_PRODUCER_PROFILE_UPDATED",
-                        entity_type="producer_profiles",
-                        entity_id=producer_profile.id,
-                        notes="Utilizador atualizou o perfil de produtor.",
-                        old_values=old_values,
-                        new_values=_settings_snapshot(updated_profile, changed_fields),
-                    )
-                    messages.success(request, "Perfil de produtor atualizado com sucesso.")
-                else:
-                    messages.info(request, "Não foram detetadas alterações no perfil de produtor.")
-
-                return redirect("settings_app:settings_index")
-
-            messages.error(request, "Não foi possível guardar o perfil de produtor. Verifica os campos.")
-
-        elif form_type == "remove_photo":
-            if preference.profile_photo:
-                old_photo = preference.profile_photo
-                preference.profile_photo = None
-                preference.updated_at = timezone.now()
-                preference.save(update_fields=["profile_photo", "updated_at"])
-                _delete_profile_photo(old_photo)
-                log_audit_event(
+        if form_type == "identity_profile":
+            forms["identity_form"] = IdentityProfileForm(
+                request.POST,
+                user=user,
+                producer_profile=producer_profile,
+            )
+            if forms["identity_form"].is_valid():
+                changed = update_identity_profile(
                     request=request,
                     user=user,
-                    action="USER_PROFILE_PHOTO_REMOVED",
-                    entity_type="user_preferences",
-                    entity_id=preference.id,
-                    notes="Utilizador removeu a foto de perfil.",
-                    old_values={"profile_photo": str(old_photo or "")},
-                    new_values={"profile_photo": ""},
+                    producer_profile=producer_profile,
+                    form=forms["identity_form"],
                 )
+                if changed:
+                    messages.success(request, "Identidade e perfil atualizados com sucesso.")
+                else:
+                    messages.info(request, "Não foram detetadas alterações na identidade e perfil.")
+                return _settings_redirect("perfil-produtor")
+            messages.error(request, "Não foi possível guardar a identidade e perfil. Verifica os campos.")
+
+        elif form_type == "location":
+            if not producer_profile:
+                messages.error(request, "Perfil de produtor não encontrado para esta conta.")
+                return _settings_redirect("localizacao")
+
+            forms["location_form"] = ProducerLocationForm(
+                request.POST,
+                instance=producer_profile,
+            )
+            if forms["location_form"].is_valid():
+                changed = update_producer_location(
+                    request=request,
+                    user=user,
+                    producer_profile=producer_profile,
+                    form=forms["location_form"],
+                )
+                if changed:
+                    messages.success(request, "Localização atualizada com sucesso.")
+                else:
+                    messages.info(request, "Não foram detetadas alterações na localização.")
+                return _settings_redirect("localizacao")
+            messages.error(request, "Não foi possível guardar a localização. Verifica os campos.")
+
+        elif form_type == "photo":
+            forms["photo_form"] = ProfilePhotoForm(request.POST, request.FILES)
+            if forms["photo_form"].is_valid():
+                try:
+                    update_profile_photo(
+                        request=request,
+                        user=user,
+                        preference=preference,
+                        uploaded_file=forms["photo_form"].cleaned_data["profile_photo"],
+                    )
+                    messages.success(request, "Foto de perfil atualizada com sucesso.")
+                    return _settings_redirect("foto")
+                except Exception:
+                    messages.error(request, "Não foi possível guardar a foto. Tenta novamente.")
+            else:
+                messages.error(request, "Não foi possível guardar a foto. Verifica o ficheiro enviado.")
+
+        elif form_type == "remove_photo":
+            removed = remove_profile_photo(
+                request=request,
+                user=user,
+                preference=preference,
+            )
+            if removed:
                 messages.success(request, "Foto de perfil removida com sucesso.")
             else:
                 messages.info(request, "Não existe foto de perfil para remover.")
-
-            return redirect("settings_app:settings_index")
+            return _settings_redirect("foto")
 
         elif form_type == "preferences":
-            preferences_form = UserPreferencesForm(request.POST, request.FILES, instance=preference, user=user)
-            if preferences_form.is_valid():
-                allowed_model_fields = {
-                    "alerts_in_app",
-                    "alerts_email",
-                    "alerts_sms",
-                    "profile_photo",
-                }
-
-                changed_fields = [
-                    field for field in preferences_form.changed_data
-                    if field in allowed_model_fields
-                ]
-                previous_preference_values = _settings_snapshot(preference, allowed_model_fields)
-
-                uploaded_photo = request.FILES.get("profile_photo")
-                old_photo = preference.profile_photo if uploaded_photo else None
-                new_photo_path = None
-
-                updated_preference = preferences_form.save(commit=False)
-
-                if uploaded_photo:
-                    new_photo_path = _save_profile_photo(user, uploaded_photo)
-
-                    updated_preference.profile_photo = new_photo_path
-                    if "profile_photo" not in changed_fields:
-                        changed_fields.append("profile_photo")
-
-                if changed_fields:
-                    old_values = {
-                        field: previous_preference_values.get(field)
-                        for field in changed_fields
-                    }
-                    updated_preference.updated_at = timezone.now()
-
-                    update_fields = list(set(changed_fields + ["updated_at"]))
-
-                    try:
-                        updated_preference.save(update_fields=update_fields)
-                    except Exception:
-                        if new_photo_path:
-                            _delete_profile_photo(new_photo_path)
-                        messages.error(request, "Não foi possível guardar as preferências. Tenta novamente.")
-                        return redirect("settings_app:settings_index")
-
-                    if new_photo_path and old_photo and old_photo != new_photo_path:
-                        _delete_profile_photo(old_photo)
-
-                    log_audit_event(
-                        request=request,
-                        user=user,
-                        action="USER_PREFERENCES_UPDATED",
-                        entity_type="user_preferences",
-                        entity_id=preference.id,
-                        notes="Utilizador atualizou preferências da conta.",
-                        old_values=old_values,
-                        new_values=_settings_snapshot(updated_preference, changed_fields),
-                    )
-                    messages.success(request, "Preferências atualizadas com sucesso.")
+            forms["preferences_form"] = UserPreferencesForm(request.POST, instance=preference, user=user)
+            if forms["preferences_form"].is_valid():
+                changed = update_notification_preferences(
+                    request=request,
+                    user=user,
+                    preference=preference,
+                    form=forms["preferences_form"],
+                )
+                if changed:
+                    messages.success(request, "Preferências de notificações atualizadas.")
                 else:
-                    messages.info(request, "Não foram detetadas alterações nas preferências.")
-
-                return redirect("settings_app:settings_index")
-
+                    messages.info(request, "Não foram detetadas alterações nas notificações.")
+                return _settings_redirect("notificacoes")
             messages.error(request, "Não foi possível guardar as preferências. Verifica os campos.")
 
         elif form_type == "security":
-            security_form = ChangePasswordForm(request.POST, user=user)
-            if security_form.is_valid():
-                current_password = security_form.cleaned_data["current_password"]
-                new_password = security_form.cleaned_data["new_password"]
+            forms["security_form"] = ChangePasswordForm(request.POST, user=user)
+            if forms["security_form"].is_valid():
+                current_password = forms["security_form"].cleaned_data["current_password"]
+                new_password = forms["security_form"].cleaned_data["new_password"]
 
                 if not check_password(current_password, user.password):
-                    security_form.add_error("current_password", "A palavra-passe atual está incorreta.")
+                    forms["security_form"].add_error(
+                        "current_password",
+                        "A palavra-passe atual está incorreta.",
+                    )
                     messages.error(request, "Não foi possível alterar a palavra-passe.")
                 else:
                     user.password = make_password(new_password)
@@ -390,23 +200,14 @@ def settings_view(request):
                 messages.error(request, "Não foi possível alterar a palavra-passe. Verifica os campos.")
         else:
             messages.error(request, "Ação inválida.")
-            return redirect("settings_app:settings_index")
+            return _settings_redirect()
 
     context = {
-        "page_title": "Definições e Perfil",
-        "account_form": account_form,
-        "producer_profile_form": producer_profile_form,
-        "preferences_form": preferences_form,
-        "security_form": security_form,
-        "support_form": support_form,
-        "support_tickets": support_tickets,
-        "support_tickets_show_all": support_tickets_show_all,
-        "support_tickets_has_more": support_tickets_has_more,
-        "support_company_snapshot": getattr(producer_profile, "company_name", None) if producer_profile else None,
-        "support_phone_snapshot": getattr(producer_profile, "phone", None) if producer_profile else None,
+        "page_title": "Definições",
         "is_admin_user": is_admin_user,
-        "is_client_user": is_client_user and bool(producer_profile_form),
-        "profile_photo_url": _profile_photo_url(preference),
-        "avatar_initials": _user_initials(user),
+        "is_client_user": is_client_user and bool(forms["location_form"]),
+        "profile_photo_url": profile_photo_url(preference),
+        "avatar_initials": avatar_initials(user),
+        **forms,
     }
     return render(request, "settings/settings_panel.html", context)

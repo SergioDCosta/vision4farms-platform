@@ -1,8 +1,6 @@
-from django.conf import settings
-from django.core.files.storage import default_storage
-
 from apps.accounts.models import UserRole
 from apps.alerts.services import get_client_alerts_badge_state
+from apps.common.media import resolve_media_url
 from apps.messaging.services import get_client_messages_badge_state
 from apps.settings_app.models import UserPreference
 from apps.support.services import get_admin_support_badge_state
@@ -30,34 +28,30 @@ def _cached(request, key, factory):
     return cache[key]
 
 
-def _resolve_media_url(photo_path):
-    if not photo_path:
-        return None
+def _avatar_initials(user):
+    first_name = (getattr(user, "first_name", "") or "").strip()
+    last_name = (getattr(user, "last_name", "") or "").strip()
+    if first_name and last_name:
+        return f"{first_name[0]}{last_name[0]}".upper()
 
-    raw_path = str(photo_path).strip()
-    if not raw_path:
-        return None
+    full_name = (getattr(user, "full_name", "") or "").strip()
+    parts = [part for part in full_name.split() if part]
+    if len(parts) >= 2:
+        return f"{parts[0][0]}{parts[-1][0]}".upper()
+    if len(parts) == 1:
+        return parts[0][:2].upper()
 
-    if raw_path.startswith(("http://", "https://")):
-        return raw_path
-
-    if raw_path.startswith(settings.MEDIA_URL):
-        raw_path = raw_path[len(settings.MEDIA_URL):]
-
-    normalized_path = raw_path.lstrip("/").strip()
-    if not normalized_path:
-        return None
-
-    try:
-        return default_storage.url(normalized_path)
-    except Exception:
-        return f"{settings.MEDIA_URL}{normalized_path}"
+    email = (getattr(user, "email", "") or "").strip()
+    return (email[:2] or "U").upper()
 
 
 def topbar_user_profile(request):
     user = getattr(request, "current_user", None)
     if not user:
-        return {"topbar_profile_photo_url": None}
+        return {
+            "topbar_profile_photo_url": None,
+            "topbar_avatar_initials": "U",
+        }
 
     def _get_profile_photo_url():
         preference = (
@@ -70,14 +64,15 @@ def topbar_user_profile(request):
         if not preference:
             return None
 
-        return _resolve_media_url(preference.profile_photo)
+        return resolve_media_url(preference.profile_photo)
 
     return {
         "topbar_profile_photo_url": _cached(
             request,
             "topbar_profile_photo_url",
             _get_profile_photo_url,
-        )
+        ),
+        "topbar_avatar_initials": _avatar_initials(user),
     }
 
 

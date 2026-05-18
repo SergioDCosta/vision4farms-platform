@@ -1,0 +1,58 @@
+<section id="foto" class="stg-section">
+  <div class="stg-card">
+    <div class="stg-card-head">
+      <div>
+        <h2>Foto</h2>
+        <p>Imagem usada na topbar, mensagens e áreas de perfil.</p>
+      </div>
+      <div class="stg-card-head__icon"><i class="bi bi-image"></i></div>
+    </div>
+
+    <div class="stg-profile-wrap">
+      <div>
+        {% if profile_photo_url %}
+          <img src="{{ profile_photo_url }}" alt="Foto de perfil" class="stg-avatar-image">
+        {% else %}
+          <div class="stg-avatar-fallback">{{ avatar_initials }}</div>
+        {% endif %}
+      </div>
+
+      <div>
+        <form method="post" enctype="multipart/form-data" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="form_type" value="photo">
+
+          {% if photo_form.non_field_errors %}
+            <div class="stg-error-box">{{ photo_form.non_field_errors|join:" " }}</div>
+          {% endif %}
+
+          <div class="stg-upload-row">
+            <div class="stg-field">
+              <label for="{{ photo_form.profile_photo.id_for_label }}">{{ photo_form.profile_photo.label }}</label>
+              {{ photo_form.profile_photo }}
+              {% if photo_form.profile_photo.errors %}<div class="stg-error">{{ photo_form.profile_photo.errors|join:" " }}</div>{% endif %}
+              <div class="stg-help">Ao carregar uma nova foto, a anterior será substituída.</div>
+            </div>
+            <button type="submit" class="stg-btn-primary">
+              <i class="bi bi-upload"></i> Guardar foto
+            </button>
+          </div>
+        </form>
+
+        {% if profile_photo_url %}
+          <form method="post" class="stg-actions stg-actions--left">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="stg-btn-danger"
+              name="form_type"
+              value="remove_photo"
+              onclick="return confirm('Queres remover a foto de perfil agora?');">
+              <i class="bi bi-trash"></i> Remover foto
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>

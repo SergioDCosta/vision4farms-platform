@@ -10,6 +10,7 @@ from apps.common.audit import log_audit_event
 from apps.common.context_processors import (
     admin_support_sidebar_badge,
     client_alerts_sidebar_badge,
+    topbar_user_profile,
 )
 from apps.common.decorators import admin_required, client_only_required, login_required
 from apps.common.formatting import format_quantity
@@ -193,6 +194,22 @@ class CommonContextProcessorTests(SimpleTestCase):
 
         self.assertEqual(first, second)
         badge_mock.assert_called_once_with(request)
+
+    @patch("apps.common.context_processors.UserPreference.objects")
+    def test_topbar_avatar_initials_use_first_and_last_name(self, preference_manager_mock):
+        request = self.factory.get("/")
+        request.current_user = SimpleNamespace(
+            first_name="Sergio",
+            last_name="Costa",
+            full_name="Sergio Costa",
+            email="sergio@example.com",
+        )
+        preference_manager_mock.filter.return_value.only.return_value.first.return_value = None
+
+        result = topbar_user_profile(request)
+
+        self.assertEqual(result["topbar_avatar_initials"], "SC")
+        self.assertIsNone(result["topbar_profile_photo_url"])
 
 
 class AuditTests(SimpleTestCase):

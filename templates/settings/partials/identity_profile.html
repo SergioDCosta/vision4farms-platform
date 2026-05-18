@@ -1,0 +1,79 @@
+<section id="perfil-produtor" class="stg-section">
+  <div class="stg-card">
+    <div class="stg-card-head">
+      <div>
+        <h2>Identidade e perfil</h2>
+        <p>Estes dados identificam o utilizador e o produtor na plataforma.</p>
+      </div>
+      <div class="stg-card-head__icon"><i class="bi bi-person-badge"></i></div>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="identity_profile">
+
+      {% if identity_form.non_field_errors %}
+        <div class="stg-error-box">{{ identity_form.non_field_errors|join:" " }}</div>
+      {% endif %}
+
+      <div class="stg-grid-2">
+        <div class="stg-field">
+          <label for="{{ identity_form.first_name.id_for_label }}">{{ identity_form.first_name.label }}</label>
+          {{ identity_form.first_name }}
+          {% if identity_form.first_name.errors %}<div class="stg-error">{{ identity_form.first_name.errors|join:" " }}</div>{% endif %}
+        </div>
+
+        <div class="stg-field">
+          <label for="{{ identity_form.last_name.id_for_label }}">{{ identity_form.last_name.label }}</label>
+          {{ identity_form.last_name }}
+          {% if identity_form.last_name.errors %}<div class="stg-error">{{ identity_form.last_name.errors|join:" " }}</div>{% endif %}
+        </div>
+
+        <div class="stg-field stg-span-2">
+          <label for="{{ identity_form.email.id_for_label }}">{{ identity_form.email.label }}</label>
+          {{ identity_form.email }}
+          {% if identity_form.email.errors %}<div class="stg-error">{{ identity_form.email.errors|join:" " }}</div>{% endif %}
+          <div class="stg-help">O email está bloqueado para edição direta.</div>
+        </div>
+
+        {% if identity_form.company_name %}
+          <div class="stg-field">
+            <label for="{{ identity_form.company_name.id_for_label }}">{{ identity_form.company_name.label }}</label>
+            {{ identity_form.company_name }}
+            {% if identity_form.company_name.errors %}<div class="stg-error">{{ identity_form.company_name.errors|join:" " }}</div>{% endif %}
+          </div>
+        {% endif %}
+
+        {% if identity_form.phone %}
+          <div class="stg-field">
+            <label for="{{ identity_form.phone.id_for_label }}">{{ identity_form.phone.label }}</label>
+            {{ identity_form.phone }}
+            {% if identity_form.phone.errors %}<div class="stg-error">{{ identity_form.phone.errors|join:" " }}</div>{% endif %}
+          </div>
+        {% endif %}
+
+        {% if identity_form.nif %}
+          <div class="stg-field">
+            <label for="{{ identity_form.nif.id_for_label }}">{{ identity_form.nif.label }}</label>
+            {{ identity_form.nif }}
+            {% if identity_form.nif.errors %}<div class="stg-error">{{ identity_form.nif.errors|join:" " }}</div>{% endif %}
+          </div>
+        {% endif %}
+
+        {% if identity_form.user_type %}
+          <div class="stg-field">
+            <label for="{{ identity_form.user_type.id_for_label }}">{{ identity_form.user_type.label }}</label>
+            {{ identity_form.user_type }}
+            {% if identity_form.user_type.errors %}<div class="stg-error">{{ identity_form.user_type.errors|join:" " }}</div>{% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="stg-actions">
+        <button type="submit" class="stg-btn-primary">
+          <i class="bi bi-check2"></i> Guardar identidade e perfil
+        </button>
+      </div>
+    </form>
+  </div>
+</section>

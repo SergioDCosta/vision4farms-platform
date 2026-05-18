@@ -8,5 +8,4 @@ Resposta do administrador:
 {{ ticket.admin_reply_message }}
 
 Podes consultar o histórico em:
-{{ settings_url }}
-
+{{ support_url }}

@@ -30,7 +30,9 @@
          hx-push-url="true"
          class="topbar-icon-btn" title="Alertas" aria-label="Alertas">
         <i class="bi bi-bell"></i>
-        <span class="topbar-notif-dot"></span>
+        {% if client_alerts_badge.visible and client_alerts_badge.count %}
+          <span class="topbar-notif-dot"></span>
+        {% endif %}
       </a>
     {% endif %}
 
@@ -47,7 +49,7 @@
           {% if topbar_profile_photo_url %}
             <img src="{{ topbar_profile_photo_url }}" alt="Foto de perfil">
           {% else %}
-            {{ request.session.user_name|default:"U"|slice:":2"|upper }}
+            {{ topbar_avatar_initials|default:"U" }}
           {% endif %}
         </div>
         <div class="topbar-profile-info topbar-hide-mobile">

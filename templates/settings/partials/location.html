@@ -1,0 +1,80 @@
+<section id="localizacao" class="stg-section">
+  <div class="stg-card">
+    <div class="stg-card-head">
+      <div>
+        <h2>Localização</h2>
+        <p>Usada para clima, marketplace e contexto logístico. Pode preencher manualmente ou usar o dispositivo.</p>
+      </div>
+      <div class="stg-card-head__icon"><i class="bi bi-geo-alt"></i></div>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="form_type" value="location">
+
+      {% if location_form.non_field_errors %}
+        <div class="stg-error-box">{{ location_form.non_field_errors|join:" " }}</div>
+      {% endif %}
+
+      <div class="stg-grid-2">
+        <div class="stg-field stg-span-2">
+          <label for="{{ location_form.address_line.id_for_label }}">{{ location_form.address_line.label }}</label>
+          {{ location_form.address_line }}
+          {% if location_form.address_line.errors %}<div class="stg-error">{{ location_form.address_line.errors|join:" " }}</div>{% endif %}
+        </div>
+
+        <div class="stg-field">
+          <label for="{{ location_form.postal_code.id_for_label }}">{{ location_form.postal_code.label }}</label>
+          {{ location_form.postal_code }}
+          {% if location_form.postal_code.errors %}<div class="stg-error">{{ location_form.postal_code.errors|join:" " }}</div>{% endif %}
+        </div>
+
+        <div class="stg-field">
+          <label for="{{ location_form.city.id_for_label }}">{{ location_form.city.label }}</label>
+          {{ location_form.city }}
+          {% if location_form.city.errors %}<div class="stg-error">{{ location_form.city.errors|join:" " }}</div>{% endif %}
+        </div>
+
+        <div class="stg-field">
+          <label for="{{ location_form.district.id_for_label }}">{{ location_form.district.label }}</label>
+          {{ location_form.district }}
+          {% if location_form.district.errors %}<div class="stg-error">{{ location_form.district.errors|join:" " }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="stg-geo-actions">
+        <button type="button" id="autoLocationBtn" class="stg-btn-ghost">
+          <i class="bi bi-geo-alt"></i> Obter localização automaticamente
+        </button>
+        <div id="autoLocationStatus" class="stg-geo-status" aria-live="polite"></div>
+      </div>
+
+      <details class="stg-location-card">
+        <summary class="stg-location-card__head">
+          <span>
+            <strong>Coordenadas avançadas</strong>
+            <p>Preenchidas automaticamente quando usa a localização do dispositivo.</p>
+          </span>
+        </summary>
+        <div class="stg-grid-2">
+          <div class="stg-field">
+            <label for="{{ location_form.latitude.id_for_label }}">{{ location_form.latitude.label }}</label>
+            {{ location_form.latitude }}
+            {% if location_form.latitude.errors %}<div class="stg-error">{{ location_form.latitude.errors|join:" " }}</div>{% endif %}
+          </div>
+          <div class="stg-field">
+            <label for="{{ location_form.longitude.id_for_label }}">{{ location_form.longitude.label }}</label>
+            {{ location_form.longitude }}
+            {% if location_form.longitude.errors %}<div class="stg-error">{{ location_form.longitude.errors|join:" " }}</div>{% endif %}
+          </div>
+        </div>
+      </details>
+
+      <div class="stg-actions">
+        <button type="submit" class="stg-btn-primary">
+          <i class="bi bi-check-circle"></i> Guardar localização
+        </button>
+      </div>
+    </form>
+  </div>
+</section>

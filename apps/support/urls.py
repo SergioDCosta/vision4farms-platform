@@ -5,6 +5,7 @@ from apps.support import views
 app_name = "support"
 
 urlpatterns = [
+    path("suporte/", views.support_index_view, name="index"),
     path("suporte/tickets/", views.support_ticket_create_view, name="ticket_create"),
     path("gestor/suporte/", views.admin_support_tickets_view, name="admin_ticket_list"),
     path(

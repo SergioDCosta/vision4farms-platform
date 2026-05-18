@@ -258,6 +258,19 @@
         <span class="sidebar-link-icon"><i class="bi bi-box-seam-fill"></i></span>
         <span class="sidebar-link-text">Stocks e Compras</span>
       </a>
+      <a href="{% url 'support:index' %}"
+         hx-get="{% url 'support:index' %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         data-active-mode="prefix"
+         data-active-value="/suporte/"
+         class="sidebar-link {% if '/suporte/' in request.path %}active{% endif %}"
+         data-tooltip="Suporte">
+        <span class="sidebar-link-icon"><i class="bi bi-life-preserver"></i></span>
+        <span class="sidebar-link-text">Suporte</span>
+      </a>
       <a href="{% url 'settings_app:settings_index' %}"
          hx-get="{% url 'settings_app:settings_index' %}"
          hx-target="#shellMain"
