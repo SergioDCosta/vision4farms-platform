@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -15,6 +16,7 @@ from apps.orders.models import OrderItem, OrderItemStatus, OrderStatus
 
 
 ACTIVE_NEED_STATUSES = [NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED]
+EDITABLE_NEED_STATUSES = [NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED, NeedStatus.COVERED]
 PLANNED_NEED_ORDER_STATUSES = [
     OrderStatus.CONFIRMED,
     OrderStatus.IN_PROGRESS,
@@ -31,6 +33,9 @@ class NeedResponse:
     need_owner_label: str
     product_name: str
     product_unit: str
+    offered_quantity: Decimal
+    available_quantity: Decimal
+    ordered_quantity: Decimal
     quantity_available: Decimal
     unit_price: Decimal
     source_key: str
@@ -46,6 +51,8 @@ class NeedResponse:
     notes: str
     detail_url: str
     reject_url: str
+    edit_url: str
+    is_editable: bool
     cta_label: str = "Ver oferta e comprar"
 
 
@@ -58,11 +65,56 @@ class NeedResponseSummary:
     message: str
     detail_url: str
     is_active: bool
+    edit_url: str = ""
+    can_edit: bool = False
     can_send_new_proposal: bool = False
 
 
 def _quantize_need_quantity(value):
     return Decimal(str(value or 0)).quantize(Decimal("0.001"))
+
+
+def _normalize_needed_by_date(value):
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, time.max)
+    else:
+        raw_value = str(value).strip()
+        if not raw_value:
+            return None
+        try:
+            if "T" in raw_value:
+                parsed = datetime.strptime(raw_value, "%Y-%m-%dT%H:%M")
+            else:
+                parsed = datetime.combine(datetime.strptime(raw_value, "%Y-%m-%d").date(), time.max)
+        except ValueError:
+            raise ValidationError("Data limite inválida para a necessidade.")
+
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def get_need_minimum_edit_quantity(coverage):
+    return _quantize_need_quantity(
+        max(
+            coverage.get("planned_qty") or Decimal("0.000"),
+            coverage.get("completed_qty") or Decimal("0.000"),
+        )
+    )
+
+
+def get_need_edit_help_text(need, coverage):
+    minimum_quantity = get_need_minimum_edit_quantity(coverage)
+    product = getattr(need, "product", None)
+    unit = getattr(product, "unit", "kg")
+    if minimum_quantity > 0:
+        return f"Esta necessidade já tem encomendas associadas. A quantidade mínima permitida é {minimum_quantity} {unit}."
+    return "Pode ajustar a quantidade, a data limite e as observações. O produto mantém-se fixo."
 
 
 def _producer_marketplace_display_name(producer):
@@ -139,6 +191,64 @@ def _resolve_need_status(need, coverage):
         return NeedStatus.PARTIALLY_COVERED
 
     return NeedStatus.OPEN
+
+
+@transaction.atomic
+def update_need(
+    *,
+    need,
+    producer,
+    required_quantity,
+    needed_by_date=None,
+    notes=None,
+):
+    if not need:
+        raise ValidationError("Necessidade inválida.")
+
+    locked_need = (
+        Need.objects
+        .select_for_update()
+        .select_related("product", "producer")
+        .get(id=need.id)
+    )
+    if locked_need.producer_id != producer.id:
+        raise ValidationError("Não pode editar esta necessidade.")
+    if locked_need.status not in EDITABLE_NEED_STATUSES:
+        raise ValidationError("Esta necessidade já não pode ser editada.")
+
+    quantity = _quantize_need_quantity(required_quantity)
+    if quantity <= Decimal("0.000"):
+        raise ValidationError("A quantidade necessária deve ser superior a zero.")
+
+    coverage = calculate_need_coverage(locked_need)
+    minimum_quantity = get_need_minimum_edit_quantity(coverage)
+    if quantity < minimum_quantity:
+        raise ValidationError(
+            f"A quantidade mínima permitida é {minimum_quantity} {locked_need.product.unit}, "
+            "porque já existem encomendas associadas."
+        )
+
+    normalized_deadline = _normalize_needed_by_date(needed_by_date)
+    normalized_notes = (notes or "").strip() or None
+
+    changed = (
+        locked_need.required_quantity != quantity
+        or locked_need.needed_by_date != normalized_deadline
+        or (locked_need.notes or None) != normalized_notes
+    )
+
+    if changed:
+        locked_need.required_quantity = quantity
+        locked_need.needed_by_date = normalized_deadline
+        locked_need.notes = normalized_notes
+        if hasattr(locked_need, "updated_at"):
+            locked_need.updated_at = timezone.now()
+            locked_need.save(update_fields=["required_quantity", "needed_by_date", "notes", "updated_at"])
+        else:
+            locked_need.save(update_fields=["required_quantity", "needed_by_date", "notes"])
+
+    updated_need, updated_coverage, status_changed = recalculate_need_status(locked_need)
+    return updated_need, updated_coverage, bool(changed or status_changed)
 
 
 @transaction.atomic
@@ -298,6 +408,7 @@ def _build_need_row(need):
     coverage = calculate_need_coverage(need)
     required_quantity = coverage["required_quantity"]
     completed_qty = coverage["completed_qty"]
+    minimum_edit_quantity = get_need_minimum_edit_quantity(coverage)
     progress_percent = Decimal("0")
     if required_quantity > 0:
         progress_percent = (completed_qty / required_quantity) * Decimal("100")
@@ -316,6 +427,9 @@ def _build_need_row(need):
             max(coverage["planned_qty"] - required_quantity, Decimal("0.000"))
         ),
         "progress_percent": max(Decimal("0"), min(progress_percent, Decimal("100"))),
+        "can_edit": need.status in EDITABLE_NEED_STATUSES,
+        "minimum_edit_quantity": minimum_edit_quantity,
+        "edit_help_text": get_need_edit_help_text(need, coverage),
     }
 
 
@@ -594,11 +708,47 @@ def get_active_need_response_for_responder(*, responder_producer, need):
     return None
 
 
+def get_editable_need_response_for_responder(*, responder_producer, listing_id):
+    if not responder_producer or not listing_id:
+        return None
+
+    listing = (
+        _get_need_response_listing_queryset()
+        .filter(id=listing_id, producer=responder_producer)
+        .exclude(need__producer=responder_producer)
+        .first()
+    )
+    if not listing:
+        return None
+
+    accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids([listing.id])
+    state = _derive_need_response_state(
+        listing,
+        accepted_listing_ids=accepted_listing_ids,
+        cancelled_listing_ids=cancelled_listing_ids,
+        completed_listing_ids=completed_listing_ids,
+    )
+    if (
+        state["is_active"]
+        and state["status"] == NeedResponseStatus.PENDING
+        and listing.status == ListingStatus.ACTIVE
+    ):
+        return listing
+    return None
+
+
 def _get_need_response_listing_for_update(listing_id):
     return (
         MarketplaceListing.objects
         .select_for_update()
-        .select_related("need")
+        .select_related(
+            "producer",
+            "product",
+            "stock",
+            "forecast",
+            "need",
+            "need__producer",
+        )
         .filter(need_id__isnull=False)
         .get(id=listing_id)
     )
@@ -612,9 +762,9 @@ def _listing_source_label(listing):
     return "stock", "Disponível agora"
 
 
-def _get_need_response_order_state_listing_ids(listing_ids):
+def get_need_response_order_snapshot(listing_ids):
     if not listing_ids:
-        return set(), set(), set()
+        return {}
 
     rows = (
         OrderItem.objects
@@ -622,17 +772,58 @@ def _get_need_response_order_state_listing_ids(listing_ids):
             listing_id__in=listing_ids,
             need_id__isnull=False,
         )
-        .values_list("listing_id", "item_status")
+        .values_list("listing_id", "item_status", "quantity")
     )
+    snapshots = {}
+    for listing_id, item_status, quantity in rows:
+        snapshot = snapshots.setdefault(
+            listing_id,
+            {
+                "item_statuses": [],
+                "active_or_completed_quantity": Decimal("0.000"),
+                "cancelled_quantity": Decimal("0.000"),
+                "completed_quantity": Decimal("0.000"),
+                "ordered_quantity": Decimal("0.000"),
+                "status": None,
+            },
+        )
+        snapshot["item_statuses"].append(item_status)
+        quantity = _quantize_need_quantity(quantity)
+        if item_status == OrderItemStatus.CANCELLED:
+            snapshot["cancelled_quantity"] = _quantize_need_quantity(snapshot["cancelled_quantity"] + quantity)
+        else:
+            snapshot["active_or_completed_quantity"] = _quantize_need_quantity(
+                snapshot["active_or_completed_quantity"] + quantity
+            )
+        if item_status == OrderItemStatus.COMPLETED:
+            snapshot["completed_quantity"] = _quantize_need_quantity(snapshot["completed_quantity"] + quantity)
+
+    for snapshot in snapshots.values():
+        statuses = snapshot["item_statuses"]
+        if any(status == OrderItemStatus.COMPLETED for status in statuses):
+            snapshot["status"] = NeedResponseStatus.COMPLETED
+            snapshot["ordered_quantity"] = snapshot["completed_quantity"]
+        elif any(status != OrderItemStatus.CANCELLED for status in statuses):
+            snapshot["status"] = NeedResponseStatus.ACCEPTED
+            snapshot["ordered_quantity"] = snapshot["active_or_completed_quantity"]
+        elif statuses:
+            snapshot["status"] = NeedResponseStatus.CANCELLED
+            snapshot["ordered_quantity"] = snapshot["cancelled_quantity"]
+
+    return snapshots
+
+
+def _get_need_response_order_state_listing_ids(listing_ids):
+    snapshots = get_need_response_order_snapshot(listing_ids)
     accepted_listing_ids = set()
     cancelled_listing_ids = set()
     completed_listing_ids = set()
-    for listing_id, item_status in rows:
-        if item_status == OrderItemStatus.CANCELLED:
+    for listing_id, snapshot in snapshots.items():
+        if snapshot["status"] == NeedResponseStatus.CANCELLED:
             cancelled_listing_ids.add(listing_id)
-        elif item_status == OrderItemStatus.COMPLETED:
+        elif snapshot["status"] == NeedResponseStatus.COMPLETED:
             completed_listing_ids.add(listing_id)
-        else:
+        elif snapshot["status"] == NeedResponseStatus.ACCEPTED:
             accepted_listing_ids.add(listing_id)
     return accepted_listing_ids, cancelled_listing_ids, completed_listing_ids
 
@@ -648,16 +839,22 @@ def _derive_need_response_state(
     accepted_listing_ids=None,
     cancelled_listing_ids=None,
     completed_listing_ids=None,
+    order_snapshots=None,
 ):
     accepted_listing_ids = accepted_listing_ids or set()
     cancelled_listing_ids = cancelled_listing_ids or set()
     completed_listing_ids = completed_listing_ids or set()
+    order_snapshots = order_snapshots or {}
+    order_snapshot = order_snapshots.get(listing.id) or {}
     response_status = getattr(listing, "need_response_status", NeedResponseStatus.PENDING)
 
-    if listing.id in completed_listing_ids:
+    if response_status != NeedResponseStatus.REJECTED and order_snapshot.get("status"):
+        response_status = order_snapshot["status"]
+
+    if response_status == NeedResponseStatus.COMPLETED or listing.id in completed_listing_ids:
         return {
-            "status": "COMPLETED",
-            "label": "Concluída",
+            "status": NeedResponseStatus.COMPLETED,
+            "label": NeedResponseStatus.COMPLETED.label,
             "badge_class": "ok",
             "message": "A encomenda criada a partir desta oferta foi concluída.",
             "is_active": False,
@@ -676,10 +873,10 @@ def _derive_need_response_state(
             "can_reject": False,
         }
 
-    if listing.id in accepted_listing_ids:
+    if response_status == NeedResponseStatus.ACCEPTED or listing.id in accepted_listing_ids:
         return {
-            "status": "ACCEPTED",
-            "label": "Aceite",
+            "status": NeedResponseStatus.ACCEPTED,
+            "label": NeedResponseStatus.ACCEPTED.label,
             "badge_class": "ok",
             "message": "Esta oferta já foi aceite e originou uma encomenda.",
             "is_active": False,
@@ -687,10 +884,10 @@ def _derive_need_response_state(
             "can_reject": False,
         }
 
-    if listing.id in cancelled_listing_ids:
+    if response_status == NeedResponseStatus.CANCELLED or listing.id in cancelled_listing_ids:
         return {
-            "status": "CANCELLED",
-            "label": "Cancelada",
+            "status": NeedResponseStatus.CANCELLED,
+            "label": NeedResponseStatus.CANCELLED.label,
             "badge_class": "danger",
             "message": "A encomenda criada a partir desta oferta foi cancelada.",
             "is_active": False,
@@ -698,10 +895,10 @@ def _derive_need_response_state(
             "can_reject": False,
         }
 
-    if listing.status == ListingStatus.EXPIRED:
+    if response_status == NeedResponseStatus.EXPIRED or listing.status == ListingStatus.EXPIRED:
         return {
-            "status": "EXPIRED",
-            "label": "Expirada",
+            "status": NeedResponseStatus.EXPIRED,
+            "label": NeedResponseStatus.EXPIRED.label,
             "badge_class": "muted",
             "message": "Esta oferta expirou.",
             "is_active": False,
@@ -709,10 +906,10 @@ def _derive_need_response_state(
             "can_reject": False,
         }
 
-    if listing.status == ListingStatus.CANCELLED:
+    if response_status == NeedResponseStatus.WITHDRAWN or listing.status == ListingStatus.CANCELLED:
         return {
-            "status": "WITHDRAWN",
-            "label": "Retirada",
+            "status": NeedResponseStatus.WITHDRAWN,
+            "label": NeedResponseStatus.WITHDRAWN.label,
             "badge_class": "muted",
             "message": "Esta oferta foi retirada.",
             "is_active": False,
@@ -748,13 +945,22 @@ def _build_need_response(
     accepted_listing_ids=None,
     cancelled_listing_ids=None,
     completed_listing_ids=None,
+    order_snapshots=None,
 ):
+    order_snapshots = order_snapshots or {}
+    order_snapshot = order_snapshots.get(listing.id) or {}
     source_key, source_label = _listing_source_label(listing)
     state = _derive_need_response_state(
         listing,
         accepted_listing_ids=accepted_listing_ids,
         cancelled_listing_ids=cancelled_listing_ids,
         completed_listing_ids=completed_listing_ids,
+        order_snapshots=order_snapshots,
+    )
+    is_editable = bool(
+        state["is_active"]
+        and state["status"] == NeedResponseStatus.PENDING
+        and listing.status == ListingStatus.ACTIVE
     )
     return NeedResponse(
         listing=listing,
@@ -764,6 +970,11 @@ def _build_need_response(
         need_owner_label=_producer_marketplace_display_name(getattr(getattr(listing, "need", None), "producer", None)),
         product_name=listing.product.name,
         product_unit=listing.product.unit,
+        offered_quantity=_quantize_need_quantity(
+            getattr(listing, "quantity_total", getattr(listing, "quantity_available", Decimal("0.000")))
+        ),
+        available_quantity=_quantize_need_quantity(listing.quantity_available),
+        ordered_quantity=_quantize_need_quantity(order_snapshot.get("ordered_quantity") or Decimal("0.000")),
         quantity_available=listing.quantity_available,
         unit_price=listing.unit_price,
         source_key=source_key,
@@ -779,6 +990,8 @@ def _build_need_response(
         notes=listing.notes or "",
         detail_url=reverse("needs:response_detail", args=[listing.id]),
         reject_url=reverse("needs:response_reject", args=[listing.id]),
+        edit_url=reverse("needs:response_edit", args=[listing.id]) if is_editable else "",
+        is_editable=is_editable,
     )
 
 
@@ -794,12 +1007,14 @@ def list_need_responses_for_owner(*, owner_producer, q="", category_id="", need_
     accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids(
         [listing.id for listing in listings]
     )
+    order_snapshots = get_need_response_order_snapshot([listing.id for listing in listings])
     return [
         _build_need_response(
             listing,
             accepted_listing_ids=accepted_listing_ids,
             cancelled_listing_ids=cancelled_listing_ids,
             completed_listing_ids=completed_listing_ids,
+            order_snapshots=order_snapshots,
         )
         for listing in listings
     ]
@@ -807,11 +1022,13 @@ def list_need_responses_for_owner(*, owner_producer, q="", category_id="", need_
 
 def build_need_response_for_listing(listing):
     accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids([listing.id])
+    order_snapshots = get_need_response_order_snapshot([listing.id])
     return _build_need_response(
         listing,
         accepted_listing_ids=accepted_listing_ids,
         cancelled_listing_ids=cancelled_listing_ids,
         completed_listing_ids=completed_listing_ids,
+        order_snapshots=order_snapshots,
     )
 
 
@@ -845,12 +1062,14 @@ def list_need_responses_for_responder(*, responder_producer, q="", category_id="
     accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids(
         [listing.id for listing in listings]
     )
+    order_snapshots = get_need_response_order_snapshot([listing.id for listing in listings])
     return [
         _build_need_response(
             listing,
             accepted_listing_ids=accepted_listing_ids,
             cancelled_listing_ids=cancelled_listing_ids,
             completed_listing_ids=completed_listing_ids,
+            order_snapshots=order_snapshots,
         )
         for listing in listings
     ]
@@ -868,6 +1087,7 @@ def get_need_response_summaries_for_responder(*, responder_producer, need_ids):
     accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids(
         [listing.id for listing in listings]
     )
+    order_snapshots = get_need_response_order_snapshot([listing.id for listing in listings])
 
     summaries = {}
     for listing in listings:
@@ -879,10 +1099,13 @@ def get_need_response_summaries_for_responder(*, responder_producer, need_ids):
             accepted_listing_ids=accepted_listing_ids,
             cancelled_listing_ids=cancelled_listing_ids,
             completed_listing_ids=completed_listing_ids,
+            order_snapshots=order_snapshots,
         )
-        if state["status"] == "COMPLETED":
-            summaries[need_key] = None
-            continue
+        can_edit = bool(
+            state["is_active"]
+            and state["status"] == NeedResponseStatus.PENDING
+            and listing.status == ListingStatus.ACTIVE
+        )
         summaries[need_key] = NeedResponseSummary(
             listing_id=listing.id,
             status=state["status"],
@@ -891,10 +1114,100 @@ def get_need_response_summaries_for_responder(*, responder_producer, need_ids):
             message=state["message"],
             detail_url=reverse("needs:response_detail", args=[listing.id]),
             is_active=state["is_active"],
-            can_send_new_proposal=state["status"] in {"REJECTED", "CANCELLED", "EXPIRED", "WITHDRAWN"},
+            edit_url=reverse("needs:response_edit", args=[listing.id]) if can_edit else "",
+            can_edit=can_edit,
+            can_send_new_proposal=state["status"] in {"REJECTED", "CANCELLED", "EXPIRED", "WITHDRAWN", "COMPLETED"},
         )
 
     return summaries
+
+
+def _resolve_persisted_need_response_status(listing, order_snapshot):
+    current_status = getattr(listing, "need_response_status", NeedResponseStatus.PENDING)
+    if current_status == NeedResponseStatus.REJECTED:
+        return NeedResponseStatus.REJECTED
+
+    if order_snapshot and order_snapshot.get("status"):
+        return order_snapshot["status"]
+
+    if listing.status == ListingStatus.EXPIRED:
+        return NeedResponseStatus.EXPIRED
+    if listing.status == ListingStatus.CANCELLED:
+        return NeedResponseStatus.WITHDRAWN
+    return NeedResponseStatus.PENDING
+
+
+def sync_need_response_status_for_listing(listing):
+    if not listing or not getattr(listing, "need_id", None):
+        return listing
+
+    order_snapshot = get_need_response_order_snapshot([listing.id]).get(listing.id)
+    next_status = _resolve_persisted_need_response_status(listing, order_snapshot)
+    if listing.need_response_status != next_status:
+        listing.need_response_status = next_status
+        if hasattr(listing, "updated_at"):
+            listing.updated_at = timezone.now()
+            listing.save(update_fields=["need_response_status", "updated_at"])
+        else:
+            listing.save(update_fields=["need_response_status"])
+    return listing
+
+
+@transaction.atomic
+def update_need_response(
+    *,
+    listing,
+    responder_producer,
+    quantity,
+    unit_price,
+    delivery_mode,
+    delivery_radius_km=None,
+    delivery_fee=None,
+    notes=None,
+):
+    from apps.marketplace.services import MarketplaceServiceError, update_listing
+
+    listing = _get_need_response_listing_for_update(listing.id)
+    if not responder_producer or listing.producer_id != responder_producer.id:
+        raise ValidationError("Não pode editar esta proposta.")
+    if not listing.need or listing.need.producer_id == responder_producer.id:
+        raise ValidationError("Proposta inválida para edição.")
+
+    accepted_listing_ids, cancelled_listing_ids, completed_listing_ids = _get_need_response_order_state_listing_ids([listing.id])
+    state = _derive_need_response_state(
+        listing,
+        accepted_listing_ids=accepted_listing_ids,
+        cancelled_listing_ids=cancelled_listing_ids,
+        completed_listing_ids=completed_listing_ids,
+    )
+    if not (
+        state["is_active"]
+        and state["status"] == NeedResponseStatus.PENDING
+        and listing.status == ListingStatus.ACTIVE
+    ):
+        raise ValidationError("Esta proposta já não pode ser editada.")
+
+    try:
+        updated_listing = update_listing(
+            listing=listing,
+            quantity_total=quantity,
+            unit_price=unit_price,
+            delivery_mode=delivery_mode,
+            delivery_radius_km=delivery_radius_km,
+            delivery_fee=delivery_fee,
+            show_location_on_map=True,
+            notes=notes,
+            status=ListingStatus.ACTIVE,
+            expires_at=None,
+            photo_path=listing.photo_path,
+        )
+    except MarketplaceServiceError as exc:
+        raise ValidationError(str(exc)) from exc
+
+    if updated_listing.need_response_status != NeedResponseStatus.PENDING:
+        updated_listing.need_response_status = NeedResponseStatus.PENDING
+        updated_listing.save(update_fields=["need_response_status"])
+    return updated_listing
 
 
 @transaction.atomic

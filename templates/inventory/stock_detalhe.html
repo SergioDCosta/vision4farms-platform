@@ -297,7 +297,7 @@
                   <tr>
                     <th>Prevista</th>
                     <th>Reservada</th>
-                    <th>Disponível pré-venda</th>
+                    <th>Disponível</th>
                     <th>Período</th>
                     <th>Marketplace</th>
                     <th style="text-align:right;">Ações</th>
@@ -308,7 +308,7 @@
                     <tr>
                       <td>{{ row.forecast_quantity|quantity }} {{ stock.product.unit }}</td>
                       <td>{{ row.reserved_quantity|quantity }} {{ stock.product.unit }}</td>
-                      <td>{{ row.forecast_saleable|quantity }} {{ stock.product.unit }}</td>
+                      <td>{{ row.assimilable_quantity|quantity }} {{ stock.product.unit }}</td>
                       <td>
                         {% if row.forecast.period_start or row.forecast.period_end %}
                           {% if row.forecast.period_start %}{{ row.forecast.period_start|date:"d/m/Y" }}{% else %}—{% endif %}
@@ -337,9 +337,9 @@
                               {% csrf_token %}
                               <button
                                 type="submit"
-                                class="inv-icon-btn"
-                                title="Assimilar previsão para stock atual"
-                                onclick="return confirm('Assimilar esta previsão para stock atual e eliminá-la?');"
+                                class="inv-icon-btn inv-icon-btn--green"
+                                title="Assumir {{ row.assimilable_quantity|quantity }} {{ stock.product.unit }} no stock atual"
+                                onclick="return confirm('Assumir {{ row.assimilable_quantity|quantity }} {{ stock.product.unit }} desta produção futura no stock atual?');"
                               >
                                 <i class="bi bi-box-arrow-in-down"></i>
                               </button>

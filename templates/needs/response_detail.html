@@ -42,9 +42,21 @@
 
       <div class="nrd-metrics">
         <div>
-          <span>Quantidade disponível</span>
-          <strong>{{ response.quantity_available|quantity }} {{ response.product_unit }}</strong>
+          <span>{% if response.ordered_quantity > 0 %}Quantidade da encomenda{% else %}Quantidade proposta{% endif %}</span>
+          <strong>
+            {% if response.ordered_quantity > 0 %}
+              {{ response.ordered_quantity|quantity }} {{ response.product_unit }}
+            {% else %}
+              {{ response.offered_quantity|quantity }} {{ response.product_unit }}
+            {% endif %}
+          </strong>
         </div>
+        {% if response.can_buy %}
+          <div>
+            <span>Disponível para compra</span>
+            <strong>{{ response.available_quantity|quantity }} {{ response.product_unit }}</strong>
+          </div>
+        {% endif %}
         <div>
           <span>Preço unitário</span>
           <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong>
@@ -110,7 +122,7 @@
             <form method="post" action="{{ purchase_url }}">
               {% csrf_token %}
               <input type="hidden" name="need_id" value="{{ need.id }}">
-              <input type="hidden" name="quantity" value="{{ response.quantity_available|unlocalize }}">
+              <input type="hidden" name="quantity" value="{{ response.available_quantity|unlocalize }}">
               <button type="submit" class="nrd-btn nrd-btn--primary">
                 <i class="bi bi-cart-check"></i>
                 Comprar oferta

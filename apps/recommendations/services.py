@@ -18,6 +18,9 @@ from apps.recommendations.models import (
 
 QTY_DECIMAL = Decimal("0.001")
 MONEY_DECIMAL = Decimal("0.01")
+RECOMMENDATION_DIRECTION_BUY = "BUY"
+RECOMMENDATION_DIRECTION_SELL = "SELL"
+RECOMMENDATION_DIRECTION_BALANCED = "BALANCED"
 
 
 class RecommendationGenerationError(Exception):
@@ -56,13 +59,29 @@ def calculate_current_deficit(producer, product):
         reserved_quantity = quantize_qty(Decimal(str(stock.reserved_quantity or 0)))
         current_stock = quantize_qty(Decimal(str(stock.current_quantity or 0)))
 
-    deficit = quantize_qty(max(safety_stock + reserved_quantity - current_stock, Decimal("0.000")))
+    available_stock = quantize_qty(current_stock - reserved_quantity)
+    buy_quantity = quantize_qty(max(safety_stock - available_stock, Decimal("0.000")))
+    sell_quantity = quantize_qty(max(available_stock - safety_stock, Decimal("0.000")))
+    if buy_quantity > 0:
+        direction = RECOMMENDATION_DIRECTION_BUY
+        suggested_quantity = buy_quantity
+    elif sell_quantity > 0:
+        direction = RECOMMENDATION_DIRECTION_SELL
+        suggested_quantity = sell_quantity
+    else:
+        direction = RECOMMENDATION_DIRECTION_BALANCED
+        suggested_quantity = Decimal("0.000")
 
     return {
         "safety_stock": safety_stock,
         "reserved_quantity": reserved_quantity,
         "current_stock": current_stock,
-        "deficit_quantity": deficit,
+        "available_stock": available_stock,
+        "deficit_quantity": buy_quantity,
+        "buy_quantity": buy_quantity,
+        "sell_quantity": sell_quantity,
+        "suggested_quantity": suggested_quantity,
+        "recommendation_direction": direction,
     }
 
 def _get_listing_available_quantity(listing) -> Decimal:

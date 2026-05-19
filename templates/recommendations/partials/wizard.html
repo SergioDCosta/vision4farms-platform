@@ -3,8 +3,8 @@
     <div class="rec-step {% if wizard_step == 1 %}rec-step--active{% endif %}">
       <div class="rec-step__num">1</div>
       <div class="rec-step__body">
-        <p class="rec-step__title">O que precisa?</p>
-        <p class="rec-step__text">Indique o produto e a quantidade para gerar a recomendação.</p>
+        <p class="rec-step__title">Produto</p>
+        <p class="rec-step__text">Escolha o produto para avaliar compra ou venda.</p>
       </div>
     </div>
 
@@ -12,7 +12,7 @@
       <div class="rec-step__num">2</div>
       <div class="rec-step__body">
         <p class="rec-step__title">Sugestão</p>
-        <p class="rec-step__text">O sistema calcula a melhor combinação de ofertas.</p>
+        <p class="rec-step__text">O sistema indica a ação recomendada para o stock.</p>
       </div>
     </div>
 
@@ -27,6 +27,8 @@
 
   {% if wizard_step == 1 %}
     {% include "recommendations/partials/step_1_need.html" %}
+  {% elif wizard_step == 2 and recommendation_direction == "SELL" %}
+    {% include "recommendations/partials/step_2_sell.html" %}
   {% elif wizard_step == 2 %}
     {% include "recommendations/partials/step_2_suggestion.html" %}
   {% elif wizard_step == 3 %}

@@ -19,10 +19,13 @@ from apps.support.services import (
     SupportServiceError,
     build_ticket_snapshot,
     claim_support_ticket,
+    close_support_ticket,
     create_support_ticket,
     get_admin_support_badge_state,
     get_support_tickets_context,
     mark_admin_support_seen,
+    build_support_thread_items,
+    reply_support_ticket_as_requester,
     reply_support_ticket,
     send_support_ticket_acknowledgement,
     send_support_ticket_created_to_admins,
@@ -109,11 +112,16 @@ def support_ticket_create_view(request):
 
     subject = form.cleaned_data["subject"]
     body = form.cleaned_data["message"]
-    ticket = create_support_ticket(
-        requester_user=request.current_user,
-        subject=subject,
-        message=body,
-    )
+    try:
+        ticket = create_support_ticket(
+            requester_user=request.current_user,
+            subject=subject,
+            message=body,
+            uploaded_files=request.FILES.getlist("images"),
+        )
+    except SupportServiceError as exc:
+        messages.error(request, str(exc))
+        return _redirect_to_support(request)
 
     _log_support_action(
         request=request,
@@ -161,6 +169,69 @@ def support_index_view(request):
     return render(request, "support/index.html", context)
 
 
+@client_only_required
+def support_ticket_detail_view(request, ticket_id):
+    ticket = get_object_or_404(
+        SupportTicket.objects.select_related("assigned_admin"),
+        id=ticket_id,
+        requester_user=request.current_user,
+    )
+    context = {
+        "page_title": f"Ticket #{ticket.ticket_number}",
+        "ticket": ticket,
+        "reply_form": SupportTicketReplyForm(),
+        "thread_items": build_support_thread_items(ticket),
+        "support_contact_email": getattr(settings, "SUPPORT_CONTACT_EMAIL", ""),
+    }
+    return render(request, "support/detail.html", context)
+
+
+@client_only_required
+@require_POST
+@ratelimit(key=_support_rate_limit_key, rate="10/30m", method="POST", block=False)
+def support_ticket_reply_view(request, ticket_id):
+    if getattr(request, "limited", False):
+        messages.error(
+            request,
+            "Demasiadas respostas em pouco tempo. Tenta novamente daqui a alguns minutos.",
+        )
+        return redirect("support:ticket_detail", ticket_id=ticket_id)
+
+    form = SupportTicketReplyForm(request.POST or None)
+    if not form.is_valid():
+        errors = []
+        for field_errors in form.errors.values():
+            errors.extend(field_errors)
+        messages.error(request, errors[0] if errors else "Mensagem inválida.")
+        return redirect("support:ticket_detail", ticket_id=ticket_id)
+
+    ticket_before = SupportTicket.objects.filter(id=ticket_id, requester_user=request.current_user).first()
+    old_values = build_ticket_snapshot(ticket_before) if ticket_before else None
+
+    try:
+        ticket = reply_support_ticket_as_requester(
+            ticket_id=ticket_id,
+            requester_user=request.current_user,
+            reply_message=form.cleaned_data["reply_message"],
+            uploaded_files=request.FILES.getlist("images"),
+        )
+    except SupportServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect("support:ticket_detail", ticket_id=ticket_id)
+
+    _log_support_action(
+        request=request,
+        action="SUPPORT_TICKET_REQUESTER_REPLIED",
+        ticket=ticket,
+        notes=f"Utilizador respondeu ao ticket #{ticket.ticket_number}.",
+        old_values=old_values,
+        new_values=build_ticket_snapshot(ticket),
+    )
+    _broadcast_support_badge_changed()
+    messages.success(request, "Mensagem enviada com sucesso.")
+    return redirect("support:ticket_detail", ticket_id=ticket.id)
+
+
 @admin_required
 def admin_support_tickets_view(request):
     if request.method == "GET":
@@ -172,7 +243,7 @@ def admin_support_tickets_view(request):
     if status_filter not in allowed_statuses:
         status_filter = ""
 
-    tickets = SupportTicket.objects.select_related("requester_user", "assigned_admin").order_by("-created_at")
+    tickets = SupportTicket.objects.select_related("requester_user", "assigned_admin").order_by("-last_message_at", "-created_at")
     if status_filter:
         tickets = tickets.filter(status=status_filter)
 
@@ -213,6 +284,7 @@ def admin_support_ticket_detail_view(request, ticket_id):
         "admin_tab": "suporte",
         "ticket": ticket,
         "reply_form": SupportTicketReplyForm(),
+        "thread_items": build_support_thread_items(ticket),
     }
     return render(request, "dashboard/admin/support_ticket_detail.html", context)
 
@@ -269,6 +341,7 @@ def admin_support_ticket_reply_view(request, ticket_id):
             ticket_id=ticket_id,
             admin_user=request.current_user,
             reply_message=form.cleaned_data["reply_message"],
+            uploaded_files=request.FILES.getlist("images"),
         )
     except SupportServiceError as exc:
         messages.error(request, str(exc))
@@ -283,26 +356,42 @@ def admin_support_ticket_reply_view(request, ticket_id):
         old_values=old_values,
         new_values=new_values,
     )
-    _log_support_action(
-        request=request,
-        action="SUPPORT_TICKET_CLOSED",
-        ticket=ticket,
-        notes=f"Ticket #{ticket.ticket_number} fechado automaticamente após resposta.",
-        old_values=old_values,
-        new_values=new_values,
-    )
-
     try:
         send_support_ticket_reply_to_requester(request, ticket)
     except Exception:
         logger.exception("Falha no envio da resposta de suporte por email ticket_id=%s", ticket.id)
         messages.warning(
             request,
-            "Ticket fechado com sucesso, mas falhou o envio do email para o utilizador.",
+            "Resposta enviada, mas falhou o envio do email para o utilizador.",
         )
     else:
-        messages.success(request, f"Resposta enviada e ticket #{ticket.ticket_number} fechado.")
+        messages.success(request, f"Resposta enviada no ticket #{ticket.ticket_number}.")
 
     _broadcast_support_badge_changed()
 
+    return redirect("support:admin_ticket_detail", ticket_id=ticket.id)
+
+
+@admin_required
+@require_POST
+def admin_support_ticket_close_view(request, ticket_id):
+    ticket_before = SupportTicket.objects.filter(id=ticket_id).first()
+    old_values = build_ticket_snapshot(ticket_before) if ticket_before else None
+
+    try:
+        ticket = close_support_ticket(ticket_id=ticket_id, admin_user=request.current_user)
+    except SupportServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect("support:admin_ticket_detail", ticket_id=ticket_id)
+
+    _log_support_action(
+        request=request,
+        action="SUPPORT_TICKET_CLOSED",
+        ticket=ticket,
+        notes=f"Ticket #{ticket.ticket_number} marcado como resolvido por {request.current_user.email}.",
+        old_values=old_values,
+        new_values=build_ticket_snapshot(ticket),
+    )
+    _broadcast_support_badge_changed()
+    messages.success(request, f"Ticket #{ticket.ticket_number} marcado como resolvido.")
     return redirect("support:admin_ticket_detail", ticket_id=ticket.id)

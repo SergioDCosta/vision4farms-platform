@@ -12,13 +12,13 @@ class RecommendationRequestForm(forms.Form):
 
     requested_quantity = forms.DecimalField(
         label="Quantidade a comprar",
-        min_value=Decimal("0.001"),
+        min_value=Decimal("0.000"),
         max_digits=14,
         decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
             "step": "0.001",
-            "min": "0.001",
+            "min": "0",
             "placeholder": "0.000",
         }),
     )
@@ -32,6 +32,8 @@ class RecommendationRequestForm(forms.Form):
             label = product.name
             if getattr(product, "is_critical_stock", False):
                 label = f"{label} - Stock crítico"
+            elif getattr(product, "is_surplus_stock", False):
+                label = f"{label} - Excedente"
             choices.append((str(product.id), label))
         self.fields["product_id"].choices = choices
 
@@ -43,6 +45,4 @@ class RecommendationRequestForm(forms.Form):
 
     def clean_requested_quantity(self):
         value = self.cleaned_data["requested_quantity"]
-        if value <= 0:
-            raise forms.ValidationError("A quantidade a comprar deve ser superior a zero.")
         return value

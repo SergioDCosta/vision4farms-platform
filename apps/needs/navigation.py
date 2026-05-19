@@ -11,6 +11,7 @@ def build_needs_index_url(
     need_prefill_product_id="",
     need_prefill_quantity="",
     show_need_form=False,
+    edit_need_id="",
 ):
     query = {}
     if q:
@@ -25,5 +26,7 @@ def build_needs_index_url(
         query["qty"] = need_prefill_quantity
     if show_need_form:
         query["show_need_form"] = "1"
+    if edit_need_id:
+        query["edit_need"] = edit_need_id
     url = reverse("needs:index")
     return f"{url}?{urlencode(query)}" if query else url

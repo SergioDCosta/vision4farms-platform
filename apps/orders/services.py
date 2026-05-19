@@ -16,7 +16,7 @@ from apps.inventory.models import (
     StockMovementType,
 )
 from apps.needs.models import NeedResponseStatus
-from apps.needs.services import recalculate_needs_for_order
+from apps.needs.services import recalculate_needs_for_order, sync_need_response_status_for_listing
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import (
     OrderGroup,
@@ -1068,6 +1068,19 @@ def _set_order_status(order, status):
     order.save(update_fields=update_fields)
 
 
+def _sync_need_response_statuses_for_listing_ids(listing_ids):
+    listing_ids = [listing_id for listing_id in listing_ids if listing_id]
+    if not listing_ids:
+        return
+
+    listings = MarketplaceListing.objects.filter(
+        id__in=listing_ids,
+        need_id__isnull=False,
+    )
+    for listing in listings:
+        sync_need_response_status_for_listing(listing)
+
+
 def compute_order_status_from_db(order_id, *, preferred_status=None, current_status=None):
     item_statuses = list(
         OrderItem.objects.filter(order_id=order_id).values_list("item_status", flat=True)
@@ -1119,6 +1132,8 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
         raise OrderServiceError("Não pode criar uma encomenda a partir do seu próprio anúncio.")
     if listing.need_id and listing.need_response_status == NeedResponseStatus.REJECTED:
         raise OrderServiceError("Esta oferta foi rejeitada e já não pode ser comprada.")
+    if listing.need_id and listing.need_response_status != NeedResponseStatus.PENDING:
+        raise OrderServiceError("Esta oferta já não está pendente e não pode ser comprada.")
     if listing.need_id and OrderItem.objects.filter(listing_id=listing.id, need_id=listing.need_id).exists():
         raise OrderServiceError("Esta oferta já originou uma encomenda e não pode ser comprada novamente.")
     _validate_listing_source_xor(listing)
@@ -1165,6 +1180,8 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
         item_status=OrderItemStatus.PENDING,
     )
     _reconcile_listing_reservation(listing.id, acting_user)
+    if listing.need_id:
+        _sync_need_response_statuses_for_listing_ids([listing.id])
 
     _create_status_history(
         order=order,
@@ -1366,6 +1383,7 @@ def confirm_order_receipt(*, order, acting_user):
             acting_user=acting_user,
         )
 
+    _sync_need_response_statuses_for_listing_ids([item.listing_id for item in active_items])
     recalculate_needs_for_order(order, acting_user=acting_user)
     _sync_alerts_for_producers(buyer_producer, *seller_producers, acting_user=acting_user)
 
@@ -1691,6 +1709,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
 
         for listing_id in touched_listing_ids:
             _reconcile_listing_reservation(listing_id, acting_user, strict=False)
+        _sync_need_response_statuses_for_listing_ids(touched_listing_ids)
 
         _recalculate_order_status(order, preferred_status=OrderStatus.CONFIRMED)
 
@@ -1811,6 +1830,7 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
 
         for listing_id in touched_listing_ids:
             _reconcile_listing_reservation(listing_id, acting_user)
+        _sync_need_response_statuses_for_listing_ids(touched_listing_ids)
 
         _recalculate_order_status(order)
 

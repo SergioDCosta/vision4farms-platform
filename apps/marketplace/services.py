@@ -6,7 +6,7 @@ from django.utils import timezone
 from apps.catalog.models import Product, ProductCategory
 from apps.inventory.models import ProducerProfile, ProducerProduct, ProductionForecast, Stock
 from apps.marketplace.models import MarketplaceListing, ListingStatus, DeliveryMode
-from apps.needs.models import NeedStatus
+from apps.needs.models import NeedResponseStatus, NeedStatus
 
 
 QTY_DECIMAL = Decimal("0.001")
@@ -168,14 +168,26 @@ def get_base_listing_queryset():
 
 def expire_due_active_listings():
     now = timezone.now()
-    return MarketplaceListing.objects.filter(
+    need_responses_expired = MarketplaceListing.objects.filter(
         status=ListingStatus.ACTIVE,
         expires_at__isnull=False,
         expires_at__lte=now,
+        need_id__isnull=False,
+    ).update(
+        status=ListingStatus.EXPIRED,
+        need_response_status=NeedResponseStatus.EXPIRED,
+        updated_at=now,
+    )
+    listings_expired = MarketplaceListing.objects.filter(
+        status=ListingStatus.ACTIVE,
+        expires_at__isnull=False,
+        expires_at__lte=now,
+        need_id__isnull=True,
     ).update(
         status=ListingStatus.EXPIRED,
         updated_at=now,
     )
+    return need_responses_expired + listings_expired
 
 
 def get_public_listings(*, producer=None, q="", category_id=""):

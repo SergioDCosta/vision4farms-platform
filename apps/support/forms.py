@@ -39,13 +39,13 @@ class SupportTicketCreateForm(forms.Form):
 
 class SupportTicketReplyForm(forms.Form):
     reply_message = forms.CharField(
-        label="Resposta ao utilizador",
+        label="Mensagem",
         max_length=4000,
         widget=forms.Textarea(
             attrs={
                 "class": "form-control",
                 "rows": 6,
-                "placeholder": "Escreve a resposta final para o utilizador.",
+                "placeholder": "Escreve uma resposta para continuar a conversa.",
             }
         ),
     )
@@ -53,6 +53,5 @@ class SupportTicketReplyForm(forms.Form):
     def clean_reply_message(self):
         value = (self.cleaned_data.get("reply_message") or "").strip()
         if not value:
-            raise forms.ValidationError("Indica a resposta para fechar o ticket.")
+            raise forms.ValidationError("Indica a mensagem para enviar.")
         return value
-

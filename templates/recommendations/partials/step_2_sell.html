@@ -1,0 +1,105 @@
+<div class="rec-card">
+  <div class="rec-card__head">
+    <h2>Passo 2 — Sugestão de venda</h2>
+    <p>O produto tem excedente acima do stock de segurança. Pode publicar no marketplace ou responder a necessidades abertas.</p>
+  </div>
+
+  <div class="rec-card__body">
+    <div class="rec-summary-grid">
+      <div class="rec-stat">
+        <p class="rec-stat__label">Produto</p>
+        <p class="rec-stat__value">{{ product.name }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Stock atual</p>
+        <p class="rec-stat__value">{{ recommendation_metrics.current_stock|quantity }} {{ product.unit }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Stock segurança</p>
+        <p class="rec-stat__value">{{ recommendation_metrics.safety_stock|quantity }} {{ product.unit }}</p>
+      </div>
+      <div class="rec-stat">
+        <p class="rec-stat__label">Quantidade a vender</p>
+        <p class="rec-stat__value">{{ requested_quantity|quantity }} {{ product.unit }}</p>
+      </div>
+    </div>
+
+    <div class="rec-info rec-info--success">
+      Pode vender até <strong>{{ requested_quantity|quantity }} {{ product.unit }}</strong> e continuar com o stock de segurança definido.
+    </div>
+
+    <div class="rec-sell-section">
+      <div class="rec-sell-section__head">
+        <div>
+          <h3>Necessidades abertas compatíveis</h3>
+          <p>Pedidos de outros produtores para o mesmo produto.</p>
+        </div>
+      </div>
+
+      {% if compatible_need_rows %}
+        <div class="rec-list">
+          {% for row in compatible_need_rows %}
+            <div class="rec-item">
+              <div class="rec-item__top">
+                <div>
+                  <p class="rec-item__title">
+                    {{ row.need.producer.display_name|default:row.need.producer.company_name|default:row.need.producer.user.email|default:"Produtor" }}
+                  </p>
+                  <p class="rec-item__meta">
+                    Em falta {{ row.public_quantity|quantity }} {{ row.need.product.unit }}
+                    {% if row.public_offered_quantity %}
+                      · já oferecido {{ row.public_offered_quantity|quantity }} {{ row.need.product.unit }}
+                    {% endif %}
+                  </p>
+                </div>
+                <a href="{{ row.response_url }}"
+                   hx-get="{{ row.response_url }}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="rec-btn-secondary">
+                  Responder
+                </a>
+              </div>
+              {% if row.need.notes %}
+                <div class="rec-info">{{ row.need.notes }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="rec-empty">
+          <i class="bi bi-search"></i>
+          <p>Não há necessidades abertas para este produto neste momento.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="rec-actions">
+      <a
+        href="{% url 'recommendations:index' %}?product={{ product.id }}"
+        hx-get="{% url 'recommendations:index' %}?product={{ product.id }}"
+        hx-target="#shellMain"
+        hx-select="#shellMain"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+        class="rec-btn-secondary"
+      >
+        <i class="bi bi-arrow-left"></i> Ajustar quantidade
+      </a>
+
+      <a
+        href="{{ publish_url }}"
+        hx-get="{{ publish_url }}"
+        hx-target="#shellMain"
+        hx-select="#shellMain"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+        class="rec-btn-primary"
+      >
+        <i class="bi bi-shop"></i> Publicar excedente
+      </a>
+    </div>
+  </div>
+</div>

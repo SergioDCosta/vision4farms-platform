@@ -201,20 +201,27 @@
               {% endif %}
               <article class="msg-bubble">
                 {% if message.message_type == "FILE" %}
-                  <div class="msg-bubble--file">
-                    <div class="msg-file-icon">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  {% if message.attachment_type|slice:":6" == "image/" and message.resolved_attachment_url %}
+                    <a href="{{ message.resolved_attachment_url }}" target="_blank" rel="noopener" class="msg-image-attachment">
+                      <img src="{{ message.resolved_attachment_url }}" alt="{{ message.attachment_name|default:'Imagem anexada' }}">
+                      <span>{{ message.attachment_name|default:"Imagem anexada" }}</span>
+                    </a>
+                  {% else %}
+                    <div class="msg-bubble--file">
+                      <div class="msg-file-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      </div>
+                      <div class="msg-file-info">
+                        {% if message.resolved_attachment_url %}
+                          <a href="{{ message.resolved_attachment_url }}" target="_blank" rel="noopener" class="msg-file-name">
+                            {{ message.attachment_name|default:message.content }}
+                          </a>
+                        {% else %}
+                          <div class="msg-file-name">{{ message.attachment_name|default:message.content }}</div>
+                        {% endif %}
+                      </div>
                     </div>
-                    <div class="msg-file-info">
-                      {% if message.resolved_attachment_url %}
-                        <a href="{{ message.resolved_attachment_url }}" target="_blank" rel="noopener" class="msg-file-name">
-                          {{ message.attachment_name|default:message.content }}
-                        </a>
-                      {% else %}
-                        <div class="msg-file-name">{{ message.attachment_name|default:message.content }}</div>
-                      {% endif %}
-                    </div>
-                  </div>
+                  {% endif %}
                 {% else %}
                   <p>{{ message.content }}</p>
                 {% endif %}
@@ -835,6 +842,38 @@
 .msg-bubble-wrap.is-me .msg-bubble--file .msg-file-name { color: #fff; }
 .msg-bubble-wrap.is-other .msg-bubble--file .msg-file-name { color: #0f172a; }
 
+.msg-image-attachment {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  color: inherit;
+  text-decoration: none;
+  min-width: min(220px, 58vw);
+}
+
+.msg-image-attachment img {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: .75rem;
+  border: 1px solid rgba(148,163,184,.35);
+  background: rgba(255,255,255,.45);
+}
+
+.msg-image-attachment span {
+  max-width: 280px;
+  font-size: .72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-bubble-wrap.is-me .msg-image-attachment span { color: rgba(255,255,255,.9); }
+.msg-bubble-wrap.is-other .msg-image-attachment span { color: #475569; }
+
 /* ─── COMPOSER ─────────────────────────────────────────────── */
 .msg-composer-wrap {
   border-top: 1px solid #edf0f5;
@@ -867,6 +906,14 @@
   color: #15803d;
   font-weight: 500;
   max-width: 200px;
+}
+
+.msg-file-chip__thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: .45rem;
+  object-fit: cover;
+  flex: 0 0 auto;
 }
 
 .msg-file-chip span {
@@ -1376,7 +1423,29 @@
     return Boolean(messagesBox.querySelector(`[data-message-id="${messageId}"]`));
   };
 
+  const isImageAttachment = (contentType) => String(contentType || "").toLowerCase().startsWith("image/");
+
   const buildFileContent = (message, isMe) => {
+    const fileName = message.attachment_name || message.content || "Ficheiro";
+    if (isImageAttachment(message.attachment_type) && message.attachment_url) {
+      const link = document.createElement("a");
+      link.className = "msg-image-attachment";
+      link.href = message.attachment_url;
+      link.target = "_blank";
+      link.rel = "noopener";
+
+      const image = document.createElement("img");
+      image.src = message.attachment_url;
+      image.alt = fileName;
+
+      const caption = document.createElement("span");
+      caption.textContent = fileName;
+
+      link.appendChild(image);
+      link.appendChild(caption);
+      return link;
+    }
+
     const fileRow = document.createElement("div");
     fileRow.className = "msg-bubble--file";
 
@@ -1387,7 +1456,6 @@
     const info = document.createElement("div");
     info.className = "msg-file-info";
 
-    const fileName = message.attachment_name || message.content || "Ficheiro";
     if (message.attachment_url) {
       const link = document.createElement("a");
       link.className = "msg-file-name";
@@ -1485,8 +1553,16 @@
     chip.className = "msg-file-chip";
     chip.dataset.name = file.name;
 
-    const icon = document.createElement("svg");
-    icon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+    let previewNode = null;
+    if (isImageAttachment(file.type)) {
+      previewNode = document.createElement("img");
+      previewNode.className = "msg-file-chip__thumb";
+      previewNode.src = URL.createObjectURL(file);
+      previewNode.alt = file.name;
+    } else {
+      previewNode = document.createElement("svg");
+      previewNode.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+    }
 
     const name = document.createElement("span");
     name.textContent = file.name;
@@ -1496,11 +1572,14 @@
     remove.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
     remove.addEventListener("click", () => {
       pendingFiles = pendingFiles.filter(f => !(f.name === file.name && f.size === file.size));
+      if (previewNode && previewNode.tagName === "IMG") {
+        URL.revokeObjectURL(previewNode.src);
+      }
       chip.remove();
       if (!pendingFiles.length) filePreview.style.display = "none";
     });
 
-    chip.appendChild(icon);
+    chip.appendChild(previewNode);
     chip.appendChild(name);
     chip.appendChild(remove);
     filePreviewInner.appendChild(chip);

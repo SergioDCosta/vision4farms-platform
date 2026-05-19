@@ -17,7 +17,7 @@ from PIL import Image, ImageOps
 from apps.common.decorators import login_required, client_only_required
 from apps.accounts.models import UserRole
 from apps.inventory.models import ProducerProduct, ProductionForecast
-from apps.needs.models import NeedStatus
+from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     get_need_for_producer,
@@ -748,6 +748,7 @@ def marketplace_publish_view(request):
     success = request.GET.get("success") == "1"
     created_listing_id = request.GET.get("listing_id")
     requested_product_id = (request.POST.get("product") or request.GET.get("product") or "").strip()
+    requested_quantity = (request.GET.get("qty") or request.GET.get("quantity") or "").strip()
     requested_source = (request.POST.get("listing_source") or request.GET.get("source") or LISTING_SOURCE_STOCK).strip().lower()
     requested_forecast_id = (request.POST.get("forecast") or request.GET.get("forecast") or "").strip()
     prefill_origin = (request.POST.get("from") or request.GET.get("from") or "").strip().lower()
@@ -758,8 +759,8 @@ def marketplace_publish_view(request):
         and bool(requested_product_id)
         and bool(requested_forecast_id)
     )
-    is_inventory_stock_prefill_flow = (
-        prefill_origin == "inventory"
+    is_stock_prefill_flow = (
+        prefill_origin in {"inventory", "recommendations"}
         and requested_source == LISTING_SOURCE_STOCK
         and bool(requested_product_id)
     )
@@ -778,12 +779,14 @@ def marketplace_publish_view(request):
             requested_forecast_id = str(activated_forecast.id)
             forecast_quantity_limit = get_forecast_available_quantity(activated_forecast)
 
-    lock_listing_source = is_forecast_prefill_flow or is_inventory_stock_prefill_flow
+    lock_listing_source = is_forecast_prefill_flow or is_stock_prefill_flow
     lock_product = lock_listing_source
 
     form_initial = {}
     if requested_product_id:
         form_initial["product"] = requested_product_id
+    if request.method == "GET" and requested_quantity:
+        form_initial["quantity"] = requested_quantity
     form_initial["listing_source"] = (
         requested_source if requested_source in {LISTING_SOURCE_STOCK, LISTING_SOURCE_FORECAST}
         else LISTING_SOURCE_STOCK
@@ -857,7 +860,7 @@ def marketplace_publish_view(request):
         trend_map=trend_map,
     )
 
-    if is_inventory_stock_prefill_flow:
+    if is_stock_prefill_flow:
         publishable_summary = [
             row for row in publishable_summary
             if row["product_id"] == requested_product_id and row["source"] == LISTING_SOURCE_STOCK
@@ -955,7 +958,7 @@ def marketplace_publish_view(request):
         "selected_product_id": selected_product_id,
         "selected_source": selected_source,
         "initial_market_trend": initial_market_trend,
-        "is_inventory_stock_prefill_flow": is_inventory_stock_prefill_flow,
+        "is_inventory_stock_prefill_flow": is_stock_prefill_flow,
         "product_picker_options": [
             {"id": str(row["id"]), "label": row["name"]}
             for row in all_publishable_products
@@ -1130,6 +1133,8 @@ def marketplace_toggle_status_view(request, listing_id):
 
     if listing.status == ListingStatus.ACTIVE:
         listing.status = ListingStatus.CANCELLED
+        if listing.need_id and listing.need_response_status != NeedResponseStatus.REJECTED:
+            listing.need_response_status = NeedResponseStatus.WITHDRAWN
         feedback = "Anúncio desativado com sucesso."
     else:
         available_quantity = Decimal(str(listing.quantity_available or 0))
@@ -1141,6 +1146,11 @@ def marketplace_toggle_status_view(request, listing_id):
             blocked_message = "Este anúncio não pode ser ativado sem quantidade disponível."
         else:
             listing.status = ListingStatus.ACTIVE
+            if listing.need_id and listing.need_response_status in {
+                NeedResponseStatus.WITHDRAWN,
+                NeedResponseStatus.EXPIRED,
+            }:
+                listing.need_response_status = NeedResponseStatus.PENDING
             if listing.expires_at and listing.expires_at <= now:
                 listing.expires_at = None
             feedback = "Anúncio ativado com sucesso."
@@ -1177,7 +1187,7 @@ def marketplace_toggle_status_view(request, listing_id):
         return redirect(f"{reverse('marketplace:index')}?{query}")
 
     listing.updated_at = now
-    listing.save(update_fields=["status", "expires_at", "updated_at"])
+    listing.save(update_fields=["status", "need_response_status", "expires_at", "updated_at"])
     messages.success(request, feedback)
     _sync_alerts_after_marketplace_change(producer, request.current_user)
 

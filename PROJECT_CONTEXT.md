@@ -252,10 +252,18 @@
 - O domínio expõe essas listings através de DTOs/estruturas em `apps.needs.services`, não como listings cruas.
 - `NeedResponseStatus`:
   - `PENDING`;
-  - `REJECTED`.
+  - `ACCEPTED`;
+  - `REJECTED`;
+  - `CANCELLED`;
+  - `COMPLETED`;
+  - `WITHDRAWN`;
+  - `EXPIRED`.
 - Campo técnico em `marketplace_listings`:
   - `need_response_status`;
   - vive em marketplace porque a resposta ainda é uma listing privada.
+- SQL manual:
+  - `NEED_RESPONSE_STATUS_HARDENING_SQL.txt` atualiza a check constraint para aceitar os estados explícitos acima;
+  - deve ser executado localmente e depois no Railway antes de gravar estados como `ACCEPTED` ou `COMPLETED`.
 - URLs de detalhe de resposta são de `needs`, não marketplace.
 - Criação de resposta também é canónica em `needs`:
   - `/necessidades/responder/?need=<id>&product=<id>`;
@@ -269,7 +277,12 @@
 - Produtor que respondeu:
   - vê o estado da própria proposta: `Pendente`, `Aceite`, `Rejeitada`, `Expirada`, `Retirada`, `Cancelada` ou `Concluída`;
   - se a oferta ativa foi rejeitada/concluída/cancelada, pode voltar a responder normalmente;
-  - se já tem oferta ativa, vê aviso mas pode enviar nova proposta.
+  - se já tem oferta ativa pendente, edita a proposta existente em vez de criar propostas repetidas.
+- Quantidades de resposta:
+  - `offered_quantity` representa a quantidade proposta originalmente;
+  - `available_quantity` representa a quantidade ainda comprável;
+  - `ordered_quantity` representa a quantidade associada a encomenda quando existe;
+  - histórico e detalhe usam a quantidade semanticamente correta por estado, evitando mostrar apenas a quantidade ainda disponível.
 - Rejeição:
   - só o dono da necessidade pode rejeitar;
   - marca `need_response_status=REJECTED`;
@@ -278,8 +291,12 @@
   - liberta a listing técnica.
 - Compra/aceitação:
   - continua a criar encomenda pelo fluxo de orders;
-  - "Aceite" é derivado da existência/estado da encomenda associada;
+  - marca a resposta como `ACCEPTED`;
   - `COMPLETED` passa a "Concluída" e move para histórico.
+- Cancelamento/receção:
+  - cancelamento de encomenda associada marca a resposta como `CANCELLED`;
+  - confirmação de receção marca a resposta como `COMPLETED`;
+  - compra futura é bloqueada para respostas que já não estejam `PENDING`.
 - Avisos de quantidade:
   - ofertas acima da quantidade ainda por receber são permitidas, mas avisadas;
   - aviso aparece ao responder;
@@ -472,20 +489,39 @@
   - `CLAIMED`;
   - `CLOSED`.
 - Fluxo utilizador:
-  - card "Contactar suporte" em Definições;
+  - página dedicada `/suporte/`, acessível pela sidebar;
+  - formulário de pedido com imagens opcionais;
+  - histórico em cards e FAQ funcional;
+  - detalhe de conversa em `/suporte/<uuid>/`;
+  - pode responder novamente enquanto o ticket não estiver fechado;
   - ticket persiste antes do envio de emails;
   - falha de email não faz rollback.
 - Fluxo admin:
   - fila `/gestor/suporte/`;
   - detalhe `/gestor/suporte/<uuid>/`;
   - claim transacional;
-  - resposta fecha automaticamente na primeira resposta.
+  - resposta não fecha automaticamente;
+  - admin pode continuar conversa e fechar explicitamente com "Marcar como resolvido".
+- Suporte conversacional:
+  - `support_ticket_messages` guarda cada mensagem do cliente/admin/sistema;
+  - `support_ticket_attachments` guarda anexos por mensagem;
+  - `support_tickets.last_message_at` e `last_message_by_role` alimentam badges e ordenação;
+  - tickets antigos continuam compatíveis através de fallback para `support_tickets.message` e `admin_reply_message`.
+- Anexos:
+  - suporte aceita imagens `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`;
+  - limite recomendado de 10MB por imagem;
+  - upload usa `default_storage`, logo Cloudinary em produção.
+- SQL manual:
+  - `SUPPORT_CONVERSATION_ATTACHMENTS_SQL.txt`;
+  - cria colunas de última mensagem, tabelas de mensagens/anexos e índices;
+  - inclui backfill leve para preencher `last_message_at` e `last_message_by_role` em tickets antigos.
 - Dashboard admin:
   - KPI "Suporte ativo" substitui a antiga KPI "Alertas críticos";
   - conta tickets `OPEN` e `CLAIMED`.
 - Badge realtime admin:
   - WebSocket `/ws/suporte/sidebar/`;
   - grupo `support_admin_badge`.
+  - conta tickets `OPEN` e tickets `CLAIMED` cuja última mensagem foi do cliente.
 - Eventos auditados:
   - `SUPPORT_TICKET_CREATED`;
   - `SUPPORT_TICKET_CLAIMED`;
@@ -532,6 +568,8 @@
   - `notifications`.
 - Suporte:
   - `support_tickets`.
+  - `support_ticket_messages`;
+  - `support_ticket_attachments`.
 - Operacional:
   - `audit_log`;
   - `vision4farms_sync_log`.
@@ -548,6 +586,8 @@
 - `messages` pertence a `conversation`; acesso só a participantes não arquivados.
 - `support_tickets.requester_user_id` referencia `users`.
 - `support_tickets.assigned_admin_id` referencia `users`.
+- `support_ticket_messages.ticket_id` referencia `support_tickets`.
+- `support_ticket_attachments.message_id` referencia `support_ticket_messages`.
 
 ## 18) Notas Operacionais
 - Sem migrations para tabelas de negócio; aplicar SQL manual antes de refletir fields em models.

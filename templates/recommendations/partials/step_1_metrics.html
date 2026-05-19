@@ -4,22 +4,30 @@
   aria-live="polite"
   data-deficit-quantity="{{ initial_deficit_quantity|default:'0' }}"
   data-requested-quantity="{{ initial_requested_quantity|default:initial_deficit_quantity|default:'0' }}"
+  data-suggested-quantity="{{ recommendation_metrics.suggested_quantity|default:initial_requested_quantity|default:'0' }}"
+  data-recommendation-direction="{{ recommendation_direction|default:'BALANCED' }}"
+  data-quantity-label="{{ quantity_label|default:'Quantidade sugerida' }}"
+  data-quantity-help="{{ quantity_help|default:'Escolha um produto para calcular a ação recomendada.' }}"
+  data-suggested-label="{{ suggested_quantity_label|default:'Sugestão' }}"
+  data-suggested-help="{{ suggested_quantity_hint|default:'Escolha um produto para calcular a ação recomendada.' }}"
+  data-submit-label="{{ submit_label|default:'Gerar recomendação' }}"
+  data-can-generate="{% if can_generate %}1{% else %}0{% endif %}"
 >
   <article class="rec-step1-kpi rec-step1-kpi--current">
     <p class="rec-step1-kpi__label">
       <i class="bi bi-box-seam"></i>
-      <span>Quantidade atual</span>
+      <span>Stock atual</span>
     </p>
     <p class="rec-step1-kpi__value">{{ initial_current_quantity|default:"0"|quantity }}</p>
-    <p class="rec-step1-kpi__hint">Stock disponível neste momento para o produto selecionado.</p>
+    <p class="rec-step1-kpi__hint">Stock registado neste momento para o produto selecionado.</p>
   </article>
 
   <article class="rec-step1-kpi rec-step1-kpi--deficit">
     <p class="rec-step1-kpi__label">
       <i class="bi bi-exclamation-octagon"></i>
-      <span>Défice atual</span>
+      <span id="recSuggestedLabel">{{ suggested_quantity_label|default:"Sugestão" }}</span>
     </p>
-    <p class="rec-step1-kpi__value">{{ initial_deficit_quantity|default:"0"|quantity }}</p>
-    <p class="rec-step1-kpi__hint">Défice é o valor de stock necessário para atender a demanda (requisitos mínimos).</p>
+    <p class="rec-step1-kpi__value">{{ recommendation_metrics.suggested_quantity|default:initial_requested_quantity|default:"0"|quantity }}</p>
+    <p class="rec-step1-kpi__hint" id="recSuggestedHelp">{{ suggested_quantity_hint|default:"Escolha um produto para calcular a ação recomendada." }}</p>
   </article>
 </div>

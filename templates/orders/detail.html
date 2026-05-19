@@ -37,15 +37,47 @@
         <strong>{{ order.total_amount|floatformat:2 }} €</strong>
       </div>
 
-      {% if can_confirm_receipt %}
-        <form method="post" action="{% url 'orders:confirm_receipt' order.id %}">
-          {% csrf_token %}
-          <button type="submit" class="ordd-btn-primary">
-            <i class="bi bi-check2-circle"></i>
-            Confirmar receção
-          </button>
-        </form>
-      {% endif %}
+      <div class="ordd-header-actions">
+        {% if can_confirm_receipt %}
+          <form method="post" action="{% url 'orders:confirm_receipt' order.id %}">
+            {% csrf_token %}
+            <button type="submit" class="ordd-btn-primary">
+              <i class="bi bi-check2-circle"></i>
+              Confirmar receção
+            </button>
+          </form>
+        {% endif %}
+
+        {% if order_role == "seller" and can_seller_confirm %}
+          <form method="post" action="{% url 'orders:seller_confirm' order.id %}">
+            {% csrf_token %}
+            <button type="submit" class="ordd-btn-primary">
+              <i class="bi bi-check2-circle"></i>
+              Aceitar pedido
+            </button>
+          </form>
+        {% endif %}
+
+        {% if order_role == "seller" and can_seller_start %}
+          <form method="post" action="{% url 'orders:seller_in_progress' order.id %}">
+            {% csrf_token %}
+            <button type="submit" class="ordd-btn-primary">
+              <i class="bi bi-box-seam"></i>
+              Marcar em preparação
+            </button>
+          </form>
+        {% endif %}
+
+        {% if order_role == "seller" and can_seller_deliver %}
+          <form method="post" action="{% url 'orders:seller_delivering' order.id %}">
+            {% csrf_token %}
+            <button type="submit" class="ordd-btn-primary">
+              <i class="bi bi-truck"></i>
+              Marcar em entrega
+            </button>
+          </form>
+        {% endif %}
+      </div>
     </div>
   </header>
 
@@ -90,42 +122,15 @@
     </section>
   {% endif %}
 
-  {% if order_role == "seller" %}
-    <section class="ordd-actions">
-      {% if can_seller_confirm %}
-        <form method="post" action="{% url 'orders:seller_confirm' order.id %}">
-          {% csrf_token %}
-          <button type="submit" class="ordd-btn-secondary">
-            <i class="bi bi-check2-circle"></i>
-            Aceitar pedido
-          </button>
-        </form>
-      {% endif %}
-
-      {% if can_seller_start %}
-        <form method="post" action="{% url 'orders:seller_in_progress' order.id %}">
-          {% csrf_token %}
-          <button type="submit" class="ordd-btn-secondary">
-            <i class="bi bi-box-seam"></i>
-            Marcar em preparação
-          </button>
-        </form>
-      {% endif %}
-
-      {% if can_seller_deliver %}
-        <form method="post" action="{% url 'orders:seller_delivering' order.id %}">
-          {% csrf_token %}
-          <button type="submit" class="ordd-btn-secondary">
-            <i class="bi bi-truck"></i>
-            Marcar em entrega
-          </button>
-        </form>
-      {% endif %}
-    </section>
-
-    {% if can_seller_cancel %}
-      <section class="ordd-card">
-        <h3>Cancelar pedido</h3>
+  {% if order_role == "seller" and can_seller_cancel %}
+      <details class="ordd-card ordd-danger-zone">
+        <summary>
+          <span>
+            <i class="bi bi-exclamation-triangle"></i>
+            Cancelar encomenda
+          </span>
+          <small>Use apenas se não conseguir cumprir este pedido.</small>
+        </summary>
         <form method="post" action="{% url 'orders:seller_cancel' order.id %}" class="ordd-cancel-form">
           {% csrf_token %}
           <div class="ordd-cancel-grid">
@@ -149,8 +154,7 @@
             Cancelar encomenda
           </button>
         </form>
-      </section>
-    {% endif %}
+      </details>
   {% endif %}
 
   <section class="ordd-grid">
@@ -227,7 +231,7 @@
 .ordd-backlink{display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;color:#1d4ed8;font-weight:700}
 .ordd-backlink:hover{color:#1e3a8a}
 
-.ordd-header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-left:6px solid #cbd5e1;border-radius:1rem;padding:1.1rem 1.2rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
+.ordd-header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;background:#fff;border:1px solid #e2e8f0;border-left:6px solid #cbd5e1;border-radius:1rem;padding:1.1rem 1.2rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
 .ord-status--pending{border-left-color:#f59e0b}
 .ord-status--confirmed{border-left-color:#2563eb}
 .ord-status--in_progress{border-left-color:#7c3aed}
@@ -239,12 +243,13 @@
 .ordd-header h1{margin:0;color:#0f172a;font-size:1.7rem}
 .ordd-meta{margin:.35rem 0 0 0;color:#64748b}
 .ordd-source-chip{display:inline-flex;align-items:center;margin:.45rem 0 0 0;padding:.25rem .65rem;border-radius:.65rem;background:#e2e8f0;color:#334155;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
-.ordd-header__right{display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap}
+.ordd-header__right{display:flex;flex-direction:column;gap:.75rem;align-items:flex-end;min-width:15rem}
 .ordd-total{text-align:right}
 .ordd-total span{display:block;color:#64748b;font-size:.82rem}
 .ordd-total strong{font-size:1.35rem;color:#0f172a}
+.ordd-header-actions{display:flex;flex-wrap:wrap;gap:.55rem;justify-content:flex-end}
+.ordd-header-actions form{margin:0}
 
-.ordd-actions{display:flex;gap:.75rem;flex-wrap:wrap}
 .ordd-btn-primary,.ordd-btn-secondary,.ordd-btn-danger{border:none;padding:.85rem 1rem;border-radius:.85rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:.5rem}
 .ordd-btn-primary{background:#16a34a;color:#fff}
 .ordd-btn-primary:hover{background:#15803d}
@@ -256,6 +261,16 @@
 .ordd-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:1rem}
 .ordd-card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
 .ordd-card h3{margin:0 0 1rem 0;color:#0f172a}
+.ordd-danger-zone{padding:0;border-color:#fecaca;background:#fffafa;overflow:hidden}
+.ordd-danger-zone summary{
+  list-style:none; cursor:pointer; padding:.9rem 1rem; display:flex; align-items:center; justify-content:space-between;
+  gap:1rem; color:#991b1b; font-weight:900;
+}
+.ordd-danger-zone summary::-webkit-details-marker{display:none}
+.ordd-danger-zone summary span{display:inline-flex;align-items:center;gap:.55rem}
+.ordd-danger-zone summary small{font-size:.8rem;font-weight:700;color:#64748b;text-align:right}
+.ordd-danger-zone[open] summary{border-bottom:1px solid #fecaca;background:#fff1f2}
+.ordd-danger-zone .ordd-cancel-form{padding:1rem}
 .ordd-presale-channel{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;border-left:4px solid #2563eb;background:#f8fbff}
 .ordd-presale-channel h3{margin:0 0 .35rem 0}
 .ordd-presale-channel p{margin:0;color:#475569}
@@ -283,6 +298,7 @@
 .ordd-cancel-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:.85rem}
 .ordd-cancel-form label{display:block;font-size:.8rem;font-weight:700;color:#334155;margin-bottom:.35rem}
 .ordd-cancel-form select,.ordd-cancel-form textarea{width:100%;border:1px solid #cbd5e1;border-radius:.85rem;padding:.85rem .95rem;outline:none;background:#fff}
+.ordd-cancel-form textarea{min-height:0;height:3.15rem;resize:vertical}
 .ordd-cancel-form select:focus,.ordd-cancel-form textarea:focus{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12)}
 
 .ordd-timeline{display:flex;flex-direction:column;gap:.9rem}
@@ -299,6 +315,12 @@
 .ordd-muted{margin:0;color:#64748b}
 
 @media (max-width: 960px){
+  .ordd-header{flex-direction:column}
+  .ordd-header__right{width:100%;align-items:stretch;min-width:0}
+  .ordd-total{text-align:left}
+  .ordd-header-actions,.ordd-header-actions form,.ordd-header-actions button{width:100%}
+  .ordd-danger-zone summary{align-items:flex-start;flex-direction:column}
+  .ordd-danger-zone summary small{text-align:left}
   .ordd-grid{grid-template-columns:1fr}
   .ordd-cancel-grid{grid-template-columns:1fr}
   .ordd-presale-steps{grid-template-columns:1fr}

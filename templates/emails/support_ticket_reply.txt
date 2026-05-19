@@ -1,11 +1,11 @@
 Olá {{ ticket.requester_name_snapshot }},
 
-O teu ticket de suporte #{{ ticket.ticket_number }} foi respondido e fechado.
+O teu ticket de suporte #{{ ticket.ticket_number }} recebeu uma nova resposta da equipa.
 
 Assunto: {{ ticket.subject }}
 
-Resposta do administrador:
+Resposta da equipa:
 {{ ticket.admin_reply_message }}
 
-Podes consultar o histórico em:
+Podes continuar a conversa em:
 {{ support_url }}

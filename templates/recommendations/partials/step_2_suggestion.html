@@ -1,7 +1,7 @@
 <div class="rec-card">
   <div class="rec-card__head">
-    <h2>Passo 2 — Sugestão</h2>
-    <p>O sistema dividiu a necessidade pela melhor combinação de ofertas disponíveis.</p>
+    <h2>Passo 2 — Sugestão de compra</h2>
+    <p>O sistema dividiu a necessidade de reposição pela melhor combinação de ofertas disponíveis.</p>
   </div>
 
   <div class="rec-card__body">
@@ -11,7 +11,7 @@
         <p class="rec-stat__value">{{ recommendation.product.name }}</p>
       </div>
       <div class="rec-stat">
-        <p class="rec-stat__label">Quantidade pedida</p>
+        <p class="rec-stat__label">Quantidade a comprar</p>
         <p class="rec-stat__value">{{ recommendation.requested_quantity|quantity }}</p>
       </div>
       <div class="rec-stat">
@@ -24,23 +24,27 @@
       </div>
     </div>
 
-    {% if recommendation.summary_text %}
-      <div class="rec-info">
-        {{ recommendation.summary_text }}
-      </div>
-    {% endif %}
-
-    {% if remaining_deficit and remaining_deficit > 0 %}
+    {% if can_accept and remaining_deficit and remaining_deficit > 0 %}
       <div class="rec-info rec-info--warning">
-        A recomendação cobre apenas parte da necessidade. Continua a faltar
-        <strong>{{ remaining_deficit|quantity }}</strong>
-        {{ recommendation.product.unit }}.
+        Foram encontradas ofertas para
+        <strong>{{ selected_total_quantity|quantity }} {{ recommendation.product.unit }}</strong>.
+        Ainda faltam
+        <strong>{{ remaining_deficit|quantity }} {{ recommendation.product.unit }}</strong>
+        para cobrir a quantidade pretendida.
+      </div>
+    {% elif can_accept %}
+      <div class="rec-info rec-info--success">
+        A recomendação cobre a quantidade a comprar. Pode avançar para confirmar a encomenda.
+      </div>
+    {% else %}
+      <div class="rec-info rec-info--neutral">
+        Não existem anúncios ativos para este produto neste momento. Pode criar uma necessidade para receber propostas.
       </div>
     {% endif %}
 
     {% if recommendation.need_id %}
-      <div class="rec-info">
-        Esta recomendação já está associada a uma necessidade anunciada.
+      <div class="rec-info rec-info--neutral">
+        Já existe uma necessidade associada a esta recomendação para o défice que ficou por cobrir.
       </div>
     {% endif %}
 

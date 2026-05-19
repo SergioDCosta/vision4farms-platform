@@ -1,0 +1,171 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}Ticket #{{ ticket.ticket_number }}{% endblock %}
+{% block app_content %}
+
+<div class="sup-page">
+  <header class="sup-header sup-header--row">
+    <div>
+      <p class="sup-eyebrow">Conversa de suporte</p>
+      <h1>Ticket #{{ ticket.ticket_number }}</h1>
+      <p>{{ ticket.subject }}</p>
+    </div>
+    <a href="{% url 'support:index' %}#historico-suporte" class="sup-btn-ghost">
+      <i class="bi bi-arrow-left"></i> Voltar ao suporte
+    </a>
+  </header>
+
+  <div class="sup-conversation-layout">
+    <main class="sup-card">
+      <div class="sup-card-head">
+        <div>
+          <h2>Conversa</h2>
+          <p>Acompanhe todas as mensagens até o pedido ficar resolvido.</p>
+        </div>
+        <span class="sup-ticket-status">{{ ticket.get_status_display }}</span>
+      </div>
+
+      <div class="sup-thread">
+        {% for item in thread_items %}
+          {% if item.legacy %}
+            <article class="sup-message {% if item.sender_role == 'REQUESTER' %}is-requester{% else %}is-admin{% endif %}">
+              <div class="sup-message-head">
+                <strong>{% if item.sender_role == "REQUESTER" %}Você{% else %}{{ item.sender_name|default:"Suporte" }}{% endif %}</strong>
+                <span>{{ item.created_at|date:"d/m/Y H:i" }}</span>
+              </div>
+              <div class="sup-message-body">{{ item.body }}</div>
+            </article>
+          {% else %}
+            <article class="sup-message {% if item.message.sender_role == 'REQUESTER' %}is-requester{% else %}is-admin{% endif %}">
+              <div class="sup-message-head">
+                <strong>
+                  {% if item.message.sender_role == "REQUESTER" %}
+                    {% if item.message.sender_user_id == request.current_user.id %}Você{% else %}{{ ticket.requester_name_snapshot }}{% endif %}
+                  {% elif item.message.sender_role == "ADMIN" %}
+                    Suporte
+                  {% else %}
+                    Sistema
+                  {% endif %}
+                </strong>
+                <span>{{ item.message.created_at|date:"d/m/Y H:i" }}</span>
+              </div>
+              <div class="sup-message-body">{{ item.message.body }}</div>
+              {% if item.attachments %}
+                <div class="sup-attachments">
+                  {% for attachment in item.attachments %}
+                    <a href="{{ attachment.url }}" target="_blank" rel="noopener" class="sup-attachment">
+                      <img src="{{ attachment.url }}" alt="{{ attachment.name }}">
+                      <span>{{ attachment.name }}</span>
+                    </a>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </article>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      {% if ticket.status != "CLOSED" %}
+        <form method="post" action="{% url 'support:ticket_reply' ticket.id %}" enctype="multipart/form-data" class="sup-reply-form">
+          {% csrf_token %}
+          <div class="sup-field">
+            <label for="{{ reply_form.reply_message.id_for_label }}">{{ reply_form.reply_message.label }}</label>
+            {{ reply_form.reply_message }}
+          </div>
+          <div class="sup-field">
+            <label for="support-reply-images">Imagens opcionais</label>
+            <input id="support-reply-images" name="images" type="file" accept="image/*" multiple class="form-control">
+            <small>JPG, PNG, WEBP ou GIF. Máximo 10MB por imagem.</small>
+          </div>
+          <div class="sup-actions">
+            <button type="submit" class="sup-btn-primary">
+              <i class="bi bi-send"></i> Enviar mensagem
+            </button>
+          </div>
+        </form>
+      {% else %}
+        <div class="sup-closed-note">
+          <i class="bi bi-check-circle"></i>
+          <span>Este pedido foi marcado como resolvido. Se precisar de nova ajuda, crie um novo pedido.</span>
+        </div>
+      {% endif %}
+    </main>
+
+    <aside class="sup-card">
+      <div class="sup-card-head">
+        <div>
+          <h2>Resumo</h2>
+          <p>Dados do pedido de suporte.</p>
+        </div>
+      </div>
+      <div class="sup-summary-list">
+        <div><span>Estado</span><strong>{{ ticket.get_status_display }}</strong></div>
+        <div><span>Criado</span><strong>{{ ticket.created_at|date:"d/m/Y H:i" }}</strong></div>
+        <div><span>Última mensagem</span><strong>{{ ticket.last_message_at|date:"d/m/Y H:i"|default:"—" }}</strong></div>
+        {% if ticket.assigned_admin %}
+          <div><span>Equipa</span><strong>{{ ticket.assigned_admin.full_name|default:ticket.assigned_admin.email }}</strong></div>
+        {% endif %}
+      </div>
+      {% if support_contact_email %}
+        <div class="sup-note">
+          <i class="bi bi-envelope"></i>
+          <span>Contacto de suporte: <a href="mailto:{{ support_contact_email }}">{{ support_contact_email }}</a></span>
+        </div>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+
+<style>
+.sup-page{display:flex;flex-direction:column;gap:1.15rem;font-family:'DM Sans',system-ui,sans-serif;}
+.sup-header,.sup-card{background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+.sup-header{padding:1.25rem 1.35rem;}
+.sup-header--row{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;}
+.sup-eyebrow{margin:0 0 .25rem;color:#16a34a;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;}
+.sup-header h1{margin:0;font-size:1.55rem;font-weight:850;color:#0f172a;letter-spacing:0;line-height:1.15;}
+.sup-header p:last-child{margin:.35rem 0 0;color:#64748b;font-size:.9rem;line-height:1.45;}
+.sup-conversation-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:1rem;align-items:start;}
+.sup-card{padding:1.15rem;min-width:0;}
+.sup-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem;}
+.sup-card-head h2{margin:0;font-size:1.02rem;font-weight:850;color:#0f172a;letter-spacing:0;}
+.sup-card-head p{margin:.25rem 0 0;color:#64748b;font-size:.84rem;line-height:1.42;}
+.sup-ticket-status{display:inline-flex;align-items:center;border-radius:999px;padding:.2rem .55rem;font-size:.72rem;font-weight:850;background:#e2e8f0;color:#334155;white-space:nowrap;}
+.sup-thread{display:flex;flex-direction:column;gap:.75rem;}
+.sup-message{max-width:82%;border:1px solid #e2e8f0;border-radius:.9rem;padding:.8rem;background:#f8fafc;}
+.sup-message.is-requester{align-self:flex-end;background:#ecfdf5;border-color:#bbf7d0;}
+.sup-message.is-admin{align-self:flex-start;background:#eff6ff;border-color:#bfdbfe;}
+.sup-message-head{display:flex;justify-content:space-between;gap:.75rem;margin-bottom:.45rem;color:#64748b;font-size:.76rem;}
+.sup-message-head strong{color:#0f172a;}
+.sup-message-body{white-space:pre-wrap;overflow-wrap:anywhere;color:#334155;font-size:.9rem;line-height:1.5;}
+.sup-attachments{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.55rem;margin-top:.7rem;}
+.sup-attachment{display:flex;flex-direction:column;gap:.35rem;text-decoration:none;color:#334155;font-size:.75rem;font-weight:800;}
+.sup-attachment img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:.65rem;border:1px solid #cbd5e1;background:#fff;}
+.sup-field{display:flex;flex-direction:column;gap:.35rem;min-width:0;}
+.sup-field label{font-size:.79rem;font-weight:800;color:#334155;}
+.sup-field input,.sup-field textarea{width:100%;max-width:100%;}
+.sup-field small{color:#64748b;font-size:.76rem;line-height:1.35;}
+.sup-reply-form{display:grid;gap:.8rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #e2e8f0;}
+.sup-actions{display:flex;justify-content:flex-end;gap:.55rem;flex-wrap:wrap;}
+.sup-btn-primary,.sup-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;min-height:38px;padding:.55rem 1rem;border-radius:.65rem;font-size:.84rem;font-weight:800;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s;}
+.sup-btn-primary{border:1px solid #16a34a;background:#16a34a;color:#fff;}
+.sup-btn-primary:hover{background:#15803d;border-color:#15803d;color:#fff;}
+.sup-btn-ghost{border:1.5px solid #cbd5e1;background:#fff;color:#0f172a;}
+.sup-btn-ghost:hover{background:#f8fafc;border-color:#94a3b8;color:#0f172a;}
+.sup-summary-list{display:grid;gap:.7rem;}
+.sup-summary-list div{display:flex;flex-direction:column;gap:.2rem;padding:.75rem;border:1px solid #e2e8f0;border-radius:.72rem;background:#f8fafc;}
+.sup-summary-list span{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:850;}
+.sup-summary-list strong{font-size:.88rem;color:#0f172a;overflow-wrap:anywhere;}
+.sup-note,.sup-closed-note{display:flex;gap:.55rem;align-items:flex-start;margin-top:.9rem;padding:.75rem;border-radius:.72rem;font-size:.82rem;line-height:1.45;}
+.sup-note{border:1px solid #dbeafe;background:#eff6ff;color:#1e3a8a;}
+.sup-closed-note{border:1px solid #bbf7d0;background:#f0fdf4;color:#166534;}
+@media (max-width:1080px){
+  .sup-conversation-layout{grid-template-columns:1fr;}
+}
+@media (max-width:720px){
+  .sup-header,.sup-card{padding:1rem;}
+  .sup-message{max-width:100%;}
+  .sup-actions{justify-content:stretch;}
+  .sup-btn-primary,.sup-btn-ghost{width:100%;}
+}
+</style>
+
+{% endblock %}

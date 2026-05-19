@@ -16,26 +16,34 @@ from apps.marketplace.services import (
     create_listing,
     expire_due_active_listings,
     get_current_producer_for_user,
+    get_max_publishable_quantity,
+    get_stock_for_product,
 )
-from apps.needs.forms import NeedResponsePublishForm
+from apps.needs.forms import NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import Need, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     create_or_update_need,
     build_need_response_for_listing,
+    get_need_edit_help_text,
+    get_need_minimum_edit_quantity,
     get_active_need_response_for_responder,
     get_critical_stock_product_ids,
+    get_editable_need_response_for_responder,
     get_need_response_listing_for_viewer,
     get_need_candidate_products,
     get_need_for_producer,
     get_need_response_counts_for_owner,
+    get_need_response_summaries_for_responder,
     ignore_need,
     list_need_responses_for_owner,
     list_need_responses_for_responder,
     list_marketplace_my_needs,
     list_marketplace_public_needs,
     reject_need_response,
+    update_need,
+    update_need_response,
 )
 
 
@@ -70,19 +78,58 @@ def parse_need_datetime(value):
 
 def build_selected_need_row(need):
     coverage = calculate_need_coverage(need)
+    required_quantity = coverage["required_quantity"]
+    completed_qty = coverage["completed_qty"]
+    progress_percent = Decimal("0")
+    if required_quantity > 0:
+        progress_percent = (completed_qty / required_quantity) * Decimal("100")
+    minimum_edit_quantity = get_need_minimum_edit_quantity(coverage)
     return {
         "need": need,
         "status": need.status,
         "status_label": need.get_status_display(),
-        "required_quantity": coverage["required_quantity"],
+        "required_quantity": required_quantity,
         "planned_qty": coverage["planned_qty"],
-        "completed_qty": coverage["completed_qty"],
+        "completed_qty": completed_qty,
         "remaining_to_plan": coverage["remaining_to_plan"],
         "remaining_to_receive": coverage["remaining_to_receive"],
         "planned_excess_qty": max(
-            coverage["planned_qty"] - coverage["required_quantity"],
+            coverage["planned_qty"] - required_quantity,
             Decimal("0.000"),
         ),
+        "progress_percent": max(Decimal("0"), min(progress_percent, Decimal("100"))),
+        "can_edit": need.status in {NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED, NeedStatus.COVERED},
+        "minimum_edit_quantity": minimum_edit_quantity,
+        "edit_help_text": get_need_edit_help_text(need, coverage),
+    }
+
+
+def build_need_response_inventory_context(producer, product):
+    stock = get_stock_for_product(producer, product)
+    if not stock:
+        return {
+            "has_stock": False,
+            "stock": None,
+            "current_quantity": Decimal("0.000"),
+            "reserved_quantity": Decimal("0.000"),
+            "available_quantity": Decimal("0.000"),
+            "safety_stock": Decimal("0.000"),
+            "max_publishable_quantity": Decimal("0.000"),
+        }
+
+    current_quantity = Decimal(str(stock.current_quantity or 0))
+    reserved_quantity = Decimal(str(stock.reserved_quantity or 0))
+    safety_stock = Decimal(str(stock.safety_stock or 0))
+    available_quantity = current_quantity - reserved_quantity
+
+    return {
+        "has_stock": True,
+        "stock": stock,
+        "current_quantity": current_quantity,
+        "reserved_quantity": reserved_quantity,
+        "available_quantity": available_quantity,
+        "safety_stock": safety_stock,
+        "max_publishable_quantity": get_max_publishable_quantity(stock),
     }
 
 
@@ -106,6 +153,8 @@ def build_needs_index_context(
     need_prefill_product_id="",
     need_prefill_quantity="",
     show_need_form=False,
+    edit_need_id="",
+    need_edit_form=None,
 ):
     need_public_rows = list_marketplace_public_needs(
         viewer_producer=producer,
@@ -171,6 +220,19 @@ def build_needs_index_context(
         if not need_prefill_quantity:
             need_prefill_quantity = str(selected_need_row["remaining_to_plan"])
 
+    validated_edit_need_id = ""
+    is_editing_selected_need = False
+    if (
+        edit_need_id
+        and selected_need_row
+        and str(edit_need_id) == str(selected_need_row["need"].id)
+        and selected_need_row.get("can_edit")
+    ):
+        validated_edit_need_id = str(selected_need_row["need"].id)
+        is_editing_selected_need = True
+        if need_edit_form is None:
+            need_edit_form = NeedEditForm(need=selected_need_row["need"])
+
     need_response_rows = (
         list_need_responses_for_owner(
             owner_producer=producer,
@@ -211,6 +273,10 @@ def build_needs_index_context(
         if producer
         else []
     )
+    sent_active_need_response_rows = [
+        response for response in sent_need_response_rows
+        if response.response_status == "PENDING"
+    ]
     sent_past_need_response_rows = [
         response for response in sent_need_response_rows
         if response.response_status != "PENDING"
@@ -228,12 +294,34 @@ def build_needs_index_context(
         "past_need_response_rows": past_need_response_rows,
         "all_past_need_response_rows": all_past_need_response_rows,
         "received_past_need_response_rows": all_past_need_response_rows,
+        "sent_need_response_rows": sent_need_response_rows,
+        "sent_active_need_response_rows": sent_active_need_response_rows,
         "sent_past_need_response_rows": sent_past_need_response_rows,
         "selected_need_id": validated_need_id,
         "selected_need_row": selected_need_row,
         "need_prefill_product_id": need_prefill_product_id,
         "need_prefill_quantity": need_prefill_quantity,
         "show_need_form": bool(show_need_form),
+        "edit_need_id": validated_edit_need_id,
+        "is_editing_selected_need": is_editing_selected_need,
+        "need_edit_form": need_edit_form,
+        "edit_need_url": build_needs_index_url(
+            q=q,
+            category_id=category_id,
+            selected_need_id=validated_need_id,
+            need_prefill_product_id=need_prefill_product_id,
+            need_prefill_quantity=need_prefill_quantity,
+            show_need_form=show_need_form,
+            edit_need_id=validated_need_id,
+        ) if selected_need_row and selected_need_row.get("can_edit") else "",
+        "close_edit_need_url": build_needs_index_url(
+            q=q,
+            category_id=category_id,
+            selected_need_id=validated_need_id,
+            need_prefill_product_id=need_prefill_product_id,
+            need_prefill_quantity=need_prefill_quantity,
+            show_need_form=show_need_form,
+        ),
         "available_categories": available_categories,
         "can_publish": bool(producer),
         "current_url": build_needs_index_url(
@@ -243,6 +331,7 @@ def build_needs_index_context(
             need_prefill_product_id=need_prefill_product_id,
             need_prefill_quantity=need_prefill_quantity,
             show_need_form=show_need_form,
+            edit_need_id=validated_edit_need_id,
         ),
     }
 
@@ -257,6 +346,7 @@ def needs_index_view(request):
 
     expire_due_active_listings()
     q, category_id, selected_need_id, requested_product_id, requested_quantity, show_need_form = get_needs_filters(request)
+    edit_need_id = (request.GET.get("edit_need") or "").strip()
     context = build_needs_index_context(
         producer,
         q=q,
@@ -265,6 +355,7 @@ def needs_index_view(request):
         need_prefill_product_id=requested_product_id,
         need_prefill_quantity=requested_quantity,
         show_need_form=show_need_form,
+        edit_need_id=edit_need_id,
     )
     return render(request, "needs/index.html", context)
 
@@ -309,11 +400,76 @@ def need_response_publish_view(request):
         messages.error(request, "Produto inválido para responder a esta necessidade.")
         return redirect("needs:index")
 
-    form = NeedResponsePublishForm(request.POST or None, producer=producer, need=need)
+    form_initial = {}
+    requested_quantity = (request.GET.get("qty") or request.GET.get("quantity") or "").strip()
+    if request.method == "GET" and requested_quantity:
+        form_initial["quantity"] = requested_quantity
     coverage = calculate_need_coverage(need)
     existing_response = get_active_need_response_for_responder(
         responder_producer=producer,
         need=need,
+    )
+    latest_response_summary = get_need_response_summaries_for_responder(
+        responder_producer=producer,
+        need_ids=[need.id],
+    ).get(str(need.id))
+
+    if existing_response and request.method == "GET":
+        return redirect("needs:response_edit", listing_id=existing_response.id)
+
+    if existing_response and request.method == "POST":
+        form = NeedResponseEditForm(request.POST, listing=existing_response)
+        if form.is_valid():
+            try:
+                listing = update_need_response(
+                    listing=existing_response,
+                    responder_producer=producer,
+                    quantity=form.cleaned_data["quantity"],
+                    unit_price=form.cleaned_data["unit_price"],
+                    delivery_mode=form.cleaned_data["delivery_mode"],
+                    delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
+                    delivery_fee=form.cleaned_data.get("delivery_fee"),
+                    notes=form.cleaned_data.get("notes"),
+                )
+            except ValidationError as exc:
+                form.add_error(None, str(exc))
+            else:
+                sync_alerts_after_need_change(producer, request.current_user)
+                sync_alerts_after_need_change(need.producer, request.current_user)
+                messages.success(request, "Proposta atualizada com sucesso.")
+                return redirect("needs:response_detail", listing_id=listing.id)
+
+        context = {
+            "page_title": "Editar proposta",
+            "header_kicker": "Editar proposta",
+            "header_title": f"Proposta para {need.product.name}",
+            "header_description": "Atualize a proposta privada que enviou para esta necessidade.",
+            "form_title": "Editar proposta",
+            "form_description": "Enquanto a proposta estiver pendente, pode ajustar quantidade, preço e condições.",
+            "submit_label": "Guardar alterações",
+            "submit_icon": "bi-check2",
+            "is_need_response_edit": True,
+            "form": form,
+            "need": need,
+            "coverage": coverage,
+            "existing_response": existing_response,
+            "responder_inventory": build_need_response_inventory_context(producer, need.product),
+            "back_to_needs_url": build_needs_index_url(),
+        }
+        return render(request, "needs/respond.html", context)
+
+    if latest_response_summary and not latest_response_summary.can_send_new_proposal:
+        messages.info(
+            request,
+            "Já existe uma proposta enviada para esta necessidade que não permite nova proposta neste momento.",
+        )
+        return redirect("needs:response_detail", listing_id=latest_response_summary.listing_id)
+
+    form = NeedResponsePublishForm(
+        request.POST or None,
+        producer=producer,
+        need=need,
+        initial=form_initial,
     )
 
     if request.method == "POST" and form.is_valid():
@@ -326,7 +482,7 @@ def need_response_publish_view(request):
                 delivery_mode=form.cleaned_data["delivery_mode"],
                 delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
                 delivery_fee=form.cleaned_data.get("delivery_fee"),
-                show_location_on_map=form.cleaned_data.get("show_location_on_map", True),
+                show_location_on_map=True,
                 notes=form.cleaned_data.get("notes"),
                 photo_path=None,
                 status=ListingStatus.ACTIVE,
@@ -345,10 +501,19 @@ def need_response_publish_view(request):
 
     context = {
         "page_title": "Responder a necessidade",
+        "header_kicker": "Resposta a necessidade",
+        "header_title": f"Oferta privada para {need.product.name}",
+        "header_description": "Envie uma proposta diretamente para o produtor que anunciou esta necessidade.",
+        "form_title": "Enviar proposta",
+        "form_description": "A resposta fica privada e só pode ser comprada pelo produtor desta necessidade.",
+        "submit_label": "Enviar proposta",
+        "submit_icon": "bi-send",
+        "is_need_response_edit": False,
         "form": form,
         "need": need,
         "coverage": coverage,
         "existing_response": existing_response,
+        "responder_inventory": build_need_response_inventory_context(producer, need.product),
         "back_to_needs_url": build_needs_index_url(),
     }
     return render(request, "needs/respond.html", context)
@@ -442,6 +607,93 @@ def need_create_view(request):
 
 
 @client_only_required
+def need_edit_view(request, need_id):
+    if request.method != "POST":
+        return redirect(build_needs_index_url(selected_need_id=str(need_id), edit_need_id=str(need_id)))
+
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    q, category_id, _, requested_product_id, requested_quantity, show_need_form = get_needs_filters(request)
+    requested_quantity = (request.POST.get("qty") or "").strip()
+    need = get_need_for_producer(producer=producer, need_id=need_id)
+    if not need:
+        messages.error(request, "Necessidade não encontrada.")
+        return redirect("needs:index")
+
+    form = NeedEditForm(request.POST, need=need)
+    if form.is_valid():
+        try:
+            updated_need, _, changed = update_need(
+                need=need,
+                producer=producer,
+                required_quantity=form.cleaned_data["required_quantity"],
+                needed_by_date=form.cleaned_data.get("needed_by_date"),
+                notes=form.cleaned_data.get("notes"),
+            )
+        except ValidationError as exc:
+            form.add_error(None, str(exc))
+        else:
+            if changed:
+                messages.success(request, "Necessidade atualizada com sucesso.")
+                sync_alerts_after_need_change(producer, request.current_user)
+            else:
+                messages.info(request, "Não havia alterações para guardar.")
+
+            next_url = build_needs_index_url(
+                q=q,
+                category_id=category_id,
+                selected_need_id=str(updated_need.id),
+                need_prefill_product_id=requested_product_id,
+                need_prefill_quantity=requested_quantity,
+                show_need_form=show_need_form,
+            )
+            if _is_htmx(request):
+                context = build_needs_index_context(
+                    producer,
+                    q=q,
+                    category_id=category_id,
+                    selected_need_id=str(updated_need.id),
+                    need_prefill_product_id=requested_product_id,
+                    need_prefill_quantity=requested_quantity,
+                    show_need_form=show_need_form,
+                )
+                return render(request, "needs/index.html", context)
+            return redirect(next_url)
+
+    if _is_htmx(request):
+        context = build_needs_index_context(
+            producer,
+            q=q,
+            category_id=category_id,
+            selected_need_id=str(need.id),
+            need_prefill_product_id=requested_product_id,
+            need_prefill_quantity=requested_quantity,
+            show_need_form=show_need_form,
+            edit_need_id=str(need.id),
+            need_edit_form=form,
+        )
+        return render(request, "needs/index.html", context)
+
+    context = build_needs_index_context(
+        producer,
+        q=q,
+        category_id=category_id,
+        selected_need_id=str(need.id),
+        need_prefill_product_id=requested_product_id,
+        need_prefill_quantity=requested_quantity,
+        show_need_form=show_need_form,
+        edit_need_id=str(need.id),
+        need_edit_form=form,
+    )
+    return render(request, "needs/index.html", context)
+
+
+@client_only_required
 def need_ignore_view(request, need_id):
     if request.method != "POST":
         return redirect("needs:index")
@@ -496,6 +748,67 @@ def need_ignore_view(request, need_id):
             show_need_form=show_need_form,
         )
     )
+
+
+@client_only_required
+def need_response_edit_view(request, listing_id):
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    expire_due_active_listings()
+    listing = get_editable_need_response_for_responder(
+        responder_producer=producer,
+        listing_id=listing_id,
+    )
+    if not listing:
+        messages.error(request, "Esta proposta já não pode ser editada.")
+        return redirect("needs:index")
+
+    need = listing.need
+    form = NeedResponseEditForm(request.POST or None, listing=listing)
+    coverage = calculate_need_coverage(need)
+
+    if request.method == "POST" and form.is_valid():
+        try:
+            updated_listing = update_need_response(
+                listing=listing,
+                responder_producer=producer,
+                quantity=form.cleaned_data["quantity"],
+                unit_price=form.cleaned_data["unit_price"],
+                delivery_mode=form.cleaned_data["delivery_mode"],
+                delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
+                delivery_fee=form.cleaned_data.get("delivery_fee"),
+                notes=form.cleaned_data.get("notes"),
+            )
+        except ValidationError as exc:
+            form.add_error(None, str(exc))
+        else:
+            sync_alerts_after_need_change(producer, request.current_user)
+            sync_alerts_after_need_change(need.producer, request.current_user)
+            messages.success(request, "Proposta atualizada com sucesso.")
+            return redirect("needs:response_detail", listing_id=updated_listing.id)
+
+    context = {
+        "page_title": "Editar proposta",
+        "header_kicker": "Editar proposta",
+        "header_title": f"Proposta para {need.product.name}",
+        "header_description": "Atualize a proposta privada que enviou para esta necessidade.",
+        "form_title": "Editar proposta",
+        "form_description": "Enquanto a proposta estiver pendente, pode ajustar quantidade, preço e condições.",
+        "submit_label": "Guardar alterações",
+        "submit_icon": "bi-check2",
+        "is_need_response_edit": True,
+        "form": form,
+        "need": need,
+        "coverage": coverage,
+        "existing_response": listing,
+        "responder_inventory": build_need_response_inventory_context(producer, need.product),
+        "back_to_needs_url": build_needs_index_url(),
+    }
+    return render(request, "needs/respond.html", context)
 
 
 @client_only_required

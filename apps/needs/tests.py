@@ -9,6 +9,7 @@ from django.urls import reverse
 from apps.accounts.models import AccountStatus, UserRole
 from apps.marketplace.models import ListingStatus
 from apps.marketplace.services import LISTING_SOURCE_STOCK
+from apps.needs.forms import NeedEditForm, NeedResponseEditForm
 from apps.needs.models import NeedResponseStatus, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
@@ -22,6 +23,8 @@ from apps.needs.services import (
     list_need_responses_for_responder,
     list_marketplace_public_needs,
     reject_need_response,
+    update_need,
+    update_need_response,
 )
 from apps.needs.views import build_needs_index_context
 from apps.orders.models import OrderItemStatus, OrderStatus
@@ -74,8 +77,20 @@ class NeedsRoutingTests(SimpleTestCase):
             f"/necessidades/respostas/{listing_id}/",
         )
         self.assertEqual(
+            reverse("needs:response_edit", args=[listing_id]),
+            f"/necessidades/respostas/{listing_id}/editar/",
+        )
+        self.assertEqual(
             reverse("needs:response_reject", args=[listing_id]),
             f"/necessidades/respostas/{listing_id}/rejeitar/",
+        )
+
+    def test_need_edit_url_is_public_needs_path(self):
+        need_id = uuid4()
+
+        self.assertEqual(
+            reverse("needs:edit", args=[need_id]),
+            f"/necessidades/{need_id}/editar/",
         )
 
 
@@ -132,6 +147,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             patch("apps.needs.views.expire_due_active_listings"),
             patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
             patch("apps.needs.views.get_active_need_response_for_responder", return_value=None),
+            patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={}),
             patch("apps.needs.views.create_listing", return_value=SimpleNamespace(id="listing-1")) as create_listing,
             patch("apps.needs.views.sync_alerts_after_need_change"),
             patch("apps.needs.views.messages"),
@@ -145,6 +161,269 @@ class NeedResponsePublishViewTests(SimpleTestCase):
         self.assertEqual(create_listing.call_args.kwargs["need"], need)
         self.assertIsNone(create_listing.call_args.kwargs["photo_path"])
         self.assertEqual(create_listing.call_args.kwargs["status"], ListingStatus.ACTIVE)
+
+    def test_need_response_publish_updates_existing_active_response_instead_of_creating_duplicate(self):
+        producer = SimpleNamespace(id="seller-1")
+        need = SimpleNamespace(
+            id="need-1",
+            product_id="product-1",
+            producer_id="buyer-1",
+            product=SimpleNamespace(id="product-1", name="Tomate", unit="kg"),
+            producer=SimpleNamespace(id="buyer-1"),
+        )
+        listing_id = uuid4()
+        existing_response = SimpleNamespace(id=listing_id, need=need)
+        need_model = MagicMock()
+        need_model.objects.select_related.return_value.filter.return_value.first.return_value = need
+        form = MagicMock()
+        form.is_valid.return_value = True
+        form.cleaned_data = {
+            "quantity": Decimal("7"),
+            "unit_price": Decimal("2.70"),
+            "delivery_mode": "PICKUP",
+            "delivery_radius_km": None,
+            "delivery_fee": None,
+            "notes": "Proposta ajustada.",
+        }
+
+        with (
+            patch("apps.needs.views.Need", need_model),
+            patch("apps.needs.views.NeedResponsePublishForm", return_value=MagicMock()),
+            patch("apps.needs.views.NeedResponseEditForm", return_value=form),
+            patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
+            patch("apps.needs.views.expire_due_active_listings"),
+            patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
+            patch("apps.needs.views.get_active_need_response_for_responder", return_value=existing_response),
+            patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={}),
+            patch("apps.needs.views.create_listing") as create_listing,
+            patch("apps.needs.views.update_need_response", return_value=existing_response) as update_response,
+            patch("apps.needs.views.sync_alerts_after_need_change"),
+            patch("apps.needs.views.messages"),
+        ):
+            from apps.needs.views import need_response_publish_view
+
+            response = need_response_publish_view(self._request())
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/necessidades/respostas/{listing_id}/")
+        create_listing.assert_not_called()
+        update_response.assert_called_once()
+
+    def test_need_response_publish_blocks_new_proposal_when_latest_response_cannot_be_replaced(self):
+        producer = SimpleNamespace(id="seller-1")
+        listing_id = uuid4()
+        need = SimpleNamespace(
+            id="need-1",
+            product_id="product-1",
+            producer_id="buyer-1",
+            product=SimpleNamespace(id="product-1", name="Tomate", unit="kg"),
+            producer=SimpleNamespace(id="buyer-1"),
+        )
+        need_model = MagicMock()
+        need_model.objects.select_related.return_value.filter.return_value.first.return_value = need
+        latest_summary = SimpleNamespace(
+            listing_id=listing_id,
+            can_send_new_proposal=False,
+        )
+
+        with (
+            patch("apps.needs.views.Need", need_model),
+            patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
+            patch("apps.needs.views.expire_due_active_listings"),
+            patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
+            patch("apps.needs.views.get_active_need_response_for_responder", return_value=None),
+            patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={"need-1": latest_summary}),
+            patch("apps.needs.views.create_listing") as create_listing,
+            patch("apps.needs.views.messages"),
+        ):
+            from apps.needs.views import need_response_publish_view
+
+            response = need_response_publish_view(self._request())
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/necessidades/respostas/{listing_id}/")
+        create_listing.assert_not_called()
+
+
+class NeedEditTests(SimpleTestCase):
+    def test_need_edit_form_blocks_quantity_below_planned_quantity(self):
+        need = SimpleNamespace(
+            status=NeedStatus.PARTIALLY_COVERED,
+            required_quantity=Decimal("100"),
+            needed_by_date=None,
+            notes="",
+            product=SimpleNamespace(unit="kg"),
+        )
+        coverage = {
+            "planned_qty": Decimal("80.000"),
+            "completed_qty": Decimal("20.000"),
+        }
+
+        with patch("apps.needs.forms.calculate_need_coverage", return_value=coverage):
+            form = NeedEditForm(
+                data={
+                    "required_quantity": "70",
+                    "needed_by_date": "",
+                    "notes": "Atualização",
+                },
+                need=need,
+            )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("required_quantity", form.errors)
+
+    def test_need_response_edit_form_uses_listing_values(self):
+        listing = SimpleNamespace(
+            quantity_total=Decimal("12.000"),
+            unit_price=Decimal("2.40"),
+            delivery_mode="PICKUP",
+            delivery_radius_km=None,
+            delivery_fee=None,
+            notes="Entrega amanhã.",
+        )
+
+        form = NeedResponseEditForm(listing=listing)
+
+        self.assertEqual(form.initial["quantity"], Decimal("12.000"))
+        self.assertEqual(form.initial["unit_price"], Decimal("2.40"))
+        self.assertNotIn("listing_source", form.fields)
+
+    def test_update_need_allows_increasing_covered_need_and_recalculates_status(self):
+        producer = SimpleNamespace(id="producer-1")
+        locked_need = SimpleNamespace(
+            id="need-1",
+            producer_id="producer-1",
+            status=NeedStatus.COVERED,
+            product=SimpleNamespace(unit="kg"),
+            required_quantity=Decimal("100.000"),
+            needed_by_date=None,
+            notes=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        coverage_before = {
+            "planned_qty": Decimal("100.000"),
+            "completed_qty": Decimal("100.000"),
+        }
+        coverage_after = {
+            "planned_qty": Decimal("100.000"),
+            "completed_qty": Decimal("100.000"),
+            "required_quantity": Decimal("150.000"),
+        }
+        update = getattr(update_need, "__wrapped__", update_need)
+
+        with (
+            patch("apps.needs.services.Need") as need_model,
+            patch("apps.needs.services.calculate_need_coverage", return_value=coverage_before),
+            patch("apps.needs.services.recalculate_need_status", return_value=(locked_need, coverage_after, True)) as recalc,
+        ):
+            need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
+            updated_need, coverage, changed = update(
+                need=locked_need,
+                producer=producer,
+                required_quantity=Decimal("150"),
+                needed_by_date=None,
+                notes="Preciso de reforço.",
+            )
+
+        self.assertIs(updated_need, locked_need)
+        self.assertEqual(coverage, coverage_after)
+        self.assertTrue(changed)
+        self.assertEqual(locked_need.required_quantity, Decimal("150.000"))
+        self.assertEqual(locked_need.notes, "Preciso de reforço.")
+        locked_need.save.assert_called_once()
+        recalc.assert_called_once_with(locked_need)
+
+    def test_update_need_blocks_quantity_below_planned_quantity(self):
+        producer = SimpleNamespace(id="producer-1")
+        locked_need = SimpleNamespace(
+            id="need-1",
+            producer_id="producer-1",
+            status=NeedStatus.PARTIALLY_COVERED,
+            product=SimpleNamespace(unit="kg"),
+            required_quantity=Decimal("100.000"),
+            needed_by_date=None,
+            notes=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        coverage_before = {
+            "planned_qty": Decimal("80.000"),
+            "completed_qty": Decimal("20.000"),
+        }
+        update = getattr(update_need, "__wrapped__", update_need)
+
+        with (
+            patch("apps.needs.services.Need") as need_model,
+            patch("apps.needs.services.calculate_need_coverage", return_value=coverage_before),
+        ):
+            need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
+            with self.assertRaisesMessage(Exception, "quantidade mínima permitida"):
+                update(
+                    need=locked_need,
+                    producer=producer,
+                    required_quantity=Decimal("70"),
+                    needed_by_date=None,
+                    notes=None,
+                )
+
+        locked_need.save.assert_not_called()
+
+    def test_update_need_blocks_other_producer(self):
+        producer = SimpleNamespace(id="producer-2")
+        locked_need = SimpleNamespace(
+            id="need-1",
+            producer_id="producer-1",
+            status=NeedStatus.OPEN,
+            product=SimpleNamespace(unit="kg"),
+            required_quantity=Decimal("100.000"),
+            needed_by_date=None,
+            notes=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        update = getattr(update_need, "__wrapped__", update_need)
+
+        with patch("apps.needs.services.Need") as need_model:
+            need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
+            with self.assertRaisesMessage(Exception, "Não pode editar esta necessidade"):
+                update(
+                    need=locked_need,
+                    producer=producer,
+                    required_quantity=Decimal("120"),
+                    needed_by_date=None,
+                    notes=None,
+                )
+
+        locked_need.save.assert_not_called()
+
+    def test_update_need_blocks_ignored_need(self):
+        producer = SimpleNamespace(id="producer-1")
+        locked_need = SimpleNamespace(
+            id="need-1",
+            producer_id="producer-1",
+            status=NeedStatus.IGNORED,
+            product=SimpleNamespace(unit="kg"),
+            required_quantity=Decimal("100.000"),
+            needed_by_date=None,
+            notes=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        update = getattr(update_need, "__wrapped__", update_need)
+
+        with patch("apps.needs.services.Need") as need_model:
+            need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
+            with self.assertRaisesMessage(Exception, "já não pode ser editada"):
+                update(
+                    need=locked_need,
+                    producer=producer,
+                    required_quantity=Decimal("120"),
+                    needed_by_date=None,
+                    notes=None,
+                )
+
+        locked_need.save.assert_not_called()
 
 
 class NeedsServiceTests(SimpleTestCase):
@@ -403,6 +682,9 @@ class NeedsServiceTests(SimpleTestCase):
         ), patch(
             "apps.needs.services._get_need_response_order_state_listing_ids",
             return_value=(set(), set(), set()),
+        ), patch(
+            "apps.needs.services.get_need_response_order_snapshot",
+            return_value={},
         ):
             responses = list_need_responses_for_owner(
                 owner_producer=SimpleNamespace(id="owner-1"),
@@ -414,9 +696,14 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(response.product_name, "Tomate")
         self.assertEqual(response.source_label, "Disponível agora")
         self.assertEqual(response.response_status_label, "Pendente")
+        self.assertEqual(response.offered_quantity, Decimal("5.000"))
+        self.assertEqual(response.available_quantity, Decimal("5.000"))
+        self.assertEqual(response.ordered_quantity, Decimal("0.000"))
         self.assertEqual(response.cta_label, "Ver oferta e comprar")
         self.assertEqual(response.detail_url, f"/necessidades/respostas/{listing_id}/")
         self.assertEqual(response.reject_url, f"/necessidades/respostas/{listing_id}/rejeitar/")
+        self.assertEqual(response.edit_url, f"/necessidades/respostas/{listing_id}/editar/")
+        self.assertTrue(response.is_editable)
 
     def test_responder_summary_marks_active_response(self):
         listing_id = uuid4()
@@ -442,6 +729,7 @@ class NeedsServiceTests(SimpleTestCase):
         with (
             patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
             patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
+            patch("apps.needs.services.get_need_response_order_snapshot", return_value={}),
         ):
             summaries = get_need_response_summaries_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -451,8 +739,10 @@ class NeedsServiceTests(SimpleTestCase):
         summary = summaries[str(need_id)]
         self.assertEqual(summary.status_label, "Pendente")
         self.assertTrue(summary.is_active)
+        self.assertTrue(summary.can_edit)
         self.assertFalse(summary.can_send_new_proposal)
         self.assertEqual(summary.detail_url, f"/necessidades/respostas/{listing_id}/")
+        self.assertEqual(summary.edit_url, f"/necessidades/respostas/{listing_id}/editar/")
 
     def test_responder_summary_allows_new_proposal_after_rejection(self):
         listing_id = uuid4()
@@ -478,6 +768,7 @@ class NeedsServiceTests(SimpleTestCase):
         with (
             patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
             patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
+            patch("apps.needs.services.get_need_response_order_snapshot", return_value={}),
         ):
             summaries = get_need_response_summaries_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -535,6 +826,15 @@ class NeedsServiceTests(SimpleTestCase):
         ), patch(
             "apps.needs.services._get_need_response_order_state_listing_ids",
             return_value=(set(), {listing_id}, set()),
+        ), patch(
+            "apps.needs.services.get_need_response_order_snapshot",
+            return_value={
+                listing_id: {
+                    "status": NeedResponseStatus.CANCELLED,
+                    "ordered_quantity": Decimal("5.000"),
+                    "item_statuses": [OrderItemStatus.CANCELLED],
+                }
+            },
         ):
             responses = list_need_responses_for_owner(
                 owner_producer=SimpleNamespace(id="owner-1"),
@@ -544,6 +844,8 @@ class NeedsServiceTests(SimpleTestCase):
         response = responses[0]
         self.assertEqual(response.response_status, "CANCELLED")
         self.assertEqual(response.response_status_label, "Cancelada")
+        self.assertEqual(response.offered_quantity, Decimal("5.000"))
+        self.assertEqual(response.ordered_quantity, Decimal("5.000"))
         self.assertFalse(response.can_buy)
         self.assertFalse(response.can_reject)
 
@@ -572,6 +874,15 @@ class NeedsServiceTests(SimpleTestCase):
         ), patch(
             "apps.needs.services._get_need_response_order_state_listing_ids",
             return_value=(set(), set(), {listing_id}),
+        ), patch(
+            "apps.needs.services.get_need_response_order_snapshot",
+            return_value={
+                listing_id: {
+                    "status": NeedResponseStatus.COMPLETED,
+                    "ordered_quantity": Decimal("5.000"),
+                    "item_statuses": [OrderItemStatus.COMPLETED],
+                }
+            },
         ):
             responses = list_need_responses_for_owner(
                 owner_producer=SimpleNamespace(id="owner-1"),
@@ -581,10 +892,12 @@ class NeedsServiceTests(SimpleTestCase):
         response = responses[0]
         self.assertEqual(response.response_status, "COMPLETED")
         self.assertEqual(response.response_status_label, "Concluída")
+        self.assertEqual(response.offered_quantity, Decimal("5.000"))
+        self.assertEqual(response.ordered_quantity, Decimal("5.000"))
         self.assertFalse(response.can_buy)
         self.assertFalse(response.can_reject)
 
-    def test_completed_response_is_not_public_active_responder_summary(self):
+    def test_completed_response_summary_allows_new_proposal(self):
         listing_id = uuid4()
         need_id = uuid4()
         listing = SimpleNamespace(
@@ -607,13 +920,29 @@ class NeedsServiceTests(SimpleTestCase):
         with (
             patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
             patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
+            patch(
+                "apps.needs.services.get_need_response_order_snapshot",
+                return_value={
+                    listing_id: {
+                        "status": NeedResponseStatus.COMPLETED,
+                        "ordered_quantity": Decimal("5.000"),
+                        "item_statuses": [OrderItemStatus.COMPLETED],
+                    }
+                },
+            ),
         ):
             summaries = get_need_response_summaries_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
                 need_ids=[need_id],
             )
 
-        self.assertIsNone(summaries.get(str(need_id)))
+        summary = summaries[str(need_id)]
+        self.assertEqual(summary.status, "COMPLETED")
+        self.assertEqual(summary.status_label, "Concluída")
+        self.assertFalse(summary.is_active)
+        self.assertFalse(summary.can_edit)
+        self.assertTrue(summary.can_send_new_proposal)
+        self.assertEqual(summary.detail_url, f"/necessidades/respostas/{listing_id}/")
 
     def test_sent_need_responses_are_explicit_history_rows(self):
         listing_id = uuid4()
@@ -639,6 +968,16 @@ class NeedsServiceTests(SimpleTestCase):
         with (
             patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
             patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
+            patch(
+                "apps.needs.services.get_need_response_order_snapshot",
+                return_value={
+                    listing_id: {
+                        "status": NeedResponseStatus.COMPLETED,
+                        "ordered_quantity": Decimal("5.000"),
+                        "item_statuses": [OrderItemStatus.COMPLETED],
+                    }
+                },
+            ),
         ):
             responses = list_need_responses_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -647,6 +986,7 @@ class NeedsServiceTests(SimpleTestCase):
         response = responses[0]
         self.assertEqual(response.need_owner_label, "Produtor A")
         self.assertEqual(response.response_status, "COMPLETED")
+        self.assertEqual(response.ordered_quantity, Decimal("5.000"))
 
     def test_reject_need_response_marks_response_and_closes_listing(self):
         owner = SimpleNamespace(id="owner-1")
@@ -690,6 +1030,38 @@ class NeedsServiceTests(SimpleTestCase):
             with self.assertRaisesMessage(Exception, "Esta oferta já foi aceite"):
                 reject(listing=listing, owner_producer=owner)
 
+    def test_update_need_response_reuses_existing_listing(self):
+        responder = SimpleNamespace(id="seller-1")
+        listing = MagicMock(
+            id="listing-1",
+            producer_id="seller-1",
+            need=SimpleNamespace(producer_id="buyer-1"),
+            status=ListingStatus.ACTIVE,
+            need_response_status=NeedResponseStatus.PENDING,
+            quantity_available=Decimal("8.000"),
+            photo_path=None,
+        )
+        update = getattr(update_need_response, "__wrapped__", update_need_response)
+
+        with (
+            patch("apps.needs.services._get_need_response_listing_for_update", return_value=listing),
+            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
+            patch("apps.marketplace.services.update_listing", return_value=listing) as update_listing,
+        ):
+            updated_listing = update(
+                listing=listing,
+                responder_producer=responder,
+                quantity=Decimal("8"),
+                unit_price=Decimal("2.80"),
+                delivery_mode="PICKUP",
+                notes="Condições ajustadas.",
+            )
+
+        self.assertIs(updated_listing, listing)
+        update_listing.assert_called_once()
+        self.assertEqual(update_listing.call_args.kwargs["listing"], listing)
+        self.assertEqual(update_listing.call_args.kwargs["quantity_total"], Decimal("8"))
+
     def test_needs_context_selects_first_own_need_when_none_selected(self):
         need = SimpleNamespace(
             id="need-1",
@@ -717,7 +1089,7 @@ class NeedsServiceTests(SimpleTestCase):
             patch("apps.needs.views.get_critical_stock_product_ids", return_value={"product-1"}),
             patch("apps.needs.views.get_need_response_counts_for_owner", return_value={"need-1": 1}),
             patch("apps.needs.views.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
-            patch("apps.needs.views.list_need_responses_for_responder", return_value=[past_response]) as sent_responses,
+            patch("apps.needs.views.list_need_responses_for_responder", return_value=[active_response, past_response]) as sent_responses,
         ):
             context = build_needs_index_context(
                 SimpleNamespace(id="owner-1"),
@@ -733,6 +1105,8 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(context["past_need_response_rows"], [past_response])
         self.assertEqual(context["all_past_need_response_rows"], [past_response])
         self.assertEqual(context["received_past_need_response_rows"], [past_response])
+        self.assertEqual(context["sent_need_response_rows"], [active_response, past_response])
+        self.assertEqual(context["sent_active_need_response_rows"], [active_response])
         self.assertEqual(context["sent_past_need_response_rows"], [past_response])
         self.assertTrue(context["need_products"][0].is_critical_stock)
         responses.assert_any_call(

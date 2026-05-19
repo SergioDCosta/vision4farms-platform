@@ -1,4 +1,5 @@
 from django.urls import reverse
+from urllib.parse import urlencode
 from django.contrib import messages
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -11,7 +12,7 @@ from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import NeedSourceSystem
-from apps.needs.services import create_or_update_need
+from apps.needs.services import create_or_update_need, list_marketplace_public_needs
 from apps.orders.services import (
     OrderServiceError,
     create_order_from_recommendation,
@@ -21,6 +22,9 @@ from apps.recommendations.forms import RecommendationRequestForm
 from apps.recommendations.models import Recommendation
 from apps.recommendations.services import (
     RecommendationGenerationError,
+    RECOMMENDATION_DIRECTION_BALANCED,
+    RECOMMENDATION_DIRECTION_BUY,
+    RECOMMENDATION_DIRECTION_SELL,
     accept_recommendation,
     calculate_current_deficit,
     generate_recommendation,
@@ -29,6 +33,9 @@ from apps.recommendations.services import (
     get_recommendation_totals,
     get_selected_items,
 )
+
+
+ZERO_QTY = Decimal("0.000")
 
 
 def _sync_alerts_after_need_change(producer, acting_user):
@@ -67,6 +74,7 @@ def _get_form_products(producer):
 
     # Sem registo de stock assume crítico (equivalente a 0 atual vs 0 de segurança).
     critical_product_ids = {str(product_id) for product_id in product_ids}
+    surplus_product_ids = set()
 
     for product_id, current_quantity, reserved_quantity, safety_stock in stock_rows:
         current_qty = Decimal(str(current_quantity or 0))
@@ -75,11 +83,60 @@ def _get_form_products(producer):
         available_qty = current_qty - reserved_qty
         if available_qty > minimum_qty:
             critical_product_ids.discard(str(product_id))
+            surplus_product_ids.add(str(product_id))
 
     for product in products:
         product.is_critical_stock = str(product.id) in critical_product_ids
+        product.is_surplus_stock = str(product.id) in surplus_product_ids
 
     return products
+
+
+def _recommendation_ui_meta(metrics):
+    direction = metrics.get("recommendation_direction") or RECOMMENDATION_DIRECTION_BALANCED
+    if direction == RECOMMENDATION_DIRECTION_BUY:
+        return {
+            "recommendation_direction": direction,
+            "quantity_label": "Quantidade a comprar",
+            "quantity_help": "Valor sugerido para repor o stock disponível até ao stock de segurança. Podes ajustar manualmente antes de gerar.",
+            "suggested_quantity_label": "Sugestão de compra",
+            "suggested_quantity_hint": "Valor sugerido para repor o stock disponível até ao stock de segurança.",
+            "submit_label": "Gerar recomendação de compra",
+            "can_generate": True,
+        }
+    if direction == RECOMMENDATION_DIRECTION_SELL:
+        return {
+            "recommendation_direction": direction,
+            "quantity_label": "Quantidade a vender",
+            "quantity_help": "Valor sugerido para vender apenas o excedente acima do stock de segurança.",
+            "suggested_quantity_label": "Sugestão de venda",
+            "suggested_quantity_hint": "Excedente disponível acima do stock de segurança.",
+            "submit_label": "Gerar recomendação de venda",
+            "can_generate": True,
+        }
+    return {
+        "recommendation_direction": direction,
+        "quantity_label": "Quantidade sugerida",
+        "quantity_help": "O stock disponível está alinhado com o stock de segurança.",
+        "suggested_quantity_label": "Stock equilibrado",
+        "suggested_quantity_hint": "Não há compra nem venda recomendada neste momento.",
+        "submit_label": "Sem ação recomendada",
+        "can_generate": False,
+    }
+
+
+def _empty_recommendation_metrics():
+    return {
+        "safety_stock": ZERO_QTY,
+        "reserved_quantity": ZERO_QTY,
+        "current_stock": ZERO_QTY,
+        "available_stock": ZERO_QTY,
+        "deficit_quantity": ZERO_QTY,
+        "buy_quantity": ZERO_QTY,
+        "sell_quantity": ZERO_QTY,
+        "suggested_quantity": ZERO_QTY,
+        "recommendation_direction": RECOMMENDATION_DIRECTION_BALANCED,
+    }
 
 
 def _build_step_1_context(
@@ -89,7 +146,10 @@ def _build_step_1_context(
     errors=None,
     initial_deficit_quantity="0",
     initial_current_quantity="0",
+    metrics=None,
 ):
+    metrics = metrics or _empty_recommendation_metrics()
+    ui_meta = _recommendation_ui_meta(metrics)
     return {
         "wizard_step": wizard_step,
         "products": form.fields["product_id"].choices[1:],
@@ -98,6 +158,8 @@ def _build_step_1_context(
         "initial_deficit_quantity": initial_deficit_quantity,
         "initial_current_quantity": initial_current_quantity,
         "initial_requested_quantity": form.initial.get("requested_quantity", ""),
+        "recommendation_metrics": metrics,
+        **ui_meta,
     }
 
 
@@ -115,17 +177,58 @@ def _build_step_2_context(
     alternative_items=None,
     need_prompt=None,
 ):
-    selected_items = get_selected_items(recommendation)
+    totals = get_recommendation_totals(recommendation)
     remaining_deficit = _remaining_deficit_from_recommendation(recommendation)
     return {
         "wizard_step": 2,
         "recommendation": recommendation,
-        "selected_items": selected_items,
+        "selected_items": totals["items"],
+        "selected_total_quantity": totals["selected_total_quantity"],
         "remaining_deficit": remaining_deficit,
         "market_options_expanded": market_options_expanded,
         "alternative_items": alternative_items or [],
-        "can_accept": selected_items.exists(),
+        "can_accept": len(totals["items"]) > 0,
         "need_prompt": need_prompt,
+    }
+
+
+def _need_response_url(need_id, product_id, quantity=None):
+    query = {
+        "from": "need",
+        "need": str(need_id),
+        "product": str(product_id),
+    }
+    if quantity is not None:
+        query["qty"] = str(quantity)
+    return f"{reverse('needs:respond')}?{urlencode(query)}"
+
+
+def _build_sell_recommendation_context(*, producer, product, requested_quantity, metrics):
+    compatible_needs = []
+    for row in list_marketplace_public_needs(viewer_producer=producer):
+        if str(row["need"].product_id) != str(product.id):
+            continue
+        response_quantity = min(
+            Decimal(str(row.get("public_quantity") or 0)),
+            Decimal(str(requested_quantity or 0)),
+        )
+        row["response_url"] = _need_response_url(row["need"].id, product.id, response_quantity)
+        compatible_needs.append(row)
+
+    publish_query = urlencode({
+        "source": "stock",
+        "product": str(product.id),
+        "from": "recommendations",
+        "qty": str(requested_quantity),
+    })
+    return {
+        "wizard_step": 2,
+        "recommendation_direction": RECOMMENDATION_DIRECTION_SELL,
+        "product": product,
+        "requested_quantity": requested_quantity,
+        "recommendation_metrics": metrics,
+        "compatible_need_rows": compatible_needs[:6],
+        "publish_url": f"{reverse('marketplace:publish')}?{publish_query}",
     }
 
 
@@ -152,9 +255,11 @@ def recommendations_index_view(request):
     if selected_product:
         deficit_data = calculate_current_deficit(producer, selected_product)
         form_initial["product_id"] = str(selected_product.id)
-        form_initial["requested_quantity"] = deficit_data["deficit_quantity"]
+        form_initial["requested_quantity"] = deficit_data["suggested_quantity"]
         initial_deficit_quantity = deficit_data["deficit_quantity"]
         initial_current_quantity = deficit_data["current_stock"]
+    else:
+        deficit_data = _empty_recommendation_metrics()
 
     form = RecommendationRequestForm(products=form_products, initial=form_initial)
 
@@ -162,6 +267,7 @@ def recommendations_index_view(request):
         form=form,
         initial_deficit_quantity=initial_deficit_quantity,
         initial_current_quantity=initial_current_quantity,
+        metrics=deficit_data,
     )
     return render(request, "recommendations/index.html", context)
 
@@ -174,10 +280,13 @@ def recommendations_product_metrics_view(request):
 
     product_id = (request.GET.get("product_id") or "").strip()
     if not product_id:
+        metrics = _empty_recommendation_metrics()
         context = {
             "initial_deficit_quantity": "0",
             "initial_current_quantity": "0",
             "initial_requested_quantity": "0",
+            "recommendation_metrics": metrics,
+            **_recommendation_ui_meta(metrics),
         }
         return render(request, "recommendations/partials/step_1_metrics.html", context)
 
@@ -185,10 +294,13 @@ def recommendations_product_metrics_view(request):
     product = next((p for p in form_products if str(p.id) == product_id), None)
 
     if not product:
+        metrics = _empty_recommendation_metrics()
         context = {
             "initial_deficit_quantity": "0",
             "initial_current_quantity": "0",
             "initial_requested_quantity": "0",
+            "recommendation_metrics": metrics,
+            **_recommendation_ui_meta(metrics),
         }
         return render(request, "recommendations/partials/step_1_metrics.html", context)
 
@@ -197,7 +309,9 @@ def recommendations_product_metrics_view(request):
     context = {
         "initial_deficit_quantity": deficit_data["deficit_quantity"],
         "initial_current_quantity": deficit_data["current_stock"],
-        "initial_requested_quantity": deficit_data["deficit_quantity"],
+        "initial_requested_quantity": deficit_data["suggested_quantity"],
+        "recommendation_metrics": deficit_data,
+        **_recommendation_ui_meta(deficit_data),
     }
     return render(request, "recommendations/partials/step_1_metrics.html", context)
 
@@ -228,6 +342,8 @@ def recommendations_generate_view(request):
             deficit_data = calculate_current_deficit(producer, product)
             deficit_quantity = deficit_data["deficit_quantity"]
             current_quantity = deficit_data["current_stock"]
+        else:
+            deficit_data = _empty_recommendation_metrics()
 
         initial_requested_quantity = request.POST.get("requested_quantity", "")
 
@@ -241,10 +357,50 @@ def recommendations_generate_view(request):
             errors={k: v[0] for k, v in form.errors.items()},
             initial_deficit_quantity=deficit_quantity,
             initial_current_quantity=current_quantity,
+            metrics=deficit_data,
         )
         return _render_wizard(request, context)
 
     requested_quantity = form.cleaned_data["requested_quantity"]
+    deficit_data = calculate_current_deficit(producer, product)
+    direction = deficit_data["recommendation_direction"]
+
+    if direction == RECOMMENDATION_DIRECTION_BALANCED:
+        form.initial.update({
+            "product_id": str(product.id),
+            "requested_quantity": requested_quantity,
+        })
+        context = _build_step_1_context(
+            form=form,
+            errors={"requested_quantity": "O stock está equilibrado. Não há compra nem venda recomendada para este produto."},
+            initial_deficit_quantity=deficit_data["deficit_quantity"],
+            initial_current_quantity=deficit_data["current_stock"],
+            metrics=deficit_data,
+        )
+        return _render_wizard(request, context)
+
+    if requested_quantity <= 0:
+        form.initial.update({
+            "product_id": str(product.id),
+            "requested_quantity": requested_quantity,
+        })
+        context = _build_step_1_context(
+            form=form,
+            errors={"requested_quantity": "A quantidade deve ser superior a zero."},
+            initial_deficit_quantity=deficit_data["deficit_quantity"],
+            initial_current_quantity=deficit_data["current_stock"],
+            metrics=deficit_data,
+        )
+        return _render_wizard(request, context)
+
+    if direction == RECOMMENDATION_DIRECTION_SELL:
+        context = _build_sell_recommendation_context(
+            producer=producer,
+            product=product,
+            requested_quantity=requested_quantity,
+            metrics=deficit_data,
+        )
+        return _render_wizard(request, context)
 
     try:
         recommendation = generate_recommendation(
@@ -254,7 +410,6 @@ def recommendations_generate_view(request):
             deadline_date=None,
         )
     except RecommendationGenerationError as exc:
-        deficit_data = calculate_current_deficit(producer, product)
         form.initial.update({
             "product_id": str(product.id),
             "requested_quantity": requested_quantity,
@@ -264,6 +419,7 @@ def recommendations_generate_view(request):
             errors={"requested_quantity": str(exc)},
             initial_deficit_quantity=deficit_data["deficit_quantity"],
             initial_current_quantity=deficit_data["current_stock"],
+            metrics=deficit_data,
         )
         return _render_wizard(request, context)
 
@@ -299,6 +455,7 @@ def recommendations_back_to_need_view(request, recommendation_id):
         form=form,
         initial_deficit_quantity=deficit_data["deficit_quantity"],
         initial_current_quantity=deficit_data["current_stock"],
+        metrics=deficit_data,
     )
     return _render_wizard(request, context)
 

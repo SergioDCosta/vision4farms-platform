@@ -19,7 +19,12 @@ class NeedStatus(models.TextChoices):
 
 class NeedResponseStatus(models.TextChoices):
     PENDING = "PENDING", "Pendente"
+    ACCEPTED = "ACCEPTED", "Aceite"
     REJECTED = "REJECTED", "Rejeitada"
+    CANCELLED = "CANCELLED", "Cancelada"
+    COMPLETED = "COMPLETED", "Concluída"
+    WITHDRAWN = "WITHDRAWN", "Retirada"
+    EXPIRED = "EXPIRED", "Expirada"
 
 
 class Need(models.Model):

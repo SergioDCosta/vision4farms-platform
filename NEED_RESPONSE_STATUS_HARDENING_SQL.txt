@@ -1,0 +1,42 @@
+-- Atualiza a constraint da coluna marketplace_listings.need_response_status.
+-- Executar primeiro na BD local e só depois no Railway.
+
+ALTER TABLE marketplace_listings
+DROP CONSTRAINT IF EXISTS marketplace_listings_need_response_status_check;
+
+ALTER TABLE marketplace_listings
+ADD CONSTRAINT marketplace_listings_need_response_status_check
+CHECK (
+  need_response_status IN (
+    'PENDING',
+    'ACCEPTED',
+    'REJECTED',
+    'CANCELLED',
+    'COMPLETED',
+    'WITHDRAWN',
+    'EXPIRED'
+  )
+);
+
+-- Backfill opcional, depois de validar a app localmente.
+-- Mantém REJECTED como está, marca respostas com encomendas concluídas/canceladas/ativas.
+--
+-- UPDATE marketplace_listings ml
+-- SET need_response_status = CASE
+--   WHEN EXISTS (
+--     SELECT 1 FROM order_items oi
+--     WHERE oi.listing_id = ml.id AND oi.need_id IS NOT NULL AND oi.item_status = 'COMPLETED'
+--   ) THEN 'COMPLETED'
+--   WHEN EXISTS (
+--     SELECT 1 FROM order_items oi
+--     WHERE oi.listing_id = ml.id AND oi.need_id IS NOT NULL AND oi.item_status <> 'CANCELLED'
+--   ) THEN 'ACCEPTED'
+--   WHEN EXISTS (
+--     SELECT 1 FROM order_items oi
+--     WHERE oi.listing_id = ml.id AND oi.need_id IS NOT NULL
+--   ) THEN 'CANCELLED'
+--   WHEN ml.status = 'EXPIRED' THEN 'EXPIRED'
+--   WHEN ml.status = 'CANCELLED' AND ml.need_response_status <> 'REJECTED' THEN 'WITHDRAWN'
+--   ELSE ml.need_response_status
+-- END
+-- WHERE ml.need_id IS NOT NULL;

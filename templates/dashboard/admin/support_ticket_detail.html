@@ -57,36 +57,68 @@
   <div class="adm-user-detail-main">
     <div class="adm-card">
       <div class="adm-card-head">
-        <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Pedido original</h3>
+        <div>
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Conversa</h3>
+          <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.84rem;">
+            Mensagens trocadas entre o utilizador e a equipa de suporte.
+          </p>
+        </div>
       </div>
       <div class="adm-card-body">
-        <p style="margin:0;color:#334155;line-height:1.7;white-space:pre-wrap;">{{ ticket.message }}</p>
+        <div class="adm-support-thread">
+          {% for item in thread_items %}
+            {% if item.legacy %}
+              <article class="adm-support-message {% if item.sender_role == 'REQUESTER' %}is-requester{% else %}is-admin{% endif %}">
+                <div class="adm-support-message-head">
+                  <strong>{% if item.sender_role == "REQUESTER" %}{{ ticket.requester_name_snapshot }}{% else %}{{ item.sender_name|default:"Suporte" }}{% endif %}</strong>
+                  <span>{{ item.created_at|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div class="adm-support-message-body">{{ item.body }}</div>
+              </article>
+            {% else %}
+              <article class="adm-support-message {% if item.message.sender_role == 'REQUESTER' %}is-requester{% else %}is-admin{% endif %}">
+                <div class="adm-support-message-head">
+                  <strong>
+                    {% if item.message.sender_role == "REQUESTER" %}
+                      {{ ticket.requester_name_snapshot }}
+                    {% elif item.message.sender_role == "ADMIN" %}
+                      {{ item.message.sender_user.full_name|default:item.message.sender_user.email|default:"Suporte" }}
+                    {% else %}
+                      Sistema
+                    {% endif %}
+                  </strong>
+                  <span>{{ item.message.created_at|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div class="adm-support-message-body">{{ item.message.body }}</div>
+                {% if item.attachments %}
+                  <div class="adm-support-attachments">
+                    {% for attachment in item.attachments %}
+                      <a href="{{ attachment.url }}" target="_blank" rel="noopener" class="adm-support-attachment">
+                        <img src="{{ attachment.url }}" alt="{{ attachment.name }}">
+                        <span>{{ attachment.name }}</span>
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </article>
+            {% endif %}
+          {% endfor %}
+        </div>
       </div>
     </div>
-
-    {% if ticket.admin_reply_message %}
-      <div class="adm-card">
-        <div class="adm-card-head">
-          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Resposta enviada</h3>
-        </div>
-        <div class="adm-card-body">
-          <p style="margin:0;color:#334155;line-height:1.7;white-space:pre-wrap;">{{ ticket.admin_reply_message }}</p>
-        </div>
-      </div>
-    {% endif %}
 
     {% if ticket.status != "CLOSED" and ticket.assigned_admin_id == request.current_user.id %}
       <div class="adm-card">
         <div class="adm-card-head">
           <div>
-            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Responder e fechar</h3>
+            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Responder</h3>
             <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.84rem;">
-              A primeira resposta fecha automaticamente o ticket.
+              A resposta mantém o ticket aberto. Feche o ticket apenas quando o problema estiver resolvido.
             </p>
           </div>
         </div>
         <div class="adm-card-body">
-          <form method="post" action="{% url 'support:admin_ticket_reply' ticket.id %}">
+          <form method="post" action="{% url 'support:admin_ticket_reply' ticket.id %}" enctype="multipart/form-data">
             {% csrf_token %}
             <div style="display:flex;flex-direction:column;gap:.45rem;">
               <label for="{{ reply_form.reply_message.id_for_label }}" style="font-size:.82rem;font-weight:700;color:#334155;">
@@ -94,9 +126,16 @@
               </label>
               {{ reply_form.reply_message }}
             </div>
+            <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.85rem;">
+              <label for="admin-support-images" style="font-size:.82rem;font-weight:700;color:#334155;">
+                Imagens opcionais
+              </label>
+              <input id="admin-support-images" name="images" type="file" accept="image/*" multiple class="form-control">
+              <small style="color:#64748b;">JPG, PNG, WEBP ou GIF. Máximo 10MB por imagem.</small>
+            </div>
             <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
               <button type="submit" class="adm-btn-primary">
-                <i class="bi bi-send"></i> Enviar resposta e fechar
+                <i class="bi bi-send"></i> Enviar resposta
               </button>
             </div>
           </form>
@@ -152,6 +191,20 @@
           </form>
         </div>
       </div>
+    {% elif ticket.status == "CLAIMED" and ticket.assigned_admin_id == request.current_user.id %}
+      <div class="adm-card">
+        <div class="adm-card-head">
+          <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Resolver</h3>
+        </div>
+        <div class="adm-card-body">
+          <form method="post" action="{% url 'support:admin_ticket_close' ticket.id %}">
+            {% csrf_token %}
+            <button type="submit" class="adm-btn-primary" style="width:100%;justify-content:center;background:#16a34a;border-color:#16a34a;">
+              <i class="bi bi-check-circle"></i> Marcar como resolvido
+            </button>
+          </form>
+        </div>
+      </div>
     {% endif %}
   </div>
 </div>
@@ -194,6 +247,66 @@
   flex-direction:column;
   gap:.75rem;
 }
+.adm-support-thread{
+  display:flex;
+  flex-direction:column;
+  gap:.75rem;
+}
+.adm-support-message{
+  max-width:86%;
+  border:1px solid #e2e8f0;
+  border-radius:1rem;
+  padding:.85rem;
+  background:#f8fafc;
+}
+.adm-support-message.is-requester{
+  align-self:flex-start;
+  background:#eff6ff;
+  border-color:#bfdbfe;
+}
+.adm-support-message.is-admin{
+  align-self:flex-end;
+  background:#ecfdf5;
+  border-color:#bbf7d0;
+}
+.adm-support-message-head{
+  display:flex;
+  justify-content:space-between;
+  gap:.75rem;
+  margin-bottom:.45rem;
+  color:#64748b;
+  font-size:.76rem;
+}
+.adm-support-message-head strong{color:#0f172a;}
+.adm-support-message-body{
+  color:#334155;
+  line-height:1.65;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.adm-support-attachments{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+  gap:.55rem;
+  margin-top:.7rem;
+}
+.adm-support-attachment{
+  display:flex;
+  flex-direction:column;
+  gap:.35rem;
+  color:#334155;
+  text-decoration:none;
+  font-size:.75rem;
+  font-weight:800;
+}
+.adm-support-attachment img{
+  width:100%;
+  aspect-ratio:4/3;
+  object-fit:cover;
+  border-radius:.65rem;
+  border:1px solid #cbd5e1;
+  background:#fff;
+}
 .adm-ticket-requester-top{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -213,6 +326,9 @@
   }
   .adm-ticket-requester-top{
     grid-template-columns:1fr;
+  }
+  .adm-support-message{
+    max-width:100%;
   }
 }
 </style>

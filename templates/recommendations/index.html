@@ -143,6 +143,16 @@
   line-height:1.45;
 }
 
+.rec-info strong{
+  font-weight:850;
+}
+
+.rec-info--neutral{
+  border-color:#bfdbfe;
+  background:#eff6ff;
+  color:#1d4ed8;
+}
+
 .rec-info--warning{
   border-color:#fde68a;
   background:#fffbeb;
@@ -358,6 +368,32 @@
 }
 .rec-btn-ghost:hover{
   background:#dbeafe;
+}
+
+.rec-info--success{
+  border-color:#bbf7d0;
+  background:#f0fdf4;
+  color:#166534;
+}
+
+.rec-sell-section{
+  display:flex;
+  flex-direction:column;
+  gap:.85rem;
+  margin-top:1rem;
+}
+
+.rec-sell-section__head h3{
+  margin:0;
+  font-size:1rem;
+  font-weight:850;
+  color:#0f172a;
+}
+
+.rec-sell-section__head p{
+  margin:.25rem 0 0;
+  color:#64748b;
+  font-size:.86rem;
 }
 
 .rec-need-popup{
@@ -708,9 +744,24 @@
       var requestedInput = document.getElementById("requested_quantity");
       if (!metrics || !requestedInput) return;
 
-      var raw = (metrics.dataset.deficitQuantity || "0").replace(",", ".");
-      var deficit = parseFloat(raw);
-      requestedInput.value = Number.isFinite(deficit) ? deficit : 0;
+      var raw = (metrics.dataset.suggestedQuantity || metrics.dataset.deficitQuantity || "0").replace(",", ".");
+      var suggested = parseFloat(raw);
+      requestedInput.value = Number.isFinite(suggested) ? suggested : 0;
+
+      var quantityLabel = document.getElementById("recQuantityLabel");
+      var quantityHelp = document.getElementById("recQuantityHelp");
+      var generateBtn = document.getElementById("recGenerateBtn");
+      var generateLabel = document.getElementById("recGenerateLabel");
+      var canGenerate = metrics.dataset.canGenerate === "1";
+
+      if (quantityLabel) quantityLabel.textContent = metrics.dataset.quantityLabel || "Quantidade sugerida";
+      if (quantityHelp) quantityHelp.textContent = metrics.dataset.quantityHelp || "";
+      if (generateLabel) generateLabel.textContent = metrics.dataset.submitLabel || "Gerar recomendação";
+      if (generateBtn) {
+        generateBtn.disabled = !canGenerate;
+        generateBtn.style.opacity = canGenerate ? "" : ".55";
+        generateBtn.style.cursor = canGenerate ? "" : "not-allowed";
+      }
     }
 
     document.body.addEventListener("htmx:afterSwap", function (event) {

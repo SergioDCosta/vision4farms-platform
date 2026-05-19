@@ -7,6 +7,8 @@ app_name = "support"
 urlpatterns = [
     path("suporte/", views.support_index_view, name="index"),
     path("suporte/tickets/", views.support_ticket_create_view, name="ticket_create"),
+    path("suporte/<uuid:ticket_id>/", views.support_ticket_detail_view, name="ticket_detail"),
+    path("suporte/<uuid:ticket_id>/responder/", views.support_ticket_reply_view, name="ticket_reply"),
     path("gestor/suporte/", views.admin_support_tickets_view, name="admin_ticket_list"),
     path(
         "gestor/suporte/sidebar-state/",
@@ -27,5 +29,10 @@ urlpatterns = [
         "gestor/suporte/<uuid:ticket_id>/reply/",
         views.admin_support_ticket_reply_view,
         name="admin_ticket_reply",
+    ),
+    path(
+        "gestor/suporte/<uuid:ticket_id>/fechar/",
+        views.admin_support_ticket_close_view,
+        name="admin_ticket_close",
     ),
 ]

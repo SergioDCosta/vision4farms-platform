@@ -22,7 +22,7 @@
           <div class="sup-card-icon"><i class="bi bi-life-preserver"></i></div>
         </div>
 
-        <form method="post" action="{% url 'support:ticket_create' %}" novalidate>
+        <form method="post" action="{% url 'support:ticket_create' %}" enctype="multipart/form-data" novalidate>
           {% csrf_token %}
           <input type="hidden" name="next" value="{% url 'support:index' %}#historico-suporte">
 
@@ -34,6 +34,11 @@
             <div class="sup-field">
               <label for="{{ support_form.message.id_for_label }}">{{ support_form.message.label }}</label>
               {{ support_form.message }}
+            </div>
+            <div class="sup-field">
+              <label for="support-images">Imagens opcionais</label>
+              <input id="support-images" name="images" type="file" accept="image/*" multiple class="form-control">
+              <small>JPG, PNG, WEBP ou GIF. Máximo 10MB por imagem.</small>
             </div>
           </div>
 
@@ -69,11 +74,19 @@
                   <span class="sup-ticket-status">{{ ticket.get_status_display }}</span>
                 </div>
 
-                {% if ticket.admin_reply_message %}
+                {% if ticket.last_message_by_role == "REQUESTER" and ticket.status != "CLOSED" %}
+                  <div class="sup-ticket-reply">A sua última mensagem aguarda resposta da equipa.</div>
+                {% elif ticket.admin_reply_message %}
                   <div class="sup-ticket-reply">{{ ticket.admin_reply_message }}</div>
                 {% else %}
                   <div class="sup-ticket-reply is-empty">Ainda sem resposta da equipa.</div>
                 {% endif %}
+
+                <div class="sup-ticket-actions">
+                  <a href="{% url 'support:ticket_detail' ticket.id %}" class="sup-btn-ghost">
+                    <i class="bi bi-chat-dots"></i> Abrir conversa
+                  </a>
+                </div>
               </article>
             {% endfor %}
           </div>
@@ -112,15 +125,35 @@
         <div class="sup-faq-list">
           <details>
             <summary>Como recupero o acesso à conta?</summary>
-            <p>Use a recuperação de palavra-passe no ecrã de login. Se a conta estiver pendente, contacte o suporte.</p>
+            <p>Use a recuperação de palavra-passe no ecrã de login. Se a conta estiver pendente ou não receber o email, contacte o suporte e indique o email usado no registo.</p>
           </details>
           <details>
             <summary>Como reporto um problema numa encomenda?</summary>
-            <p>Indique o número da encomenda, produto, produtor envolvido e o estado atual do pedido.</p>
+            <p>Abra um pedido com o número da encomenda, produto, produtor envolvido, estado atual e imagens se ajudarem a comprovar o problema.</p>
           </details>
           <details>
             <summary>Como pedir ajuda sobre marketplace ou necessidades?</summary>
-            <p>Explique o produto, quantidade e a ação que estava a tentar realizar.</p>
+            <p>Indique o produto, quantidade, se estava a publicar excedente, responder a uma necessidade ou comprar uma oferta, e descreva o que esperava que acontecesse.</p>
+          </details>
+          <details>
+            <summary>Quando devo criar uma necessidade?</summary>
+            <p>Crie uma necessidade quando precisa de produto que ainda não está coberto por stock próprio ou por encomendas concluídas. Outros produtores podem enviar propostas privadas.</p>
+          </details>
+          <details>
+            <summary>Quando devo publicar excedente?</summary>
+            <p>Publique excedente quando tem stock disponível acima do stock de segurança. Nas recomendações, a plataforma sugere a quantidade a vender até manter esse stock de segurança.</p>
+          </details>
+          <details>
+            <summary>Porque a quantidade disponível pode mudar?</summary>
+            <p>Reservas, encomendas pendentes, cancelamentos e receções atualizam automaticamente o stock disponível. Consulte os movimentos recentes no detalhe do stock.</p>
+          </details>
+          <details>
+            <summary>O que significam os alertas?</summary>
+            <p>Alertas exigem atenção operacional, como stock crítico, necessidade por cobrir ou encomenda por confirmar. Notificações recentes são apenas informativas.</p>
+          </details>
+          <details>
+            <summary>Como anexar imagens ao suporte?</summary>
+            <p>No formulário de suporte pode selecionar uma ou várias imagens. Use fotos claras de erros, produtos, documentos ou ecrãs que ajudem a equipa a perceber o caso.</p>
           </details>
           <details>
             <summary>Quanto tempo demora a resposta?</summary>
@@ -172,6 +205,7 @@
 .sup-field{display:flex;flex-direction:column;gap:.35rem;min-width:0;}
 .sup-field label{font-size:.79rem;font-weight:800;color:#334155;}
 .sup-field input,.sup-field textarea{width:100%;max-width:100%;}
+.sup-field small{color:#64748b;font-size:.76rem;line-height:1.35;}
 .sup-actions{display:flex;justify-content:flex-end;gap:.55rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #f1f5f9;flex-wrap:wrap;}
 .sup-actions--left{justify-content:flex-start;}
 .sup-btn-primary,.sup-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;min-height:38px;padding:.55rem 1rem;border-radius:.65rem;font-size:.84rem;font-weight:800;cursor:pointer;text-decoration:none;transition:background .15s,border-color .15s;}
@@ -187,6 +221,7 @@
 .sup-ticket-status{display:inline-flex;align-items:center;border-radius:999px;padding:.2rem .55rem;font-size:.72rem;font-weight:850;background:#e2e8f0;color:#334155;white-space:nowrap;}
 .sup-ticket-reply{border-radius:.65rem;background:#f8fafc;padding:.65rem;color:#334155;font-size:.82rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;}
 .sup-ticket-reply.is-empty{color:#64748b;}
+.sup-ticket-actions{display:flex;justify-content:flex-end;}
 .sup-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.4rem;padding:1.5rem;border:1px dashed #cbd5e1;border-radius:.8rem;background:#f8fafc;color:#64748b;}
 .sup-empty i{font-size:1.55rem;color:#16a34a;}
 .sup-empty strong{color:#0f172a;}
