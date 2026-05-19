@@ -1,19 +1,23 @@
+from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from django.test import RequestFactory, SimpleTestCase
+from django.http import HttpResponse
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import AccountStatus, UserRole
 from apps.marketplace.models import ListingStatus
 from apps.marketplace.services import LISTING_SOURCE_STOCK
-from apps.needs.forms import NeedEditForm, NeedResponseEditForm
+from apps.needs.forms import NeedCreateForm, NeedEditForm, NeedResponseEditForm
 from apps.needs.models import NeedResponseStatus, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
-    create_or_update_need,
+    create_need,
+    DuplicateActiveNeedError,
     get_critical_stock_product_ids,
     get_need_response_summaries_for_responder,
     get_active_need_response_for_responder,
@@ -23,6 +27,7 @@ from apps.needs.services import (
     list_need_responses_for_responder,
     list_marketplace_public_needs,
     reject_need_response,
+    normalize_needs_search_query,
     update_need,
     update_need_response,
 )
@@ -31,7 +36,7 @@ from apps.orders.models import OrderItemStatus, OrderStatus
 
 
 class FakeQuerySet(list):
-    def filter(self, **kwargs):
+    def filter(self, *args, **kwargs):
         items = list(self)
         for key, value in kwargs.items():
             if key == "need_id__in":
@@ -45,6 +50,11 @@ class FakeQuerySet(list):
                 items = [item for item in items if getattr(item, "quantity_available", Decimal("0")) > value]
             elif key == "order_items__isnull":
                 items = [item for item in items if bool(getattr(item, "has_order_items", False)) != value]
+            elif key == "order__status__in":
+                items = [
+                    item for item in items
+                    if getattr(getattr(item, "order", None), "status", None) in value
+                ]
         return FakeQuerySet(items)
 
     def exclude(self, **kwargs):
@@ -56,6 +66,11 @@ class FakeQuerySet(list):
                 items = [item for item in items if getattr(item, "seller_producer_id", None) != value.id]
             elif key == "item_status__in":
                 items = [item for item in items if getattr(item, "item_status", None) not in value]
+            elif key == "expires_at__lte":
+                items = [
+                    item for item in items
+                    if not getattr(item, "expires_at", None) or getattr(item, "expires_at") > value
+                ]
         return FakeQuerySet(items)
 
     def only(self, *args):
@@ -144,7 +159,6 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             patch("apps.needs.views.Need", need_model),
             patch("apps.needs.views.NeedResponsePublishForm", return_value=form),
             patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
-            patch("apps.needs.views.expire_due_active_listings"),
             patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
             patch("apps.needs.views.get_active_need_response_for_responder", return_value=None),
             patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={}),
@@ -191,7 +205,6 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             patch("apps.needs.views.NeedResponsePublishForm", return_value=MagicMock()),
             patch("apps.needs.views.NeedResponseEditForm", return_value=form),
             patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
-            patch("apps.needs.views.expire_due_active_listings"),
             patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
             patch("apps.needs.views.get_active_need_response_for_responder", return_value=existing_response),
             patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={}),
@@ -208,6 +221,28 @@ class NeedResponsePublishViewTests(SimpleTestCase):
         self.assertEqual(response["Location"], f"/necessidades/respostas/{listing_id}/")
         create_listing.assert_not_called()
         update_response.assert_called_once()
+
+    def test_needs_index_get_does_not_expire_listings(self):
+        request = RequestFactory().get("/necessidades/")
+        request.current_user = SimpleNamespace(
+            is_active=True,
+            account_status=AccountStatus.ACTIVE,
+            role=UserRole.CLIENTE,
+        )
+        producer = SimpleNamespace(id="producer-1")
+
+        with (
+            patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
+            patch("apps.needs.views.build_needs_index_context", return_value={"page_title": "Necessidades"}),
+            patch("apps.needs.views.render", return_value=HttpResponse("ok")),
+            patch("apps.marketplace.services.expire_due_active_listings") as expire,
+        ):
+            from apps.needs.views import needs_index_view
+
+            response = needs_index_view(request)
+
+        self.assertEqual(response.status_code, 200)
+        expire.assert_not_called()
 
     def test_need_response_publish_blocks_new_proposal_when_latest_response_cannot_be_replaced(self):
         producer = SimpleNamespace(id="seller-1")
@@ -229,7 +264,6 @@ class NeedResponsePublishViewTests(SimpleTestCase):
         with (
             patch("apps.needs.views.Need", need_model),
             patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
-            patch("apps.needs.views.expire_due_active_listings"),
             patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
             patch("apps.needs.views.get_active_need_response_for_responder", return_value=None),
             patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={"need-1": latest_summary}),
@@ -246,6 +280,47 @@ class NeedResponsePublishViewTests(SimpleTestCase):
 
 
 class NeedEditTests(SimpleTestCase):
+    def test_need_create_form_limits_notes_length(self):
+        form = NeedCreateForm(
+            data={
+                "product_id": "product-1",
+                "required_quantity": "10",
+                "needed_by_date": "",
+                "notes": "x" * 1201,
+            },
+            producer=None,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("notes", form.errors)
+
+    def test_need_response_edit_form_limits_notes_length(self):
+        listing = SimpleNamespace(
+            quantity_total=Decimal("12.000"),
+            unit_price=Decimal("2.40"),
+            delivery_mode="PICKUP",
+            delivery_radius_km=None,
+            delivery_fee=None,
+            notes="",
+        )
+        form = NeedResponseEditForm(
+            data={
+                "quantity": "12",
+                "unit_price": "2.40",
+                "delivery_mode": "PICKUP",
+                "delivery_radius_km": "",
+                "delivery_fee": "",
+                "notes": "x" * 1201,
+            },
+            listing=listing,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("notes", form.errors)
+
+    def test_search_query_is_normalized_to_safe_length(self):
+        self.assertEqual(len(normalize_needs_search_query("  " + "x" * 200)), 120)
+
     def test_need_edit_form_blocks_quantity_below_planned_quantity(self):
         need = SimpleNamespace(
             status=NeedStatus.PARTIALLY_COVERED,
@@ -458,7 +533,36 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(coverage["completed_qty"], Decimal("2.000"))
         self.assertEqual(coverage["remaining_to_plan"], Decimal("5.000"))
 
-    def test_create_or_update_need_updates_existing_active_need(self):
+    def test_create_need_blocks_existing_active_need_without_updating(self):
+        producer = SimpleNamespace(id="producer-1")
+        product = SimpleNamespace(id="product-1")
+        need = MagicMock(
+            id="need-1",
+            producer=producer,
+            product=product,
+            status=NeedStatus.OPEN,
+        )
+        need.updated_at = None
+        active_qs = MagicMock()
+        active_qs.order_by.return_value.first.return_value = need
+        manager = MagicMock()
+        manager.objects.select_for_update.return_value.filter.return_value = active_qs
+        create = getattr(create_need, "__wrapped__", create_need)
+
+        with patch("apps.needs.services.Need", manager):
+            with self.assertRaises(DuplicateActiveNeedError) as caught:
+                create(
+                    producer=producer,
+                    product=product,
+                    required_quantity=Decimal("7"),
+                    source_system=NeedSourceSystem.MANUAL,
+                    notes="Observação",
+                )
+
+        self.assertIs(caught.exception.existing_need, need)
+        manager.objects.create.assert_not_called()
+
+    def test_create_need_allows_new_need_when_existing_need_is_covered(self):
         producer = SimpleNamespace(id="producer-1")
         product = SimpleNamespace(id="product-1")
         need = MagicMock(
@@ -466,12 +570,12 @@ class NeedsServiceTests(SimpleTestCase):
             product=product,
             status=NeedStatus.OPEN,
         )
-        need.updated_at = None
         active_qs = MagicMock()
-        active_qs.order_by.return_value = [need]
+        active_qs.order_by.return_value.first.return_value = None
         manager = MagicMock()
         manager.objects.select_for_update.return_value.filter.return_value = active_qs
-        create_or_update = getattr(create_or_update_need, "__wrapped__", create_or_update_need)
+        manager.objects.create.return_value = need
+        create = getattr(create_need, "__wrapped__", create_need)
 
         with (
             patch("apps.needs.services.Need", manager),
@@ -480,7 +584,7 @@ class NeedsServiceTests(SimpleTestCase):
                 return_value=(need, {"remaining_to_plan": Decimal("4.000")}, False),
             ),
         ):
-            result, _, created = create_or_update(
+            result, _ = create(
                 producer=producer,
                 product=product,
                 required_quantity=Decimal("7"),
@@ -489,9 +593,8 @@ class NeedsServiceTests(SimpleTestCase):
             )
 
         self.assertIs(result, need)
-        self.assertFalse(created)
-        self.assertEqual(need.required_quantity, Decimal("7.000"))
-        self.assertEqual(need.notes, "Observação")
+        manager.objects.create.assert_called_once()
+        self.assertEqual(manager.objects.create.call_args.kwargs["required_quantity"], Decimal("7.000"))
 
     def test_ignore_need_marks_need_as_ignored(self):
         producer = SimpleNamespace(id="producer-1")
@@ -585,31 +688,51 @@ class NeedsServiceTests(SimpleTestCase):
                 quantity_available=Decimal("10.000"),
                 has_order_items=True,
             ),
+            SimpleNamespace(
+                need_id="need-1",
+                producer_id="producer-b",
+                status=ListingStatus.ACTIVE,
+                need_response_status=NeedResponseStatus.PENDING,
+                quantity_available=Decimal("70.000"),
+                has_order_items=False,
+                expires_at=timezone.now() - timedelta(hours=1),
+            ),
         ])
         order_items = FakeQuerySet([
             SimpleNamespace(
                 need_id="need-1",
                 seller_producer_id="producer-b",
                 item_status=OrderItemStatus.PENDING,
+                order=SimpleNamespace(status=OrderStatus.PENDING),
                 quantity=Decimal("30.000"),
             ),
             SimpleNamespace(
                 need_id="need-1",
                 seller_producer_id="viewer-1",
                 item_status=OrderItemStatus.PENDING,
+                order=SimpleNamespace(status=OrderStatus.PENDING),
                 quantity=Decimal("5.000"),
             ),
             SimpleNamespace(
                 need_id="need-1",
                 seller_producer_id="producer-b",
                 item_status=OrderItemStatus.CANCELLED,
+                order=SimpleNamespace(status=OrderStatus.CANCELLED),
                 quantity=Decimal("15.000"),
             ),
             SimpleNamespace(
                 need_id="need-1",
                 seller_producer_id="producer-b",
                 item_status=OrderItemStatus.COMPLETED,
+                order=SimpleNamespace(status=OrderStatus.COMPLETED),
                 quantity=Decimal("20.000"),
+            ),
+            SimpleNamespace(
+                need_id="need-1",
+                seller_producer_id="producer-b",
+                item_status=OrderItemStatus.PENDING,
+                order=SimpleNamespace(status=OrderStatus.CANCELLED),
+                quantity=Decimal("40.000"),
             ),
         ])
 
@@ -635,7 +758,7 @@ class NeedsServiceTests(SimpleTestCase):
         stocks = [
             SimpleNamespace(
                 product_id="critical-product",
-                current_quantity=Decimal("10.000"),
+                current_quantity=Decimal("9.000"),
                 reserved_quantity=Decimal("2.000"),
                 safety_stock=Decimal("8.000"),
             ),
@@ -896,6 +1019,46 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(response.ordered_quantity, Decimal("5.000"))
         self.assertFalse(response.can_buy)
         self.assertFalse(response.can_reject)
+
+    def test_expired_active_listing_is_read_as_expired_without_persisting(self):
+        listing_id = uuid4()
+        need_id = uuid4()
+        listing = SimpleNamespace(
+            id=listing_id,
+            need_id=need_id,
+            producer=SimpleNamespace(display_name="Produtor B"),
+            product=SimpleNamespace(name="Tomate", unit="kg"),
+            stock_id="stock-1",
+            forecast_id=None,
+            quantity_total=Decimal("5.000"),
+            quantity_available=Decimal("5.000"),
+            unit_price=Decimal("2.50"),
+            status=ListingStatus.ACTIVE,
+            need_response_status=NeedResponseStatus.PENDING,
+            expires_at=timezone.now() - timedelta(hours=1),
+            notes="",
+            get_status_display=lambda: "Ativo",
+        )
+
+        with patch(
+            "apps.needs.services._get_need_response_listings_for_owner",
+            return_value=[listing],
+        ), patch(
+            "apps.needs.services._get_need_response_order_state_listing_ids",
+            return_value=(set(), set(), set()),
+        ), patch(
+            "apps.needs.services.get_need_response_order_snapshot",
+            return_value={},
+        ):
+            responses = list_need_responses_for_owner(
+                owner_producer=SimpleNamespace(id="owner-1"),
+                need_id=str(need_id),
+            )
+
+        response = responses[0]
+        self.assertEqual(response.response_status, NeedResponseStatus.EXPIRED)
+        self.assertFalse(response.can_buy)
+        self.assertFalse(response.is_editable)
 
     def test_completed_response_summary_allows_new_proposal(self):
         listing_id = uuid4()

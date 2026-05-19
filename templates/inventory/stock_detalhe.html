@@ -56,7 +56,7 @@
     </div>
 
     <div class="inv-stat-card">
-      <p class="inv-stat-value" style="{% if stock_state.key == 'critical' %}color:#dc2626;{% elif stock_state.key == 'excess' %}color:#16a34a;{% endif %}">
+      <p class="inv-stat-value" style="{% if stock_state.key == 'critical' %}color:#dc2626;{% elif stock_state.key == 'warning' %}color:#d97706;{% elif stock_state.key == 'excess' %}color:#16a34a;{% endif %}">
         {{ stock.available_quantity|quantity }}
       </p>
       <p class="inv-stat-label">Disponível</p>
@@ -70,7 +70,9 @@
     <div class="inv-stat-card">
       <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|quantity }}</p>
       <p class="inv-stat-label">Stock de segurança</p>
-      <p class="inv-help" style="margin-top:.35rem;">Limiar de excedente: {{ stock.surplus_threshold|default:0|quantity }} {{ stock.product.unit }}</p>
+      {% if stock.max_quantity %}
+        <p class="inv-help" style="margin-top:.35rem;">Capacidade máxima: {{ stock.max_quantity|quantity }} {{ stock.product.unit }}</p>
+      {% endif %}
     </div>
   </div>
 
@@ -82,8 +84,13 @@
   {% else %}
     {% if stock_state.key == "critical" %}
       <div class="inv-alert inv-alert--warning">
-        <strong>Stock crítico ou baixo.</strong>
-        O valor atual está no stock de segurança ou abaixo dele. Deve reforçar stock ou procurar recomendação de compra.
+        <strong>Stock abaixo do nível de segurança.</strong>
+        O disponível está abaixo do mínimo definido. Deve reforçar stock ou procurar recomendação de compra.
+      </div>
+    {% elif stock_state.key == "warning" %}
+      <div class="inv-alert inv-alert--warning">
+        <strong>Stock perto do nível de segurança.</strong>
+        O disponível está dentro da margem de 10% acima do mínimo. Ainda não é crítico, mas qualquer reserva ou venda pode deixar este produto abaixo do recomendado.
       </div>
     {% elif stock_state.key == "excess" %}
       <div class="inv-alert inv-alert--success">
@@ -92,6 +99,73 @@
       </div>
     {% endif %}
   {% endif %}
+
+  <div class="inv-card inv-stock-health-card">
+    <div class="inv-card-head">
+      <div>
+        <h3 class="inv-card-title">Saúde do stock</h3>
+        <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
+          Leitura rápida do disponível, reservas e capacidade do produto.
+        </p>
+      </div>
+      <span class="{{ stock_state.pill_class }}">{{ stock_state.label }}</span>
+    </div>
+    <div class="inv-card-body inv-stock-health-grid">
+      <div class="inv-progress-block">
+        <div class="inv-progress-head">
+          <span>Disponível vs segurança</span>
+          <strong>{{ stock.available_quantity|quantity }} / {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</strong>
+        </div>
+        <div class="inv-progress-track">
+          <span class="inv-progress-fill inv-progress-fill--{{ stock_state.key }}" style="width:{{ stock_state.safety_progress_percent }}%;"></span>
+        </div>
+        <p class="inv-help">
+          Margem de atenção: até {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}.
+        </p>
+      </div>
+
+      <div class="inv-progress-block">
+        <div class="inv-progress-head">
+          <span>Reservado no stock atual</span>
+          <strong>{{ stock.reserved_quantity|quantity }} / {{ stock.current_quantity|quantity }} {{ stock.product.unit }}</strong>
+        </div>
+        <div class="inv-progress-track">
+          <span class="inv-progress-fill inv-progress-fill--reserved" style="width:{{ stock_state.reserved_progress_percent }}%;"></span>
+        </div>
+        <p class="inv-help">
+          Quantidade comprometida em anúncios/encomendas e indisponível para nova venda.
+        </p>
+      </div>
+
+      {% if stock.max_quantity %}
+        <div class="inv-progress-block">
+          <div class="inv-progress-head">
+            <span>Ocupação da capacidade</span>
+            <strong>{{ stock.current_quantity|quantity }} / {{ stock.max_quantity|quantity }} {{ stock.product.unit }}</strong>
+          </div>
+          <div class="inv-progress-track">
+            <span class="inv-progress-fill inv-progress-fill--capacity" style="width:{{ stock_state.capacity_progress_percent }}%;"></span>
+          </div>
+          <p class="inv-help">
+            Espaço operacional restante: {{ stock_state.capacity_remaining|quantity }} {{ stock.product.unit }}.
+          </p>
+        </div>
+      {% endif %}
+
+      <div class="inv-progress-block">
+        <div class="inv-progress-head">
+          <span>Quantidade recomendada para venda</span>
+          <strong>{{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }}</strong>
+        </div>
+        <div class="inv-progress-track">
+          <span class="inv-progress-fill inv-progress-fill--sellable" style="width:{% if stock_state.publishable_quantity > 0 %}100{% else %}0{% endif %}%;"></span>
+        </div>
+        <p class="inv-help">
+          Calculada sem tocar no stock de segurança.
+        </p>
+      </div>
+    </div>
+  </div>
 
   <div class="inv-card" style="margin-top:1rem;">
     <div class="inv-card-head">
@@ -448,6 +522,11 @@
               <a href="{% url 'recommendations:index' %}?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
                 <i class="bi bi-stars"></i>
                 <span>Ver recomendações</span>
+              </a>
+            {% elif stock_state.key == "warning" %}
+              <a href="{% url 'recommendations:index' %}?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>Acompanhar stock</span>
               </a>
             {% else %}
               <a href="{% url 'marketplace:index' %}?tab=todos&q={{ stock.product.name|urlencode }}" class="inv-btn inv-btn--secondary">

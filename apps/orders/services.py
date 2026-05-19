@@ -963,7 +963,6 @@ def _ensure_buyer_stock(buyer_producer, product, acting_user):
         "current_quantity": quantize_qty(Decimal("0")),
         "reserved_quantity": quantize_qty(Decimal("0")),
         "safety_stock": quantize_qty(Decimal("0")),
-        "surplus_threshold": quantize_qty(Decimal("0")),
         "last_updated_at": now,
     }
 
@@ -990,9 +989,6 @@ def _ensure_buyer_stock(buyer_producer, product, acting_user):
     if stock.safety_stock is None:
         stock.safety_stock = quantize_qty(Decimal("0"))
         changed_fields.append("safety_stock")
-    if getattr(stock, "surplus_threshold", None) is None:
-        stock.surplus_threshold = quantize_qty(Decimal("0"))
-        changed_fields.append("surplus_threshold")
     if getattr(stock, "last_updated_at", None) is None:
         stock.last_updated_at = now
         changed_fields.append("last_updated_at")

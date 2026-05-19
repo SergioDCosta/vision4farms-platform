@@ -12,7 +12,12 @@ from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import NeedSourceSystem
-from apps.needs.services import create_or_update_need, list_marketplace_public_needs
+from apps.needs.services import (
+    DuplicateActiveNeedError,
+    create_need,
+    list_marketplace_public_needs,
+    update_need,
+)
 from apps.orders.services import (
     OrderServiceError,
     create_order_from_recommendation,
@@ -26,6 +31,7 @@ from apps.recommendations.services import (
     RECOMMENDATION_DIRECTION_BUY,
     RECOMMENDATION_DIRECTION_SELL,
     accept_recommendation,
+    build_recommendation_inventory_rows,
     calculate_current_deficit,
     generate_recommendation,
     get_market_alternative_listings,
@@ -72,7 +78,7 @@ def _get_form_products(producer):
         product_id__in=product_ids,
     ).values_list("product_id", "current_quantity", "reserved_quantity", "safety_stock")
 
-    # Sem registo de stock assume crítico (equivalente a 0 atual vs 0 de segurança).
+    # Sem registo de stock assume crítico enquanto não houver dados reais de inventário.
     critical_product_ids = {str(product_id) for product_id in product_ids}
     surplus_product_ids = set()
 
@@ -81,8 +87,10 @@ def _get_form_products(producer):
         reserved_qty = Decimal(str(reserved_quantity or 0))
         minimum_qty = Decimal(str(safety_stock or 0))
         available_qty = current_qty - reserved_qty
-        if available_qty > minimum_qty:
+        warning_upper_qty = minimum_qty + (minimum_qty * Decimal("0.10"))
+        if available_qty >= minimum_qty:
             critical_product_ids.discard(str(product_id))
+        if available_qty > minimum_qty and (minimum_qty <= 0 or available_qty > warning_upper_qty):
             surplus_product_ids.add(str(product_id))
 
     for product in products:
@@ -139,6 +147,41 @@ def _empty_recommendation_metrics():
     }
 
 
+def _metrics_from_inventory_row(row):
+    if not row:
+        return _empty_recommendation_metrics()
+    return {
+        "safety_stock": row["safety_stock"],
+        "reserved_quantity": row["reserved_quantity"],
+        "current_stock": row["current_stock"],
+        "available_stock": row["available_stock"],
+        "deficit_quantity": row["buy_quantity"],
+        "buy_quantity": row["buy_quantity"],
+        "sell_quantity": row["sell_quantity"],
+        "suggested_quantity": row["suggested_quantity"],
+        "recommendation_direction": row["recommendation_direction"],
+    }
+
+
+def _find_inventory_row(inventory_rows, product_id):
+    if not product_id:
+        return None
+    for row in inventory_rows.get("all_rows", []):
+        if row["product_id"] == str(product_id):
+            return row
+    return None
+
+
+def _pick_default_inventory_row(inventory_rows):
+    if inventory_rows.get("buy_rows"):
+        return inventory_rows["buy_rows"][0]
+    if inventory_rows.get("sell_rows"):
+        return inventory_rows["sell_rows"][0]
+    if inventory_rows.get("balanced_rows"):
+        return inventory_rows["balanced_rows"][0]
+    return None
+
+
 def _build_step_1_context(
     *,
     form,
@@ -147,12 +190,22 @@ def _build_step_1_context(
     initial_deficit_quantity="0",
     initial_current_quantity="0",
     metrics=None,
+    inventory_rows=None,
 ):
     metrics = metrics or _empty_recommendation_metrics()
+    inventory_rows = inventory_rows or {
+        "buy_rows": [],
+        "sell_rows": [],
+        "balanced_rows": [],
+        "all_rows": [],
+    }
     ui_meta = _recommendation_ui_meta(metrics)
     return {
         "wizard_step": wizard_step,
         "products": form.fields["product_id"].choices[1:],
+        "recommendation_buy_rows": inventory_rows["buy_rows"],
+        "recommendation_sell_rows": inventory_rows["sell_rows"],
+        "recommendation_balanced_rows": inventory_rows["balanced_rows"],
         "errors": errors or {},
         "initial_product_id": form.initial.get("product_id", ""),
         "initial_deficit_quantity": initial_deficit_quantity,
@@ -240,20 +293,17 @@ def recommendations_index_view(request):
         return redirect("dashboard:painel")
 
     form_products = _get_form_products(producer)
+    inventory_rows = build_recommendation_inventory_rows(producer, form_products)
     requested_product_id = (request.GET.get("product") or "").strip()
-    selected_product = None
-    if requested_product_id:
-        selected_product = next(
-            (product for product in form_products if str(product.id) == requested_product_id),
-            None,
-        )
+    selected_row = _find_inventory_row(inventory_rows, requested_product_id) or _pick_default_inventory_row(inventory_rows)
+    selected_product = selected_row["product"] if selected_row else None
 
     form_initial = {}
     initial_deficit_quantity = "0"
     initial_current_quantity = "0"
 
-    if selected_product:
-        deficit_data = calculate_current_deficit(producer, selected_product)
+    if selected_row:
+        deficit_data = _metrics_from_inventory_row(selected_row)
         form_initial["product_id"] = str(selected_product.id)
         form_initial["requested_quantity"] = deficit_data["suggested_quantity"]
         initial_deficit_quantity = deficit_data["deficit_quantity"]
@@ -268,6 +318,7 @@ def recommendations_index_view(request):
         initial_deficit_quantity=initial_deficit_quantity,
         initial_current_quantity=initial_current_quantity,
         metrics=deficit_data,
+        inventory_rows=inventory_rows,
     )
     return render(request, "recommendations/index.html", context)
 
@@ -327,6 +378,7 @@ def recommendations_generate_view(request):
         return redirect("dashboard:painel")
 
     form_products = _get_form_products(producer)
+    inventory_rows = build_recommendation_inventory_rows(producer, form_products)
     form = RecommendationRequestForm(request.POST, products=form_products)
 
     product = None
@@ -358,6 +410,7 @@ def recommendations_generate_view(request):
             initial_deficit_quantity=deficit_quantity,
             initial_current_quantity=current_quantity,
             metrics=deficit_data,
+            inventory_rows=inventory_rows,
         )
         return _render_wizard(request, context)
 
@@ -376,6 +429,7 @@ def recommendations_generate_view(request):
             initial_deficit_quantity=deficit_data["deficit_quantity"],
             initial_current_quantity=deficit_data["current_stock"],
             metrics=deficit_data,
+            inventory_rows=inventory_rows,
         )
         return _render_wizard(request, context)
 
@@ -390,6 +444,7 @@ def recommendations_generate_view(request):
             initial_deficit_quantity=deficit_data["deficit_quantity"],
             initial_current_quantity=deficit_data["current_stock"],
             metrics=deficit_data,
+            inventory_rows=inventory_rows,
         )
         return _render_wizard(request, context)
 
@@ -420,6 +475,7 @@ def recommendations_generate_view(request):
             initial_deficit_quantity=deficit_data["deficit_quantity"],
             initial_current_quantity=deficit_data["current_stock"],
             metrics=deficit_data,
+            inventory_rows=inventory_rows,
         )
         return _render_wizard(request, context)
 
@@ -442,6 +498,7 @@ def recommendations_back_to_need_view(request, recommendation_id):
 
     deficit_data = calculate_current_deficit(producer, recommendation.product)
     form_products = _get_form_products(producer)
+    inventory_rows = build_recommendation_inventory_rows(producer, form_products)
 
     form = RecommendationRequestForm(
         products=form_products,
@@ -456,6 +513,7 @@ def recommendations_back_to_need_view(request, recommendation_id):
         initial_deficit_quantity=deficit_data["deficit_quantity"],
         initial_current_quantity=deficit_data["current_stock"],
         metrics=deficit_data,
+        inventory_rows=inventory_rows,
     )
     return _render_wizard(request, context)
 
@@ -487,22 +545,48 @@ def recommendations_create_need_view(request, recommendation_id):
             "Não existe défice remanescente para anunciar como necessidade.",
         )
 
+    created = False
     try:
-        need, _, created = create_or_update_need(
-            producer=producer,
-            product=recommendation.product,
-            required_quantity=remaining_deficit,
-            source_system=NeedSourceSystem.VISION4FARMS,
-            external_id=str(recommendation.id),
-            notes=f"Necessidade criada a partir da recomendação #{recommendation.id}.",
+        if recommendation.need_id:
+            need, _, _ = update_need(
+                need=recommendation.need,
+                producer=producer,
+                required_quantity=remaining_deficit,
+                needed_by_date=recommendation.deadline_date,
+                notes=f"Necessidade atualizada a partir da recomendação #{recommendation.id}.",
+            )
+        else:
+            need, _ = create_need(
+                producer=producer,
+                product=recommendation.product,
+                required_quantity=remaining_deficit,
+                source_system=NeedSourceSystem.VISION4FARMS,
+                external_id=str(recommendation.id),
+                notes=f"Necessidade criada a partir da recomendação #{recommendation.id}.",
+            )
+            recommendation.need = need
+            recommendation.updated_at = timezone.now()
+            recommendation.save(update_fields=["need", "updated_at"])
+            created = True
+    except DuplicateActiveNeedError as exc:
+        need_url = build_needs_index_url(selected_need_id=str(exc.existing_need.id))
+        updated_context = _build_step_2_context(
+            recommendation,
+            need_prompt={
+                "title": "Necessidade já existente",
+                "message": "Já existe uma necessidade ativa para este produto. Abra essa necessidade para rever ou editar o pedido.",
+                "url": need_url,
+                "product_name": recommendation.product.name,
+                "quantity": remaining_deficit,
+                "unit": recommendation.product.unit,
+            },
         )
+        response = _render_wizard(request, updated_context)
+        return with_htmx_toast(response, "warning", "Já existe uma necessidade ativa para este produto.")
     except ValidationError as exc:
         response = _render_wizard(request, context)
         return with_htmx_toast(response, "error", str(exc))
 
-    recommendation.need = need
-    recommendation.updated_at = timezone.now()
-    recommendation.save(update_fields=["need", "updated_at"])
     _sync_alerts_after_need_change(producer, request.current_user)
 
     need_url = build_needs_index_url(

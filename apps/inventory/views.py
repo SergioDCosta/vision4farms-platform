@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from datetime import datetime, time
 
 from django.contrib import messages
@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 from django.utils import timezone
 
 from apps.common.decorators import client_only_required
+from apps.common.redirects import get_safe_next_url
 from apps.inventory.models import ProducerProduct
 from apps.inventory import services
 from apps.inventory.forms import (
@@ -35,11 +36,10 @@ def _get_producer_or_redirect(request):
     return producer
 
 
-def _decimal_to_int(value):
+def _decimal_form_initial(value):
     if value is None:
         return 0
-    decimal_value = Decimal(str(value))
-    return int(decimal_value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return Decimal(str(value))
 
 
 def _to_date_local(value):
@@ -241,7 +241,7 @@ def adicionar_produto(request):
                         producer_description=custom_form.cleaned_data.get("producer_description", ""),
                         initial_quantity=custom_form.cleaned_data["initial_quantity"],
                         safety_stock=custom_form.cleaned_data["safety_stock"],
-                        surplus_threshold=Decimal(str(custom_form.cleaned_data.get("surplus_threshold") or 0)),
+                        max_quantity=custom_form.cleaned_data.get("max_quantity"),
                         user=request.current_user,
                     )
 
@@ -293,7 +293,7 @@ def adicionar_produto(request):
                         producer_description=form.cleaned_data.get("producer_description", ""),
                         initial_quantity=form.cleaned_data["initial_quantity"],
                         safety_stock=form.cleaned_data["safety_stock"],
-                        surplus_threshold=Decimal(str(form.cleaned_data.get("surplus_threshold") or 0)),
+                        max_quantity=form.cleaned_data.get("max_quantity"),
                         user=request.current_user,
                     )
 
@@ -339,7 +339,7 @@ def remover_produto(request, producer_product_id):
     else:
         messages.error(request, error)
 
-    next_url = request.POST.get("next")
+    next_url = get_safe_next_url(request, request.POST.get("next"))
     if next_url:
         return redirect(next_url)
 
@@ -361,7 +361,7 @@ def reativar_produto(request, producer_product_id):
     else:
         messages.error(request, error)
 
-    next_url = request.POST.get("next")
+    next_url = get_safe_next_url(request, request.POST.get("next"))
     if next_url:
         return redirect(next_url)
 
@@ -588,14 +588,13 @@ def atualizar_stock(request, product_id):
             try:
                 new_quantity = Decimal(str(form.cleaned_data["new_quantity"]))
                 safety_stock = Decimal(str(form.cleaned_data["safety_stock"]))
-                surplus_threshold = Decimal(str(form.cleaned_data.get("surplus_threshold") or 0))
                 services.update_stock(
                     stock=stock,
                     new_quantity=new_quantity,
                     safety_stock=safety_stock,
-                    surplus_threshold=surplus_threshold,
                     movement_type=form.cleaned_data["movement_type"],
                     user=request.current_user,
+                    max_quantity=form.cleaned_data.get("max_quantity"),
                     notes=form.cleaned_data.get("notes", ""),
                 )
                 messages.success(request, "Stock atualizado com sucesso.")
@@ -609,9 +608,9 @@ def atualizar_stock(request, product_id):
                 form.add_error(None, f"Erro ao atualizar stock: {exc}")
     else:
         form = UpdateStockForm(initial={
-            "new_quantity": _decimal_to_int(stock.current_quantity),
-            "safety_stock": _decimal_to_int(stock.safety_stock),
-            "surplus_threshold": _decimal_to_int(stock.surplus_threshold),
+            "new_quantity": _decimal_form_initial(stock.current_quantity),
+            "safety_stock": _decimal_form_initial(stock.safety_stock),
+            "max_quantity": _decimal_form_initial(getattr(stock, "max_quantity", None)),
         })
 
     context = {

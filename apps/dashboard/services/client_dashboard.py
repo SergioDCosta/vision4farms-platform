@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import models
 from django.db.models import Q
@@ -34,6 +35,10 @@ def build_client_dashboard_context(user):
         available_qty_expr - models.F("safety_stock"),
         output_field=models.DecimalField(max_digits=14, decimal_places=3),
     )
+    warning_upper_expr = models.ExpressionWrapper(
+        models.F("safety_stock") * Decimal("1.10"),
+        output_field=models.DecimalField(max_digits=14, decimal_places=3),
+    )
 
     stocks_with_state = (
         Stock.objects.select_related("product")
@@ -41,10 +46,11 @@ def build_client_dashboard_context(user):
         .annotate(
             available_quantity_calc=available_qty_expr,
             real_surplus_calc=real_surplus_expr,
+            warning_upper_quantity_calc=warning_upper_expr,
         )
     )
     critical_stock_qs = stocks_with_state.filter(
-        available_quantity_calc__lte=models.F("safety_stock"),
+        available_quantity_calc__lt=models.F("safety_stock"),
     ).order_by("available_quantity_calc")
     critical_stock_count = critical_stock_qs.count()
 
@@ -68,8 +74,7 @@ def build_client_dashboard_context(user):
     listed_product_ids = active_listings_qs.values_list("product_id", flat=True)
     surplus_stock_candidate = (
         stocks_with_state.filter(
-            available_quantity_calc__gt=models.F("safety_stock"),
-            real_surplus_calc__gte=models.F("surplus_threshold"),
+            available_quantity_calc__gt=models.F("warning_upper_quantity_calc"),
         )
         .exclude(product_id__in=listed_product_ids)
         .order_by("-real_surplus_calc", "-available_quantity_calc")

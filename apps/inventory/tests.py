@@ -5,10 +5,11 @@ from django.core.exceptions import ValidationError
 from django.test import RequestFactory, SimpleTestCase
 
 from apps.catalog.services import CatalogValidationError
-from apps.inventory.forms import CreateCustomProductForm
+from apps.inventory.forms import CreateCustomProductForm, UpdateStockForm
 from apps.inventory import views
 from apps.inventory.services import (
     create_custom_product_for_producer,
+    get_stock_state,
     producer_has_active_inventory_products,
 )
 
@@ -18,6 +19,7 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
 
     def test_custom_product_form_does_not_expose_unit(self):
         self.assertNotIn("unit", CreateCustomProductForm().fields)
+        self.assertNotIn("surplus_threshold", CreateCustomProductForm().fields)
 
     @patch("apps.inventory.services._ensure_stock_for_product")
     @patch("apps.inventory.services.ProducerProduct")
@@ -47,7 +49,7 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
             name="Pera Rocha",
             initial_quantity=10,
             safety_stock=2,
-            surplus_threshold=5,
+            max_quantity=100,
             user=SimpleNamespace(id="user-1"),
             producer_description="  Produto   local ",
         )
@@ -77,7 +79,6 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
                 name="Pera Rocha",
                 initial_quantity=0,
                 safety_stock=0,
-                surplus_threshold=0,
                 user=SimpleNamespace(id="user-1"),
             )
 
@@ -89,6 +90,50 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
 
         self.assertTrue(producer_has_active_inventory_products(producer))
         filter_mock.assert_called_once_with(producer=producer, is_active=True)
+
+
+class InventoryStockStateTests(SimpleTestCase):
+    def test_stock_equal_to_safety_stock_is_warning_not_critical(self):
+        stock = SimpleNamespace(
+            current_quantity=10,
+            reserved_quantity=0,
+            safety_stock=10,
+            max_quantity=100,
+        )
+
+        state = get_stock_state(stock)
+
+        self.assertEqual(state["key"], "warning")
+        self.assertEqual(state["label"], "Perto do mínimo")
+        self.assertEqual(state["pill_class"], "inv-status inv-status--warning")
+
+    def test_stock_below_safety_stock_is_critical(self):
+        stock = SimpleNamespace(
+            current_quantity=9,
+            reserved_quantity=0,
+            safety_stock=10,
+            max_quantity=100,
+        )
+
+        self.assertEqual(get_stock_state(stock)["key"], "critical")
+
+
+class InventoryStockFormTests(SimpleTestCase):
+    def test_update_stock_form_accepts_decimal_quantities(self):
+        form = UpdateStockForm(
+            data={
+                "new_quantity": "20.5",
+                "safety_stock": "10.25",
+                "max_quantity": "30.75",
+                "movement_type": "MANUAL_ADJUSTMENT",
+                "notes": "",
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(str(form.cleaned_data["new_quantity"]), "20.5")
+        self.assertEqual(str(form.cleaned_data["safety_stock"]), "10.25")
+        self.assertEqual(str(form.cleaned_data["max_quantity"]), "30.75")
 
 
 class InventoryViewContextTests(SimpleTestCase):
@@ -128,3 +173,53 @@ class InventoryViewContextTests(SimpleTestCase):
 
         context = render_mock.call_args.args[2]
         self.assertFalse(context["has_active_inventory_products"])
+
+    @patch("apps.inventory.views.messages")
+    @patch("apps.inventory.views.services.remove_product_from_producer")
+    @patch("apps.inventory.views._get_producer_or_redirect")
+    def test_remove_product_rejects_external_next_url(
+        self,
+        get_producer_mock,
+        remove_product_mock,
+        messages_mock,
+    ):
+        producer = SimpleNamespace(id="producer-1")
+        request = self.factory.post(
+            "/inventario/produtos/prod-1/remover/",
+            data={"next": "https://evil.example/phish"},
+            HTTP_HOST="testserver",
+        )
+        request.current_user = SimpleNamespace(id="user-1")
+        get_producer_mock.return_value = producer
+        remove_product_mock.return_value = (True, None)
+
+        response = views.remover_produto.__wrapped__(request, "producer-product-1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/inventario/produtos/?tab=desativados")
+        messages_mock.success.assert_called_once()
+
+    @patch("apps.inventory.views.messages")
+    @patch("apps.inventory.views.services.reactivate_product_from_producer")
+    @patch("apps.inventory.views._get_producer_or_redirect")
+    def test_reactivate_product_allows_local_next_url(
+        self,
+        get_producer_mock,
+        reactivate_product_mock,
+        messages_mock,
+    ):
+        producer = SimpleNamespace(id="producer-1")
+        request = self.factory.post(
+            "/inventario/produtos/prod-1/reativar/",
+            data={"next": "/inventario/stock/product-1/"},
+            HTTP_HOST="testserver",
+        )
+        request.current_user = SimpleNamespace(id="user-1")
+        get_producer_mock.return_value = producer
+        reactivate_product_mock.return_value = (True, None)
+
+        response = views.reativar_produto.__wrapped__(request, "producer-product-1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/inventario/stock/product-1/")
+        messages_mock.success.assert_called_once()

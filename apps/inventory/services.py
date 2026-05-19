@@ -33,6 +33,7 @@ from apps.orders.models import (
 
 
 ZERO = Decimal("0.00")
+STOCK_WARNING_MARGIN_RATIO = Decimal("0.10")
 IN_PROGRESS_ORDER_STATUSES = ["CONFIRMED", "IN_PROGRESS", "DELIVERING"]
 COMPLETED_ORDER_STATUS = "COMPLETED"
 
@@ -82,67 +83,105 @@ def _format_qty(value):
     return formatted or "0"
 
 
+def _progress_percent(value, target):
+    value = Decimal(str(value or 0))
+    target = Decimal(str(target or 0))
+    if target <= ZERO:
+        return 0
+    percent = (value / target) * Decimal("100")
+    percent = max(Decimal("0"), min(percent, Decimal("100")))
+    return int(percent.quantize(Decimal("1")))
+
+
 def _stock_state(stock):
     """
     Estado visual do stock:
-    - critical: available_quantity <= safety_stock
-    - normal: available_quantity > safety_stock e real_surplus < surplus_threshold
-    - excess: real_surplus >= surplus_threshold
+    - critical: available_quantity < safety_stock
+    - warning: safety_stock <= available_quantity <= safety_stock + 10%
+    - excess: available_quantity > safety_stock + 10%
+    - normal: sem stock de segurança definido e sem excedente operacional
     """
     current_quantity = stock.current_quantity if stock else ZERO
     safety_stock = stock.safety_stock if stock else ZERO
     reserved_quantity = stock.reserved_quantity if stock else ZERO
-    surplus_threshold = stock.surplus_threshold if stock and stock.surplus_threshold is not None else ZERO
+    max_quantity = getattr(stock, "max_quantity", None) if stock else None
     available_quantity = current_quantity - reserved_quantity
 
     real_surplus = max(available_quantity - safety_stock, ZERO)
     deficit_quantity = max((safety_stock + reserved_quantity) - current_quantity, ZERO)
     publishable_quantity = real_surplus
+    warning_margin_quantity = (
+        (safety_stock * STOCK_WARNING_MARGIN_RATIO).quantize(Decimal("0.001"))
+        if safety_stock > ZERO
+        else ZERO
+    )
+    warning_upper_quantity = safety_stock + warning_margin_quantity
+    max_quantity = Decimal(str(max_quantity)) if max_quantity not in (None, "") else None
 
-    if available_quantity <= safety_stock:
-        return {
+    state_base = {
+        "available_quantity": available_quantity,
+        "safety_stock": safety_stock,
+        "reserved_quantity": reserved_quantity,
+        "current_quantity": current_quantity,
+        "max_quantity": max_quantity,
+        "warning_margin_quantity": warning_margin_quantity,
+        "warning_upper_quantity": warning_upper_quantity,
+        "publishable_quantity": publishable_quantity,
+        "real_surplus": real_surplus,
+        "deficit_quantity": deficit_quantity,
+        "safety_progress_percent": _progress_percent(available_quantity, safety_stock),
+        "reserved_progress_percent": _progress_percent(reserved_quantity, current_quantity),
+        "capacity_progress_percent": _progress_percent(current_quantity, max_quantity) if max_quantity else None,
+        "capacity_remaining": max(max_quantity - current_quantity, ZERO) if max_quantity else None,
+    }
+
+    if available_quantity < safety_stock:
+        return state_base | {
             "key": "critical",
             "label": "Crítico",
             "row_class": "inv-row--critical",
             "pill_class": "inv-status inv-status--critical",
             "text_class": "inv-value inv-value--critical",
             "publishable_quantity": ZERO,
-            "surplus_threshold": surplus_threshold,
-            "real_surplus": real_surplus,
-            "deficit_quantity": deficit_quantity,
             "action_type": "recommend",
             "action_label": "Comprar",
             "action_icon": "cart",
             "action_url": "/recomendacoes/",
         }
 
-    if real_surplus >= surplus_threshold:
-        return {
+    if safety_stock > ZERO and available_quantity <= warning_upper_quantity:
+        return state_base | {
+            "key": "warning",
+            "label": "Perto do mínimo",
+            "row_class": "inv-row--warning",
+            "pill_class": "inv-status inv-status--warning",
+            "text_class": "inv-value inv-value--warning",
+            "publishable_quantity": ZERO,
+            "action_type": "monitor",
+            "action_label": "Acompanhar",
+            "action_icon": "exclamation-triangle",
+            "action_url": "/recomendacoes/",
+        }
+
+    if real_surplus > ZERO:
+        return state_base | {
             "key": "excess",
             "label": "Excedente",
             "row_class": "inv-row--excess",
             "pill_class": "inv-status inv-status--excess",
             "text_class": "inv-value inv-value--excess",
-            "publishable_quantity": publishable_quantity,
-            "surplus_threshold": surplus_threshold,
-            "real_surplus": real_surplus,
-            "deficit_quantity": deficit_quantity,
             "action_type": "publish",
             "action_label": "Publicar",
             "action_icon": "storefront",
             "action_url": "/marketplace/",
         }
 
-    return {
+    return state_base | {
         "key": "normal",
         "label": "Normal",
         "row_class": "",
         "pill_class": "inv-status inv-status--normal",
         "text_class": "inv-value",
-        "publishable_quantity": ZERO,
-        "surplus_threshold": surplus_threshold,
-        "real_surplus": real_surplus,
-        "deficit_quantity": deficit_quantity,
         "action_type": "marketplace",
         "action_label": "Marketplace",
         "action_icon": "shop",
@@ -191,8 +230,8 @@ def _ensure_stock_for_product(
     product,
     initial_quantity,
     safety_stock,
-    surplus_threshold,
     user,
+    max_quantity=None,
 ):
     """
     Garante o registo de stock para produtor+produto.
@@ -201,7 +240,12 @@ def _ensure_stock_for_product(
     """
     initial_quantity = initial_quantity or ZERO
     safety_stock = safety_stock or ZERO
-    surplus_threshold = surplus_threshold or ZERO
+    max_quantity = max_quantity or None
+
+    if max_quantity is not None and max_quantity < safety_stock:
+        raise ValidationError("A capacidade máxima não pode ser inferior ao stock de segurança.")
+    if max_quantity is not None and max_quantity < initial_quantity:
+        raise ValidationError("A capacidade máxima não pode ser inferior ao stock inicial.")
 
     stock, stock_created = Stock.objects.get_or_create(
         producer=producer,
@@ -210,7 +254,7 @@ def _ensure_stock_for_product(
             "current_quantity": initial_quantity,
             "reserved_quantity": ZERO,
             "safety_stock": safety_stock,
-            "surplus_threshold": surplus_threshold,
+            "max_quantity": max_quantity,
             "updated_by": user,
             "last_updated_at": timezone.now(),
         },
@@ -234,13 +278,9 @@ def _ensure_stock_for_product(
         stock.safety_stock = safety_stock
         changed_fields.append("safety_stock")
 
-    current_surplus_threshold = getattr(stock, "surplus_threshold", ZERO)
-    if current_surplus_threshold is None:
-        current_surplus_threshold = ZERO
-
-    if current_surplus_threshold != surplus_threshold:
-        stock.surplus_threshold = surplus_threshold
-        changed_fields.append("surplus_threshold")
+    if getattr(stock, "max_quantity", None) != max_quantity:
+        stock.max_quantity = max_quantity
+        changed_fields.append("max_quantity")
 
     if stock.current_quantity == ZERO and initial_quantity > ZERO:
         stock.current_quantity = initial_quantity
@@ -331,6 +371,7 @@ def get_stock_dashboard(producer, q="", sort="name", incoming_forecast_by_produc
 
     rows = []
     critical_count = 0
+    warning_count = 0
     excess_count = 0
 
     for pp in producer_products:
@@ -347,6 +388,8 @@ def get_stock_dashboard(producer, q="", sort="name", incoming_forecast_by_produc
 
         if state["key"] == "critical":
             critical_count += 1
+        elif state["key"] == "warning":
+            warning_count += 1
         elif state["key"] == "excess":
             excess_count += 1
 
@@ -374,7 +417,7 @@ def get_stock_dashboard(producer, q="", sort="name", incoming_forecast_by_produc
     elif sort == "stock_asc":
         rows.sort(key=lambda row: (_row_stock_value(row), row["product"].name.lower()))
     elif sort == "state":
-        state_priority = {"critical": 0, "normal": 1, "excess": 2}
+        state_priority = {"critical": 0, "warning": 1, "normal": 2, "excess": 3}
         rows.sort(
             key=lambda row: (
                 state_priority.get(row["state"]["key"], 99),
@@ -392,6 +435,7 @@ def get_stock_dashboard(producer, q="", sort="name", incoming_forecast_by_produc
         "category_groups": category_groups,
         "stock_total_count": len(rows),
         "critical_count": critical_count,
+        "warning_count": warning_count,
         "excess_count": excess_count,
         "q": q,
         "sort": sort,
@@ -455,8 +499,8 @@ def add_product_to_producer(
     product_id,
     initial_quantity,
     safety_stock,
-    surplus_threshold,
     user,
+    max_quantity=None,
     producer_description=None,
 ):
     """
@@ -501,8 +545,8 @@ def add_product_to_producer(
         product=product,
         initial_quantity=initial_quantity,
         safety_stock=safety_stock,
-        surplus_threshold=surplus_threshold,
         user=user,
+        max_quantity=max_quantity,
     )
 
     return producer_product, stock, False, link_created
@@ -514,8 +558,8 @@ def create_custom_product_for_producer(
     name,
     initial_quantity,
     safety_stock,
-    surplus_threshold,
     user,
+    max_quantity=None,
     producer_description=None,
 ):
     """
@@ -570,8 +614,8 @@ def create_custom_product_for_producer(
         product=product,
         initial_quantity=initial_quantity,
         safety_stock=safety_stock,
-        surplus_threshold=surplus_threshold,
         user=user,
+        max_quantity=max_quantity,
     )
 
     return producer_product, stock, product_created, link_created
@@ -1181,14 +1225,14 @@ def update_stock(
     stock,
     new_quantity,
     safety_stock,
-    surplus_threshold,
     movement_type,
     user,
+    max_quantity=None,
     notes="",
 ):
     new_quantity = new_quantity or ZERO
     safety_stock = safety_stock or ZERO
-    surplus_threshold = surplus_threshold or ZERO
+    max_quantity = max_quantity or None
 
     if new_quantity < ZERO:
         raise ValidationError("A quantidade não pode ser negativa.")
@@ -1201,14 +1245,17 @@ def update_stock(
             )
         )
 
+    if max_quantity is not None and max_quantity < safety_stock:
+        raise ValidationError("A capacidade máxima não pode ser inferior ao stock de segurança.")
+
+    if max_quantity is not None and max_quantity < new_quantity:
+        raise ValidationError("A capacidade máxima não pode ser inferior ao stock atual.")
+
     quantity_delta = new_quantity - stock.current_quantity
-    current_surplus_threshold = getattr(stock, "surplus_threshold", ZERO)
-    if current_surplus_threshold is None:
-        current_surplus_threshold = ZERO
 
     threshold_changed = (
         safety_stock != stock.safety_stock
-        or surplus_threshold != current_surplus_threshold
+        or getattr(stock, "max_quantity", None) != max_quantity
     )
 
     if quantity_delta == ZERO and not threshold_changed:
@@ -1216,13 +1263,13 @@ def update_stock(
 
     stock.current_quantity = new_quantity
     stock.safety_stock = safety_stock
-    stock.surplus_threshold = surplus_threshold
+    stock.max_quantity = max_quantity
     stock.updated_by = user
     stock.last_updated_at = timezone.now()
     update_fields = [
         "current_quantity",
         "safety_stock",
-        "surplus_threshold",
+        "max_quantity",
         "updated_by",
         "last_updated_at",
         "updated_at",

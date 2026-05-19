@@ -21,6 +21,7 @@ MONEY_DECIMAL = Decimal("0.01")
 RECOMMENDATION_DIRECTION_BUY = "BUY"
 RECOMMENDATION_DIRECTION_SELL = "SELL"
 RECOMMENDATION_DIRECTION_BALANCED = "BALANCED"
+STOCK_WARNING_MARGIN_RATIO = Decimal("0.10")
 
 
 class RecommendationGenerationError(Exception):
@@ -33,6 +34,21 @@ def quantize_qty(value: Decimal) -> Decimal:
 
 def quantize_money(value: Decimal) -> Decimal:
     return Decimal(str(value)).quantize(MONEY_DECIMAL, rounding=ROUND_HALF_UP)
+
+
+def _stock_warning_upper_bound(safety_stock: Decimal) -> Decimal:
+    safety_stock = quantize_qty(safety_stock)
+    if safety_stock <= 0:
+        return safety_stock
+    return quantize_qty(safety_stock + (safety_stock * STOCK_WARNING_MARGIN_RATIO))
+
+
+def _has_sell_recommendation(*, available_stock: Decimal, safety_stock: Decimal) -> bool:
+    if available_stock <= safety_stock:
+        return False
+    if safety_stock <= 0:
+        return available_stock > 0
+    return available_stock > _stock_warning_upper_bound(safety_stock)
 
 
 def get_producer_products(producer):
@@ -65,7 +81,7 @@ def calculate_current_deficit(producer, product):
     if buy_quantity > 0:
         direction = RECOMMENDATION_DIRECTION_BUY
         suggested_quantity = buy_quantity
-    elif sell_quantity > 0:
+    elif _has_sell_recommendation(available_stock=available_stock, safety_stock=safety_stock):
         direction = RECOMMENDATION_DIRECTION_SELL
         suggested_quantity = sell_quantity
     else:
@@ -82,6 +98,94 @@ def calculate_current_deficit(producer, product):
         "sell_quantity": sell_quantity,
         "suggested_quantity": suggested_quantity,
         "recommendation_direction": direction,
+    }
+
+
+def build_recommendation_inventory_rows(producer, products):
+    products = list(products or [])
+    if not producer or not products:
+        return {
+            "buy_rows": [],
+            "sell_rows": [],
+            "balanced_rows": [],
+            "all_rows": [],
+        }
+
+    product_ids = [product.id for product in products]
+    stock_by_product = {
+        stock.product_id: stock
+        for stock in Stock.objects.filter(
+            producer=producer,
+            product_id__in=product_ids,
+        ).only(
+            "product_id",
+            "current_quantity",
+            "reserved_quantity",
+            "safety_stock",
+        )
+    }
+
+    buy_rows = []
+    sell_rows = []
+    balanced_rows = []
+    all_rows = []
+
+    for product in products:
+        stock = stock_by_product.get(product.id)
+        if stock:
+            safety_stock = quantize_qty(Decimal(str(stock.safety_stock or 0)))
+            reserved_quantity = quantize_qty(Decimal(str(stock.reserved_quantity or 0)))
+            current_stock = quantize_qty(Decimal(str(stock.current_quantity or 0)))
+        else:
+            safety_stock = Decimal("0.000")
+            reserved_quantity = Decimal("0.000")
+            current_stock = Decimal("0.000")
+
+        available_stock = quantize_qty(current_stock - reserved_quantity)
+        buy_quantity = quantize_qty(max(safety_stock - available_stock, Decimal("0.000")))
+        sell_quantity = quantize_qty(max(available_stock - safety_stock, Decimal("0.000")))
+
+        if buy_quantity > 0:
+            direction = RECOMMENDATION_DIRECTION_BUY
+            suggested_quantity = buy_quantity
+        elif _has_sell_recommendation(available_stock=available_stock, safety_stock=safety_stock):
+            direction = RECOMMENDATION_DIRECTION_SELL
+            suggested_quantity = sell_quantity
+        else:
+            direction = RECOMMENDATION_DIRECTION_BALANCED
+            suggested_quantity = Decimal("0.000")
+
+        row = {
+            "product": product,
+            "product_id": str(product.id),
+            "product_name": product.name,
+            "unit": product.unit,
+            "current_stock": current_stock,
+            "reserved_quantity": reserved_quantity,
+            "available_stock": available_stock,
+            "safety_stock": safety_stock,
+            "buy_quantity": buy_quantity,
+            "sell_quantity": sell_quantity,
+            "suggested_quantity": suggested_quantity,
+            "recommendation_direction": direction,
+        }
+        all_rows.append(row)
+        if direction == RECOMMENDATION_DIRECTION_BUY:
+            buy_rows.append(row)
+        elif direction == RECOMMENDATION_DIRECTION_SELL:
+            sell_rows.append(row)
+        else:
+            balanced_rows.append(row)
+
+    buy_rows.sort(key=lambda row: (-row["buy_quantity"], row["product_name"].lower()))
+    sell_rows.sort(key=lambda row: (-row["sell_quantity"], row["product_name"].lower()))
+    balanced_rows.sort(key=lambda row: row["product_name"].lower())
+
+    return {
+        "buy_rows": buy_rows,
+        "sell_rows": sell_rows,
+        "balanced_rows": balanced_rows,
+        "all_rows": all_rows,
     }
 
 def _get_listing_available_quantity(listing) -> Decimal:

@@ -861,7 +861,7 @@ def _critical_stock_candidates(producer):
     for stock in stocks:
         available_quantity = _as_decimal(stock.current_quantity) - _as_decimal(stock.reserved_quantity)
         safety_stock = _as_decimal(stock.safety_stock)
-        if available_quantity > safety_stock:
+        if available_quantity >= safety_stock:
             continue
 
         unit = getattr(stock.product, "unit", "") or ""
@@ -886,7 +886,7 @@ def _critical_stock_candidates(producer):
                     "secondary_action_url": f"/recomendacoes/?product={stock.product_id}",
                     "secondary_action_label": "Abrir recomendações",
                     "impact_label": f"Faltam cuidados no stock de {stock.product.name}",
-                    "reason": "O stock disponível ficou igual ou abaixo do stock de segurança.",
+                    "reason": "O stock disponível ficou abaixo do stock de segurança.",
                 },
                 requires_action=True,
                 priority=10,
@@ -915,14 +915,13 @@ def _surplus_candidates(producer):
         if available_quantity <= safety_stock:
             continue
 
-        surplus_threshold = _as_decimal(stock.surplus_threshold)
         real_surplus = max(available_quantity - safety_stock, Decimal("0.000"))
-        if real_surplus < surplus_threshold:
+        warning_upper_quantity = safety_stock + (safety_stock * Decimal("0.10"))
+        if safety_stock > 0 and available_quantity <= warning_upper_quantity:
             continue
 
         unit = getattr(stock.product, "unit", "") or ""
         surplus_label = _quantity_label(real_surplus, unit)
-        threshold_label = _quantity_label(surplus_threshold, unit)
         rows.append(
             _candidate(
                 alert_type=AlertType.SURPLUS_AVAILABLE,
@@ -931,17 +930,15 @@ def _surplus_candidates(producer):
                 product=stock.product,
                 title=f"Excedente disponível: {stock.product.name}",
                 description=(
-                    f"Excedente real: {surplus_label} "
-                    f"(limiar: {threshold_label})."
+                    f"Excedente real acima do stock de segurança: {surplus_label}."
                 ),
                 payload={
                     "real_surplus": str(real_surplus),
-                    "surplus_threshold": str(surplus_threshold),
                     "action_url": (
                         f"/marketplace/publicar/?source=stock&product={stock.product_id}&from=inventory"
                     ),
                     "action_label": "Publicar no marketplace",
-                    "reason": "Existe stock acima do nível de segurança e do limiar de excedente.",
+                    "reason": "Existe stock mais de 10% acima do nível de segurança.",
                 },
                 requires_action=False,
                 priority=55,

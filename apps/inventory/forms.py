@@ -46,17 +46,39 @@ class AddProducerProductForm(forms.Form):
         }),
     )
 
-    surplus_threshold = forms.IntegerField(
-        label="Limiar excedente (opcional)",
+    max_quantity = forms.DecimalField(
+        label="Capacidade máxima (opcional)",
         required=False,
         min_value=0,
+        max_digits=14,
+        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "1",
-            "inputmode": "numeric",
+            "step": "0.001",
+            "inputmode": "decimal",
             "placeholder": "0",
         }),
     )
+
+    def clean_max_quantity(self):
+        value = self.cleaned_data.get("max_quantity")
+        if value == 0:
+            return None
+        return value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        initial_quantity = cleaned_data.get("initial_quantity")
+        safety_stock = cleaned_data.get("safety_stock")
+        max_quantity = cleaned_data.get("max_quantity")
+
+        if max_quantity is not None:
+            if safety_stock is not None and max_quantity < safety_stock:
+                self.add_error("max_quantity", "A capacidade máxima não pode ser inferior ao stock de segurança.")
+            if initial_quantity is not None and max_quantity < initial_quantity:
+                self.add_error("max_quantity", "A capacidade máxima não pode ser inferior ao stock inicial.")
+
+        return cleaned_data
 
 
 class CreateCustomProductForm(forms.Form):
@@ -114,17 +136,39 @@ class CreateCustomProductForm(forms.Form):
         }),
     )
 
-    surplus_threshold = forms.IntegerField(
-        label="Limiar excedente (opcional)",
+    max_quantity = forms.DecimalField(
+        label="Capacidade máxima (opcional)",
         required=False,
         min_value=0,
+        max_digits=14,
+        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "1",
-            "inputmode": "numeric",
+            "step": "0.001",
+            "inputmode": "decimal",
             "placeholder": "0",
         }),
     )
+
+    def clean_max_quantity(self):
+        value = self.cleaned_data.get("max_quantity")
+        if value == 0:
+            return None
+        return value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        initial_quantity = cleaned_data.get("initial_quantity")
+        safety_stock = cleaned_data.get("safety_stock")
+        max_quantity = cleaned_data.get("max_quantity")
+
+        if max_quantity is not None:
+            if safety_stock is not None and max_quantity < safety_stock:
+                self.add_error("max_quantity", "A capacidade máxima não pode ser inferior ao stock de segurança.")
+            if initial_quantity is not None and max_quantity < initial_quantity:
+                self.add_error("max_quantity", "A capacidade máxima não pode ser inferior ao stock inicial.")
+
+        return cleaned_data
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -138,7 +182,7 @@ class CreateCustomProductForm(forms.Form):
 
 
 class UpdateStockForm(forms.Form):
-    """Atualizar a quantidade em stock, stock de segurança e limiar excedente."""
+    """Atualizar a quantidade em stock, stock de segurança e capacidade máxima."""
 
     MOVEMENT_CHOICES = [
         (StockMovementType.MANUAL_ADJUSTMENT, "Ajuste manual"),
@@ -146,36 +190,42 @@ class UpdateStockForm(forms.Form):
         (StockMovementType.IMPORT, "Importação / entrada"),
     ]
 
-    new_quantity = forms.IntegerField(
+    new_quantity = forms.DecimalField(
         label="Nova quantidade em stock",
         min_value=0,
+        max_digits=14,
+        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "1",
-            "inputmode": "numeric",
+            "step": "0.001",
+            "inputmode": "decimal",
             "placeholder": "0",
         }),
     )
 
-    safety_stock = forms.IntegerField(
+    safety_stock = forms.DecimalField(
         label="Stock de segurança",
         min_value=0,
+        max_digits=14,
+        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "1",
-            "inputmode": "numeric",
+            "step": "0.001",
+            "inputmode": "decimal",
             "placeholder": "0",
         }),
     )
 
-    surplus_threshold = forms.IntegerField(
-        label="Limiar excedente (opcional)",
+    max_quantity = forms.DecimalField(
+        label="Capacidade máxima (opcional)",
         required=False,
         min_value=0,
+        max_digits=14,
+        decimal_places=3,
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "1",
-            "inputmode": "numeric",
+            "step": "0.001",
+            "inputmode": "decimal",
             "placeholder": "0",
         }),
     )
@@ -201,6 +251,26 @@ class UpdateStockForm(forms.Form):
         if value is not None and value < 0:
             raise forms.ValidationError("A quantidade não pode ser negativa.")
         return value
+
+    def clean_max_quantity(self):
+        value = self.cleaned_data.get("max_quantity")
+        if value == 0:
+            return None
+        return value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        new_quantity = cleaned_data.get("new_quantity")
+        safety_stock = cleaned_data.get("safety_stock")
+        max_quantity = cleaned_data.get("max_quantity")
+
+        if max_quantity is not None:
+            if safety_stock is not None and max_quantity < safety_stock:
+                self.add_error("max_quantity", "A capacidade máxima não pode ser inferior ao stock de segurança.")
+            if new_quantity is not None and max_quantity < new_quantity:
+                self.add_error("max_quantity", "A capacidade máxima não pode ser inferior ao stock atual.")
+
+        return cleaned_data
 
 
 class ProductionForecastForm(forms.Form):

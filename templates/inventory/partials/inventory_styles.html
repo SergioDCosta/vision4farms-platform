@@ -389,6 +389,7 @@
 .inv-table tbody tr:hover{background:#f8fafc;}
 .inv-table tbody tr:last-child td{border-bottom:none;}
 .inv-row--critical{background:rgba(254,242,242,.7);}
+.inv-row--warning{background:rgba(255,251,235,.75);}
 .inv-row--excess{background:rgba(240,253,244,.55);}
 .inv-row-link{
   cursor:pointer;
@@ -418,6 +419,7 @@
   font-size:1rem;
 }
 .inv-value--critical{color:#dc2626;}
+.inv-value--warning{color:#d97706;}
 .inv-value--excess{color:#16a34a;}
 
 .inv-unit{
@@ -449,6 +451,7 @@
   text-transform:uppercase;
 }
 .inv-status--critical{background:#fee2e2;color:#dc2626;}
+.inv-status--warning{background:#fef3c7;color:#92400e;}
 .inv-status--normal{background:#eff6ff;color:#2563eb;}
 .inv-status--excess{background:#dcfce7;color:#15803d;}
 
@@ -756,6 +759,56 @@
   font-size:.84rem;
 }
 
+.inv-stock-health-card{
+  margin-top:1rem;
+}
+.inv-stock-health-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:1rem;
+}
+.inv-progress-block{
+  padding:1rem;
+  border:1px solid #e2e8f0;
+  border-radius:1rem;
+  background:#f8fafc;
+  min-width:0;
+}
+.inv-progress-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:1rem;
+  margin-bottom:.7rem;
+  color:#64748b;
+  font-size:.82rem;
+  font-weight:700;
+}
+.inv-progress-head strong{
+  color:#0f172a;
+  text-align:right;
+  white-space:nowrap;
+}
+.inv-progress-track{
+  height:.72rem;
+  border-radius:999px;
+  background:#e2e8f0;
+  overflow:hidden;
+}
+.inv-progress-fill{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  transition:width .22s ease;
+}
+.inv-progress-fill--critical{background:#ef4444;}
+.inv-progress-fill--warning{background:#f59e0b;}
+.inv-progress-fill--normal{background:#2563eb;}
+.inv-progress-fill--excess{background:#16a34a;}
+.inv-progress-fill--reserved{background:#f59e0b;}
+.inv-progress-fill--capacity{background:#7c3aed;}
+.inv-progress-fill--sellable{background:#16a34a;}
+
 .inv-section-grid{
   display:grid;
   grid-template-columns:minmax(0,1fr) 360px;
@@ -834,7 +887,8 @@
 @media (max-width: 1100px){
   .inv-grid,
   .inv-data-grid,
-  .inv-section-grid{
+  .inv-section-grid,
+  .inv-stock-health-grid{
     grid-template-columns:1fr;
   }
 }
@@ -862,7 +916,8 @@
   .inv-category-stack{padding:.9rem;}
   .inv-category-head{padding:.7rem .8rem;flex-wrap:wrap;}
   .inv-stat-grid,
-  .inv-form-grid{
+  .inv-form-grid,
+  .inv-stock-health-grid{
     grid-template-columns:1fr;
   }
   .inv-forecast-grid .inv-field{

@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django import forms
 
+from apps.catalog.models import Product
 from apps.inventory.models import ProductionForecast
 from apps.marketplace.models import DeliveryMode
 from apps.marketplace.services import (
@@ -13,7 +14,59 @@ from apps.marketplace.services import (
     get_stock_for_product,
 )
 from apps.needs.models import NeedStatus
-from apps.needs.services import calculate_need_coverage, get_need_minimum_edit_quantity
+from apps.needs.services import (
+    NEED_NOTES_MAX_LENGTH,
+    NEED_RESPONSE_NOTES_MAX_LENGTH,
+    calculate_need_coverage,
+    get_need_candidate_products,
+    get_need_minimum_edit_quantity,
+)
+
+
+class NeedCreateForm(forms.Form):
+    product_id = forms.ModelChoiceField(
+        label="Produto",
+        queryset=Product.objects.none(),
+        empty_label="Selecionar produto",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    required_quantity = forms.DecimalField(
+        label="Quantidade necessária",
+        min_value=Decimal("0.001"),
+        max_digits=14,
+        decimal_places=3,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "0.001",
+            "min": "0.001",
+            "placeholder": "Ex: 100",
+        }),
+    )
+    needed_by_date = forms.DateField(
+        label="Data limite",
+        required=False,
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"class": "form-control", "type": "date"},
+        ),
+    )
+    notes = forms.CharField(
+        label="Observações da necessidade",
+        required=False,
+        max_length=NEED_NOTES_MAX_LENGTH,
+        widget=forms.Textarea(attrs={
+            "class": "form-control",
+            "rows": 3,
+            "maxlength": NEED_NOTES_MAX_LENGTH,
+            "placeholder": "Ex: preciso desta quantidade até à próxima semana.",
+        }),
+    )
+
+    def __init__(self, *args, producer=None, **kwargs):
+        self.producer = producer
+        super().__init__(*args, **kwargs)
+        self.fields["product_id"].queryset = get_need_candidate_products(producer) if producer else Product.objects.none()
 
 
 class NeedEditForm(forms.Form):
@@ -41,9 +94,11 @@ class NeedEditForm(forms.Form):
     notes = forms.CharField(
         label="Observações da necessidade",
         required=False,
+        max_length=NEED_NOTES_MAX_LENGTH,
         widget=forms.Textarea(attrs={
             "class": "form-control",
             "rows": 3,
+            "maxlength": NEED_NOTES_MAX_LENGTH,
             "placeholder": "Atualize contexto, urgência ou condições importantes...",
         }),
     )
@@ -156,9 +211,11 @@ class NeedResponsePublishForm(forms.Form):
     notes = forms.CharField(
         label="Observações da resposta",
         required=False,
+        max_length=NEED_RESPONSE_NOTES_MAX_LENGTH,
         widget=forms.Textarea(attrs={
             "class": "form-control",
             "rows": 4,
+            "maxlength": NEED_RESPONSE_NOTES_MAX_LENGTH,
             "placeholder": "Condições, qualidade, colheita, disponibilidade ou detalhes da entrega...",
         }),
     )
@@ -291,9 +348,11 @@ class NeedResponseEditForm(forms.Form):
     notes = forms.CharField(
         label="Observações da resposta",
         required=False,
+        max_length=NEED_RESPONSE_NOTES_MAX_LENGTH,
         widget=forms.Textarea(attrs={
             "class": "form-control",
             "rows": 4,
+            "maxlength": NEED_RESPONSE_NOTES_MAX_LENGTH,
             "placeholder": "Atualize condições, qualidade, disponibilidade ou detalhes da entrega...",
         }),
     )

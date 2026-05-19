@@ -1,11 +1,10 @@
 <div class="rec-card rec-card--step-1">
   <div class="rec-card__head">
-    <h2>Passo 1 — Avaliar produto</h2>
-    <p>Escolha um produto para o sistema indicar se faz mais sentido comprar, vender ou manter stock.</p>
+    <h2>Passo 1 — Decidir o que comprar ou vender</h2>
+    <p>Veja rapidamente os produtos com maior necessidade e os excedentes mais relevantes.</p>
   </div>
 
   <div class="rec-card__body">
-
     <form
       method="post"
       hx-post="{% url 'recommendations:step_generate' %}"
@@ -14,44 +13,182 @@
       novalidate
     >
       {% csrf_token %}
+      <input type="hidden" name="product_id" id="product_id" value="{{ initial_product_id }}">
 
-      <div class="rec-grid-2 rec-grid-2--step-1">
-        <div class="rec-field">
-          <label for="product_id">Produto</label>
-          <select
-            name="product_id"
-            id="product_id"
-            required
-            hx-get="{% url 'recommendations:product_metrics' %}"
-            hx-target="#step-1-metrics"
-            hx-swap="outerHTML"
-            hx-trigger="change"
-            hx-sync="this:replace"
-          >
-            <option value="" disabled {% if not initial_product_id %}selected{% endif %}>Selecionar produto</option>
-            {% for product_id, product_name in products %}
-              <option value="{{ product_id }}" {% if initial_product_id == product_id %}selected{% endif %}>
-                {{ product_name }}
-              </option>
-            {% endfor %}
-          </select>
-          <div class="rec-help">Produtos com “Stock crítico” ou “Excedente” aparecem assinalados na lista.</div>
-          {% if errors.product_id %}
-            <div class="rec-error">{{ errors.product_id }}</div>
+      <div class="rec-inventory-picker" data-rec-inventory-picker>
+        <section class="rec-inventory-panel rec-inventory-panel--buy">
+          <div class="rec-inventory-panel__head">
+            <div>
+              <span class="rec-inventory-panel__eyebrow">Reposição</span>
+              <h3>Comprar</h3>
+            </div>
+            <span class="rec-inventory-count">{{ recommendation_buy_rows|length }}</span>
+          </div>
+
+          {% if recommendation_buy_rows %}
+            <div class="rec-inventory-table-wrap">
+              <table class="rec-inventory-table">
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Disponível</th>
+                    <th>Segurança</th>
+                    <th>A comprar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in recommendation_buy_rows %}
+                    <tr
+                      class="rec-inventory-row {% if initial_product_id == row.product_id %}is-selected{% endif %}"
+                      tabindex="0"
+                      role="button"
+                      aria-label="Selecionar {{ row.product_name }} para compra"
+                      data-rec-product-row
+                      data-product-id="{{ row.product_id }}"
+                      data-product-name="{{ row.product_name }}"
+                      data-direction="{{ row.recommendation_direction }}"
+                      data-current-stock="{{ row.current_stock }}"
+                      data-available-stock="{{ row.available_stock }}"
+                      data-safety-stock="{{ row.safety_stock }}"
+                      data-reserved-quantity="{{ row.reserved_quantity }}"
+                      data-buy-quantity="{{ row.buy_quantity }}"
+                      data-sell-quantity="{{ row.sell_quantity }}"
+                      data-suggested-quantity="{{ row.suggested_quantity }}"
+                      data-unit="{{ row.unit }}"
+                    >
+                      <td>
+                        <strong>{{ row.product_name }}</strong>
+                        <span>Stock abaixo do mínimo</span>
+                      </td>
+                      <td>{{ row.available_stock|quantity }} {{ row.unit }}</td>
+                      <td>{{ row.safety_stock|quantity }} {{ row.unit }}</td>
+                      <td><strong>{{ row.buy_quantity|quantity }} {{ row.unit }}</strong></td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="rec-inventory-empty">
+              <i class="bi bi-check2-circle"></i>
+              <strong>Sem compras urgentes</strong>
+              <span>Não há produtos abaixo do stock de segurança.</span>
+            </div>
           {% endif %}
+        </section>
+
+        <section class="rec-inventory-panel rec-inventory-panel--sell">
+          <div class="rec-inventory-panel__head">
+            <div>
+              <span class="rec-inventory-panel__eyebrow">Excedente</span>
+              <h3>Vender</h3>
+            </div>
+            <span class="rec-inventory-count">{{ recommendation_sell_rows|length }}</span>
+          </div>
+
+          {% if recommendation_sell_rows %}
+            <div class="rec-inventory-table-wrap">
+              <table class="rec-inventory-table">
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Disponível</th>
+                    <th>Segurança</th>
+                    <th>A vender</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in recommendation_sell_rows %}
+                    <tr
+                      class="rec-inventory-row {% if initial_product_id == row.product_id %}is-selected{% endif %}"
+                      tabindex="0"
+                      role="button"
+                      aria-label="Selecionar {{ row.product_name }} para venda"
+                      data-rec-product-row
+                      data-product-id="{{ row.product_id }}"
+                      data-product-name="{{ row.product_name }}"
+                      data-direction="{{ row.recommendation_direction }}"
+                      data-current-stock="{{ row.current_stock }}"
+                      data-available-stock="{{ row.available_stock }}"
+                      data-safety-stock="{{ row.safety_stock }}"
+                      data-reserved-quantity="{{ row.reserved_quantity }}"
+                      data-buy-quantity="{{ row.buy_quantity }}"
+                      data-sell-quantity="{{ row.sell_quantity }}"
+                      data-suggested-quantity="{{ row.suggested_quantity }}"
+                      data-unit="{{ row.unit }}"
+                    >
+                      <td>
+                        <strong>{{ row.product_name }}</strong>
+                        <span>Excedente acima da segurança</span>
+                      </td>
+                      <td>{{ row.available_stock|quantity }} {{ row.unit }}</td>
+                      <td>{{ row.safety_stock|quantity }} {{ row.unit }}</td>
+                      <td><strong>{{ row.sell_quantity|quantity }} {{ row.unit }}</strong></td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="rec-inventory-empty">
+              <i class="bi bi-box-seam"></i>
+              <strong>Sem excedentes</strong>
+              <span>Não há produtos acima do stock de segurança.</span>
+            </div>
+          {% endif %}
+        </section>
+      </div>
+
+      {% if recommendation_balanced_rows %}
+        <details class="rec-balanced-list">
+          <summary>{{ recommendation_balanced_rows|length }} produto{{ recommendation_balanced_rows|length|pluralize }} equilibrado{{ recommendation_balanced_rows|length|pluralize }}</summary>
+          <div class="rec-balanced-list__items">
+            {% for row in recommendation_balanced_rows %}
+              <button
+                type="button"
+                class="rec-balanced-pill {% if initial_product_id == row.product_id %}is-selected{% endif %}"
+                data-rec-product-row
+                data-product-id="{{ row.product_id }}"
+                data-product-name="{{ row.product_name }}"
+                data-direction="{{ row.recommendation_direction }}"
+                data-current-stock="{{ row.current_stock }}"
+                data-available-stock="{{ row.available_stock }}"
+                data-safety-stock="{{ row.safety_stock }}"
+                data-reserved-quantity="{{ row.reserved_quantity }}"
+                data-buy-quantity="{{ row.buy_quantity }}"
+                data-sell-quantity="{{ row.sell_quantity }}"
+                data-suggested-quantity="{{ row.suggested_quantity }}"
+                data-unit="{{ row.unit }}"
+              >
+                {{ row.product_name }} · {{ row.available_stock|quantity }} {{ row.unit }}
+              </button>
+            {% endfor %}
+          </div>
+        </details>
+      {% endif %}
+
+      {% include "recommendations/partials/step_1_metrics.html" %}
+
+      <div class="rec-selected-action">
+        <div>
+          <p class="rec-selected-action__label">Ação selecionada</p>
+          <strong id="recSelectedProductName">
+            {% if initial_product_id %}Produto selecionado{% else %}Selecione um produto nas tabelas{% endif %}
+          </strong>
+          <span id="recSelectedActionHelp">{{ quantity_help|default:"Escolha um produto para calcular a ação recomendada." }}</span>
         </div>
-
-        {% include "recommendations/partials/step_1_metrics.html" %}
-
-        <div class="rec-field rec-field--quantity" style="grid-column: 1 / -1;">
+        <div class="rec-field rec-field--quantity">
           <label for="requested_quantity" id="recQuantityLabel">{{ quantity_label|default:"Quantidade sugerida" }}</label>
           <input type="number" name="requested_quantity" id="requested_quantity" value="{{ initial_requested_quantity|default:initial_deficit_quantity|default:'0' }}" step="0.001" min="0" required>
-          <div class="rec-help" id="recQuantityHelp">{{ quantity_help|default:"Escolha um produto para calcular a ação recomendada." }}</div>
           {% if errors.requested_quantity %}
             <div class="rec-error">{{ errors.requested_quantity }}</div>
           {% endif %}
         </div>
       </div>
+
+      {% if errors.product_id %}
+        <div class="rec-error rec-error--block">{{ errors.product_id }}</div>
+      {% endif %}
 
       <div class="rec-actions">
         <span class="rec-loading"><i class="bi bi-arrow-repeat"></i> A gerar recomendação...</span>

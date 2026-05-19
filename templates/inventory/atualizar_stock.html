@@ -88,15 +88,15 @@
             </div>
 
             <div class="inv-field">
-              <label for="{{ form.surplus_threshold.id_for_label }}">
-                {{ form.surplus_threshold.label }} ({{ stock.product.unit }})
+              <label for="{{ form.max_quantity.id_for_label }}">
+                {{ form.max_quantity.label }} ({{ stock.product.unit }})
               </label>
-              {{ form.surplus_threshold }}
-              {% if form.surplus_threshold.errors %}
-                <div class="inv-errors">{{ form.surplus_threshold.errors.0 }}</div>
+              {{ form.max_quantity }}
+              {% if form.max_quantity.errors %}
+                <div class="inv-errors">{{ form.max_quantity.errors.0 }}</div>
               {% endif %}
               <div class="inv-help">
-                Campo opcional. Se deixar vazio, será gravado como <strong>0</strong>.
+                Opcional. Use para representar capacidade de armazém, câmara, silo ou limite operacional.
               </div>
             </div>
           </div>

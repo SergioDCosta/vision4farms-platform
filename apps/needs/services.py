@@ -22,6 +22,21 @@ PLANNED_NEED_ORDER_STATUSES = [
     OrderStatus.IN_PROGRESS,
     OrderStatus.DELIVERING,
 ]
+PUBLIC_OFFERED_ORDER_STATUSES = [
+    OrderStatus.PENDING,
+    OrderStatus.CONFIRMED,
+    OrderStatus.IN_PROGRESS,
+    OrderStatus.DELIVERING,
+]
+NEEDS_SEARCH_QUERY_MAX_LENGTH = 120
+NEED_NOTES_MAX_LENGTH = 1200
+NEED_RESPONSE_NOTES_MAX_LENGTH = 1200
+
+
+class DuplicateActiveNeedError(ValidationError):
+    def __init__(self, existing_need):
+        self.existing_need = existing_need
+        super().__init__("Já existe uma necessidade ativa para este produto. Edite essa necessidade em vez de criar outra.")
 
 
 @dataclass(frozen=True)
@@ -72,6 +87,18 @@ class NeedResponseSummary:
 
 def _quantize_need_quantity(value):
     return Decimal(str(value or 0)).quantize(Decimal("0.001"))
+
+
+def normalize_needs_search_query(value):
+    return (value or "").strip()[:NEEDS_SEARCH_QUERY_MAX_LENGTH]
+
+
+def is_listing_effectively_expired(listing, *, now=None):
+    expires_at = getattr(listing, "expires_at", None)
+    if not expires_at or not isinstance(expires_at, datetime):
+        return False
+    now = now or timezone.now()
+    return expires_at <= now
 
 
 def _normalize_needed_by_date(value):
@@ -315,7 +342,7 @@ def get_need_for_producer(*, producer, need_id):
 
 
 @transaction.atomic
-def create_or_update_need(
+def create_need(
     *,
     producer,
     product,
@@ -329,7 +356,7 @@ def create_or_update_need(
     if quantity <= Decimal("0.000"):
         raise ValidationError("A quantidade necessária deve ser superior a zero.")
 
-    active_needs = list(
+    existing_need = (
         Need.objects
         .select_for_update()
         .filter(
@@ -338,53 +365,30 @@ def create_or_update_need(
             status__in=ACTIVE_NEED_STATUSES,
         )
         .order_by("-updated_at", "-created_at")
+        .first()
+    )
+    if existing_need:
+        raise DuplicateActiveNeedError(existing_need)
+
+    need = Need.objects.create(
+        producer=producer,
+        product=product,
+        required_quantity=quantity,
+        needed_by_date=needed_by_date,
+        source_system=source_system,
+        external_id=external_id,
+        notes=(notes or "").strip() or None,
+        status=NeedStatus.OPEN,
     )
 
-    if active_needs:
-        need = active_needs[0]
-        need.required_quantity = quantity
-        need.needed_by_date = needed_by_date
-        need.source_system = source_system
-        need.external_id = external_id
-        need.notes = notes or None
-        if hasattr(need, "updated_at"):
-            need.updated_at = timezone.now()
-            need.save(
-                update_fields=[
-                    "required_quantity",
-                    "needed_by_date",
-                    "source_system",
-                    "external_id",
-                    "notes",
-                    "updated_at",
-                ]
-            )
-        else:
-            need.save(
-                update_fields=[
-                    "required_quantity",
-                    "needed_by_date",
-                    "source_system",
-                    "external_id",
-                    "notes",
-                ]
-            )
-        created = False
-    else:
-        need = Need.objects.create(
-            producer=producer,
-            product=product,
-            required_quantity=quantity,
-            needed_by_date=needed_by_date,
-            source_system=source_system,
-            external_id=external_id,
-            notes=notes or None,
-            status=NeedStatus.OPEN,
-        )
-        created = True
-
     need, coverage, _ = recalculate_need_status(need)
-    return need, coverage, created
+    return need, coverage
+
+
+@transaction.atomic
+def create_or_update_need(**kwargs):
+    need, coverage = create_need(**kwargs)
+    return need, coverage, True
 
 
 @transaction.atomic
@@ -445,6 +449,7 @@ def get_public_offered_quantities_by_need(*, need_ids, viewer_producer=None):
     if not need_ids:
         return {}
 
+    now = timezone.now()
     offered_quantities = {}
     pending_listings = (
         MarketplaceListing.objects
@@ -455,6 +460,7 @@ def get_public_offered_quantities_by_need(*, need_ids, viewer_producer=None):
             quantity_available__gt=0,
             order_items__isnull=True,
         )
+        .exclude(expires_at__lte=now)
         .only("need_id", "producer_id", "quantity_available")
     )
     if viewer_producer:
@@ -469,7 +475,10 @@ def get_public_offered_quantities_by_need(*, need_ids, viewer_producer=None):
 
     active_order_items = (
         OrderItem.objects
-        .filter(need_id__in=need_ids)
+        .filter(
+            need_id__in=need_ids,
+            order__status__in=PUBLIC_OFFERED_ORDER_STATUSES,
+        )
         .exclude(item_status__in=[OrderItemStatus.CANCELLED, OrderItemStatus.COMPLETED])
         .only("need_id", "seller_producer_id", "quantity")
     )
@@ -501,7 +510,7 @@ def list_marketplace_public_needs(*, viewer_producer=None, q="", category_id="")
         qs = qs.exclude(producer=viewer_producer)
 
     if q:
-        q = q.strip()
+        q = normalize_needs_search_query(q)
         qs = qs.filter(
             Q(product__name__icontains=q)
             | Q(producer__display_name__icontains=q)
@@ -555,7 +564,7 @@ def list_marketplace_my_needs(*, producer, q="", category_id=""):
     )
 
     if q:
-        q = q.strip()
+        q = normalize_needs_search_query(q)
         qs = qs.filter(
             Q(product__name__icontains=q)
             | Q(notes__icontains=q)
@@ -609,7 +618,7 @@ def get_critical_stock_product_ids(producer, *, product_ids=None):
         current_quantity = Decimal(str(stock.current_quantity or 0))
         reserved_quantity = Decimal(str(stock.reserved_quantity or 0))
         safety_stock = Decimal(str(stock.safety_stock or 0))
-        if current_quantity - reserved_quantity <= safety_stock:
+        if current_quantity - reserved_quantity < safety_stock:
             critical_product_ids.add(str(stock.product_id))
     return critical_product_ids
 
@@ -638,7 +647,7 @@ def _get_need_response_listings_for_owner(*, owner_producer, q="", category_id="
         qs = qs.filter(need_id=need_id)
 
     if q:
-        q = q.strip()
+        q = normalize_needs_search_query(q)
         qs = qs.filter(
             Q(product__name__icontains=q)
             | Q(producer__display_name__icontains=q)
@@ -895,7 +904,11 @@ def _derive_need_response_state(
             "can_reject": False,
         }
 
-    if response_status == NeedResponseStatus.EXPIRED or listing.status == ListingStatus.EXPIRED:
+    if (
+        response_status == NeedResponseStatus.EXPIRED
+        or listing.status == ListingStatus.EXPIRED
+        or is_listing_effectively_expired(listing)
+    ):
         return {
             "status": NeedResponseStatus.EXPIRED,
             "label": NeedResponseStatus.EXPIRED.label,
@@ -1044,7 +1057,7 @@ def list_need_responses_for_responder(*, responder_producer, q="", category_id="
     )
 
     if q:
-        q = q.strip()
+        q = normalize_needs_search_query(q)
         qs = qs.filter(
             Q(product__name__icontains=q)
             | Q(need__producer__display_name__icontains=q)

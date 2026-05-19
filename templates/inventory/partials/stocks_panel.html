@@ -6,6 +6,7 @@
       <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
         {{ stock_total_count }} produto{{ stock_total_count|pluralize }} ·
         {{ critical_count }} crítico{{ critical_count|pluralize }} ·
+        {{ warning_count }} no limite ·
         {{ excess_count }} com potencial de venda
       </p>
     </div>
@@ -39,7 +40,7 @@
           <option value="name" {% if sort == "name" %}selected{% endif %}>Nome (A-Z)</option>
           <option value="stock_desc" {% if sort == "stock_desc" %}selected{% endif %}>Stock atual (maior primeiro)</option>
           <option value="stock_asc" {% if sort == "stock_asc" %}selected{% endif %}>Stock atual (menor primeiro)</option>
-          <option value="state" {% if sort == "state" %}selected{% endif %}>Estado (crítico para excedente)</option>
+          <option value="state" {% if sort == "state" %}selected{% endif %}>Estado (crítico, limite, normal, excedente)</option>
         </select>
       </div>
     </form>
@@ -130,7 +131,7 @@
                         </span>
                         <span class="inv-unit">{{ row.product.unit }}</span>
                         <span class="inv-subvalue">
-                          Limiar excedente: {{ row.stock.surplus_threshold|default:0|quantity }} {{ row.product.unit }}
+                          Margem de atenção: até {{ row.state.warning_upper_quantity|quantity }} {{ row.product.unit }}
                         </span>
 
                         {% if row.state.key == "excess" %}
@@ -174,6 +175,12 @@
                                class="inv-icon-btn inv-icon-btn--amber"
                                title="Anunciar necessidade">
                               <i class="bi bi-megaphone"></i>
+                            </a>
+                          {% elif row.state.key == "warning" %}
+                            <a href="{% url 'recommendations:index' %}?product={{ row.product_id }}"
+                               class="inv-icon-btn inv-icon-btn--amber"
+                               title="Stock perto do nível de segurança">
+                              <i class="bi bi-exclamation-triangle"></i>
                             </a>
                           {% elif row.state.key == "excess" %}
                             <a href="{% url 'marketplace:publish' %}?source=stock&product={{ row.product_id }}&from=inventory"

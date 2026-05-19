@@ -1,4 +1,3 @@
-from datetime import datetime, time
 from decimal import Decimal
 
 from django.contrib import messages
@@ -6,7 +5,6 @@ from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.utils import timezone
 
 from apps.common.decorators import client_only_required
 from apps.marketplace.models import ListingStatus
@@ -14,17 +12,17 @@ from apps.marketplace.services import (
     MarketplaceServiceError,
     build_delivery_text,
     create_listing,
-    expire_due_active_listings,
     get_current_producer_for_user,
     get_max_publishable_quantity,
     get_stock_for_product,
 )
-from apps.needs.forms import NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
+from apps.needs.forms import NeedCreateForm, NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import Need, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
-    create_or_update_need,
+    DuplicateActiveNeedError,
+    create_need,
     build_need_response_for_listing,
     get_need_edit_help_text,
     get_need_minimum_edit_quantity,
@@ -41,6 +39,7 @@ from apps.needs.services import (
     list_need_responses_for_responder,
     list_marketplace_my_needs,
     list_marketplace_public_needs,
+    normalize_needs_search_query,
     reject_need_response,
     update_need,
     update_need_response,
@@ -57,23 +56,6 @@ def sync_alerts_after_need_change(producer, acting_user):
 
 def _is_htmx(request):
     return request.headers.get("HX-Request") == "true"
-
-
-def parse_need_datetime(value):
-    raw_value = (value or "").strip()
-    if not raw_value:
-        return None
-    try:
-        if "T" in raw_value:
-            parsed = datetime.strptime(raw_value, "%Y-%m-%dT%H:%M")
-        else:
-            parsed_date = datetime.strptime(raw_value, "%Y-%m-%d").date()
-            parsed = datetime.combine(parsed_date, time.max)
-    except ValueError:
-        raise ValidationError("Data limite inválida para a necessidade.")
-    if timezone.is_naive(parsed):
-        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
-    return parsed
 
 
 def build_selected_need_row(need):
@@ -135,13 +117,20 @@ def build_need_response_inventory_context(producer, product):
 
 def get_needs_filters(request):
     source = request.POST if request.method == "POST" else request.GET
-    q = (source.get("q") or "").strip()
+    q = normalize_needs_search_query(source.get("q"))
     category_id = (source.get("category") or "").strip()
     need_id = (source.get("need") or "").strip()
     requested_product_id = (source.get("product") or source.get("product_id") or "").strip()
     requested_quantity = (source.get("qty") or source.get("required_quantity") or "").strip()
     show_need_form = (source.get("show_need_form") or "").strip().lower() in {"1", "true", "yes", "on"}
     return q, category_id, need_id, requested_product_id, requested_quantity, show_need_form
+
+
+def add_form_errors_to_messages(request, form):
+    for field, errors in form.errors.items():
+        label = form.fields[field].label if field in form.fields else ""
+        for error in errors:
+            messages.error(request, f"{label}: {error}" if label else str(error))
 
 
 def build_needs_index_context(
@@ -344,7 +333,6 @@ def needs_index_view(request):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
-    expire_due_active_listings()
     q, category_id, selected_need_id, requested_product_id, requested_quantity, show_need_form = get_needs_filters(request)
     edit_need_id = (request.GET.get("edit_need") or "").strip()
     context = build_needs_index_context(
@@ -368,7 +356,6 @@ def need_response_publish_view(request):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
-    expire_due_active_listings()
     requested_need_id = (
         request.POST.get("need_id")
         or request.POST.get("need")
@@ -533,11 +520,6 @@ def need_create_view(request):
 
     q, category_id, selected_need_id, requested_product_id, requested_quantity, _ = get_needs_filters(request)
     show_need_form = True
-    created = False
-
-    product_id = (request.POST.get("product_id") or "").strip()
-    required_quantity_raw = (request.POST.get("required_quantity") or "").strip()
-    notes = (request.POST.get("notes") or "").strip()
     source_context = (request.POST.get("source_context") or "").strip().lower()
     source_system = (
         NeedSourceSystem.VISION4FARMS
@@ -545,42 +527,39 @@ def need_create_view(request):
         else NeedSourceSystem.MANUAL
     )
     external_id = (request.POST.get("external_id") or "").strip() or None
+    form = NeedCreateForm(request.POST, producer=producer)
 
-    required_quantity = None
-    try:
-        required_quantity = Decimal(required_quantity_raw)
-    except Exception:
-        messages.error(request, "Quantidade necessária inválida.")
-
-    product = None
-    if required_quantity is not None:
-        product = get_need_candidate_products(producer).filter(id=product_id).first()
-        if not product:
-            messages.error(request, "Produto inválido para criar necessidade.")
-
-    if required_quantity is not None and product is not None:
+    if form.is_valid():
         try:
-            needed_by_date = parse_need_datetime(request.POST.get("needed_by_date"))
-            _, _, created = create_or_update_need(
+            need, _ = create_need(
                 producer=producer,
-                product=product,
-                required_quantity=required_quantity,
-                needed_by_date=needed_by_date,
+                product=form.cleaned_data["product_id"],
+                required_quantity=form.cleaned_data["required_quantity"],
+                needed_by_date=form.cleaned_data.get("needed_by_date"),
                 source_system=source_system,
                 external_id=external_id,
-                notes=notes or None,
+                notes=form.cleaned_data.get("notes"),
+            )
+        except DuplicateActiveNeedError as exc:
+            selected_need_id = str(exc.existing_need.id)
+            requested_product_id = str(exc.existing_need.product_id)
+            requested_quantity = ""
+            show_need_form = False
+            messages.warning(
+                request,
+                "Já existe uma necessidade ativa para este produto. Abra-a para editar quantidade, data ou observações.",
             )
         except ValidationError as exc:
             messages.error(request, str(exc))
         else:
-            messages.success(
-                request,
-                "Necessidade anunciada com sucesso."
-                if created
-                else "Necessidade existente atualizada com sucesso.",
-            )
+            selected_need_id = str(need.id)
+            requested_product_id = str(need.product_id)
+            requested_quantity = ""
+            messages.success(request, "Necessidade anunciada com sucesso.")
             sync_alerts_after_need_change(producer, request.current_user)
             show_need_form = False
+    else:
+        add_form_errors_to_messages(request, form)
 
     if _is_htmx(request):
         context = build_needs_index_context(
@@ -758,7 +737,6 @@ def need_response_edit_view(request, listing_id):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
-    expire_due_active_listings()
     listing = get_editable_need_response_for_responder(
         responder_producer=producer,
         listing_id=listing_id,
@@ -819,7 +797,6 @@ def need_response_detail_view(request, listing_id):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
-    expire_due_active_listings()
     listing = get_need_response_listing_for_viewer(
         viewer_producer=producer,
         listing_id=listing_id,
