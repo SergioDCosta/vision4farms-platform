@@ -87,18 +87,6 @@
               <div class="inv-help">Este valor será usado para sinalizar stock baixo ou crítico.</div>
             </div>
 
-            <div class="inv-field">
-              <label for="{{ form.max_quantity.id_for_label }}">
-                {{ form.max_quantity.label }} ({{ stock.product.unit }})
-              </label>
-              {{ form.max_quantity }}
-              {% if form.max_quantity.errors %}
-                <div class="inv-errors">{{ form.max_quantity.errors.0 }}</div>
-              {% endif %}
-              <div class="inv-help">
-                Opcional. Use para representar capacidade de armazém, câmara, silo ou limite operacional.
-              </div>
-            </div>
           </div>
 
           <div class="inv-field">

@@ -241,7 +241,6 @@ def adicionar_produto(request):
                         producer_description=custom_form.cleaned_data.get("producer_description", ""),
                         initial_quantity=custom_form.cleaned_data["initial_quantity"],
                         safety_stock=custom_form.cleaned_data["safety_stock"],
-                        max_quantity=custom_form.cleaned_data.get("max_quantity"),
                         user=request.current_user,
                     )
 
@@ -293,7 +292,6 @@ def adicionar_produto(request):
                         producer_description=form.cleaned_data.get("producer_description", ""),
                         initial_quantity=form.cleaned_data["initial_quantity"],
                         safety_stock=form.cleaned_data["safety_stock"],
-                        max_quantity=form.cleaned_data.get("max_quantity"),
                         user=request.current_user,
                     )
 
@@ -594,7 +592,6 @@ def atualizar_stock(request, product_id):
                     safety_stock=safety_stock,
                     movement_type=form.cleaned_data["movement_type"],
                     user=request.current_user,
-                    max_quantity=form.cleaned_data.get("max_quantity"),
                     notes=form.cleaned_data.get("notes", ""),
                 )
                 messages.success(request, "Stock atualizado com sucesso.")
@@ -610,7 +607,6 @@ def atualizar_stock(request, product_id):
         form = UpdateStockForm(initial={
             "new_quantity": _decimal_form_initial(stock.current_quantity),
             "safety_stock": _decimal_form_initial(stock.safety_stock),
-            "max_quantity": _decimal_form_initial(getattr(stock, "max_quantity", None)),
         })
 
     context = {

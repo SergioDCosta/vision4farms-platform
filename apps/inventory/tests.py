@@ -19,7 +19,6 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
 
     def test_custom_product_form_does_not_expose_unit(self):
         self.assertNotIn("unit", CreateCustomProductForm().fields)
-        self.assertNotIn("surplus_threshold", CreateCustomProductForm().fields)
 
     @patch("apps.inventory.services._ensure_stock_for_product")
     @patch("apps.inventory.services.ProducerProduct")
@@ -49,7 +48,6 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
             name="Pera Rocha",
             initial_quantity=10,
             safety_stock=2,
-            max_quantity=100,
             user=SimpleNamespace(id="user-1"),
             producer_description="  Produto   local ",
         )
@@ -98,7 +96,6 @@ class InventoryStockStateTests(SimpleTestCase):
             current_quantity=10,
             reserved_quantity=0,
             safety_stock=10,
-            max_quantity=100,
         )
 
         state = get_stock_state(stock)
@@ -112,7 +109,6 @@ class InventoryStockStateTests(SimpleTestCase):
             current_quantity=9,
             reserved_quantity=0,
             safety_stock=10,
-            max_quantity=100,
         )
 
         self.assertEqual(get_stock_state(stock)["key"], "critical")
@@ -124,7 +120,6 @@ class InventoryStockFormTests(SimpleTestCase):
             data={
                 "new_quantity": "20.5",
                 "safety_stock": "10.25",
-                "max_quantity": "30.75",
                 "movement_type": "MANUAL_ADJUSTMENT",
                 "notes": "",
             }
@@ -133,7 +128,6 @@ class InventoryStockFormTests(SimpleTestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(str(form.cleaned_data["new_quantity"]), "20.5")
         self.assertEqual(str(form.cleaned_data["safety_stock"]), "10.25")
-        self.assertEqual(str(form.cleaned_data["max_quantity"]), "30.75")
 
 
 class InventoryViewContextTests(SimpleTestCase):
@@ -165,6 +159,7 @@ class InventoryViewContextTests(SimpleTestCase):
             "category_groups": [],
             "stock_total_count": 0,
             "critical_count": 0,
+            "warning_count": 0,
             "excess_count": 0,
         }
         render_mock.return_value = SimpleNamespace(status_code=200)

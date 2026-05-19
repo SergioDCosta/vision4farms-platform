@@ -1,23 +1,14 @@
--- Inventory stock rules update
--- Run section 1 before opening/deploying the code that reads Stock.max_quantity.
--- Run section 2 only after the new code is active and validated.
-
--- 1) Add optional per-product maximum capacity.
-ALTER TABLE stocks
-ADD COLUMN IF NOT EXISTS max_quantity NUMERIC(14, 3) NULL;
-
-ALTER TABLE stocks
-DROP CONSTRAINT IF EXISTS stocks_max_quantity_non_negative_check;
+-- Limpeza da regra antiga de inventario.
+--
+-- Executar depois de fazer deploy do codigo que ja nao usa:
+-- - stocks.surplus_threshold
+-- - stocks.max_quantity
+--
+-- A coluna max_quantity pode nem existir se o rollback ja tiver sido feito.
+-- O IF EXISTS torna o comando seguro.
 
 ALTER TABLE stocks
-ADD CONSTRAINT stocks_max_quantity_non_negative_check
-CHECK (max_quantity IS NULL OR max_quantity >= 0);
+DROP COLUMN IF EXISTS max_quantity;
 
-CREATE INDEX IF NOT EXISTS idx_stocks_producer_max_quantity
-ON stocks (producer_id, max_quantity)
-WHERE max_quantity IS NOT NULL;
-
--- 2) Optional cleanup after deploy: remove the old surplus threshold column.
--- Execute this only when the app version no longer references surplus_threshold.
 ALTER TABLE stocks
 DROP COLUMN IF EXISTS surplus_threshold;

@@ -70,9 +70,13 @@
     <div class="inv-stat-card">
       <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|quantity }}</p>
       <p class="inv-stat-label">Stock de segurança</p>
-      {% if stock.max_quantity %}
-        <p class="inv-help" style="margin-top:.35rem;">Capacidade máxima: {{ stock.max_quantity|quantity }} {{ stock.product.unit }}</p>
-      {% endif %}
+      <p class="inv-help" style="margin-top:.35rem;">
+        {% if stock_state.has_safety_stock %}
+          Aviso até {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}
+        {% else %}
+          Defina um stock de segurança para ativar avisos.
+        {% endif %}
+      </p>
     </div>
   </div>
 
@@ -95,7 +99,7 @@
     {% elif stock_state.key == "excess" %}
       <div class="inv-alert inv-alert--success">
         <strong>Existe potencial de excedente.</strong>
-        O excedente real já atingiu o limiar definido e pode ser publicado no marketplace.
+        O disponível está acima da margem de segurança. Pode vender {{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }} sem tocar no stock de segurança.
       </div>
     {% endif %}
   {% endif %}
@@ -105,7 +109,7 @@
       <div>
         <h3 class="inv-card-title">Saúde do stock</h3>
         <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
-          Leitura rápida do disponível, reservas e capacidade do produto.
+          Leitura rápida do risco, reservas e quantidade vendável.
         </p>
       </div>
       <span class="{{ stock_state.pill_class }}">{{ stock_state.label }}</span>
@@ -113,14 +117,24 @@
     <div class="inv-card-body inv-stock-health-grid">
       <div class="inv-progress-block">
         <div class="inv-progress-head">
-          <span>Disponível vs segurança</span>
-          <strong>{{ stock.available_quantity|quantity }} / {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</strong>
+          <span>{% if stock_state.has_safety_stock %}Margem até zona segura{% else %}Stock de segurança{% endif %}</span>
+          <strong>
+            {% if stock_state.has_safety_stock %}
+              {{ stock.available_quantity|quantity }} / {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}
+            {% else %}
+              Não definido
+            {% endif %}
+          </strong>
         </div>
         <div class="inv-progress-track">
-          <span class="inv-progress-fill inv-progress-fill--{{ stock_state.key }}" style="width:{{ stock_state.safety_progress_percent }}%;"></span>
+          <span class="inv-progress-fill inv-progress-fill--{{ stock_state.key }}" style="width:{{ stock_state.warning_progress_percent }}%;"></span>
         </div>
         <p class="inv-help">
-          Margem de atenção: até {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}.
+          {% if stock_state.has_safety_stock %}
+            A app considera atenção quando o disponível está entre {{ stock.safety_stock|quantity }} e {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}.
+          {% else %}
+            Sem este valor, a app não consegue distinguir stock baixo de stock saudável.
+          {% endif %}
         </p>
       </div>
 
@@ -137,31 +151,29 @@
         </p>
       </div>
 
-      {% if stock.max_quantity %}
-        <div class="inv-progress-block">
-          <div class="inv-progress-head">
-            <span>Ocupação da capacidade</span>
-            <strong>{{ stock.current_quantity|quantity }} / {{ stock.max_quantity|quantity }} {{ stock.product.unit }}</strong>
-          </div>
-          <div class="inv-progress-track">
-            <span class="inv-progress-fill inv-progress-fill--capacity" style="width:{{ stock_state.capacity_progress_percent }}%;"></span>
-          </div>
-          <p class="inv-help">
-            Espaço operacional restante: {{ stock_state.capacity_remaining|quantity }} {{ stock.product.unit }}.
-          </p>
-        </div>
-      {% endif %}
-
       <div class="inv-progress-block">
         <div class="inv-progress-head">
-          <span>Quantidade recomendada para venda</span>
+          <span>Vendável sem tocar na segurança</span>
           <strong>{{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }}</strong>
         </div>
         <div class="inv-progress-track">
           <span class="inv-progress-fill inv-progress-fill--sellable" style="width:{% if stock_state.publishable_quantity > 0 %}100{% else %}0{% endif %}%;"></span>
         </div>
         <p class="inv-help">
-          Calculada sem tocar no stock de segurança.
+          Calculado como disponível menos stock de segurança. Se vender esta quantidade, fica exatamente no mínimo definido.
+        </p>
+      </div>
+
+      <div class="inv-progress-block">
+        <div class="inv-progress-head">
+          <span>Falta para repor segurança</span>
+          <strong>{{ stock_state.deficit_quantity|quantity }} {{ stock.product.unit }}</strong>
+        </div>
+        <div class="inv-progress-track">
+          <span class="inv-progress-fill inv-progress-fill--critical" style="width:{% if stock_state.deficit_quantity > 0 %}100{% else %}0{% endif %}%;"></span>
+        </div>
+        <p class="inv-help">
+          Só aparece quando o stock disponível está abaixo do stock de segurança.
         </p>
       </div>
     </div>

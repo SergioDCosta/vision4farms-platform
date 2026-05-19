@@ -103,7 +103,6 @@ class Stock(models.Model):
     current_quantity = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     reserved_quantity = models.DecimalField(max_digits=14, decimal_places=3, default=0)
     safety_stock = models.DecimalField(max_digits=14, decimal_places=3, default=0)
-    max_quantity = models.DecimalField(max_digits=14, decimal_places=3, blank=True, null=True)
     updated_by = models.ForeignKey(
         "accounts.User",
         on_delete=models.SET_NULL,

@@ -104,7 +104,6 @@ def _stock_state(stock):
     current_quantity = stock.current_quantity if stock else ZERO
     safety_stock = stock.safety_stock if stock else ZERO
     reserved_quantity = stock.reserved_quantity if stock else ZERO
-    max_quantity = getattr(stock, "max_quantity", None) if stock else None
     available_quantity = current_quantity - reserved_quantity
 
     real_surplus = max(available_quantity - safety_stock, ZERO)
@@ -116,23 +115,21 @@ def _stock_state(stock):
         else ZERO
     )
     warning_upper_quantity = safety_stock + warning_margin_quantity
-    max_quantity = Decimal(str(max_quantity)) if max_quantity not in (None, "") else None
 
     state_base = {
         "available_quantity": available_quantity,
         "safety_stock": safety_stock,
+        "has_safety_stock": safety_stock > ZERO,
         "reserved_quantity": reserved_quantity,
         "current_quantity": current_quantity,
-        "max_quantity": max_quantity,
         "warning_margin_quantity": warning_margin_quantity,
         "warning_upper_quantity": warning_upper_quantity,
         "publishable_quantity": publishable_quantity,
         "real_surplus": real_surplus,
         "deficit_quantity": deficit_quantity,
         "safety_progress_percent": _progress_percent(available_quantity, safety_stock),
+        "warning_progress_percent": _progress_percent(available_quantity, warning_upper_quantity),
         "reserved_progress_percent": _progress_percent(reserved_quantity, current_quantity),
-        "capacity_progress_percent": _progress_percent(current_quantity, max_quantity) if max_quantity else None,
-        "capacity_remaining": max(max_quantity - current_quantity, ZERO) if max_quantity else None,
     }
 
     if available_quantity < safety_stock:
@@ -231,7 +228,6 @@ def _ensure_stock_for_product(
     initial_quantity,
     safety_stock,
     user,
-    max_quantity=None,
 ):
     """
     Garante o registo de stock para produtor+produto.
@@ -240,12 +236,6 @@ def _ensure_stock_for_product(
     """
     initial_quantity = initial_quantity or ZERO
     safety_stock = safety_stock or ZERO
-    max_quantity = max_quantity or None
-
-    if max_quantity is not None and max_quantity < safety_stock:
-        raise ValidationError("A capacidade máxima não pode ser inferior ao stock de segurança.")
-    if max_quantity is not None and max_quantity < initial_quantity:
-        raise ValidationError("A capacidade máxima não pode ser inferior ao stock inicial.")
 
     stock, stock_created = Stock.objects.get_or_create(
         producer=producer,
@@ -254,7 +244,6 @@ def _ensure_stock_for_product(
             "current_quantity": initial_quantity,
             "reserved_quantity": ZERO,
             "safety_stock": safety_stock,
-            "max_quantity": max_quantity,
             "updated_by": user,
             "last_updated_at": timezone.now(),
         },
@@ -277,10 +266,6 @@ def _ensure_stock_for_product(
     if stock.safety_stock != safety_stock:
         stock.safety_stock = safety_stock
         changed_fields.append("safety_stock")
-
-    if getattr(stock, "max_quantity", None) != max_quantity:
-        stock.max_quantity = max_quantity
-        changed_fields.append("max_quantity")
 
     if stock.current_quantity == ZERO and initial_quantity > ZERO:
         stock.current_quantity = initial_quantity
@@ -500,7 +485,6 @@ def add_product_to_producer(
     initial_quantity,
     safety_stock,
     user,
-    max_quantity=None,
     producer_description=None,
 ):
     """
@@ -546,7 +530,6 @@ def add_product_to_producer(
         initial_quantity=initial_quantity,
         safety_stock=safety_stock,
         user=user,
-        max_quantity=max_quantity,
     )
 
     return producer_product, stock, False, link_created
@@ -559,7 +542,6 @@ def create_custom_product_for_producer(
     initial_quantity,
     safety_stock,
     user,
-    max_quantity=None,
     producer_description=None,
 ):
     """
@@ -615,7 +597,6 @@ def create_custom_product_for_producer(
         initial_quantity=initial_quantity,
         safety_stock=safety_stock,
         user=user,
-        max_quantity=max_quantity,
     )
 
     return producer_product, stock, product_created, link_created
@@ -1227,12 +1208,10 @@ def update_stock(
     safety_stock,
     movement_type,
     user,
-    max_quantity=None,
     notes="",
 ):
     new_quantity = new_quantity or ZERO
     safety_stock = safety_stock or ZERO
-    max_quantity = max_quantity or None
 
     if new_quantity < ZERO:
         raise ValidationError("A quantidade não pode ser negativa.")
@@ -1245,31 +1224,20 @@ def update_stock(
             )
         )
 
-    if max_quantity is not None and max_quantity < safety_stock:
-        raise ValidationError("A capacidade máxima não pode ser inferior ao stock de segurança.")
-
-    if max_quantity is not None and max_quantity < new_quantity:
-        raise ValidationError("A capacidade máxima não pode ser inferior ao stock atual.")
-
     quantity_delta = new_quantity - stock.current_quantity
 
-    threshold_changed = (
-        safety_stock != stock.safety_stock
-        or getattr(stock, "max_quantity", None) != max_quantity
-    )
+    threshold_changed = safety_stock != stock.safety_stock
 
     if quantity_delta == ZERO and not threshold_changed:
         raise ValidationError("Não foi detetada nenhuma alteração no stock.")
 
     stock.current_quantity = new_quantity
     stock.safety_stock = safety_stock
-    stock.max_quantity = max_quantity
     stock.updated_by = user
     stock.last_updated_at = timezone.now()
     update_fields = [
         "current_quantity",
         "safety_stock",
-        "max_quantity",
         "updated_by",
         "last_updated_at",
         "updated_at",

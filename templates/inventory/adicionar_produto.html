@@ -215,19 +215,6 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold" for="{{ form.max_quantity.id_for_label }}">
-              {{ form.max_quantity.label }} <span class="text-muted fw-normal" id="catalogModalUnitMax"></span>
-            </label>
-            {{ form.max_quantity }}
-            {% if form.max_quantity.errors %}
-              <div class="text-danger small mt-1">{{ form.max_quantity.errors.0 }}</div>
-            {% endif %}
-            <div class="text-muted small mt-1">
-              Opcional. Use para indicar a capacidade de armazenamento deste produto.
-            </div>
-          </div>
-
-          <div class="mb-3">
             <label class="form-label fw-semibold" for="{{ form.producer_description.id_for_label }}">
               {{ form.producer_description.label }}
             </label>
@@ -309,19 +296,6 @@
               {% if custom_form.safety_stock.errors %}
                 <div class="text-danger small mt-1">{{ custom_form.safety_stock.errors.0 }}</div>
               {% endif %}
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label fw-semibold" for="{{ custom_form.max_quantity.id_for_label }}">
-                {{ custom_form.max_quantity.label }}
-              </label>
-              {{ custom_form.max_quantity }}
-              {% if custom_form.max_quantity.errors %}
-                <div class="text-danger small mt-1">{{ custom_form.max_quantity.errors.0 }}</div>
-              {% endif %}
-              <div class="text-muted small mt-1">
-                Opcional. Use para indicar a capacidade de armazenamento deste produto.
-              </div>
             </div>
 
             <div class="col-12">
@@ -530,7 +504,6 @@
       document.getElementById("catalogModalTitle").textContent = "Adicionar: " + productName;
       document.getElementById("catalogModalUnitInitial").textContent = "(" + productUnit + ")";
       document.getElementById("catalogModalUnitThreshold").textContent = "(" + productUnit + ")";
-      document.getElementById("catalogModalUnitMax").textContent = "(" + productUnit + ")";
     });
   });
 
@@ -562,7 +535,6 @@
       document.getElementById("catalogModalTitle").textContent = "Adicionar: {{ selected_product.name|escapejs }}";
       document.getElementById("catalogModalUnitInitial").textContent = "({{ selected_product.unit|escapejs }})";
       document.getElementById("catalogModalUnitThreshold").textContent = "({{ selected_product.unit|escapejs }})";
-      document.getElementById("catalogModalUnitMax").textContent = "({{ selected_product.unit|escapejs }})";
 
       const catalogModalElement = document.getElementById("catalogProductModal");
       if (catalogModalElement && window.bootstrap) {

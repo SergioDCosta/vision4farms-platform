@@ -6,7 +6,7 @@
       <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
         {{ stock_total_count }} produto{{ stock_total_count|pluralize }} ·
         {{ critical_count }} crítico{{ critical_count|pluralize }} ·
-        {{ warning_count }} no limite ·
+        {{ warning_count }} perto do mínimo ·
         {{ excess_count }} com potencial de venda
       </p>
     </div>
@@ -130,10 +130,6 @@
                           {{ row.stock.safety_stock|default:0|quantity }}
                         </span>
                         <span class="inv-unit">{{ row.product.unit }}</span>
-                        <span class="inv-subvalue">
-                          Margem de atenção: até {{ row.state.warning_upper_quantity|quantity }} {{ row.product.unit }}
-                        </span>
-
                         {% if row.state.key == "excess" %}
                           <span class="inv-subvalue">
                             Publicável: {{ row.state.publishable_quantity|quantity }} {{ row.product.unit }}

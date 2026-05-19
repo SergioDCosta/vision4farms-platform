@@ -51,13 +51,6 @@ class RecommendationStockDirectionTests(SimpleTestCase):
         self.assertEqual(metrics["recommendation_direction"], RECOMMENDATION_DIRECTION_BALANCED)
         self.assertEqual(metrics["suggested_quantity"], Decimal("0.000"))
 
-    def test_stock_within_ten_percent_of_safety_is_balanced(self):
-        metrics = self._metrics_for_stock(current=108, reserved=0, safety=100)
-
-        self.assertEqual(metrics["recommendation_direction"], RECOMMENDATION_DIRECTION_BALANCED)
-        self.assertEqual(metrics["sell_quantity"], Decimal("8.000"))
-        self.assertEqual(metrics["suggested_quantity"], Decimal("0.000"))
-
     def test_reserved_quantity_reduces_available_stock(self):
         sell_metrics = self._metrics_for_stock(current=300, reserved=50, safety=100)
         buy_metrics = self._metrics_for_stock(current=120, reserved=50, safety=100)
