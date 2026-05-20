@@ -159,8 +159,8 @@
           </div>
 
           <div class="mk-card__footer">
-            <a href="{% url 'marketplace:detail' item.id %}"
-               hx-get="{% url 'marketplace:detail' item.id %}"
+            <a href="{% url 'marketplace:owner_detail' item.id %}"
+               hx-get="{% url 'marketplace:owner_detail' item.id %}"
                hx-target="#shellMain"
                hx-select="#shellMain"
                hx-swap="outerHTML"
@@ -168,16 +168,23 @@
                class="mk-btn-card-outline">
               Ver detalhes
             </a>
-            <a href="{% url 'marketplace:edit' item.id %}"
-               hx-get="{% url 'marketplace:edit' item.id %}"
-               hx-target="#shellMain"
-               hx-select="#shellMain"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="mk-btn-card-muted">
-              <i class="bi bi-pencil"></i>
-              Editar Anúncio
-            </a>
+            {% if item.can_edit_listing %}
+              <a href="{% url 'marketplace:edit' item.id %}"
+                 hx-get="{% url 'marketplace:edit' item.id %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn-card-muted">
+                <i class="bi bi-pencil"></i>
+                Editar Anúncio
+              </a>
+            {% else %}
+              <span class="mk-btn-card-muted is-disabled">
+                <i class="bi bi-lock"></i>
+                Edição bloqueada
+              </span>
+            {% endif %}
             <form method="post"
                   action="{% url 'marketplace:toggle_status' item.id %}"
                   hx-post="{% url 'marketplace:toggle_status' item.id %}"
@@ -277,26 +284,45 @@
           </div>
 
           <div class="mk-card__footer mk-card__footer--inline">
-            <a href="{% url 'marketplace:detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
-               hx-get="{% url 'marketplace:detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
-               hx-target="#shellMain"
-               hx-select="#shellMain"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="mk-btn-card-outline">
-              Ver detalhes
-            </a>
             {% if item.is_owner_listing %}
-              <a href="{% url 'marketplace:edit' item.id %}"
-                 hx-get="{% url 'marketplace:edit' item.id %}"
+              <a href="{% url 'marketplace:owner_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+                 hx-get="{% url 'marketplace:owner_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
                  hx-target="#shellMain"
                  hx-select="#shellMain"
                  hx-swap="outerHTML"
                  hx-push-url="true"
-                 class="mk-btn-card-muted">
-                <i class="bi bi-pencil"></i>
-                Editar anúncio
+                 class="mk-btn-card-outline">
+                Ver detalhes
               </a>
+            {% else %}
+              <a href="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+                 hx-get="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn-card-outline">
+                Ver detalhes
+              </a>
+            {% endif %}
+            {% if item.is_owner_listing %}
+              {% if item.can_edit_listing %}
+                <a href="{% url 'marketplace:edit' item.id %}"
+                   hx-get="{% url 'marketplace:edit' item.id %}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="mk-btn-card-muted">
+                  <i class="bi bi-pencil"></i>
+                  Editar anúncio
+                </a>
+              {% else %}
+                <span class="mk-btn-card-muted is-disabled">
+                  <i class="bi bi-lock"></i>
+                  Edição bloqueada
+                </span>
+              {% endif %}
             {% else %}
               <a href="{% url 'messaging:start_listing_contact' item.id %}"
                  hx-get="{% url 'messaging:start_listing_contact' item.id %}"
@@ -825,6 +851,17 @@
 
 .mk-btn-card-muted:hover {
   background: #cbd5e1;
+}
+
+.mk-btn-card-muted.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.mk-btn-card-muted.is-disabled:hover {
+  background: #f1f5f9;
 }
 
 .mk-empty {

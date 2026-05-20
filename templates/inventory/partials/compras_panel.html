@@ -1,173 +1,426 @@
-<div class="inv-grid">
-  <div style="display:flex;flex-direction:column;gap:1.25rem;">
-    <div class="inv-card inv-metric">
-      <p class="inv-metric-label">Compras concluídas (4 semanas)</p>
-      <p class="inv-metric-value">{{ purchase_total_last_4w|floatformat:2 }} €</p>
-      <p class="inv-metric-sub">
-        {{ purchase_completed_count_last_4w }} encomenda{{ purchase_completed_count_last_4w|pluralize }} concluída{{ purchase_completed_count_last_4w|pluralize }}
-        · média de {{ purchase_avg_weekly|floatformat:2 }} €/semana
-      </p>
+{{ commercial_chart_data|json_script:"inv-commercial-chart-data" }}
+{{ production_chart_data|json_script:"inv-production-chart-data" }}
+{{ production_product_chart_data|json_script:"inv-production-product-chart-data" }}
+
+<section class="inv-report-panel">
+  <form method="get"
+        class="inv-report-filters"
+        hx-get="{% url 'inventory:meus_produtos' %}"
+        hx-target="#inventory-shell"
+        hx-swap="outerHTML"
+        hx-push-url="true">
+    <input type="hidden" name="tab" value="compras">
+
+    <div>
+      <span class="inv-report-kicker">Relatório</span>
+      <h2>Compras, vendas e produção</h2>
+      <p>Período: {{ commercial_period_label }} · Produção significa entradas positivas registadas no stock.</p>
     </div>
 
-    <div class="inv-card inv-metric">
-      <p class="inv-metric-label">Tendência de Compras</p>
+    <div class="inv-report-controls">
+      <label>
+        <span>Período</span>
+        <select name="period" id="commercialPeriod">
+          <option value="annual" {% if commercial_period == "annual" %}selected{% endif %}>Anual</option>
+          <option value="monthly" {% if commercial_period == "monthly" %}selected{% endif %}>Mensal</option>
+        </select>
+      </label>
+      <label>
+        <span>Ano</span>
+        <select name="year">
+          {% for year in commercial_year_options %}
+            <option value="{{ year }}" {% if commercial_year == year %}selected{% endif %}>{{ year }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label id="commercialMonthWrap" {% if commercial_period != "monthly" %}hidden{% endif %}>
+        <span>Mês</span>
+        <select name="month">
+          {% for month in commercial_month_options %}
+            <option value="{{ month.value }}" {% if commercial_month == month.value %}selected{% endif %}>{{ month.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="inv-btn inv-btn--primary">
+        <i class="bi bi-funnel"></i>
+        <span>Aplicar</span>
+      </button>
+    </div>
+  </form>
 
-      <div class="inv-trend inv-trend--{{ purchase_trend_direction }}">
-        <div class="inv-trend-icon">
-          {% if purchase_trend_direction == "up" %}
-            <i class="bi bi-trending-up"></i>
-          {% elif purchase_trend_direction == "down" %}
-            <i class="bi bi-trending-down"></i>
-          {% else %}
-            <i class="bi bi-dash-lg"></i>
-          {% endif %}
-        </div>
+  <div class="inv-commerce-metrics">
+    <article class="inv-card inv-metric inv-metric--buy">
+      <p class="inv-metric-label">Comprado no período</p>
+      <p class="inv-metric-value">{{ purchase_total_period|floatformat:2 }} €</p>
+      <p class="inv-metric-sub">
+        {{ purchase_completed_count_period }} encomenda{{ purchase_completed_count_period|pluralize }} concluída{{ purchase_completed_count_period|pluralize }}
+        · {{ purchase_trend.pct|floatformat:1 }}% {{ purchase_trend.label }}
+      </p>
+    </article>
 
+    <article class="inv-card inv-metric inv-metric--sell">
+      <p class="inv-metric-label">Vendido no período</p>
+      <p class="inv-metric-value">{{ sales_total_period|floatformat:2 }} €</p>
+      <p class="inv-metric-sub">
+        {{ sales_completed_count_period }} venda{{ sales_completed_count_period|pluralize }} concluída{{ sales_completed_count_period|pluralize }}
+        · {{ sales_trend.pct|floatformat:1 }}% {{ sales_trend.label }}
+      </p>
+    </article>
+
+    <article class="inv-card inv-metric">
+      <p class="inv-metric-label">Saldo comercial</p>
+      <p class="inv-metric-value {% if commercial_balance > 0 %}is-positive{% elif commercial_balance < 0 %}is-negative{% endif %}">
+        {{ commercial_balance|floatformat:2 }} €
+      </p>
+      <p class="inv-metric-sub">Vendas menos compras no período selecionado.</p>
+    </article>
+
+    <article class="inv-card inv-metric">
+      <p class="inv-metric-label">Em curso</p>
+      <p class="inv-metric-value">{{ purchase_in_progress_count }} / {{ sales_in_progress_count }}</p>
+      <p class="inv-metric-sub">Compras em curso / vendas em curso.</p>
+    </article>
+  </div>
+
+  <div class="inv-report-grid">
+    <article class="inv-card inv-chart inv-chart--modern">
+      <div class="inv-chart-head">
         <div>
-          <p class="inv-trend-value">
-            {% if purchase_trend_pct > 0 %}+{% endif %}{{ purchase_trend_pct|floatformat:1 }}%
-          </p>
-          <p class="inv-metric-sub" style="margin:.15rem 0 0 0;">
-            {{ purchase_trend_label }}
-          </p>
+          <h3 class="inv-card-title">Compras vs vendas</h3>
+          <p>Valores concluídos em euros no período selecionado.</p>
         </div>
       </div>
-    </div>
+      <div class="inv-chart-canvas-wrap">
+        <canvas id="invCommercialChart" height="280" aria-label="Gráfico de compras e vendas"></canvas>
+      </div>
+    </article>
 
-    <div class="inv-card inv-metric">
-      <p class="inv-metric-label">Encomendas em curso</p>
-      <p class="inv-metric-value">{{ purchase_in_progress_count }}</p>
-      <p class="inv-metric-sub">Estados: confirmada, em preparação ou em entrega</p>
-    </div>
-
-    <div class="inv-card inv-metric">
-      <p class="inv-metric-label">Pré-venda a caminho</p>
-      <p class="inv-metric-value">{{ incoming_forecast_total_qty|quantity }}</p>
-      <p class="inv-metric-sub">
-        {{ incoming_forecast_product_count }} produto{{ incoming_forecast_product_count|pluralize }} com receção pendente
-      </p>
-    </div>
+    <article class="inv-card inv-chart inv-chart--modern">
+      <div class="inv-chart-head">
+        <div>
+          <h3 class="inv-card-title">Produção registada</h3>
+          <p>Entradas positivas de stock ao longo do período.</p>
+        </div>
+      </div>
+      <div class="inv-chart-canvas-wrap">
+        <canvas id="invProductionChart" height="280" aria-label="Gráfico de produção registada"></canvas>
+      </div>
+    </article>
   </div>
 
-  <div class="inv-card inv-chart">
-    <div class="inv-chart-head">
-      <div>
-        <h3 class="inv-card-title" style="margin-bottom:.2rem;">Evolução de Compras</h3>
-        <p style="margin:0;font-size:.82rem;color:#64748b;">Últimos 6 meses · encomendas concluídas</p>
-      </div>
-    </div>
+  <div class="inv-commerce-metrics">
+    <article class="inv-card inv-metric inv-metric--production">
+      <p class="inv-metric-label">Produção / entradas</p>
+      <p class="inv-metric-value">{{ production_total_period|quantity }} kg</p>
+      <p class="inv-metric-sub">{{ production_trend.pct|floatformat:1 }}% {{ production_trend.label }}.</p>
+    </article>
 
-    <div class="inv-chart-area">
-      <div class="inv-chart-grid">
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-      </div>
+    <article class="inv-card inv-metric">
+      <p class="inv-metric-label">Produtos com entradas</p>
+      <p class="inv-metric-value">{{ production_product_count }}</p>
+      <p class="inv-metric-sub">Produtos com movimentos positivos no período.</p>
+    </article>
 
-      <div class="inv-bars">
-        {% for point in purchase_chart_points %}
-          <div class="inv-bar-wrap">
-            <div class="inv-bar {% if forloop.last %}inv-bar--active{% endif %}"
-                 style="height: {{ point.height }}%;">
-              <span class="inv-bar-tooltip">{{ point.total|floatformat:2 }} €</span>
-            </div>
-            <span class="inv-bar-label">{{ point.label }}</span>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="inv-data-grid" style="margin-top:1.5rem;">
-  <div class="inv-card inv-list-card">
-    <div class="inv-list-head">
-      <h3 class="inv-list-title">Compras recentes</h3>
-    </div>
-
-    {% if recent_orders %}
-      <div class="inv-list">
-        {% for order in recent_orders %}
-          <div class="inv-list-item">
-            <div class="inv-list-item-main">
-              <p class="inv-list-item-title">Encomenda #{{ order.order_number }}</p>
-              <p class="inv-list-item-meta">
-                {{ order.created_at|date:"d/m/Y H:i" }} · {{ order.get_status_display|default:order.status }}
-              </p>
-            </div>
-            <div class="inv-list-item-val">{{ order.total_amount|floatformat:2 }} €</div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="inv-empty">
-        <i class="bi bi-receipt"></i>
-        <p style="margin:0;">Ainda não existem compras registadas.</p>
-      </div>
-    {% endif %}
+    <article class="inv-card inv-metric inv-metric--wide">
+      <p class="inv-metric-label">Produto com maior entrada</p>
+      {% if top_production_product %}
+        <p class="inv-metric-value">{{ top_production_product.total_quantity|quantity }} {{ top_production_product.stock__product__unit }}</p>
+        <p class="inv-metric-sub">{{ top_production_product.stock__product__name }}</p>
+      {% else %}
+        <p class="inv-metric-value">0 kg</p>
+        <p class="inv-metric-sub">Sem entradas registadas neste período.</p>
+      {% endif %}
+    </article>
   </div>
 
-  <div class="inv-card inv-list-card">
-    <div class="inv-list-head">
-      <h3 class="inv-list-title">Produtos mais comprados</h3>
-    </div>
+  <div class="inv-data-grid">
+    <article class="inv-card inv-list-card">
+      <div class="inv-list-head">
+        <h3 class="inv-list-title">Compras detalhadas</h3>
+      </div>
+      {% if recent_orders %}
+        <div class="inv-list">
+          {% for row in recent_orders %}
+            <a href="{{ row.detail_url }}" class="inv-list-item inv-list-item--link">
+              <div class="inv-list-item-main">
+                <p class="inv-list-item-title">{{ row.title }}</p>
+                <p class="inv-list-item-meta">{{ row.meta }}</p>
+                <p class="inv-list-item-meta">Vendedor: {{ row.counterparty_label }}</p>
+                <p class="inv-list-item-meta">{{ row.items_label }}</p>
+              </div>
+              <div class="inv-list-item-val">{{ row.value|floatformat:2 }} €</div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="inv-empty">
+          <i class="bi bi-receipt"></i>
+          <p style="margin:0;">Sem compras registadas neste período.</p>
+        </div>
+      {% endif %}
+    </article>
 
-    {% if top_products %}
-      <div class="inv-list">
-        {% for item in top_products %}
-          <div class="inv-list-item">
-            <div class="inv-list-item-main">
-              <p class="inv-list-item-title">{{ item.product__name }}</p>
-              <p class="inv-list-item-meta">Últimos 6 meses</p>
-            </div>
-            <div class="inv-list-item-val">
-              {{ item.total_quantity|quantity }} {{ item.product__unit }}
-            </div>
-          </div>
-        {% endfor %}
+    <article class="inv-card inv-list-card">
+      <div class="inv-list-head">
+        <h3 class="inv-list-title">Vendas detalhadas</h3>
       </div>
-    {% else %}
-      <div class="inv-empty">
-        <i class="bi bi-bar-chart"></i>
-        <p style="margin:0;">Sem histórico suficiente para análise de produtos.</p>
-      </div>
-    {% endif %}
+      {% if recent_sales_rows %}
+        <div class="inv-list">
+          {% for row in recent_sales_rows %}
+            <a href="{{ row.detail_url }}" class="inv-list-item inv-list-item--link">
+              <div class="inv-list-item-main">
+                <p class="inv-list-item-title">{{ row.title }}</p>
+                <p class="inv-list-item-meta">{{ row.meta }}</p>
+                <p class="inv-list-item-meta">Comprador: {{ row.counterparty_label }}</p>
+                <p class="inv-list-item-meta">{{ row.items_label }}</p>
+              </div>
+              <div class="inv-list-item-val">{{ row.value|floatformat:2 }} €</div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="inv-empty">
+          <i class="bi bi-bag-check"></i>
+          <p style="margin:0;">Sem vendas registadas neste período.</p>
+        </div>
+      {% endif %}
+    </article>
   </div>
 
-  <div class="inv-card inv-list-card">
-    <div class="inv-list-head">
-      <h3 class="inv-list-title">Pré-vendas a caminho</h3>
-    </div>
+  <div class="inv-data-grid">
+    <article class="inv-card inv-list-card">
+      <div class="inv-list-head">
+        <h3 class="inv-list-title">Produtos mais comprados</h3>
+      </div>
+      {% if top_products %}
+        <div class="inv-list">
+          {% for item in top_products %}
+            <div class="inv-list-item">
+              <div class="inv-list-item-main">
+                <p class="inv-list-item-title">{{ item.product__name }}</p>
+                <p class="inv-list-item-meta">{{ item.total_amount|floatformat:2 }} € no período</p>
+              </div>
+              <div class="inv-list-item-val">{{ item.total_quantity|quantity }} {{ item.product__unit }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="inv-empty">
+          <i class="bi bi-bar-chart"></i>
+          <p style="margin:0;">Sem compras suficientes para ranking.</p>
+        </div>
+      {% endif %}
+    </article>
 
-    {% if incoming_forecast_products %}
-      <div class="inv-list">
-        {% for item in incoming_forecast_products %}
-          <div class="inv-list-item">
-            <div class="inv-list-item-main">
-              <p class="inv-list-item-title">{{ item.product_name }}</p>
-              <p class="inv-list-item-meta">
-                {% if item.period_start_min or item.period_end_max %}
-                  Janela: {% if item.period_start_min %}{{ item.period_start_min|date:"d/m/Y" }}{% else %}—{% endif %}
+    <article class="inv-card inv-list-card">
+      <div class="inv-list-head">
+        <h3 class="inv-list-title">Produtos mais vendidos</h3>
+      </div>
+      {% if top_sold_products %}
+        <div class="inv-list">
+          {% for item in top_sold_products %}
+            <div class="inv-list-item">
+              <div class="inv-list-item-main">
+                <p class="inv-list-item-title">{{ item.product__name }}</p>
+                <p class="inv-list-item-meta">{{ item.total_amount|floatformat:2 }} € no período</p>
+              </div>
+              <div class="inv-list-item-val">{{ item.total_quantity|quantity }} {{ item.product__unit }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="inv-empty">
+          <i class="bi bi-graph-up-arrow"></i>
+          <p style="margin:0;">Sem vendas suficientes para ranking.</p>
+        </div>
+      {% endif %}
+    </article>
+  </div>
+
+  <div class="inv-report-grid">
+    <article class="inv-card inv-chart inv-chart--modern">
+      <div class="inv-chart-head">
+        <div>
+          <h3 class="inv-card-title">Produção por produto</h3>
+          <p>Produtos com mais entradas positivas no período.</p>
+        </div>
+      </div>
+      <div class="inv-chart-canvas-wrap">
+        <canvas id="invProductionProductChart" height="280" aria-label="Gráfico de produção por produto"></canvas>
+      </div>
+    </article>
+
+    <article class="inv-card inv-list-card">
+      <div class="inv-list-head">
+        <h3 class="inv-list-title">Relatório de produção</h3>
+      </div>
+      {% if production_product_rows %}
+        <div class="inv-list">
+          {% for row in production_product_rows %}
+            <div class="inv-list-item">
+              <div class="inv-list-item-main">
+                <p class="inv-list-item-title">{{ row.stock__product__name }}</p>
+                <p class="inv-list-item-meta">
+                  {{ row.movement_count }} movimento{{ row.movement_count|pluralize }}
+                  · último em {{ row.last_movement_at|date:"d/m/Y H:i" }}
+                </p>
+              </div>
+              <div class="inv-list-item-val">{{ row.total_quantity|quantity }} {{ row.stock__product__unit }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="inv-empty">
+          <i class="bi bi-box-seam"></i>
+          <p style="margin:0;">Sem entradas de stock registadas neste período.</p>
+        </div>
+      {% endif %}
+    </article>
+  </div>
+
+  <div class="inv-data-grid">
+    <article class="inv-card inv-list-card">
+      <div class="inv-list-head">
+        <h3 class="inv-list-title">Pré-vendas a caminho</h3>
+      </div>
+      {% if incoming_forecast_products %}
+        <div class="inv-list">
+          {% for item in incoming_forecast_products %}
+            <div class="inv-list-item">
+              <div class="inv-list-item-main">
+                <p class="inv-list-item-title">{{ item.product_name }}</p>
+                <p class="inv-list-item-meta">
+                  Janela:
+                  {% if item.period_start_min %}{{ item.period_start_min|date:"d/m/Y" }}{% else %}—{% endif %}
                   -
                   {% if item.period_end_max %}{{ item.period_end_max|date:"d/m/Y" }}{% else %}—{% endif %}
-                {% else %}
-                  Janela: sem período definido
-                {% endif %}
-              </p>
+                </p>
+              </div>
+              <div class="inv-list-item-val">{{ item.incoming_qty|quantity }} {{ item.product_unit }}</div>
             </div>
-            <div class="inv-list-item-val">
-              {{ item.incoming_qty|quantity }} {{ item.product_unit }}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="inv-empty">
-        <i class="bi bi-calendar-check"></i>
-        <p style="margin:0;">Sem pré-vendas comprometidas a caminho.</p>
-      </div>
-    {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="inv-empty">
+          <i class="bi bi-calendar-check"></i>
+          <p style="margin:0;">Sem pré-vendas comprometidas a caminho.</p>
+        </div>
+      {% endif %}
+    </article>
   </div>
-</div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const periodSelect = document.getElementById("commercialPeriod");
+  const monthWrap = document.getElementById("commercialMonthWrap");
+
+  function syncMonthField() {
+    if (!periodSelect || !monthWrap) return;
+    monthWrap.hidden = periodSelect.value !== "monthly";
+  }
+
+  periodSelect && periodSelect.addEventListener("change", syncMonthField);
+  syncMonthField();
+
+  function parseJson(id) {
+    const element = document.getElementById(id);
+    if (!element) return {};
+    try { return JSON.parse(element.textContent || "{}"); } catch (error) { return {}; }
+  }
+
+  function mountChart(canvasId, config) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.Chart) return;
+    if (canvas._inventoryChart) {
+      canvas._inventoryChart.destroy();
+    }
+    canvas._inventoryChart = new Chart(canvas, config);
+  }
+
+  const commercial = parseJson("inv-commercial-chart-data");
+  const production = parseJson("inv-production-chart-data");
+  const productionProducts = parseJson("inv-production-product-chart-data");
+  const gridColor = "rgba(148, 163, 184, 0.24)";
+  const textColor = "#64748b";
+
+  mountChart("invCommercialChart", {
+    type: "bar",
+    data: {
+      labels: commercial.labels || [],
+      datasets: [
+        {
+          label: "Compras (€)",
+          data: commercial.purchases || [],
+          backgroundColor: "rgba(37, 99, 235, 0.78)",
+          borderRadius: 8
+        },
+        {
+          label: "Vendas (€)",
+          data: commercial.sales || [],
+          backgroundColor: "rgba(22, 163, 74, 0.78)",
+          borderRadius: 8
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: textColor } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: textColor } },
+        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } }
+      }
+    }
+  });
+
+  mountChart("invProductionChart", {
+    type: "line",
+    data: {
+      labels: production.labels || [],
+      datasets: [{
+        label: "Produção / entradas (kg)",
+        data: production.quantities || [],
+        borderColor: "#16a34a",
+        backgroundColor: "rgba(22, 163, 74, 0.14)",
+        fill: true,
+        tension: 0.35,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: textColor } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: textColor } },
+        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } }
+      }
+    }
+  });
+
+  mountChart("invProductionProductChart", {
+    type: "bar",
+    data: {
+      labels: productionProducts.labels || [],
+      datasets: [{
+        label: "Quantidade (kg)",
+        data: productionProducts.quantities || [],
+        backgroundColor: "rgba(20, 184, 166, 0.8)",
+        borderRadius: 8
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } },
+        y: { grid: { display: false }, ticks: { color: textColor } }
+      }
+    }
+  });
+})();
+</script>

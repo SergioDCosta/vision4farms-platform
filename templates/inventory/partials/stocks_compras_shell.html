@@ -1,8 +1,8 @@
 <div id="inventory-shell">
   <div class="inv-head">
     <div>
-      <h1 class="inv-title">Stocks e Compras</h1>
-      <p class="inv-sub">Gira o seu inventário e acompanhe as compras no marketplace</p>
+      <h1 class="inv-title">Stocks, Compras e Vendas</h1>
+      <p class="inv-sub">Gira o inventário e acompanhe compras, vendas e produção registada.</p>
     </div>
 
     <div class="inv-head-actions">
@@ -21,7 +21,7 @@
       {% elif active_tab == "compras" %}
         <a href="{% url 'inventory:compras_export_pdf' %}" target="_blank" class="inv-btn inv-btn--ghost">
           <i class="bi bi-file-earmark-pdf"></i>
-          <span>Exportar PDF</span>
+          <span>Exportar compras</span>
         </a>
       {% else %}
         <a href="{% url 'inventory:adicionar_produto' %}" class="inv-btn inv-btn--secondary">
@@ -51,7 +51,7 @@
       hx-push-url="true"
       class="inv-tab {% if active_tab == 'compras' %}inv-tab--active{% endif %}"
     >
-      Compras
+      Compras e Vendas
     </a>
     <a
       href="{% url 'inventory:meus_produtos' %}?tab=desativados"

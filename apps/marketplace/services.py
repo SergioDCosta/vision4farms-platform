@@ -12,6 +12,15 @@ from apps.needs.models import NeedResponseStatus, NeedStatus
 QTY_DECIMAL = Decimal("0.001")
 LISTING_SOURCE_STOCK = "stock"
 LISTING_SOURCE_FORECAST = "forecast"
+MARKETPLACE_EDITABLE_STATUSES = {
+    ListingStatus.ACTIVE,
+    ListingStatus.CANCELLED,
+    ListingStatus.EXPIRED,
+}
+MARKETPLACE_FINAL_STATUSES = {
+    ListingStatus.RESERVED,
+    ListingStatus.CLOSED,
+}
 
 
 class MarketplaceServiceError(Exception):
@@ -166,6 +175,26 @@ def get_base_listing_queryset():
     )
 
 
+def is_listing_editable_in_marketplace(listing):
+    if not listing or getattr(listing, "need_id", None):
+        return False
+    return getattr(listing, "status", None) in MARKETPLACE_EDITABLE_STATUSES
+
+
+def is_listing_toggleable_in_marketplace(listing):
+    if not listing or getattr(listing, "need_id", None):
+        return False
+    return getattr(listing, "status", None) in MARKETPLACE_EDITABLE_STATUSES
+
+
+def is_listing_retirable_in_marketplace(listing):
+    if not listing or getattr(listing, "need_id", None):
+        return False
+    if getattr(listing, "status", None) in MARKETPLACE_FINAL_STATUSES:
+        return False
+    return Decimal(str(getattr(listing, "quantity_reserved", 0) or 0)) <= 0
+
+
 def expire_due_active_listings():
     now = timezone.now()
     need_responses_expired = MarketplaceListing.objects.filter(
@@ -225,7 +254,7 @@ def retire_listing(*, listing):
 
 
 def get_my_listings(*, producer, q="", category_id=""):
-    qs = get_base_listing_queryset().filter(producer=producer)
+    qs = get_base_listing_queryset().filter(producer=producer, need_id__isnull=True)
 
     if q:
         q = q.strip()
@@ -617,6 +646,11 @@ def update_listing(
     unit_price = Decimal(str(unit_price))
     reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
     now = timezone.now()
+
+    if getattr(listing, "status", None) in MARKETPLACE_FINAL_STATUSES:
+        raise MarketplaceServiceError(
+            "Este anúncio já está reservado ou fechado e não pode ser editado."
+        )
 
     has_stock_source = bool(listing.stock_id)
     has_forecast_source = bool(listing.forecast_id)

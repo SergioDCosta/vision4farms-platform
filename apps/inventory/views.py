@@ -167,6 +167,11 @@ def meus_produtos(request):
     sort = (request.GET.get("sort") or "name").strip().lower()
     if sort not in {"name", "stock_desc", "stock_asc", "state"}:
         sort = "name"
+    commercial_period = (request.GET.get("period") or "annual").strip().lower()
+    if commercial_period not in {"annual", "monthly"}:
+        commercial_period = "annual"
+    commercial_year = (request.GET.get("year") or "").strip()
+    commercial_month = (request.GET.get("month") or "").strip()
 
     context = {
         "page_title": "Stocks e Compras",
@@ -182,7 +187,14 @@ def meus_produtos(request):
         incoming_by_product = incoming_projection.get("by_product", {})
 
     if active_tab == "compras":
-        context.update(services.get_purchase_dashboard(producer))
+        context.update(
+            services.get_purchase_dashboard(
+                producer,
+                period=commercial_period,
+                year=commercial_year,
+                month=commercial_month,
+            )
+        )
         context.update(services.build_incoming_forecast_purchase_context(incoming_projection))
         panel_template = "inventory/partials/compras_panel.html"
     elif active_tab == "desativados":

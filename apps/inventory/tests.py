@@ -1,8 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from datetime import datetime
 
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, SimpleTestCase
+from django.utils import timezone
 
 from apps.catalog.services import CatalogValidationError
 from apps.inventory.forms import CreateCustomProductForm, UpdateStockForm
@@ -11,6 +13,8 @@ from apps.inventory.services import (
     create_custom_product_for_producer,
     get_stock_state,
     producer_has_active_inventory_products,
+    _period_bounds,
+    _period_chart_segments,
 )
 
 
@@ -128,6 +132,30 @@ class InventoryStockFormTests(SimpleTestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(str(form.cleaned_data["new_quantity"]), "20.5")
         self.assertEqual(str(form.cleaned_data["safety_stock"]), "10.25")
+
+
+class InventoryCommercialReportTests(SimpleTestCase):
+    def test_annual_report_uses_12_monthly_points(self):
+        now = timezone.make_aware(datetime(2026, 5, 20, 12, 0, 0))
+        bounds = _period_bounds(period="annual", year="2026", month="", now=now)
+        segments = _period_chart_segments(bounds)
+
+        self.assertEqual(bounds["period"], "annual")
+        self.assertEqual(bounds["year"], 2026)
+        self.assertEqual(len(segments), 12)
+        self.assertEqual(segments[0]["start"].month, 1)
+        self.assertEqual(segments[-1]["start"].month, 12)
+
+    def test_monthly_report_uses_weekly_points(self):
+        now = timezone.make_aware(datetime(2026, 5, 20, 12, 0, 0))
+        bounds = _period_bounds(period="monthly", year="2026", month="5", now=now)
+        segments = _period_chart_segments(bounds)
+
+        self.assertEqual(bounds["period"], "monthly")
+        self.assertEqual(bounds["month"], 5)
+        self.assertEqual(segments[0]["label"], "1-7")
+        self.assertTrue(len(segments) >= 4)
+        self.assertEqual(segments[-1]["end"].month, 6)
 
 
 class InventoryViewContextTests(SimpleTestCase):

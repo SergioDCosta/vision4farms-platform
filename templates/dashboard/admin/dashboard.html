@@ -5,12 +5,12 @@
   <div class="adm-kpi adm-kpi--green">
     <div class="adm-kpi-top"><span class="adm-kpi-label">Anúncios ativos</span><i class="bi bi-shop"></i></div>
     <div class="adm-kpi-val">{{ active_listings_count }}</div>
-    <div class="adm-kpi-sub">marketplace</div>
+    <div class="adm-kpi-sub">{{ critical_operational_alerts_count }} alertas críticos operacionais</div>
   </div>
   <div class="adm-kpi adm-kpi--blue">
     <div class="adm-kpi-top"><span class="adm-kpi-label">Transações (mês)</span><i class="bi bi-receipt"></i></div>
     <div class="adm-kpi-val">{{ monthly_orders_count }}</div>
-    <div class="adm-kpi-sub">{{ monthly_volume }} €</div>
+    <div class="adm-kpi-sub">{{ monthly_volume }} € · {{ orders_in_progress_count }} em curso</div>
   </div>
   <div class="adm-kpi adm-kpi--red">
     <div class="adm-kpi-top"><span class="adm-kpi-label">Suporte ativo</span><i class="bi bi-life-preserver"></i></div>
@@ -27,27 +27,71 @@
 <div class="adm-dash-grid adm-dash-grid--insights">
   <div class="adm-card">
     <div class="adm-card-head">
-      <h3 class="adm-sec-title">Categorias mais vendidas (12 semanas)</h3>
+      <h3 class="adm-sec-title">Atividade comercial semanal</h3>
     </div>
+    {% if weekly_purchases_total or weekly_sales_total %}
+      <div class="adm-chart-shell">
+        <canvas id="adminWeeklyMarketChart" height="220"></canvas>
+      </div>
+      <div class="adm-chart-legend">
+        <span><i class="bi bi-square-fill" style="color:#2563eb"></i> Compras criadas: <strong>{{ weekly_purchases_total }}</strong></span>
+        <span><i class="bi bi-square-fill" style="color:#16a34a"></i> Vendas concluídas: <strong>{{ weekly_sales_total }}</strong></span>
+      </div>
+    {% else %}
+      <div class="adm-empty"><i class="bi bi-bar-chart"></i><p>Sem encomendas criadas ou vendas concluídas nas últimas 12 semanas.</p></div>
+    {% endif %}
+  </div>
 
+  <div class="adm-card">
+    <div class="adm-card-head">
+      <h3 class="adm-sec-title">Suporte e utilizadores</h3>
+    </div>
+    <div class="adm-user-stat-grid">
+      <div class="adm-user-stat">
+        <span>Total</span>
+        <strong>{{ total_users_count }}</strong>
+      </div>
+      <div class="adm-user-stat adm-user-stat--green">
+        <span>Online</span>
+        <strong>{{ online_users_count }}</strong>
+      </div>
+      <div class="adm-user-stat">
+        <span>Offline</span>
+        <strong>{{ offline_users_count }}</strong>
+      </div>
+      <div class="adm-user-stat adm-user-stat--red">
+        <span>Suspensos</span>
+        <strong>{{ suspended_users_count }}</strong>
+      </div>
+    </div>
+    <div class="adm-dual-chart">
+      <div class="adm-chart-shell adm-chart-shell--compact">
+        <canvas id="adminSupportChart" height="190"></canvas>
+      </div>
+      <div class="adm-chart-shell adm-chart-shell--compact">
+        <canvas id="adminUserGrowthChart" height="190"></canvas>
+      </div>
+    </div>
+    <div class="adm-chart-legend">
+      <span><i class="bi bi-life-preserver"></i> Suporte ativo: <strong>{{ active_support_tickets_count }}</strong></span>
+      <span><i class="bi bi-people"></i> Utilizadores ativos: <strong>{{ active_users_count }}</strong></span>
+    </div>
+  </div>
+</div>
+
+<div class="adm-dash-grid">
+  <div class="adm-card">
+    <div class="adm-card-head">
+      <h3 class="adm-sec-title">Categorias mais vendidas</h3>
+    </div>
     {% if category_pie_slices %}
       <div class="adm-sales-insight">
-        <div class="adm-pie-wrap">
-          <div class="adm-pie" style="background: {{ category_pie_gradient }};"></div>
-          <div class="adm-pie-legend">
-            {% for slice in category_pie_slices %}
-              <div class="adm-pie-legend-item">
-                <span class="adm-pie-dot" style="background: {{ slice.color }};"></span>
-                <span class="adm-pie-label">{{ slice.label }}</span>
-                <span class="adm-pie-value">{{ slice.quantity|quantity }} kg ({{ slice.percentage|floatformat:1 }}%)</span>
-              </div>
-            {% endfor %}
-          </div>
+        <div class="adm-chart-shell adm-chart-shell--donut">
+          <canvas id="adminCategoryChart" height="210"></canvas>
         </div>
-
         <div class="adm-top-products">
           <h4>Categoria líder: {{ top_category_label }}</h4>
-          <p>Total vendido: {{ top_category_total_qty|quantity }}</p>
+          <p>Total vendido: {{ top_category_total_qty|quantity }} kg nas últimas 12 semanas.</p>
           {% if top_category_products %}
             <ul>
               {% for product in top_category_products %}
@@ -57,11 +101,6 @@
                 </li>
               {% endfor %}
             </ul>
-          {% else %}
-            <div class="adm-empty adm-empty--compact">
-              <i class="bi bi-box-seam"></i>
-              <p>Sem produtos concluídos nesta categoria.</p>
-            </div>
           {% endif %}
         </div>
       </div>
@@ -72,68 +111,37 @@
 
   <div class="adm-card">
     <div class="adm-card-head">
-      <h3 class="adm-sec-title">Compras vs vendas por semana</h3>
+      <h3 class="adm-sec-title">Centro de atenção</h3>
+      <a href="{% url 'support:admin_ticket_list' %}" class="adm-see-all">Suporte <i class="bi bi-arrow-right"></i></a>
     </div>
-    {% if weekly_purchases_total or weekly_sales_total %}
-      <div class="adm-week-summary">
-        <span><i class="bi bi-bag-check"></i> Compras: <strong>{{ weekly_purchases_total }}</strong></span>
-        <span><i class="bi bi-graph-up-arrow"></i> Vendas concluídas: <strong>{{ weekly_sales_total }}</strong></span>
-      </div>
-      <div class="adm-week-chart">
-        {% for point in weekly_market_points %}
-          <div class="adm-week-col">
-            <div class="adm-week-bars">
-              <span
-                class="adm-week-bar adm-week-bar--buy"
-                data-has="{% if point.purchases %}1{% else %}0{% endif %}"
-                style="height: {{ point.purchases_height }}%;"
-                title="Compras: {{ point.purchases }}"
-              ></span>
-              <span
-                class="adm-week-bar adm-week-bar--sell"
-                data-has="{% if point.sales %}1{% else %}0{% endif %}"
-                style="height: {{ point.sales_height }}%;"
-                title="Vendas: {{ point.sales }}"
-              ></span>
+    {% if admin_attention_items %}
+      <div class="adm-feed">
+        {% for item in admin_attention_items %}
+          {% if item.url %}
+            <a href="{{ item.url }}" class="adm-feed-item adm-feed-item--link">
+          {% else %}
+            <div class="adm-feed-item">
+          {% endif %}
+              <div class="adm-feed-icon adm-feed-icon--{{ item.tone }}"><i class="bi {{ item.icon }}"></i></div>
+              <div class="adm-feed-body">
+                <span class="adm-feed-title">{{ item.title }}</span>
+                <span class="adm-feed-meta">{{ item.meta }} · {{ item.created_at|date:"d/m H:i" }}</span>
+              </div>
+              <span class="adm-pill adm-pill--{{ item.tone }}">{{ item.label }}</span>
+          {% if item.url %}
+            </a>
+          {% else %}
             </div>
-            <span class="adm-week-label">{{ point.label }}</span>
-          </div>
+          {% endif %}
         {% endfor %}
       </div>
-      <div class="adm-week-legend">
-        <span><i class="bi bi-square-fill adm-week-legend--buy"></i> Compras (pedidos criados)</span>
-        <span><i class="bi bi-square-fill adm-week-legend--sell"></i> Vendas (itens concluídos)</span>
-      </div>
     {% else %}
-      <div class="adm-empty"><i class="bi bi-bar-chart"></i><p>Sem movimentos de compras/vendas no período.</p></div>
+      <div class="adm-empty"><i class="bi bi-check-circle-fill" style="color:#16a34a"></i><p>Sem assuntos críticos para rever.</p></div>
     {% endif %}
   </div>
 </div>
 
-<div class="adm-dash-grid">
-  <div class="adm-card">
-    <div class="adm-card-head">
-      <h3 class="adm-sec-title">Últimos alertas</h3>
-    </div>
-    {% if recent_alerts %}
-      <div class="adm-feed">
-        {% for alert in recent_alerts %}
-          <div class="adm-feed-item">
-            <div class="adm-feed-dot adm-feed-dot--{% if alert.severity == 'CRITICAL' %}red{% elif alert.severity == 'WARNING' %}amber{% else %}blue{% endif %}"></div>
-            <div class="adm-feed-body">
-              <span class="adm-feed-title">{{ alert.title }}</span>
-              <span class="adm-feed-meta">{{ alert.producer.display_name }} · {{ alert.created_at|date:"d/m H:i" }}</span>
-            </div>
-            <span class="adm-pill adm-pill--{% if alert.severity == 'CRITICAL' %}red{% elif alert.severity == 'WARNING' %}amber{% else %}blue{% endif %}">
-              {{ alert.get_severity_display }}
-            </span>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="adm-empty"><i class="bi bi-check-circle-fill" style="color:#16a34a"></i><p>Sem alertas recentes.</p></div>
-    {% endif %}
-  </div>
+<div class="adm-dash-grid adm-dash-grid--single">
 
   <div class="adm-card">
     <div class="adm-card-head">
@@ -161,6 +169,84 @@
   </div>
 </div>
 
+{{ weekly_market_chart_data|json_script:"admin-weekly-market-data" }}
+{{ support_chart_data|json_script:"admin-support-data" }}
+{{ user_growth_chart_data|json_script:"admin-user-growth-data" }}
+{{ category_sales_chart_data|json_script:"admin-category-sales-data" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const readJson = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    try { return JSON.parse(el.textContent || "{}"); } catch (error) { return null; }
+  };
+  if (!window.Chart) return;
+
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { boxWidth: 10, boxHeight: 10, color: "#475569", font: { size: 11, weight: "600" } } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: "#64748b", font: { size: 11, weight: "600" } } },
+      y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { precision: 0, color: "#64748b", font: { size: 11 } } }
+    }
+  };
+
+  const weekly = readJson("admin-weekly-market-data");
+  const weeklyEl = document.getElementById("adminWeeklyMarketChart");
+  if (weeklyEl && weekly) {
+    new Chart(weeklyEl, {
+      type: "bar",
+      data: {
+        labels: weekly.labels || [],
+        datasets: [
+          { label: "Compras", data: weekly.purchases || [], backgroundColor: "#93c5fd", borderRadius: 8 },
+          { label: "Vendas", data: weekly.sales || [], backgroundColor: "#86efac", borderRadius: 8 }
+        ]
+      },
+      options: commonOptions
+    });
+  }
+
+  const support = readJson("admin-support-data");
+  const supportEl = document.getElementById("adminSupportChart");
+  if (supportEl && support) {
+    new Chart(supportEl, {
+      type: "doughnut",
+      data: { labels: support.labels || [], datasets: [{ data: support.values || [], backgroundColor: support.colors || [], borderWidth: 0 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, color: "#475569", font: { size: 11, weight: "600" } } } }, cutout: "64%" }
+    });
+  }
+
+  const users = readJson("admin-user-growth-data");
+  const usersEl = document.getElementById("adminUserGrowthChart");
+  if (usersEl && users) {
+    new Chart(usersEl, {
+      type: "line",
+      data: {
+        labels: users.labels || [],
+        datasets: [
+          { label: "Ativos", data: users.active || [], borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.12)", tension: .35, fill: true },
+          { label: "Pendentes", data: users.pending || [], borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.10)", tension: .35, fill: false }
+        ]
+      },
+      options: commonOptions
+    });
+  }
+
+  const category = readJson("admin-category-sales-data");
+  const categoryEl = document.getElementById("adminCategoryChart");
+  if (categoryEl && category && (category.values || []).length) {
+    new Chart(categoryEl, {
+      type: "doughnut",
+      data: { labels: category.labels || [], datasets: [{ data: category.values || [], backgroundColor: category.colors || [], borderWidth: 0 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, color: "#475569", font: { size: 11, weight: "600" } } } }, cutout: "58%" }
+    });
+  }
+})();
+</script>
+
 <style>
 .adm-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1.1rem;margin-bottom:.2rem;}
 .adm-kpi{background:#fff;border-radius:.85rem;border:1px solid #e2e8f0;padding:1.35rem 1.45rem;box-shadow:0 1px 3px rgba(15,23,42,.05);position:relative;overflow:hidden;}
@@ -172,19 +258,28 @@
 .adm-kpi-val{font-size:2.5rem;font-weight:800;color:#0f172a;line-height:1;font-family:'DM Mono',monospace;letter-spacing:-.03em;}
 .adm-kpi-sub{font-size:.78rem;color:#64748b;margin-top:.35rem;}
 .adm-dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem;}
+.adm-dash-grid--single{grid-template-columns:1fr;}
 .adm-dash-grid--insights{align-items:stretch;}
 .adm-sec-title{font-size:.95rem;font-weight:700;color:#0f172a;margin:0;}
 .adm-see-all{font-size:.78rem;font-weight:600;color:#16a34a;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;}
 .adm-see-all:hover{text-decoration:underline;}
 
-.adm-sales-insight{display:grid;grid-template-columns:1.2fr 1fr;gap:1rem;padding:1rem 1.2rem 1.2rem;}
-.adm-pie-wrap{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;}
-.adm-pie{width:180px;height:180px;border-radius:50%;background:#e2e8f0;box-shadow:inset 0 0 0 1px rgba(15,23,42,.06);}
-.adm-pie-legend{display:flex;flex-direction:column;gap:.45rem;min-width:220px;flex:1}
-.adm-pie-legend-item{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:#334155;}
-.adm-pie-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-.adm-pie-label{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.adm-pie-value{font-weight:700;color:#0f172a;white-space:nowrap;}
+.adm-chart-shell{height:300px;padding:1rem 1.2rem .7rem;position:relative;}
+.adm-chart-shell--compact{height:245px;padding:.8rem 1rem;}
+.adm-chart-shell--donut{height:280px;padding:.8rem 1rem;min-width:260px;}
+.adm-chart-legend{display:flex;flex-wrap:wrap;gap:.9rem;padding:0 1.2rem 1rem;color:#64748b;font-size:.78rem;font-weight:600;}
+.adm-chart-legend strong{color:#0f172a;}
+.adm-chart-legend i{margin-right:.25rem;}
+.adm-dual-chart{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.75rem;align-items:center;}
+.adm-sales-insight{display:grid;grid-template-columns:minmax(260px,.9fr) 1.1fr;gap:1rem;padding:1rem 1.2rem 1.2rem;align-items:center;}
+.adm-user-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.65rem;padding:1rem 1.2rem 0;}
+.adm-user-stat{min-width:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.75rem;padding:.72rem .8rem;display:flex;flex-direction:column;gap:.18rem;}
+.adm-user-stat span{font-size:.68rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.adm-user-stat strong{font-size:1.35rem;line-height:1;color:#0f172a;font-family:'DM Mono',monospace;}
+.adm-user-stat--green{background:#f0fdf4;border-color:#bbf7d0;}
+.adm-user-stat--green strong{color:#15803d;}
+.adm-user-stat--red{background:#fef2f2;border-color:#fecaca;}
+.adm-user-stat--red strong{color:#dc2626;}
 
 .adm-top-products{background:#f8fafc;border:1px solid #e2e8f0;border-radius:.85rem;padding:.85rem .95rem;}
 .adm-top-products h4{margin:0;font-size:.88rem;color:#0f172a;}
@@ -193,34 +288,24 @@
 .adm-top-products li{display:flex;align-items:center;justify-content:space-between;gap:.75rem;font-size:.8rem;color:#334155;}
 .adm-top-products li strong{color:#0f172a;white-space:nowrap;}
 
-.adm-week-summary{display:flex;flex-wrap:wrap;gap:1rem;padding:1rem 1.2rem 0;color:#334155;font-size:.82rem;font-weight:600;}
-.adm-week-summary strong{color:#0f172a;}
-.adm-week-summary i{color:#64748b;margin-right:.2rem;}
-.adm-week-chart{height:240px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:.55rem;align-items:end;padding:1rem 1.2rem .45rem;}
-.adm-week-col{display:flex;flex-direction:column;align-items:center;gap:.35rem;min-width:0;}
-.adm-week-bars{height:190px;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:4px;padding:0 2px;background:linear-gradient(to top,#f8fafc,#fff);border-radius:.55rem;border:1px solid #eef2f7;}
-.adm-week-bar{display:block;width:44%;border-radius:6px 6px 3px 3px;height:0;transition:height .2s ease;}
-.adm-week-bar--buy{background:#93c5fd;}
-.adm-week-bar--sell{background:#86efac;}
-.adm-week-bar[data-has="1"]{min-height:8px;}
-.adm-week-label{font-size:.72rem;color:#64748b;font-weight:700;}
-.adm-week-legend{display:flex;flex-wrap:wrap;gap:.9rem;padding:.15rem 1.2rem 1rem;color:#64748b;font-size:.78rem;}
-.adm-week-legend i{margin-right:.25rem;}
-.adm-week-legend--buy{color:#60a5fa;}
-.adm-week-legend--sell{color:#22c55e;}
-
 .adm-feed{display:flex;flex-direction:column;}
-.adm-feed-item{display:flex;align-items:center;gap:.9rem;padding:.9rem 1.4rem;border-bottom:1px solid #f8fafc;}
+.adm-feed-item{display:flex;align-items:center;gap:.9rem;padding:.9rem 1.4rem;border-bottom:1px solid #f8fafc;text-decoration:none;}
+.adm-feed-item--link:hover{background:#f8fafc;}
 .adm-feed-item:last-child{border-bottom:none;}
 .adm-feed-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .adm-feed-dot--red{background:#dc2626;} .adm-feed-dot--amber{background:#d97706;} .adm-feed-dot--blue{background:#2563eb;}
+.adm-feed-icon{width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.95rem;}
+.adm-feed-icon--red{background:#fee2e2;color:#dc2626;}
+.adm-feed-icon--amber{background:#fef3c7;color:#b45309;}
+.adm-feed-icon--blue{background:#dbeafe;color:#2563eb;}
+.adm-feed-icon--green{background:#dcfce7;color:#16a34a;}
 .adm-feed-body{flex:1;display:flex;flex-direction:column;gap:.1rem;min-width:0;}
 .adm-feed-title{font-size:.84rem;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .adm-feed-meta{font-size:.76rem;color:#64748b;}
 .adm-user-avatar{width:32px;height:32px;border-radius:50%;background:#dcfce7;color:#15803d;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;flex-shrink:0;}
-@media(max-width:1080px){.adm-kpis{grid-template-columns:1fr 1fr;} .adm-dash-grid{grid-template-columns:1fr;} .adm-sales-insight{grid-template-columns:1fr;}}
-@media(max-width:760px){.adm-week-chart{grid-template-columns:repeat(6,minmax(0,1fr));height:auto;}.adm-week-bars{height:140px;}}
-@media(max-width:600px){.adm-kpis{grid-template-columns:1fr;}}
+@media(max-width:1080px){.adm-kpis{grid-template-columns:1fr 1fr;} .adm-dash-grid{grid-template-columns:1fr;} .adm-sales-insight{grid-template-columns:1fr;}.adm-dual-chart{grid-template-columns:1fr 1fr;}}
+@media(max-width:760px){.adm-chart-shell{height:260px}.adm-chart-shell--compact{height:220px}.adm-chart-shell--donut{height:250px;min-width:0;}.adm-user-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.adm-dual-chart{grid-template-columns:1fr;}.adm-chart-legend{align-items:flex-start;flex-direction:column;gap:.45rem;}}
+@media(max-width:600px){.adm-kpis{grid-template-columns:1fr;}.adm-user-stat-grid{padding:.9rem .9rem 0;gap:.55rem;}.adm-user-stat{padding:.65rem .7rem;}.adm-user-stat strong{font-size:1.15rem;}.adm-chart-shell{padding:.75rem .8rem;height:235px}.adm-chart-shell--compact{height:210px}.adm-chart-legend{padding:0 .9rem .95rem;}.adm-feed-item{padding:.85rem .95rem;align-items:flex-start;}.adm-feed-title{white-space:normal;}}
 .adm-empty--compact{padding:1rem .4rem;}
 </style>
 {% endblock %}

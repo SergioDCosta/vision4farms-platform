@@ -45,6 +45,9 @@ from apps.marketplace.services import (
     get_producer_display_name,
     get_producer_initials,
     get_producer_location,
+    is_listing_editable_in_marketplace,
+    is_listing_retirable_in_marketplace,
+    is_listing_toggleable_in_marketplace,
     get_public_listings,
     retire_listing,
     update_listing,
@@ -107,6 +110,9 @@ def _attach_listing_photo_urls(listings, *, owner_producer=None):
         listing.is_owner_listing = bool(
             owner_producer and getattr(listing, "producer_id", None) == owner_producer.id
         )
+        listing.can_edit_listing = is_listing_editable_in_marketplace(listing)
+        listing.can_toggle_listing = is_listing_toggleable_in_marketplace(listing)
+        listing.can_retire_listing = is_listing_retirable_in_marketplace(listing)
         has_stock_source = bool(getattr(listing, "stock_id", None))
         has_forecast_source = bool(getattr(listing, "forecast_id", None))
         if has_forecast_source and not has_stock_source:
@@ -558,6 +564,9 @@ def _build_marketplace_detail_context(request, listing, producer):
         )
     )
     show_buybox = is_owner_listing or can_purchase_listing
+    can_edit_listing = is_listing_editable_in_marketplace(listing)
+    can_toggle_listing = is_listing_toggleable_in_marketplace(listing)
+    can_retire_listing = is_listing_retirable_in_marketplace(listing)
     expires_at_local = None
     if listing.expires_at:
         expires_at_local = timezone.localtime(listing.expires_at)
@@ -642,6 +651,9 @@ def _build_marketplace_detail_context(request, listing, producer):
         "is_need_response_listing": is_need_response_listing,
         "is_need_owner_listing": is_need_owner_listing,
         "can_purchase_listing": can_purchase_listing,
+        "can_edit_listing": can_edit_listing,
+        "can_toggle_listing": can_toggle_listing,
+        "can_retire_listing": can_retire_listing,
         "is_admin_user": is_admin_user,
         "show_buybox": show_buybox,
         "expires_at_local": expires_at_local,
@@ -699,6 +711,45 @@ def marketplace_detail_view(request, listing_id):
     )
     if getattr(listing, "need_id", None):
         return redirect("needs:response_detail", listing_id=listing.id)
+
+    if producer and listing.producer_id == producer.id:
+        return redirect("marketplace:owner_detail", listing_id=listing.id)
+    return redirect("marketplace:public_detail", listing_id=listing.id)
+
+
+@login_required
+def marketplace_owner_detail_view(request, listing_id):
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    expire_due_active_listings()
+
+    listing = get_object_or_404(
+        get_listing_detail_queryset(producer=producer),
+        id=listing_id,
+    )
+    if getattr(listing, "need_id", None):
+        return redirect("needs:response_detail", listing_id=listing.id)
+    if not producer or listing.producer_id != producer.id:
+        return redirect("marketplace:public_detail", listing_id=listing.id)
+
+    context = _build_marketplace_detail_context(request, listing, producer)
+    return render(request, "marketplace/detail.html", context)
+
+
+@login_required
+def marketplace_public_detail_view(request, listing_id):
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    expire_due_active_listings()
+
+    listing = get_object_or_404(
+        get_listing_detail_queryset(producer=producer),
+        id=listing_id,
+    )
+    if getattr(listing, "need_id", None):
+        return redirect("needs:response_detail", listing_id=listing.id)
+    if producer and listing.producer_id == producer.id:
+        return redirect("marketplace:owner_detail", listing_id=listing.id)
 
     context = _build_marketplace_detail_context(request, listing, producer)
     return render(request, "marketplace/detail.html", context)
@@ -988,6 +1039,21 @@ def marketplace_edit_view(request, listing_id):
         id=listing_id,
         producer=producer,
     )
+    if listing.need_id:
+        messages.warning(
+            request,
+            "Esta proposta pertence ao fluxo de necessidades e deve ser gerida na página de necessidades.",
+        )
+        if listing.need_response_status == NeedResponseStatus.PENDING and listing.status == ListingStatus.ACTIVE:
+            return redirect("needs:response_edit", listing_id=listing.id)
+        return redirect("needs:response_detail", listing_id=listing.id)
+
+    if not is_listing_editable_in_marketplace(listing):
+        messages.warning(
+            request,
+            "Este anúncio já está reservado ou fechado e não pode ser editado.",
+        )
+        return redirect("marketplace:owner_detail", listing_id=listing.id)
 
     has_stock_source = bool(listing.stock_id)
     has_forecast_source = bool(listing.forecast_id)
@@ -1065,6 +1131,32 @@ def marketplace_delete_view(request, listing_id):
     )
     active_tab, q, category_id, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
 
+    if listing.need_id:
+        messages.warning(
+            request,
+            "Esta proposta pertence ao fluxo de necessidades e não deve ser removida no marketplace.",
+        )
+        return redirect("needs:response_detail", listing_id=listing.id)
+
+    if not is_listing_retirable_in_marketplace(listing):
+        messages.warning(
+            request,
+            "Este anúncio já tem histórico reservado/fechado e não pode ser removido.",
+        )
+        if _is_htmx(request):
+            context = _build_marketplace_index_context(
+                producer,
+                active_tab=active_tab,
+                q=q,
+                category_id=category_id,
+                selected_need_id=selected_need_id,
+                need_prefill_product_id=requested_product_id,
+                need_prefill_quantity=requested_quantity,
+                show_need_form=show_need_form,
+            )
+            return render(request, "marketplace/index.html", context)
+        return redirect("marketplace:owner_detail", listing_id=listing.id)
+
     reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
     if reserved_quantity > 0:
         messages.error(
@@ -1132,30 +1224,32 @@ def marketplace_toggle_status_view(request, listing_id):
         producer=producer,
     )
 
+    if listing.need_id:
+        messages.warning(
+            request,
+            "Esta proposta pertence ao fluxo de necessidades e deve ser gerida na página de necessidades.",
+        )
+        return redirect("needs:response_detail", listing_id=listing.id)
+
     now = timezone.now()
     feedback = None
     blocked_message = None
 
     if listing.status == ListingStatus.ACTIVE:
         listing.status = ListingStatus.CANCELLED
-        if listing.need_id and listing.need_response_status != NeedResponseStatus.REJECTED:
-            listing.need_response_status = NeedResponseStatus.WITHDRAWN
         feedback = "Anúncio desativado com sucesso."
     else:
         available_quantity = Decimal(str(listing.quantity_available or 0))
         reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
 
-        if listing.status == ListingStatus.RESERVED and reserved_quantity > 0:
+        if listing.status in {ListingStatus.RESERVED, ListingStatus.CLOSED}:
+            blocked_message = "Este anúncio já está reservado ou fechado e não pode ser ativado novamente."
+        elif reserved_quantity > 0:
             blocked_message = "Este anúncio está com quantidade reservada e não pode ser ativado agora."
         elif available_quantity <= 0:
             blocked_message = "Este anúncio não pode ser ativado sem quantidade disponível."
         else:
             listing.status = ListingStatus.ACTIVE
-            if listing.need_id and listing.need_response_status in {
-                NeedResponseStatus.WITHDRAWN,
-                NeedResponseStatus.EXPIRED,
-            }:
-                listing.need_response_status = NeedResponseStatus.PENDING
             if listing.expires_at and listing.expires_at <= now:
                 listing.expires_at = None
             feedback = "Anúncio ativado com sucesso."
@@ -1184,7 +1278,7 @@ def marketplace_toggle_status_view(request, listing_id):
         if _is_htmx(request):
             return render(request, "marketplace/index.html", context)
 
-        next_url = (request.POST.get("next") or "").strip()
+        next_url = get_safe_next_url(request, request.POST.get("next"))
         if next_url:
             return redirect(next_url)
 
@@ -1192,11 +1286,11 @@ def marketplace_toggle_status_view(request, listing_id):
         return redirect(f"{reverse('marketplace:index')}?{query}")
 
     listing.updated_at = now
-    listing.save(update_fields=["status", "need_response_status", "expires_at", "updated_at"])
+    listing.save(update_fields=["status", "expires_at", "updated_at"])
     messages.success(request, feedback)
     _sync_alerts_after_marketplace_change(producer, request.current_user)
 
-    next_url = (request.POST.get("next") or "").strip()
+    next_url = get_safe_next_url(request, request.POST.get("next"))
     if next_url and not _is_htmx(request):
         return redirect(next_url)
 
