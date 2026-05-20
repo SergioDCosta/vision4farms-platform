@@ -8,7 +8,7 @@ from django.urls import reverse
 from apps.common.decorators import client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile
-from apps.notifications_app.services import list_recent_notifications_for_user
+from apps.notifications_app.services import clear_recent_notifications_for_user, list_recent_notifications_for_user
 from apps.alerts.services import (
     build_alert_sections,
     expire_ignored_alerts_for_producer,
@@ -288,4 +288,29 @@ def alert_ignore_all_view(request):
     if _is_htmx(request):
         return with_htmx_toast(response, "success" if ignored_count else "info", message)
     messages.success(request, message) if ignored_count else messages.info(request, message)
+    return response
+
+
+@client_only_required
+def clear_recent_notifications_view(request):
+    if request.method != "POST":
+        return redirect("alerts:index")
+
+    producer = _get_producer(request)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    tab = _normalize_tab(request.POST.get("tab"))
+    alert_type = normalize_alert_type(request.POST.get("type"))
+    category = normalize_alert_category(request.POST.get("category"))
+    q = (request.POST.get("q") or "").strip()
+    action_only = request.POST.get("action") == "1"
+    deleted_count = clear_recent_notifications_for_user(user=request.current_user)
+    message = "Notificações recentes limpas." if deleted_count else "Não havia notificações recentes para limpar."
+
+    response = _render_alerts_page(request, producer, tab, alert_type, category, q, action_only)
+    if _is_htmx(request):
+        return with_htmx_toast(response, "success" if deleted_count else "info", message)
+    messages.success(request, message) if deleted_count else messages.info(request, message)
     return response

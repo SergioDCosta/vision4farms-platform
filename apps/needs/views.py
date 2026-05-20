@@ -865,11 +865,13 @@ def need_response_detail_view(request, listing_id):
     response = build_need_response_for_listing(listing)
     is_need_owner = bool(listing.need and listing.need.producer_id == producer.id)
     is_responder = bool(listing.producer_id == producer.id)
+    quantity_for_total = response.ordered_quantity if response.ordered_quantity > 0 else response.offered_quantity
     context = {
         "page_title": "Oferta para necessidade",
         "listing": listing,
         "need": listing.need,
         "response": response,
+        "response_total_amount": quantity_for_total * response.unit_price,
         "is_need_owner": is_need_owner,
         "is_responder": is_responder,
         "delivery_text": build_delivery_text(listing),

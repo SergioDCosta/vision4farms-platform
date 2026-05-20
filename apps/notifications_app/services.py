@@ -73,15 +73,45 @@ def create_order_update_notification(*, user, order, title, body, action_url):
 
 
 def create_alert_notification(*, user, alert):
+    if not user or not alert:
+        return None
+
     payload = alert.payload or {}
-    return create_notification(
-        user=user,
-        notification_type=NotificationType.ALERT,
-        title=alert.title,
-        body=alert.description,
-        action_url=payload.get("action_url"),
-        alert=alert,
-    )
+    title = (alert.title or "").strip()[:255] or "Notificação"
+    body = _normalize_quantity_text((alert.description or "").strip()) or None
+    action_url = (payload.get("action_url") or "").strip() or None
+
+    with transaction.atomic():
+        notifications = list(
+            Notification.objects
+            .select_for_update()
+            .filter(user=user, alert=alert, type=NotificationType.ALERT)
+            .order_by("-created_at", "-id")
+        )
+        if notifications:
+            notification = notifications[0]
+            duplicate_ids = [item.id for item in notifications[1:]]
+            if duplicate_ids:
+                Notification.objects.filter(id__in=duplicate_ids).delete()
+
+            now = timezone.now()
+            notification.title = title
+            notification.body = body
+            notification.action_url = action_url
+            notification.is_read = False
+            notification.read_at = None
+            notification.created_at = now
+            notification.save(update_fields=["title", "body", "action_url", "is_read", "read_at", "created_at"])
+            return notification
+
+        return create_notification(
+            user=user,
+            notification_type=NotificationType.ALERT,
+            title=title,
+            body=body,
+            action_url=action_url,
+            alert=alert,
+        )
 
 
 def list_recent_notifications_for_user(*, user, limit=8):
@@ -104,6 +134,15 @@ def list_recent_notifications_for_user(*, user, limit=8):
     for notification in notifications:
         notification.body = _normalize_quantity_text(notification.body)
     return notifications
+
+
+@transaction.atomic
+def clear_recent_notifications_for_user(*, user):
+    if not user:
+        return 0
+
+    deleted_count, _ = Notification.objects.filter(user=user).delete()
+    return deleted_count
 
 
 @transaction.atomic

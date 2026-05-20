@@ -155,6 +155,24 @@
           <h2>Notificações recentes</h2>
           <p>Eventos informativos separados dos alertas operacionais.</p>
         </div>
+        <form method="post"
+              action="{% url 'alerts:clear_notifications' %}"
+              hx-post="{% url 'alerts:clear_notifications' %}"
+              hx-target="#shellMain"
+              hx-select="#shellMain"
+              hx-swap="outerHTML"
+              hx-push-url="{{ current_url }}">
+          {% csrf_token %}
+          <input type="hidden" name="tab" value="{{ active_tab }}">
+          <input type="hidden" name="type" value="{{ active_type }}">
+          <input type="hidden" name="category" value="{{ active_category }}">
+          <input type="hidden" name="q" value="{{ search_query }}">
+          <input type="hidden" name="action" value="{% if action_only %}1{% endif %}">
+          <button type="submit" class="alt-notifications__clear">
+            <i class="bi bi-check2-circle"></i>
+            Limpar notificações
+          </button>
+        </form>
       </div>
       <div class="alt-notifications__list">
         {% for notification in recent_notifications %}
@@ -524,6 +542,7 @@
   display:flex;
   justify-content:space-between;
   gap:.8rem;
+  align-items:flex-start;
 }
 .alt-notifications__head h2 {
   margin:0;
@@ -534,6 +553,29 @@
   margin:.25rem 0 0;
   color:#64748b;
   font-size:.86rem;
+}
+.alt-notifications__head form {
+  flex:0 0 auto;
+  margin:0;
+}
+.alt-notifications__clear {
+  min-height:2.15rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:.4rem;
+  border:1px solid #cbd5e1;
+  border-radius:.45rem;
+  background:#f8fafc;
+  color:#334155;
+  padding:.45rem .7rem;
+  font-size:.8rem;
+  font-weight:800;
+  cursor:pointer;
+}
+.alt-notifications__clear:hover {
+  border-color:#94a3b8;
+  background:#f1f5f9;
 }
 .alt-notifications__list {
   display:grid;
@@ -826,6 +868,13 @@
   }
   .alt-notifications__list {
     grid-template-columns:1fr;
+  }
+  .alt-notifications__head {
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .alt-notifications__clear {
+    width:100%;
   }
 }
 

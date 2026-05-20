@@ -4,152 +4,198 @@
 {% block app_content %}
 
 <div class="nrd-page">
-  <header class="nrd-header">
-    <div>
-      <span>Resposta a necessidade</span>
-      <h1>Oferta privada para {{ need.product.name }}</h1>
+  <header class="nrd-hero">
+    <div class="nrd-hero__main">
+      <span class="nrd-eyebrow">
+        {% if is_need_owner %}Decisão da oferta{% elif is_responder %}A sua proposta{% else %}Resposta a necessidade{% endif %}
+      </span>
+      <h1>{{ need.product.name }}</h1>
       <p>
         {% if is_need_owner %}
-          Avalie a proposta recebida e escolha se pretende comprar ou rejeitar.
+          Reveja a proposta recebida e escolha a próxima ação com base na quantidade, preço e observações.
+        {% elif is_responder %}
+          Acompanhe o estado da proposta que enviou ao produtor desta necessidade.
         {% else %}
-          Acompanhe o estado da oferta que enviou para esta necessidade.
+          Consulte os detalhes desta resposta privada.
         {% endif %}
       </p>
     </div>
-    <a href="{{ back_to_needs_url }}"
-       hx-get="{{ back_to_needs_url }}"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="nrd-btn nrd-btn--ghost">
-      <i class="bi bi-arrow-left"></i>
-      Voltar às necessidades
-    </a>
+    <div class="nrd-hero__side">
+      <span class="nrd-badge nrd-badge--{{ response.response_badge_class }}">
+        {{ response.response_status_label }}
+      </span>
+      <a href="{{ back_to_needs_url }}"
+         hx-get="{{ back_to_needs_url }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="nrd-btn nrd-btn--ghost">
+        <i class="bi bi-arrow-left"></i>
+        Voltar às necessidades
+      </a>
+    </div>
   </header>
 
   <section class="nrd-layout">
-    <article class="nrd-card nrd-card--main">
-      <div class="nrd-card__head">
-        <div>
-          <h2>Oferta de {{ response.producer_label }}</h2>
+    <main class="nrd-stack">
+      <article class="nrd-card">
+        <div class="nrd-card__head">
+          <div>
+            <span class="nrd-card__label">Resumo da oferta</span>
+            <h2>Oferta de {{ response.producer_label }}</h2>
+          </div>
           <p>{{ response.source_label }} · {{ delivery_text }}</p>
         </div>
-        <span class="nrd-badge nrd-badge--{{ response.response_badge_class }}">
-          {{ response.response_status_label }}
-        </span>
-      </div>
 
-      <div class="nrd-metrics">
-        <div>
-          <span>{% if response.ordered_quantity > 0 %}Quantidade da encomenda{% else %}Quantidade proposta{% endif %}</span>
-          <strong>
-            {% if response.ordered_quantity > 0 %}
-              {{ response.ordered_quantity|quantity }} {{ response.product_unit }}
-            {% else %}
-              {{ response.offered_quantity|quantity }} {{ response.product_unit }}
-            {% endif %}
-          </strong>
-        </div>
-        {% if response.can_buy %}
-          <div>
-            <span>Disponível para compra</span>
-            <strong>{{ response.available_quantity|quantity }} {{ response.product_unit }}</strong>
+        <div class="nrd-metrics nrd-metrics--offer">
+          <div class="nrd-metric nrd-metric--primary">
+            <span>{% if response.ordered_quantity > 0 %}Quantidade aceite{% else %}Quantidade proposta{% endif %}</span>
+            <strong>
+              {% if response.ordered_quantity > 0 %}
+                {{ response.ordered_quantity|quantity }} {{ response.product_unit }}
+              {% else %}
+                {{ response.offered_quantity|quantity }} {{ response.product_unit }}
+              {% endif %}
+            </strong>
           </div>
-        {% endif %}
-        <div>
-          <span>Preço unitário</span>
-          <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong>
+          {% if response.can_buy %}
+            <div class="nrd-metric">
+              <span>Disponível para compra</span>
+              <strong>{{ response.available_quantity|quantity }} {{ response.product_unit }}</strong>
+            </div>
+          {% endif %}
+          <div class="nrd-metric">
+            <span>Preço unitário</span>
+            <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong>
+          </div>
+          <div class="nrd-metric">
+            <span>Total estimado</span>
+            <strong>{{ response_total_amount|floatformat:2 }} €</strong>
+          </div>
+          <div class="nrd-metric">
+            <span>Origem da oferta</span>
+            <strong>{{ response.source_label }}</strong>
+          </div>
+          <div class="nrd-metric">
+            <span>Estado técnico</span>
+            <strong>{{ response.status_label }}</strong>
+          </div>
         </div>
-        <div>
-          <span>Tipo</span>
-          <strong>{{ response.source_label }}</strong>
-        </div>
-        <div>
-          <span>Estado técnico</span>
-          <strong>{{ response.status_label }}</strong>
-        </div>
-      </div>
 
-      {% if response.notes %}
+        <div class="nrd-state">
+          <i class="bi bi-info-circle"></i>
+          <p>{{ response.response_message }}</p>
+        </div>
+
         <div class="nrd-note">
           <span>Observações da resposta</span>
-          <p>{{ response.notes }}</p>
+          <p>{% if response.notes %}{{ response.notes }}{% else %}Sem observações da resposta.{% endif %}</p>
         </div>
-      {% endif %}
+      </article>
 
-      <div class="nrd-state">
-        <i class="bi bi-info-circle"></i>
-        <p>{{ response.response_message }}</p>
-      </div>
-    </article>
-
-    <aside class="nrd-card">
-      <div class="nrd-card__head">
-        <div>
-          <h2>Necessidade</h2>
-          <p>Pedido de {{ need.producer.display_name|default:need.producer.company_name|default:need.producer.user.email|default:"Produtor" }}</p>
-        </div>
-      </div>
-
-      <div class="nrd-metrics nrd-metrics--single">
-        <div>
-          <span>Produto</span>
-          <strong>{{ need.product.name }}</strong>
-        </div>
-        <div>
-          <span>Quantidade pedida</span>
-          <strong>{{ need.required_quantity|quantity }} {{ need.product.unit }}</strong>
-        </div>
-        {% if need.needed_by_date %}
+      <article class="nrd-card">
+        <div class="nrd-card__head">
           <div>
-            <span>Data limite</span>
-            <strong>{{ need.needed_by_date|date:"d/m/Y" }}</strong>
+            <span class="nrd-card__label">Necessidade associada</span>
+            <h2>Pedido de {{ need.producer.display_name|default:need.producer.company_name|default:need.producer.user.email|default:"Produtor" }}</h2>
           </div>
-        {% endif %}
-      </div>
-
-      {% if need.notes %}
-        <div class="nrd-note">
-          <span>Observações da necessidade</span>
-          <p>{{ need.notes }}</p>
         </div>
-      {% endif %}
 
-      {% if is_need_owner %}
-        <div class="nrd-actions">
-          {% if response.can_buy %}
-            <form method="post" action="{{ purchase_url }}">
-              {% csrf_token %}
-              <input type="hidden" name="need_id" value="{{ need.id }}">
-              <input type="hidden" name="quantity" value="{{ response.available_quantity|unlocalize }}">
-              <button type="submit" class="nrd-btn nrd-btn--primary">
-                <i class="bi bi-cart-check"></i>
-                Comprar oferta
-              </button>
-            </form>
-          {% endif %}
-          {% if response.can_reject %}
-            <form method="post"
-                  action="{{ response.reject_url }}"
-                  onsubmit="return confirm('Rejeitar esta oferta? Esta ação fecha a resposta e impede a compra futura.');">
-              {% csrf_token %}
-              <button type="submit" class="nrd-btn nrd-btn--danger">
-                <i class="bi bi-x-circle"></i>
-                Rejeitar oferta
-              </button>
-            </form>
-          {% endif %}
-          {% if not response.can_buy and not response.can_reject %}
-            <div class="nrd-empty-action">
-              {{ response.response_status_label }}
+        <div class="nrd-metrics">
+          <div class="nrd-metric">
+            <span>Produto</span>
+            <strong>{{ need.product.name }}</strong>
+          </div>
+          <div class="nrd-metric">
+            <span>Quantidade pedida</span>
+            <strong>{{ need.required_quantity|quantity }} {{ need.product.unit }}</strong>
+          </div>
+          {% if need.needed_by_date %}
+            <div class="nrd-metric">
+              <span>Data limite</span>
+              <strong>{{ need.needed_by_date|date:"d/m/Y" }}</strong>
             </div>
           {% endif %}
         </div>
+
+        <div class="nrd-note">
+          <span>Observações da necessidade</span>
+          <p>{% if need.notes %}{{ need.notes }}{% else %}Sem observações da necessidade.{% endif %}</p>
+        </div>
+      </article>
+    </main>
+
+    <aside class="nrd-card nrd-card--action">
+      <div class="nrd-card__head">
+        <div>
+          <span class="nrd-card__label">Próxima ação</span>
+          <h2>
+            {% if is_need_owner %}
+              {% if response.can_buy or response.can_reject %}Decidir oferta{% else %}Decisão fechada{% endif %}
+            {% elif is_responder %}
+              Estado da sua proposta
+            {% else %}
+              Estado da resposta
+            {% endif %}
+          </h2>
+        </div>
+      </div>
+
+      {% if is_need_owner %}
+        {% if response.can_buy or response.can_reject %}
+          <p class="nrd-action-copy">Esta oferta ainda aguarda uma decisão sua.</p>
+          <div class="nrd-actions">
+            {% if response.can_buy %}
+              <form method="post" action="{{ purchase_url }}">
+                {% csrf_token %}
+                <input type="hidden" name="need_id" value="{{ need.id }}">
+                <input type="hidden" name="quantity" value="{{ response.available_quantity|unlocalize }}">
+                <button type="submit" class="nrd-btn nrd-btn--primary">
+                  <i class="bi bi-cart-check"></i>
+                  Comprar oferta
+                </button>
+              </form>
+            {% endif %}
+            {% if response.can_reject %}
+              <form method="post"
+                    action="{{ response.reject_url }}"
+                    onsubmit="return confirm('Rejeitar esta oferta? Esta ação fecha a resposta e impede a compra futura.');">
+                {% csrf_token %}
+                <button type="submit" class="nrd-btn nrd-btn--danger">
+                  <i class="bi bi-x-circle"></i>
+                  Rejeitar oferta
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="nrd-final-state">
+            <span class="nrd-badge nrd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+            <p>{{ response.response_message }}</p>
+          </div>
+        {% endif %}
       {% elif is_responder %}
-        <div class="nrd-state nrd-state--responder">
-          <i class="bi bi-send-check"></i>
-          <p>Estado da sua oferta: <strong>{{ response.response_status_label }}</strong>.</p>
+        <div class="nrd-final-state">
+          <span class="nrd-badge nrd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+          <p>{{ response.response_message }}</p>
+        </div>
+        {% if response.is_editable %}
+          <a href="{{ response.edit_url }}"
+             hx-get="{{ response.edit_url }}"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="nrd-btn nrd-btn--primary">
+            <i class="bi bi-pencil-square"></i>
+            Editar proposta
+          </a>
+        {% endif %}
+      {% else %}
+        <div class="nrd-final-state">
+          <span class="nrd-badge nrd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+          <p>{{ response.response_message }}</p>
         </div>
       {% endif %}
     </aside>
@@ -158,69 +204,167 @@
 
 <style>
 .nrd-page { display:flex; flex-direction:column; gap:1rem; color:#0f172a; }
-.nrd-header {
-  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
-  padding:1rem 1.1rem; display:flex; justify-content:space-between; gap:1rem; align-items:center;
+.nrd-hero {
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.65rem;
+  padding:1.1rem;
+  display:flex;
+  justify-content:space-between;
+  gap:1rem;
+  align-items:flex-start;
+  box-shadow:0 10px 26px rgba(15,23,42,.05);
 }
-.nrd-header span { color:#16a34a; font-size:.72rem; font-weight:900; text-transform:uppercase; }
-.nrd-header h1 { margin:.15rem 0 0; font-size:1.45rem; line-height:1.2; overflow-wrap:anywhere; }
-.nrd-header p { margin:.35rem 0 0; color:#64748b; overflow-wrap:anywhere; }
-.nrd-layout { display:grid; grid-template-columns:minmax(0, 1fr) minmax(18rem, 24rem); gap:1rem; align-items:start; }
+.nrd-hero__main { min-width:0; }
+.nrd-eyebrow,
+.nrd-card__label {
+  display:block;
+  color:#16a34a;
+  font-size:.72rem;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.02em;
+}
+.nrd-hero h1 { margin:.2rem 0 0; font-size:1.65rem; line-height:1.15; overflow-wrap:anywhere; }
+.nrd-hero p { margin:.4rem 0 0; color:#64748b; line-height:1.45; overflow-wrap:anywhere; }
+.nrd-hero__side { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; justify-content:flex-end; }
+.nrd-layout {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(18rem, 24rem);
+  gap:1rem;
+  align-items:start;
+}
+.nrd-stack { display:flex; flex-direction:column; gap:1rem; min-width:0; }
 .nrd-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
-  padding:1rem; display:flex; flex-direction:column; gap:.9rem; min-width:0;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:.65rem;
+  padding:1rem;
+  display:flex;
+  flex-direction:column;
+  gap:.9rem;
+  min-width:0;
 }
-.nrd-card__head { display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start; }
-.nrd-card__head h2 { margin:0; font-size:1.05rem; line-height:1.25; overflow-wrap:anywhere; }
-.nrd-card__head p { margin:.3rem 0 0; color:#64748b; font-size:.84rem; overflow-wrap:anywhere; }
+.nrd-card--action { position:sticky; top:1rem; }
+.nrd-card__head { display:flex; justify-content:space-between; gap:.8rem; align-items:flex-start; }
+.nrd-card__head h2 { margin:.2rem 0 0; font-size:1.08rem; line-height:1.25; overflow-wrap:anywhere; }
+.nrd-card__head p,
+.nrd-action-copy { margin:0; color:#64748b; font-size:.88rem; line-height:1.45; overflow-wrap:anywhere; }
 .nrd-btn {
-  min-height:2.35rem; display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
-  border:1px solid #cbd5e1; border-radius:.45rem; padding:.5rem .8rem;
-  background:#fff; color:#0f172a; font-size:.84rem; font-weight:800; text-decoration:none; cursor:pointer; text-align:center;
+  min-height:2.4rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:.45rem;
+  border:1px solid #cbd5e1;
+  border-radius:.5rem;
+  padding:.55rem .85rem;
+  background:#fff;
+  color:#0f172a;
+  font-size:.85rem;
+  font-weight:850;
+  text-decoration:none;
+  cursor:pointer;
+  text-align:center;
 }
 .nrd-btn--primary { background:#16a34a; border-color:#16a34a; color:#fff; }
 .nrd-btn--danger { background:#dc2626; border-color:#dc2626; color:#fff; }
-.nrd-btn--ghost { background:#f1f5f9; }
-.nrd-badge { flex:0 0 auto; border-radius:999px; padding:.25rem .55rem; font-size:.74rem; font-weight:800; }
+.nrd-btn--ghost { background:#f8fafc; }
+.nrd-badge {
+  flex:0 0 auto;
+  border-radius:999px;
+  padding:.28rem .62rem;
+  font-size:.75rem;
+  font-weight:850;
+  line-height:1.2;
+}
 .nrd-badge--warn { background:#fef3c7; color:#92400e; }
 .nrd-badge--ok { background:#dcfce7; color:#166534; }
 .nrd-badge--danger { background:#fee2e2; color:#991b1b; }
 .nrd-badge--muted { background:#e2e8f0; color:#475569; }
 .nrd-badge--info { background:#dbeafe; color:#1d4ed8; }
 .nrd-metrics {
-  display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.65rem;
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:.65rem;
 }
-.nrd-metrics--single { grid-template-columns:1fr; }
-.nrd-metrics div {
-  border:1px solid #e2e8f0; border-radius:.45rem; background:#f8fafc; padding:.75rem;
+.nrd-metrics--offer { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+.nrd-metric {
+  border:1px solid #e2e8f0;
+  border-radius:.55rem;
+  background:#f8fafc;
+  padding:.8rem;
+  min-width:0;
 }
-.nrd-metrics span, .nrd-note span {
-  display:block; color:#64748b; font-size:.72rem; font-weight:800; text-transform:uppercase;
+.nrd-metric--primary { background:#f0fdf4; border-color:#bbf7d0; }
+.nrd-metric span,
+.nrd-note span {
+  display:block;
+  color:#64748b;
+  font-size:.72rem;
+  font-weight:850;
+  text-transform:uppercase;
 }
-.nrd-metrics strong { display:block; margin-top:.2rem; overflow-wrap:anywhere; }
-.nrd-note {
-  border:1px solid #e2e8f0; border-radius:.45rem; background:#fff; padding:.75rem;
+.nrd-metric strong {
+  display:block;
+  margin-top:.24rem;
+  font-size:1.02rem;
+  overflow-wrap:anywhere;
 }
-.nrd-note p { margin:.25rem 0 0; color:#334155; line-height:1.5; overflow-wrap:anywhere; }
+.nrd-note,
+.nrd-state,
+.nrd-final-state {
+  border:1px solid #e2e8f0;
+  border-radius:.55rem;
+  background:#fff;
+  padding:.8rem;
+}
+.nrd-note p,
+.nrd-final-state p {
+  margin:.28rem 0 0;
+  color:#334155;
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
 .nrd-state {
-  border:1px solid #e2e8f0; border-radius:.45rem; background:#f8fafc;
-  padding:.75rem; display:flex; gap:.55rem; color:#475569;
+  background:#f8fafc;
+  display:flex;
+  gap:.6rem;
+  color:#475569;
 }
-.nrd-state i { color:#16a34a; }
+.nrd-state i { color:#16a34a; margin-top:.1rem; }
 .nrd-state p { margin:0; line-height:1.45; overflow-wrap:anywhere; }
 .nrd-actions { display:flex; flex-direction:column; gap:.55rem; }
 .nrd-actions form { margin:0; }
-.nrd-actions .nrd-btn { width:100%; }
-.nrd-empty-action {
-  border:1px dashed #cbd5e1; border-radius:.45rem; padding:.75rem; text-align:center; color:#64748b; font-weight:800;
+.nrd-actions .nrd-btn,
+.nrd-card--action > .nrd-btn { width:100%; }
+.nrd-final-state { display:flex; flex-direction:column; align-items:flex-start; gap:.35rem; background:#f8fafc; }
+
+@media (max-width: 1060px) {
+  .nrd-metrics--offer { grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 920px) {
   .nrd-layout { grid-template-columns:1fr; }
+  .nrd-card--action { position:static; }
 }
 @media (max-width: 720px) {
-  .nrd-header, .nrd-card__head { flex-direction:column; align-items:stretch; }
-  .nrd-header .nrd-btn, .nrd-btn { width:100%; }
-  .nrd-metrics { grid-template-columns:1fr; }
+  .nrd-hero,
+  .nrd-card__head {
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .nrd-hero__side {
+    align-items:stretch;
+    justify-content:flex-start;
+  }
+  .nrd-hero__side .nrd-btn,
+  .nrd-btn {
+    width:100%;
+  }
+  .nrd-metrics,
+  .nrd-metrics--offer {
+    grid-template-columns:1fr;
+  }
 }
 </style>
 {% endblock %}
