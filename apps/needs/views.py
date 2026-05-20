@@ -12,10 +12,12 @@ from apps.marketplace.services import (
     MarketplaceServiceError,
     build_delivery_text,
     create_listing,
+    get_forecast_available_quantity,
     get_current_producer_for_user,
     get_max_publishable_quantity,
     get_stock_for_product,
 )
+from apps.inventory.models import ProductionForecast
 from apps.needs.forms import NeedCreateForm, NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import Need, NeedSourceSystem, NeedStatus
@@ -88,9 +90,11 @@ def build_selected_need_row(need):
 
 def build_need_response_inventory_context(producer, product):
     stock = get_stock_for_product(producer, product)
+    forecast_summary = build_need_response_forecast_context(producer, product)
     if not stock:
         return {
             "has_stock": False,
+            **forecast_summary,
             "stock": None,
             "current_quantity": Decimal("0.000"),
             "reserved_quantity": Decimal("0.000"),
@@ -106,12 +110,66 @@ def build_need_response_inventory_context(producer, product):
 
     return {
         "has_stock": True,
+        **forecast_summary,
         "stock": stock,
         "current_quantity": current_quantity,
         "reserved_quantity": reserved_quantity,
         "available_quantity": available_quantity,
         "safety_stock": safety_stock,
         "max_publishable_quantity": get_max_publishable_quantity(stock),
+    }
+
+
+def build_need_response_forecast_context(producer, product):
+    zero = Decimal("0.000")
+    if not producer or not product:
+        return {
+            "has_forecast": False,
+            "forecast_count": 0,
+            "forecast_quantity": zero,
+            "forecast_reserved_quantity": zero,
+            "forecast_available_quantity": zero,
+            "forecast_presale_available_quantity": zero,
+        }
+
+    forecasts = list(
+        ProductionForecast.objects
+        .filter(producer=producer, product=product, forecast_quantity__gt=zero)
+        .only(
+            "id",
+            "producer_id",
+            "product_id",
+            "forecast_quantity",
+            "reserved_quantity",
+            "is_marketplace_enabled",
+        )
+    )
+    forecast_quantity = zero
+    reserved_quantity = zero
+    available_quantity = zero
+    presale_available_quantity = zero
+
+    for forecast in forecasts:
+        current_forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
+        current_reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
+        current_available_quantity = max(
+            current_forecast_quantity - current_reserved_quantity,
+            zero,
+        )
+
+        forecast_quantity += current_forecast_quantity
+        reserved_quantity += current_reserved_quantity
+        available_quantity += current_available_quantity
+        if forecast.is_marketplace_enabled:
+            presale_available_quantity += get_forecast_available_quantity(forecast)
+
+    return {
+        "has_forecast": available_quantity > zero,
+        "forecast_count": len(forecasts),
+        "forecast_quantity": forecast_quantity,
+        "forecast_reserved_quantity": reserved_quantity,
+        "forecast_available_quantity": available_quantity,
+        "forecast_presale_available_quantity": presale_available_quantity,
     }
 
 

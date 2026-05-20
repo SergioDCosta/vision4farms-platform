@@ -198,9 +198,6 @@ def get_public_listings(*, producer=None, q="", category_id=""):
         product__is_active=True,
     )
 
-    if producer:
-        qs = qs.exclude(producer=producer)
-
     if q:
         q = q.strip()
         qs = qs.filter(
@@ -215,6 +212,16 @@ def get_public_listings(*, producer=None, q="", category_id=""):
         qs = qs.filter(product__category_id=category_id)
 
     return qs
+
+
+def retire_listing(*, listing):
+    now = timezone.now()
+    listing.status = ListingStatus.CANCELLED
+    listing.quantity_available = Decimal("0.000")
+    listing.photo_path = None
+    listing.updated_at = now
+    listing.save(update_fields=["status", "quantity_available", "photo_path", "updated_at"])
+    return listing
 
 
 def get_my_listings(*, producer, q="", category_id=""):

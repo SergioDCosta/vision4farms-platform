@@ -224,7 +224,7 @@
       {% endfor %}
       {% else %}
       {% for item in listings %}
-        <article class="mk-card">
+        <article class="mk-card {% if item.is_owner_listing %}mk-card--owner{% endif %}">
           <div class="mk-card__media">
             {% if item.photo_url %}
               <img src="{{ item.photo_url }}" alt="{{ item.product.name }}">
@@ -240,13 +240,19 @@
               <div class="mk-card__badges">
                 <span class="mk-badge">{{ item.get_status_display }}</span>
                 <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
+                {% if item.is_owner_listing %}
+                  <span class="mk-badge mk-badge--owner">Meu anúncio</span>
+                {% endif %}
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
 
             <h3>{{ item.product.name }}</h3>
             <p class="mk-producer">
-              Produtor:
+              {% if item.is_owner_listing %}
+                Publicado por si
+              {% else %}
+                Produtor:
               {% if item.producer.display_name %}
                 {{ item.producer.display_name }}
               {% elif item.producer.company_name %}
@@ -257,6 +263,7 @@
                 {{ item.producer.user.email }}
               {% else %}
                 Produtor
+              {% endif %}
               {% endif %}
             </p>
 
@@ -279,16 +286,29 @@
                class="mk-btn-card-outline">
               Ver detalhes
             </a>
-            <a href="{% url 'messaging:start_listing_contact' item.id %}"
-               hx-get="{% url 'messaging:start_listing_contact' item.id %}"
-               hx-target="#shellMain"
-               hx-select="#shellMain"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="mk-btn-card-soft">
-              <i class="bi bi-chat-dots"></i>
-              Contactar Produtor
-            </a>
+            {% if item.is_owner_listing %}
+              <a href="{% url 'marketplace:edit' item.id %}"
+                 hx-get="{% url 'marketplace:edit' item.id %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn-card-muted">
+                <i class="bi bi-pencil"></i>
+                Editar anúncio
+              </a>
+            {% else %}
+              <a href="{% url 'messaging:start_listing_contact' item.id %}"
+                 hx-get="{% url 'messaging:start_listing_contact' item.id %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn-card-soft">
+                <i class="bi bi-chat-dots"></i>
+                Contactar Produtor
+              </a>
+            {% endif %}
           </div>
         </article>
       {% empty %}
@@ -587,6 +607,11 @@
   flex-direction: column;
 }
 
+.mk-card--owner {
+  border-color: #86efac;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 8px 18px rgba(22, 163, 74, 0.08);
+}
+
 .mk-card__media {
   width: 100%;
   aspect-ratio: 16/9;
@@ -679,6 +704,11 @@
 .mk-badge--private {
   background: #f3e8ff;
   color: #6b21a8;
+}
+
+.mk-badge--owner {
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .mk-price {

@@ -157,7 +157,7 @@
           <strong>{{ need.product.name }}</strong>
         </div>
 
-        {% if responder_inventory.has_stock %}
+        {% if responder_inventory.has_stock or responder_inventory.has_forecast %}
           <div class="nr-summary-grid nr-summary-grid--inventory">
             <div>
               <span>Stock atual</span>
@@ -179,11 +179,25 @@
               <span>Máx. publicável</span>
               <strong>{{ responder_inventory.max_publishable_quantity|quantity }} {{ need.product.unit }}</strong>
             </div>
+            <div>
+              <span>Produção futura</span>
+              <strong>{{ responder_inventory.forecast_available_quantity|quantity }} {{ need.product.unit }}</strong>
+            </div>
+            <div>
+              <span>Pré-venda livre</span>
+              <strong>{{ responder_inventory.forecast_presale_available_quantity|quantity }} {{ need.product.unit }}</strong>
+            </div>
           </div>
+          {% if not responder_inventory.has_stock %}
+            <div class="nr-alert nr-alert--warning nr-alert--compact">
+              <i class="bi bi-exclamation-triangle"></i>
+              <p>Não existe stock atual registado para este produto. Só pode responder com produção futura se existir uma previsão ativa para pré-venda.</p>
+            </div>
+          {% endif %}
         {% else %}
           <div class="nr-alert nr-alert--warning nr-alert--compact">
             <i class="bi bi-exclamation-triangle"></i>
-            <p>Não existe stock registado para este produto.</p>
+            <p>Não existe stock nem produção futura registados para este produto.</p>
           </div>
         {% endif %}
       </div>

@@ -15,6 +15,7 @@ from django.urls import reverse
 from PIL import Image, ImageOps
 
 from apps.common.decorators import login_required, client_only_required
+from apps.common.redirects import get_safe_next_url
 from apps.accounts.models import UserRole
 from apps.inventory.models import ProducerProduct, ProductionForecast
 from apps.needs.models import NeedResponseStatus, NeedStatus
@@ -45,6 +46,7 @@ from apps.marketplace.services import (
     get_producer_initials,
     get_producer_location,
     get_public_listings,
+    retire_listing,
     update_listing,
 )
 from apps.settings_app.models import UserPreference
@@ -98,10 +100,13 @@ def _producer_profile_photo_url(user):
     return _listing_photo_url(preference.profile_photo)
 
 
-def _attach_listing_photo_urls(listings):
+def _attach_listing_photo_urls(listings, *, owner_producer=None):
     attached = []
     for listing in listings:
         listing.photo_url = _listing_photo_url(getattr(listing, "photo_path", None))
+        listing.is_owner_listing = bool(
+            owner_producer and getattr(listing, "producer_id", None) == owner_producer.id
+        )
         has_stock_source = bool(getattr(listing, "stock_id", None))
         has_forecast_source = bool(getattr(listing, "forecast_id", None))
         if has_forecast_source and not has_stock_source:
@@ -370,8 +375,8 @@ def _build_marketplace_index_context(
         if selected_listing and selected_listing.product and selected_listing.product.category:
             available_categories.append(selected_listing.product.category)
 
-    public_listings = _attach_listing_photo_urls(public_listings)
-    my_listings = _attach_listing_photo_urls(my_listings)
+    public_listings = _attach_listing_photo_urls(public_listings, owner_producer=producer)
+    my_listings = _attach_listing_photo_urls(my_listings, owner_producer=producer)
 
     return {
         "page_title": "Marketplace",
@@ -1082,16 +1087,16 @@ def marketplace_delete_view(request, listing_id):
             )
             return render(request, "marketplace/index.html", context)
 
-        next_url = (request.POST.get("next") or "").strip()
+        next_url = get_safe_next_url(request, request.POST.get("next"))
         if next_url:
             return redirect(next_url)
         return redirect("marketplace:edit", listing_id=listing.id)
 
     photo_path = listing.photo_path
-    listing.delete()
+    retire_listing(listing=listing)
     _delete_uploaded_file(photo_path)
 
-    messages.success(request, "Anúncio eliminado com sucesso.")
+    messages.success(request, "Anúncio removido do marketplace com sucesso.")
     _sync_alerts_after_marketplace_change(producer, request.current_user)
     if _is_htmx(request):
         context = _build_marketplace_index_context(
