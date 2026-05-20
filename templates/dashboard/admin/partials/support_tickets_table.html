@@ -15,7 +15,9 @@
       </thead>
       <tbody>
         {% for ticket in tickets %}
-          <tr>
+          <tr class="adm-clickable-row"
+              tabindex="0"
+              data-row-href="{% url 'support:admin_ticket_detail' ticket.id %}">
             <td style="font-family:'DM Mono',monospace;">#{{ ticket.ticket_number }}</td>
             <td>
               {% if ticket.status == "OPEN" %}
@@ -43,7 +45,10 @@
             <td>{{ ticket.created_at|date:"d/m/Y H:i" }}</td>
             <td>{{ ticket.claimed_at|date:"d/m/Y H:i"|default:"—" }}</td>
             <td>
-              <a href="{% url 'support:admin_ticket_detail' ticket.id %}" class="adm-act-btn" title="Ver detalhe">
+              <a href="{% url 'support:admin_ticket_detail' ticket.id %}"
+                 class="adm-act-btn"
+                 title="Ver detalhe"
+                 aria-label="Ver detalhe do ticket #{{ ticket.ticket_number }}">
                 <i class="bi bi-box-arrow-up-right"></i>
               </a>
             </td>

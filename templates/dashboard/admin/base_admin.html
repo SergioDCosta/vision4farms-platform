@@ -46,7 +46,8 @@
 .adm-table tbody tr:last-child td{border-bottom:none;}
 .adm-table tbody tr:hover td{background:#fafafa;}
 .adm-table tbody tr.adm-clickable-row{cursor:pointer;}
-.adm-table tbody tr.adm-clickable-row:focus{outline:2px solid #86efac;outline-offset:-2px;}
+.adm-table tbody tr.adm-clickable-row:focus{outline:none;}
+.adm-table tbody tr.adm-clickable-row:focus-visible td{background:#f8fafc;}
 .adm-table tbody tr.adm-clickable-row:hover td{background:#f8fafc;}
 .adm-table th:last-child,.adm-table td:last-child{text-align:right;}
 .adm-table--products thead th{padding:.88rem 1.4rem;}
@@ -82,6 +83,7 @@
 #users-table.htmx-request,
 #products-table.htmx-request,
 #categories-table.htmx-request,
+#support-tickets-table.htmx-request,
 #audit-table.htmx-request {
   opacity: .55;
 }

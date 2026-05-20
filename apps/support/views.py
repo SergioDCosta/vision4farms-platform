@@ -30,6 +30,7 @@ from apps.support.services import (
     send_support_ticket_acknowledgement,
     send_support_ticket_created_to_admins,
     send_support_ticket_reply_to_requester,
+    support_conversation_schema_available,
 )
 from apps.support.consumers import SUPPORT_ADMIN_BADGE_GROUP
 
@@ -243,7 +244,12 @@ def admin_support_tickets_view(request):
     if status_filter not in allowed_statuses:
         status_filter = ""
 
-    tickets = SupportTicket.objects.select_related("requester_user", "assigned_admin").order_by("-last_message_at", "-created_at")
+    ticket_ordering = (
+        ["-last_message_at", "-created_at"]
+        if support_conversation_schema_available()
+        else ["-updated_at", "-created_at"]
+    )
+    tickets = SupportTicket.objects.select_related("requester_user", "assigned_admin").order_by(*ticket_ordering)
     if status_filter:
         tickets = tickets.filter(status=status_filter)
 

@@ -13,7 +13,9 @@
       </thead>
       <tbody>
         {% for cat in categories %}
-        <tr>
+        <tr class="adm-clickable-row"
+            tabindex="0"
+            data-row-href="{% url 'dashboard:gestor_categoria_editar' cat.id %}">
           <td style="font-weight:600;color:#0f172a;">{{ cat.name }}</td>
           <td style="font-size:.84rem;color:#64748b;font-weight:700;">{{ cat.products_count|default:0 }}</td>
           <td style="font-size:.84rem;color:#64748b;font-weight:700;">{{ cat.active_inventory_usage_count|default:0 }}</td>

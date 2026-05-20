@@ -48,6 +48,25 @@ def _parse_session_datetime(value):
     return parsed
 
 
+def support_conversation_schema_available():
+    try:
+        table_names = set(connection.introspection.table_names())
+        if not {"support_ticket_messages", "support_ticket_attachments"}.issubset(table_names):
+            return False
+        with connection.cursor() as cursor:
+            columns = {
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor,
+                    "support_tickets",
+                )
+            }
+        return {"last_message_at", "last_message_by_role"}.issubset(columns)
+    except Exception:
+        logger.exception("Falha ao verificar schema conversacional do suporte.")
+        return False
+
+
 def _build_public_absolute_url(request, relative_path):
     path = str(relative_path or "")
     app_base_url = (getattr(settings, "APP_BASE_URL", "") or "").strip().rstrip("/")
@@ -255,6 +274,34 @@ def get_admin_support_badge_state(request):
     if not user or getattr(user, "role", None) != UserRole.ADMIN:
         return {"visible": False, "count": 0, "tone": "orange"}
 
+    if not support_conversation_schema_available():
+        aggregate = (
+            SupportTicket.objects
+            .filter(status__in=[SupportTicketStatus.OPEN, SupportTicketStatus.CLAIMED])
+            .aggregate(
+                open_count=Count("id"),
+                latest_open_created_at=Max("updated_at"),
+            )
+        )
+        open_count = int(aggregate.get("open_count") or 0)
+        if open_count <= 0:
+            return {"visible": False, "count": 0, "tone": "orange"}
+
+        latest_open_created_at = aggregate.get("latest_open_created_at")
+        last_seen_at = _parse_session_datetime(
+            request.session.get(SUPPORT_ADMIN_LAST_SEEN_SESSION_KEY)
+        )
+        has_unseen_new = bool(
+            latest_open_created_at and (
+                not last_seen_at or latest_open_created_at > last_seen_at
+            )
+        )
+        return {
+            "visible": True,
+            "count": open_count,
+            "tone": "red" if has_unseen_new else "orange",
+        }
+
     aggregate = (
         SupportTicket.objects
         .filter(status__in=[SupportTicketStatus.OPEN, SupportTicketStatus.CLAIMED])
@@ -297,10 +344,15 @@ def mark_admin_support_seen(request):
 
 def get_support_tickets_context(user, *, show_all=False, limit=5):
     try:
+        ordering = (
+            ["-last_message_at", "-created_at"]
+            if support_conversation_schema_available()
+            else ["-updated_at", "-created_at"]
+        )
         tickets_qs = (
             SupportTicket.objects.filter(requester_user=user)
             .select_related("assigned_admin")
-            .order_by("-last_message_at", "-created_at")
+            .order_by(*ordering)
         )
         total = tickets_qs.count()
         tickets = list(tickets_qs if show_all else tickets_qs[:limit])
