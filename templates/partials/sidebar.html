@@ -17,7 +17,11 @@
        hx-push-url="true"
        class="sidebar-brand">
   {% endif %}
-      <span class="sidebar-brand-logo sidebar-brand-wordmark">Vision4Farms</span>
+      {% if brand_logo_white_url %}
+        <img class="sidebar-brand-logo sidebar-brand-image" src="{{ brand_logo_white_url }}" alt="Vision4Farms">
+      {% else %}
+        <span class="sidebar-brand-logo sidebar-brand-wordmark">Vision4Farms</span>
+      {% endif %}
       <span class="sidebar-brand-mark" aria-hidden="true">V4F</span>
     </a>
 

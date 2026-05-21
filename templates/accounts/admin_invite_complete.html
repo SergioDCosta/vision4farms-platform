@@ -7,7 +7,7 @@
     <div class="auth-panel">
       <div class="auth-panel-inner">
         <div class="auth-logo auth-logo--wide">
-          <span class="auth-wordmark auth-wordmark--white">Vision4Farms</span>
+          {% if brand_logo_white_url %}<img class="auth-brand-image auth-brand-image--white" src="{{ brand_logo_white_url }}" alt="Vision4Farms">{% else %}<span class="auth-wordmark auth-wordmark--white">Vision4Farms</span>{% endif %}
         </div>
         <h2 class="auth-panel-title">Bem-vindo à cooperativa</h2>
         <p class="auth-panel-sub">Foi convidado a fazer parte da plataforma. Complete o seu registo para ativar o acesso.</p>
@@ -21,7 +21,7 @@
     <div class="auth-form-side">
       <div class="auth-form-wrap" style="max-width:460px">
         <div class="auth-form-header">
-          <span class="auth-form-logo auth-wordmark auth-wordmark--color">Vision4Farms</span>
+          {% if brand_logo_color_url %}<img class="auth-form-logo auth-brand-image auth-brand-image--color" src="{{ brand_logo_color_url }}" alt="Vision4Farms">{% else %}<span class="auth-form-logo auth-wordmark auth-wordmark--color">Vision4Farms</span>{% endif %}
           <h1 class="auth-form-title">Completar conta</h1>
           <p class="auth-form-sub">Defina os seus dados para ativar o acesso à plataforma.</p>
         </div>

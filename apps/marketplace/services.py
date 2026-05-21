@@ -219,7 +219,45 @@ def expire_due_active_listings():
     return need_responses_expired + listings_expired
 
 
-def get_public_listings(*, producer=None, q="", category_id=""):
+def _apply_listing_filters(qs, *, q="", category_id="", origin="", only_available=False):
+    if q:
+        q = q.strip()
+        qs = qs.filter(
+            Q(product__name__icontains=q)
+            | Q(notes__icontains=q)
+            | Q(producer__display_name__icontains=q)
+            | Q(producer__company_name__icontains=q)
+            | Q(producer__city__icontains=q)
+            | Q(producer__district__icontains=q)
+            | Q(producer__user__first_name__icontains=q)
+            | Q(producer__user__last_name__icontains=q)
+        )
+
+    if category_id:
+        qs = qs.filter(product__category_id=category_id)
+
+    if origin == LISTING_SOURCE_STOCK:
+        qs = qs.filter(stock_id__isnull=False, forecast_id__isnull=True)
+    elif origin == LISTING_SOURCE_FORECAST:
+        qs = qs.filter(stock_id__isnull=True, forecast_id__isnull=False)
+
+    if only_available:
+        qs = qs.filter(status=ListingStatus.ACTIVE, quantity_available__gt=0)
+
+    return qs
+
+
+def _apply_listing_sort(qs, *, sort="recent"):
+    if sort == "price_asc":
+        return qs.order_by("unit_price", "-published_at", "-created_at")
+    if sort == "price_desc":
+        return qs.order_by("-unit_price", "-published_at", "-created_at")
+    if sort == "quantity_desc":
+        return qs.order_by("-quantity_available", "-published_at", "-created_at")
+    return qs.order_by("-published_at", "-created_at")
+
+
+def get_public_listings(*, producer=None, q="", category_id="", origin="", sort="recent", only_available=True):
     qs = get_base_listing_queryset().filter(
         status=ListingStatus.ACTIVE,
         quantity_available__gt=0,
@@ -229,20 +267,14 @@ def get_public_listings(*, producer=None, q="", category_id=""):
     if producer:
         qs = qs.exclude(producer=producer)
 
-    if q:
-        q = q.strip()
-        qs = qs.filter(
-            Q(product__name__icontains=q)
-            | Q(producer__display_name__icontains=q)
-            | Q(producer__company_name__icontains=q)
-            | Q(producer__user__first_name__icontains=q)
-            | Q(producer__user__last_name__icontains=q)
-        )
-
-    if category_id:
-        qs = qs.filter(product__category_id=category_id)
-
-    return qs
+    qs = _apply_listing_filters(
+        qs,
+        q=q,
+        category_id=category_id,
+        origin=origin,
+        only_available=only_available,
+    )
+    return _apply_listing_sort(qs, sort=sort)
 
 
 def retire_listing(*, listing):
@@ -255,20 +287,16 @@ def retire_listing(*, listing):
     return listing
 
 
-def get_my_listings(*, producer, q="", category_id=""):
+def get_my_listings(*, producer, q="", category_id="", origin="", sort="recent", only_available=False):
     qs = get_base_listing_queryset().filter(producer=producer, need_id__isnull=True)
-
-    if q:
-        q = q.strip()
-        qs = qs.filter(
-            Q(product__name__icontains=q)
-            | Q(notes__icontains=q)
-        )
-
-    if category_id:
-        qs = qs.filter(product__category_id=category_id)
-
-    return qs
+    qs = _apply_listing_filters(
+        qs,
+        q=q,
+        category_id=category_id,
+        origin=origin,
+        only_available=only_available,
+    )
+    return _apply_listing_sort(qs, sort=sort)
 
 
 def get_listing_categories_for_queryset(listings_qs):

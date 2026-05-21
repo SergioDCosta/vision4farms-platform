@@ -78,6 +78,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "apps.common.context_processors.brand_assets",
                 "apps.common.context_processors.topbar_user_profile",
                 "apps.common.context_processors.admin_support_sidebar_badge",
                 "apps.common.context_processors.client_alerts_sidebar_badge",
@@ -124,6 +125,10 @@ CSRF_TRUSTED_ORIGINS = config(
 CSRF_TRUSTED_ORIGINS = _split_csv_env(CSRF_TRUSTED_ORIGINS)
 
 APP_BASE_URL = config("APP_BASE_URL", default="").strip().rstrip("/")
+
+BRAND_LOGO_COLOR_URL = config("BRAND_LOGO_COLOR_URL", default="").strip()
+BRAND_LOGO_WHITE_URL = config("BRAND_LOGO_WHITE_URL", default="").strip()
+BRAND_FAVICON_URL = config("BRAND_FAVICON_URL", default="").strip()
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True

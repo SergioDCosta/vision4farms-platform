@@ -127,7 +127,7 @@ class MarketplaceListingVisibilityTests(SimpleTestCase):
 
         result = get_public_listings(producer=producer)
 
-        self.assertIs(result, qs)
+        self.assertIs(result, qs.order_by.return_value)
         qs.exclude.assert_called_once_with(producer=producer)
 
     @patch("apps.marketplace.services.get_base_listing_queryset")
@@ -139,7 +139,7 @@ class MarketplaceListingVisibilityTests(SimpleTestCase):
 
         result = get_my_listings(producer=producer)
 
-        self.assertIs(result, qs)
+        self.assertIs(result, qs.order_by.return_value)
         qs.filter.assert_any_call(producer=producer, need_id__isnull=True)
 
 

@@ -1,0 +1,141 @@
+<article class="mk-card {% if item.status != 'ACTIVE' or item.quantity_available <= 0 %}is-unavailable{% endif %}">
+  <div class="mk-card__media">
+    {% if item.photo_url %}
+      <img src="{{ item.photo_url }}" alt="{{ item.product.name }}">
+    {% else %}
+      <div class="mk-card__media-empty">
+        <i class="bi bi-image"></i>
+      </div>
+    {% endif %}
+    <div class="mk-card__badge-row">
+      <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">
+        {% if item.source_key == "forecast" %}<i class="bi bi-calendar2-week"></i>{% else %}<i class="bi bi-dot"></i>{% endif %}
+        {{ item.source_label|default:"Stock atual" }}
+      </span>
+      <span class="mk-badge {% if item.status == 'ACTIVE' %}mk-badge--active{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'EXPIRED' %}mk-badge--warn{% else %}mk-badge--closed{% endif %}">
+        {{ item.get_status_display }}
+      </span>
+    </div>
+  </div>
+
+  <div class="mk-card__body">
+    <div class="mk-producer-line">
+      <i class="bi bi-person"></i>
+      <span>{{ item.producer_display_name|default:"Produtor" }}</span>
+    </div>
+    <h3>{{ item.product.name }}</h3>
+    <div class="mk-location-line">
+      <i class="bi bi-geo-alt"></i>
+      <span>{{ item.producer_location|default:"Localização não indicada" }}</span>
+    </div>
+
+    <div class="mk-card__facts">
+      {% if item.source_key == "forecast" %}
+        <div class="mk-fact">
+          <span>Previsão colheita</span>
+          <strong class="mk-source-period">{{ item.source_period|default:"Por definir" }}</strong>
+        </div>
+        <div class="mk-fact">
+          <span>Volume estimado</span>
+          <strong>{{ item.quantity_available|quantity }} {{ item.product.unit }}</strong>
+        </div>
+      {% else %}
+        <div class="mk-fact">
+          <span>Quantidade disponível</span>
+          <strong>{{ item.quantity_available|quantity }} {{ item.product.unit }}</strong>
+        </div>
+      {% endif %}
+      <div class="mk-fact mk-fact--price">
+        <span>Preço por {{ item.product.unit }}</span>
+        <strong>{{ item.unit_price|floatformat:2 }} € <small>/{{ item.product.unit }}</small></strong>
+      </div>
+      <div class="mk-delivery-chip">
+        <i class="bi {% if item.has_pickup and item.has_delivery %}bi-truck{% elif item.has_delivery %}bi-truck{% else %}bi-shop-window{% endif %}"></i>
+        <span>{{ item.delivery_text }}</span>
+      </div>
+    </div>
+  </div>
+
+  {% if mode == "owner" %}
+    <div class="mk-card__footer mk-card__footer--owner">
+      <a href="{% url 'marketplace:owner_detail' item.id %}"
+         hx-get="{% url 'marketplace:owner_detail' item.id %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-card-action mk-card-action--ghost">
+        <i class="bi bi-eye"></i>
+        Ver detalhe
+      </a>
+      <div class="mk-owner-actions">
+        {% if item.can_edit_listing %}
+          <a href="{% url 'marketplace:edit' item.id %}"
+             hx-get="{% url 'marketplace:edit' item.id %}"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mk-card-action mk-card-action--muted">
+            <i class="bi bi-pencil"></i>
+            Editar
+          </a>
+        {% else %}
+          <span class="mk-card-action mk-card-action--muted is-disabled">
+            <i class="bi bi-lock"></i>
+            Bloqueado
+          </span>
+        {% endif %}
+        <form method="post"
+              action="{% url 'marketplace:toggle_status' item.id %}"
+              hx-post="{% url 'marketplace:toggle_status' item.id %}"
+              hx-target="#mk-listings-region"
+              hx-select="#mk-listings-region"
+              hx-swap="outerHTML"
+              class="mk-owner-form">
+          {% csrf_token %}
+          <input type="hidden" name="tab" value="{{ active_tab }}">
+          <input type="hidden" name="q" value="{{ q }}">
+          <input type="hidden" name="category" value="{{ selected_category_id }}">
+          <input type="hidden" name="origin" value="{{ selected_origin }}">
+          <input type="hidden" name="sort" value="{{ selected_sort }}">
+          {% if only_available %}<input type="hidden" name="available" value="1">{% endif %}
+          <button type="submit"
+                  class="mk-card-action mk-card-action--blue"
+                  {% if not item.can_toggle_listing %}disabled{% endif %}>
+            {% if item.status == "ACTIVE" %}
+              <i class="bi bi-pause-circle"></i> Desativar
+            {% elif item.can_toggle_listing %}
+              <i class="bi bi-play-circle"></i> Ativar
+            {% else %}
+              <i class="bi bi-lock"></i> Fechado
+            {% endif %}
+          </button>
+        </form>
+      </div>
+    </div>
+  {% else %}
+    <div class="mk-card__footer">
+      <a href="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+         hx-get="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-card-action mk-card-action--ghost">
+        <i class="bi bi-eye"></i>
+        Ver detalhes
+      </a>
+      <a href="{% url 'messaging:start_listing_contact' item.id %}"
+         hx-get="{% url 'messaging:start_listing_contact' item.id %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-card-action mk-card-action--primary">
+        <i class="bi bi-chat-dots"></i>
+        Contactar
+      </a>
+    </div>
+  {% endif %}
+</article>

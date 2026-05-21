@@ -1,3 +1,5 @@
+from django.conf import settings
+
 from apps.accounts.models import UserRole
 from apps.alerts.services import get_client_alerts_badge_state
 from apps.common.media import resolve_media_url
@@ -26,6 +28,14 @@ def _cached(request, key, factory):
     if key not in cache:
         cache[key] = factory()
     return cache[key]
+
+
+def brand_assets(request):
+    return {
+        "brand_logo_color_url": getattr(settings, "BRAND_LOGO_COLOR_URL", ""),
+        "brand_logo_white_url": getattr(settings, "BRAND_LOGO_WHITE_URL", ""),
+        "brand_favicon_url": getattr(settings, "BRAND_FAVICON_URL", ""),
+    }
 
 
 def _avatar_initials(user):

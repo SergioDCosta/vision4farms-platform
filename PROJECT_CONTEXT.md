@@ -31,6 +31,10 @@
 - Frontend: Django Templates + HTMX.
 - Storage media: `default_storage`; Cloudinary em produção.
 - Static: WhiteNoise (`CompressedManifestStaticFilesStorage`).
+- Branding:
+  - logos/favicons usam URLs Cloudinary configuráveis por ambiente;
+  - variáveis: `BRAND_LOGO_COLOR_URL`, `BRAND_LOGO_WHITE_URL`, `BRAND_FAVICON_URL`;
+  - se não estiverem definidas, a UI usa fallback HTML/CSS e não depende de ficheiros estáticos `brand/*.svg`.
 - Config/env: `python-decouple`.
 - Upload/crop: Pillow.
 - Email:
@@ -324,12 +328,22 @@
   - mantém compra normal;
   - mostra mapa Leaflet quando permitido;
   - `show_location_on_map` controla privacidade da localização.
+- Detalhe de anúncio:
+  - URLs de detalhe distinguem anúncio público e anúncio próprio;
+  - a buybox acompanha a altura do card principal no desktop;
+  - compra permite ajustar quantidade com incrementos/decrementos rápidos e botão `Máx.` para comprar toda a quantidade disponível.
 - Cards marketplace:
-  - CTAs "Ver detalhes" e "Contactar Produtor" ficam lado a lado quando aplicável.
+  - `/marketplace/` foi redesenhado com filtros compactos, origem, ordenação e opção "apenas disponíveis";
+  - tab pública exclui anúncios do próprio produtor;
+  - tab "Meus anúncios" mantém ações de gestão;
+  - cards mostram foto, origem, estado, produtor, localização, quantidade, preço/kg, entrega e CTAs claros.
 
 ## 11) Recommendations
 - Wizard HTMX em 3 passos.
-- Passo 1 mostra défice e quantidade atual; pode vir pré-preenchido do inventário.
+- Passo 1 mostra duas tabelas operacionais:
+  - produtos a comprar por estarem abaixo do stock de segurança;
+  - produtos a vender por terem excedente acima do stock de segurança.
+- O card "Ação selecionada" fica centrado e resume a recomendação antes de gerar.
 - Passo 2 considera listings de stock atual e pré-venda.
 - Motor exclui respostas privadas (`need_id IS NULL` obrigatório nas candidatas).
 - Ações de necessidade no passo 2:
@@ -609,6 +623,9 @@
   - Hobby + Resend por API HTTP é a opção recomendada de baixo custo para emails;
   - Pro pode ser útil para colaboração/recursos, mas já não é necessário para viabilizar email via SMTP;
   - Redis continua recomendado para Django Channels em produção.
+- Branding em Railway:
+  - configurar `BRAND_LOGO_COLOR_URL`, `BRAND_LOGO_WHITE_URL` e `BRAND_FAVICON_URL` com URLs Cloudinary;
+  - a app continua funcional mesmo sem essas variáveis, mas mostra apenas fallback textual.
 
 ## 19) Dashboard
 - App `apps.dashboard` mantém a experiência cliente/admin:

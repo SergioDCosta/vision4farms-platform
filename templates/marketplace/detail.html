@@ -191,28 +191,47 @@
         <p>Escolha a quantidade e avance para criar a encomenda ao produtor.</p>
       </div>
 
-      <form method="post" action="{% url 'orders:create_from_listing' listing.id %}">
+      <form method="post" action="{% url 'orders:create_from_listing' listing.id %}" class="mkd-buybox-form">
         {% csrf_token %}
         {% if selected_need_id %}
           <input type="hidden" name="need_id" value="{{ selected_need_id }}">
         {% endif %}
 
-        <div class="mkd-field">
+        <div class="mkd-field mkd-field--quantity">
           <label for="quantityInput">Quantidade a comprar ({{ listing.product.unit }})</label>
-          <div class="mkd-quantity-wrap">
-            <input type="number"
-                  id="quantityInput"
-                  name="qty"
-                  min="1"
-                  max="{{ max_quantity|unlocalize }}"
-                  step="0.001"
-                  value="{{ quantity|unlocalize }}"
-                  hx-get="{% url 'marketplace:detail_total' listing.id %}"
-                  hx-trigger="keyup changed delay:250ms"
-                  hx-target="#mkd-total-box"
-                  hx-swap="outerHTML"
-                  hx-include="#quantityInput">
-            <span>{{ listing.product.unit }}</span>
+          <div class="mkd-quantity-panel" data-mkd-quantity-control>
+            <div class="mkd-quantity-wrap">
+              <input type="number"
+                    id="quantityInput"
+                    name="qty"
+                    min="0.001"
+                    max="{{ max_quantity|unlocalize }}"
+                    step="0.001"
+                    value="{{ quantity|unlocalize }}"
+                    hx-get="{% url 'marketplace:detail_total' listing.id %}"
+                    hx-trigger="keyup changed delay:250ms"
+                    hx-target="#mkd-total-box"
+                    hx-swap="outerHTML"
+                    hx-include="#quantityInput">
+              <span>{{ listing.product.unit }}</span>
+            </div>
+            <div class="mkd-quantity-actions" aria-label="Ajustar quantidade">
+              <button type="button" data-mkd-qty-step="-10">
+                <i class="bi bi-dash-lg"></i>10
+              </button>
+              <button type="button" data-mkd-qty-step="-1">
+                <i class="bi bi-dash-lg"></i>1
+              </button>
+              <button type="button" data-mkd-qty-step="1">
+                <i class="bi bi-plus-lg"></i>1
+              </button>
+              <button type="button" data-mkd-qty-step="10">
+                <i class="bi bi-plus-lg"></i>10
+              </button>
+              <button type="button" class="mkd-quantity-max" data-mkd-qty-max>
+                Máx.
+              </button>
+            </div>
           </div>
         </div>
 
@@ -362,6 +381,75 @@
     </article>
   </section>
 </div>
+
+<script>
+(function () {
+  function parseDecimal(value) {
+    const parsed = Number(String(value || "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function formatDecimal(value) {
+    const rounded = Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
+    return rounded.toFixed(3).replace(/\.?0+$/, "");
+  }
+
+  function clamp(value, min, max) {
+    if (Number.isFinite(max) && max > 0) {
+      value = Math.min(value, max);
+    }
+    if (Number.isFinite(min) && min > 0) {
+      value = Math.max(value, min);
+    }
+    return value;
+  }
+
+  function notifyQuantityChanged(input) {
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function initQuantityControls(root) {
+    const scope = root && root.querySelector ? root : document;
+    scope.querySelectorAll("[data-mkd-quantity-control]").forEach(function (control) {
+      if (control.dataset.mkdQuantityBound === "1") return;
+      control.dataset.mkdQuantityBound = "1";
+
+      const input = control.querySelector("#quantityInput");
+      if (!input) return;
+
+      const min = parseDecimal(input.getAttribute("min") || "0.001");
+      const max = parseDecimal(input.getAttribute("max"));
+
+      control.querySelectorAll("[data-mkd-qty-step]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          const step = parseDecimal(button.dataset.mkdQtyStep);
+          const current = parseDecimal(input.value);
+          input.value = formatDecimal(clamp(current + step, min, max));
+          notifyQuantityChanged(input);
+        });
+      });
+
+      const maxButton = control.querySelector("[data-mkd-qty-max]");
+      if (maxButton) {
+        maxButton.addEventListener("click", function () {
+          if (!Number.isFinite(max) || max <= 0) return;
+          input.value = formatDecimal(max);
+          notifyQuantityChanged(input);
+        });
+      }
+    });
+  }
+
+  initQuantityControls(document);
+  if (!window.__mkdQuantityAfterSwapHookBound) {
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      initQuantityControls(event.detail && event.detail.target ? event.detail.target : document);
+    });
+    window.__mkdQuantityAfterSwapHookBound = true;
+  }
+})();
+</script>
 
 <script>
 (function () {
@@ -748,7 +836,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(330px, 360px);
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .mkd-main--single {
@@ -995,7 +1083,7 @@
   padding: 1.2rem;
   position: sticky;
   top: 84px;
-  align-self: start;
+  align-self: stretch;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -1034,6 +1122,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.95rem;
+  flex: 1;
   margin: 0;
 }
 
@@ -1073,6 +1162,20 @@
   color: #334155;
 }
 
+.mkd-field--quantity {
+  margin-top: 0.15rem;
+}
+
+.mkd-quantity-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #f8fafc;
+}
+
 .mkd-quantity-wrap {
   position: relative;
   margin-bottom: 0.1rem;
@@ -1080,10 +1183,10 @@
 
 .mkd-quantity-wrap input {
   width: 100%;
-  padding: 0.92rem 3.8rem 0.92rem 1rem;
+  padding: 0.95rem 3.8rem 0.95rem 1rem;
   border: 1px solid #cbd5e1;
   border-radius: 0.9rem;
-  font-size: 1.05rem;
+  font-size: 1.08rem;
   font-weight: 800;
   color: #0f172a;
   outline: none;
@@ -1102,6 +1205,40 @@
   transform: translateY(-50%);
   color: #94a3b8;
   font-weight: 700;
+}
+
+.mkd-quantity-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.mkd-quantity-actions button {
+  min-height: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 850;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.mkd-quantity-actions button:hover {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.mkd-quantity-actions .mkd-quantity-max {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
 }
 
 .mkd-total-box {
@@ -1158,7 +1295,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  margin-top: 0.35rem;
+  margin-top: auto;
 }
 
 .mkd-actions-stack > * {
