@@ -22,7 +22,7 @@ body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f1f5f3;colo
   background:radial-gradient(ellipse 70% 60% at 30% 80%,rgba(22,163,74,.18),transparent);
   pointer-events:none;
 }
-.auth-panel-inner{position:relative;max-width:320px;}
+.auth-panel-inner{position:relative;max-width:340px;}
 .auth-logo{
   width:56px;height:56px;border-radius:16px;
   background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);
@@ -30,6 +30,17 @@ body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f1f5f3;colo
   font-size:1.6rem;color:#86efac;margin-bottom:2rem;
   backdrop-filter:blur(4px);
 }
+.auth-logo img{display:block;max-width:100%;height:auto;}
+.auth-logo--wide{
+  width:192px;height:auto;min-height:72px;border-radius:0;
+  background:transparent;border:0;justify-content:flex-start;
+  margin-bottom:1.75rem;backdrop-filter:none;
+}
+.auth-form-logo{
+  display:block;width:148px;max-width:70%;height:auto;
+  margin:0 0 1rem;
+}
+.auth-form-header--center .auth-form-logo{margin-left:auto;margin-right:auto;}
 .auth-panel-title{font-size:1.75rem;font-weight:800;color:#fff;margin:0 0 .75rem;letter-spacing:-.02em;line-height:1.2;}
 .auth-panel-sub{font-size:.9rem;color:rgba(255,255,255,.65);margin:0 0 2.5rem;line-height:1.6;}
 .auth-panel-features{display:flex;flex-direction:column;gap:.9rem;}
@@ -149,6 +160,7 @@ body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f1f5f3;colo
   .auth-split{grid-template-columns:1fr;}
   .auth-panel{display:none;}
   .auth-form-side{min-height:100vh;padding:2rem 1.25rem;}
+  .auth-form-logo{width:140px;}
 }
 @media(max-width:480px){
   .af-grid-2{grid-template-columns:1fr;}

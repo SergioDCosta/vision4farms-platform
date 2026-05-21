@@ -2,7 +2,7 @@
   <div class="pnl-card pnl-weather-card pnl-weather-card--loading" aria-busy="true">
     <div class="pnl-card-head">
       <div>
-        <h2 class="pnl-card-title">Clima da exploração</h2>
+        <h2 class="pnl-card-title">Clima</h2>
         <p class="pnl-card-hint">A carregar previsão IPMA...</p>
       </div>
     </div>
@@ -10,109 +10,75 @@
       <div class="pnl-weather-skeleton pnl-weather-skeleton--line"></div>
       <div class="pnl-weather-skeleton pnl-weather-skeleton--temp"></div>
       <div class="pnl-weather-skeleton pnl-weather-skeleton--line short"></div>
-      <div class="pnl-weather-skeleton pnl-weather-skeleton--chips"></div>
     </div>
   </div>
 {% elif weather_state == "success" %}
   <div class="pnl-card pnl-weather-card">
-    <div class="pnl-card-head">
+    <div class="pnl-card-head pnl-weather-head">
       <div>
-        <h2 class="pnl-card-title">Clima da exploração</h2>
-        <p class="pnl-card-hint">Hoje + próximos dias (IPMA).</p>
+        <h2 class="pnl-card-title">Clima</h2>
+        <p class="pnl-card-hint">{{ weather.location_label }}{% if weather.location_context %} · {{ weather.location_context }}{% endif %}</p>
       </div>
-      <div class="pnl-weather-head-badges">
-        <span class="pnl-weather-thermal pnl-weather-thermal--{{ weather.temperature_badge.key|default:'unknown' }}">
-          {{ weather.temperature_badge.label|default:"Sem leitura" }}
-        </span>
-      </div>
+      <span class="pnl-weather-thermal pnl-weather-thermal--{{ weather.temperature_badge.key|default:'unknown' }}">
+        {{ weather.temperature_badge.label|default:"Sem leitura" }}
+      </span>
     </div>
 
     <div class="pnl-weather-body">
-      <div class="pnl-weather-line">
-        <i class="bi bi-geo-alt"></i>
-        <span>{{ weather.location_label }}{% if weather.location_context %} · {{ weather.location_context }}{% endif %}</span>
-      </div>
-
-      <div class="pnl-weather-today">
-        <div class="pnl-weather-today__icon">
+      <div class="pnl-weather-now">
+        <div class="pnl-weather-now__icon">
           <i class="bi {{ weather.weather_icon|default:'bi-cloud-sun' }}"></i>
         </div>
-        <div class="pnl-weather-today__main">
+        <div class="pnl-weather-now__main">
           <div class="pnl-weather-temp">
             <span class="is-min">{{ weather.temperature_min|default:"—" }}°</span>
             <span class="pnl-weather-sep">/</span>
             <span class="is-max">{{ weather.temperature_max|default:"—" }}°</span>
           </div>
-          <p class="pnl-weather-note">
-            {% if weather.weather_type_label %}
-              {{ weather.weather_type_label }}
+          <p class="pnl-weather-note">{{ weather.weather_type_label|default:"Estado do tempo indisponível." }}</p>
+        </div>
+      </div>
+
+      <div class="pnl-weather-mini-grid">
+        <div class="pnl-weather-mini">
+          <span>Tendência</span>
+          <strong>{{ weather.temperature_trend.label|default:"Estável" }}</strong>
+        </div>
+        <div class="pnl-weather-mini">
+          <span>Chuva hoje</span>
+          <strong>
+            {% if weather_today_forecast.precipitation_probability is not None %}
+              {{ weather_today_forecast.precipitation_probability|floatformat:0 }}%
             {% else %}
-              Estado do tempo indisponível no detalhe.
+              —
             {% endif %}
-          </p>
+          </strong>
         </div>
       </div>
 
-      <div class="pnl-weather-signals">
-        <div class="pnl-weather-trend pnl-weather-trend--{{ weather.temperature_trend.key|default:'stable' }}">
-          <i class="bi {% if weather.temperature_trend.key == 'rising' %}bi-graph-up-arrow{% elif weather.temperature_trend.key == 'falling' %}bi-graph-down-arrow{% else %}bi-dash-lg{% endif %}"></i>
-          <span>Tendência: {{ weather.temperature_trend.label|default:"Estável" }}</span>
-        </div>
-        {% if weather_operational_summary %}
-          <div class="pnl-weather-summary pnl-weather-summary--{{ weather_operational_summary.key|default:'neutral' }}">
-            <i class="bi {{ weather_operational_summary.icon|default:'bi-info-circle' }}"></i>
-            <div>
-              <strong>{{ weather_operational_summary.label }}</strong>
-              <span>{{ weather_operational_summary.description }}</span>
-            </div>
+      {% if weather_operational_summary %}
+        <div class="pnl-weather-summary pnl-weather-summary--{{ weather_operational_summary.key|default:'neutral' }}">
+          <i class="bi {{ weather_operational_summary.icon|default:'bi-info-circle' }}"></i>
+          <div>
+            <strong>{{ weather_operational_summary.label }}</strong>
+            <span>{{ weather_operational_summary.description }}</span>
           </div>
-        {% endif %}
-      </div>
-
-      {% if active_delivery_orders_count or presale_starting_soon_count %}
-        <p class="pnl-weather-ops">
-          {% if active_delivery_orders_count %}
-            {{ active_delivery_orders_count }} encomenda(s) em curso
-          {% endif %}
-          {% if active_delivery_orders_count and presale_starting_soon_count %}
-            ·
-          {% endif %}
-          {% if presale_starting_soon_count %}
-            {{ presale_starting_soon_count }} pré-venda(s) a iniciar em breve
-          {% endif %}
-        </p>
+        </div>
       {% endif %}
 
       {% if weather.daily_forecast %}
         <div class="pnl-weather-forecast-grid">
-          {% for day in weather.daily_forecast %}
+          {% for day in weather.daily_forecast|slice:":4" %}
             <div class="pnl-weather-day {% if day.is_today %}is-today{% endif %}">
-              <div class="pnl-weather-day__top">
-                <span class="pnl-weather-day__label">{{ day.day_label }}</span>
-                <span class="pnl-weather-day__date">{{ day.date_label }}</span>
-              </div>
-              <div class="pnl-weather-day__icon">
-                <i class="bi {{ day.weather_icon|default:'bi-cloud-sun' }}"></i>
-              </div>
-              <div class="pnl-weather-day__temps">
-                <span>{{ day.temperature_min|default:"—" }}°</span>
-                <span class="sep">/</span>
-                <span>{{ day.temperature_max|default:"—" }}°</span>
-              </div>
+              <span class="pnl-weather-day__label">{{ day.day_label }}</span>
+              <i class="bi {{ day.weather_icon|default:'bi-cloud-sun' }}"></i>
+              <span class="pnl-weather-day__temps">{{ day.temperature_min|default:"—" }}°/{{ day.temperature_max|default:"—" }}°</span>
               {% if day.precipitation_probability is not None %}
                 <span class="pnl-weather-day__precip">{{ day.precipitation_probability|floatformat:0 }}% chuva</span>
               {% endif %}
             </div>
           {% endfor %}
         </div>
-      {% endif %}
-
-      {% if weather_operational_hints %}
-        <ul class="pnl-weather-hints">
-          {% for hint in weather_operational_hints %}
-            <li>{{ hint }}</li>
-          {% endfor %}
-        </ul>
       {% endif %}
 
       {% if weather_actions %}
@@ -131,33 +97,29 @@
           {% endfor %}
         </div>
       {% endif %}
-
-      <p class="pnl-weather-meta">
-        Previsão base para {{ weather.forecast_date|default:"hoje" }}.
-      </p>
     </div>
   </div>
 {% else %}
   <div class="pnl-card pnl-weather-card pnl-weather-card--degraded">
-    <div class="pnl-card-head">
+    <div class="pnl-card-head pnl-weather-head">
       <div>
-        <h2 class="pnl-card-title">Clima da exploração</h2>
-        <p class="pnl-card-hint">Fonte IPMA (previsão diária).</p>
+        <h2 class="pnl-card-title">Clima</h2>
+        <p class="pnl-card-hint">Previsão IPMA.</p>
       </div>
       <span class="pnl-weather-badge-offline">Indisponível</span>
     </div>
     <div class="pnl-weather-body">
-      <div class="pnl-weather-line">
-        <i class="bi bi-geo-alt"></i>
+      <div class="pnl-weather-empty">
+        <i class="bi bi-cloud-slash"></i>
+        <p>{{ weather.message }}</p>
         <span>
           {% if weather.location_context %}
             {{ weather.location_context }}
           {% else %}
-            Localização não definida no perfil.
+            Defina cidade ou distrito para ativar a previsão.
           {% endif %}
         </span>
       </div>
-      <p class="pnl-weather-note">{{ weather.message }}</p>
       <div class="pnl-weather-actions">
         {% if weather_needs_location %}
           <a href="{% url 'settings_app:settings_index' %}#localizacao"

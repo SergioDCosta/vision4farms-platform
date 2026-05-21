@@ -1,11 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Ativar Conta · Cooperativa{% endblock %}
+{% load static %}
+{% block title %}Ativar Conta · Vision4Farms{% endblock %}
 {% block content %}
 <div class="auth-page">
   <div class="auth-split">
     <div class="auth-panel">
       <div class="auth-panel-inner">
-        <div class="auth-logo"><i class="bi bi-leaf-fill"></i></div>
+        <div class="auth-logo auth-logo--wide">
+          <img src="{% static 'brand/vision4farms-logo-white.svg' %}" alt="Vision4Farms">
+        </div>
         <h2 class="auth-panel-title">Bem-vindo à cooperativa</h2>
         <p class="auth-panel-sub">Foi convidado a fazer parte da plataforma. Complete o seu registo para ativar o acesso.</p>
         <div class="auth-panel-features">
@@ -18,6 +21,7 @@
     <div class="auth-form-side">
       <div class="auth-form-wrap" style="max-width:460px">
         <div class="auth-form-header">
+          <img class="auth-form-logo" src="{% static 'brand/vision4farms-logo-color.svg' %}" alt="Vision4Farms">
           <h1 class="auth-form-title">Completar conta</h1>
           <p class="auth-form-sub">Defina os seus dados para ativar o acesso à plataforma.</p>
         </div>

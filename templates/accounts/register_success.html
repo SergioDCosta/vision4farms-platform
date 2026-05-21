@@ -1,11 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Confirmar Email · Cooperativa{% endblock %}
+{% load static %}
+{% block title %}Confirmar Email · Vision4Farms{% endblock %}
 {% block content %}
 <div class="auth-page">
   <div class="auth-split">
     <div class="auth-panel">
       <div class="auth-panel-inner">
-        <div class="auth-logo"><i class="bi bi-leaf-fill"></i></div>
+        <div class="auth-logo auth-logo--wide">
+          <img src="{% static 'brand/vision4farms-logo-white.svg' %}" alt="Vision4Farms">
+        </div>
         <h2 class="auth-panel-title">Quase lá!</h2>
         <p class="auth-panel-sub">O seu registo foi recebido. A conta fica protegida até ser confirmada.</p>
         <div class="auth-panel-features">
@@ -22,6 +25,9 @@
     </div>
     <div class="auth-form-side">
       <div class="auth-form-wrap">
+        <div class="auth-form-header auth-form-header--center">
+          <img class="auth-form-logo" src="{% static 'brand/vision4farms-logo-color.svg' %}" alt="Vision4Farms">
+        </div>
         <div class="af-success-icon">
           <i class="bi {% if email_delivery_failed %}bi-exclamation-triangle-fill{% else %}bi-envelope-check-fill{% endif %}"></i>
         </div>

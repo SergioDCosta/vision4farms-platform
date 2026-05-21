@@ -224,23 +224,34 @@
         {% endif %}
       </div>
 
-      {% if recent_activity %}
       <div class="pnl-card">
-        <div class="pnl-card-head"><h2 class="pnl-card-title">Última atividade</h2></div>
-        <div class="pnl-timeline">
-          {% for log in recent_activity %}
-            <div class="pnl-tl">
-              <div class="pnl-tl-dot"></div>
-              <div class="pnl-tl-body">
-                <span class="pnl-tl-action">{{ log.action }}</span>
-                <span class="pnl-tl-note">{{ log.notes|default:"Atividade registada." }}</span>
-                <span class="pnl-tl-ts">{{ log.created_at|date:"d/m/Y · H:i" }}</span>
-              </div>
-            </div>
-          {% endfor %}
+        <div class="pnl-card-head">
+          <div>
+            <h2 class="pnl-card-title">Hoje na exploração</h2>
+            <p class="pnl-card-hint">{{ today_operations.summary }}</p>
+          </div>
         </div>
+        {% if today_operations.has_items %}
+          <div class="pnl-ops-list">
+            {% for item in today_operations.items %}
+              <a href="{{ item.url }}" class="pnl-op pnl-op--{{ item.tone }}">
+                <div class="pnl-op-ico"><i class="bi {{ item.icon }}"></i></div>
+                <div class="pnl-op-body">
+                  <span class="pnl-op-label">{{ item.label }}</span>
+                  <span class="pnl-op-desc">{{ item.description }}</span>
+                </div>
+                <strong class="pnl-op-value">{{ item.value }}</strong>
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="pnl-ops-empty">
+            <i class="bi bi-check2-circle"></i>
+            <strong>Sem tarefas urgentes hoje</strong>
+            <span>Continue a acompanhar stocks, encomendas e necessidades ao longo do dia.</span>
+          </div>
+        {% endif %}
       </div>
-      {% endif %}
 
     </div>
   </div>
@@ -373,18 +384,8 @@
 .pnl-empty { text-align:center; padding:1.75rem 1rem; }
 
 /* ── weather card ─────────────────────────────────────────────────────── */
-.pnl-weather-card .pnl-card-head {
-  align-items: center;
-}
-
-.pnl-weather-head-badges {
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
+.pnl-weather-card .pnl-card-head,
+.pnl-weather-head { align-items: center; }
 .pnl-weather-badge-offline {
   display: inline-flex;
   align-items: center;
@@ -395,9 +396,7 @@
   font-size: .7rem;
   font-weight: 700;
 }
-
 .pnl-weather-badge-offline { color: #92400e; background: #fef3c7; }
-
 .pnl-weather-thermal {
   display: inline-flex;
   align-items: center;
@@ -408,59 +407,26 @@
   font-size: .7rem;
   font-weight: 700;
 }
-
-.pnl-weather-thermal--cold {
-  color: #0c4a6e;
-  background: #e0f2fe;
-}
-
-.pnl-weather-thermal--mild {
-  color: #166534;
-  background: #dcfce7;
-}
-
-.pnl-weather-thermal--hot {
-  color: #9a3412;
-  background: #ffedd5;
-}
-
-.pnl-weather-thermal--unknown {
-  color: #334155;
-  background: #e2e8f0;
-}
-
+.pnl-weather-thermal--cold { color: #0c4a6e; background: #e0f2fe; }
+.pnl-weather-thermal--mild { color: #166534; background: #dcfce7; }
+.pnl-weather-thermal--hot { color: #9a3412; background: #ffedd5; }
+.pnl-weather-thermal--unknown { color: #334155; background: #e2e8f0; }
 .pnl-weather-body {
-  padding: 1rem 1.4rem 1.2rem;
+  padding: 1rem 1.25rem 1.15rem;
   display: flex;
   flex-direction: column;
-  gap: .55rem;
+  gap: .75rem;
 }
-
-.pnl-weather-line {
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-  font-size: .82rem;
-  color: #475569;
-  min-width: 0;
-}
-
-.pnl-weather-line span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.pnl-weather-today {
+.pnl-weather-now {
   display: flex;
   align-items: center;
-  gap: .75rem;
-  padding: .25rem 0 .1rem;
+  gap: .85rem;
+  min-width: 0;
 }
-
-.pnl-weather-today__icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 10px;
+.pnl-weather-now__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   background: #eef6ff;
   color: #0369a1;
   display: inline-flex;
@@ -469,95 +435,78 @@
   font-size: 1.25rem;
   flex-shrink: 0;
 }
-
-.pnl-weather-today__main {
+.pnl-weather-now__main {
   display: flex;
   flex-direction: column;
-  gap: .15rem;
+  gap: .2rem;
+  min-width: 0;
 }
-
 .pnl-weather-temp {
   display: inline-flex;
   align-items: baseline;
   gap: .35rem;
   line-height: 1;
-  margin-top: .25rem;
 }
-
 .pnl-weather-temp .is-min,
 .pnl-weather-temp .is-max {
   font-family: 'DM Mono', monospace;
   font-weight: 800;
-  font-size: 2rem;
+  font-size: 1.9rem;
   letter-spacing: 0;
 }
-
-.pnl-weather-temp .is-min {
-  color: #0ea5e9;
-}
-
-.pnl-weather-temp .is-max {
-  color: #ef4444;
-}
-
+.pnl-weather-temp .is-min { color: #0ea5e9; }
+.pnl-weather-temp .is-max { color: #ef4444; }
 .pnl-weather-sep {
   color: #94a3b8;
   font-size: 1.2rem;
   transform: translateY(-1px);
 }
-
 .pnl-weather-note {
   margin: 0;
   font-size: .82rem;
   color: #334155;
+  overflow-wrap: anywhere;
 }
-
-.pnl-weather-signals {
-  display: flex;
-  flex-direction: column;
+.pnl-weather-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: .5rem;
 }
-
-.pnl-weather-trend {
-  display: inline-flex;
-  align-items: center;
-  gap: .4rem;
-  font-size: .78rem;
+.pnl-weather-mini {
+  border: 1px solid #e2e8f0;
+  border-radius: .7rem;
+  padding: .55rem .65rem;
+  background: #f8fafc;
+}
+.pnl-weather-mini span,
+.pnl-weather-mini strong {
+  display: block;
+}
+.pnl-weather-mini span {
+  color: #64748b;
+  font-size: .7rem;
   font-weight: 700;
-  border-radius: .65rem;
-  padding: .35rem .6rem;
-  width: fit-content;
+  text-transform: uppercase;
 }
-
-.pnl-weather-trend--rising {
-  color: #9a3412;
-  background: #ffedd5;
+.pnl-weather-mini strong {
+  margin-top: .12rem;
+  color: #0f172a;
+  font-size: .9rem;
+  overflow-wrap: anywhere;
 }
-
-.pnl-weather-trend--falling {
-  color: #0c4a6e;
-  background: #e0f2fe;
-}
-
-.pnl-weather-trend--stable {
-  color: #334155;
-  background: #e2e8f0;
-}
-
 .pnl-weather-summary {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
-  gap: .6rem;
+  gap: .55rem;
   border: 1px solid #e2e8f0;
   border-radius: .75rem;
   padding: .6rem .7rem;
   background: #f8fafc;
 }
-
 .pnl-weather-summary > i {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 9px;
   display: inline-flex;
   align-items: center;
@@ -565,136 +514,67 @@
   background: #fff;
   color: #475569;
 }
-
 .pnl-weather-summary strong,
 .pnl-weather-summary span {
   display: block;
   min-width: 0;
 }
-
 .pnl-weather-summary strong {
   color: #0f172a;
   font-size: .8rem;
   line-height: 1.25;
 }
-
 .pnl-weather-summary span {
   color: #475569;
   font-size: .74rem;
   line-height: 1.35;
 }
-
-.pnl-weather-summary--risk {
-  border-color: #fecaca;
-  background: #fff7ed;
-}
-
+.pnl-weather-summary--risk { border-color: #fecaca; background: #fff7ed; }
 .pnl-weather-summary--risk > i { color: #b91c1c; }
-
-.pnl-weather-summary--watch {
-  border-color: #bae6fd;
-  background: #f0f9ff;
-}
-
+.pnl-weather-summary--watch { border-color: #bae6fd; background: #f0f9ff; }
 .pnl-weather-summary--watch > i { color: #0369a1; }
-
-.pnl-weather-summary--good {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-}
-
+.pnl-weather-summary--good { border-color: #bbf7d0; background: #f0fdf4; }
 .pnl-weather-summary--good > i { color: #15803d; }
-
 .pnl-weather-summary--neutral > i { color: #475569; }
-
-.pnl-weather-ops {
-  margin: 0;
-  font-size: .78rem;
-  color: #475569;
-  font-weight: 700;
-}
-
 .pnl-weather-forecast-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: .5rem;
 }
-
 .pnl-weather-day {
   border: 1px solid #e2e8f0;
-  border-radius: .6rem;
-  padding: .5rem .55rem;
+  border-radius: .7rem;
+  padding: .55rem;
   background: #fff;
   display: flex;
   flex-direction: column;
-  gap: .25rem;
+  align-items: flex-start;
+  gap: .22rem;
   min-width: 0;
 }
-
-.pnl-weather-day.is-today {
-  border-color: #bfdbfe;
-  background: #f8fbff;
-}
-
-.pnl-weather-day__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .25rem;
-}
-
+.pnl-weather-day.is-today { border-color: #bfdbfe; background: #f8fbff; }
 .pnl-weather-day__label {
   font-size: .74rem;
   font-weight: 800;
   color: #0f172a;
   overflow-wrap: anywhere;
 }
-
-.pnl-weather-day__date {
-  font-size: .7rem;
-  color: #64748b;
-}
-
-.pnl-weather-day__icon {
-  color: #334155;
-  font-size: .95rem;
-}
-
+.pnl-weather-day > i { color: #334155; font-size: .95rem; }
 .pnl-weather-day__temps {
-  font-size: .77rem;
+  font-size: .76rem;
   font-weight: 700;
   color: #0f172a;
-  display: inline-flex;
-  align-items: center;
-  gap: .2rem;
 }
-
-.pnl-weather-day__temps .sep {
-  color: #94a3b8;
-}
-
 .pnl-weather-day__precip {
   font-size: .68rem;
   color: #0369a1;
   font-weight: 700;
 }
-
-.pnl-weather-hints {
-  margin: 0;
-  padding-left: 1.05rem;
-  display: flex;
-  flex-direction: column;
-  gap: .35rem;
-  color: #334155;
-  font-size: .78rem;
-}
-
 .pnl-weather-actions {
   display: flex;
   flex-wrap: wrap;
   gap: .5rem;
 }
-
 .pnl-weather-action {
   display: inline-flex;
   align-items: center;
@@ -707,35 +587,43 @@
   text-decoration: none;
   border: 1px solid #cbd5e1;
 }
-
 .pnl-weather-action--primary {
   background: #16a34a;
   border-color: #16a34a;
   color: #fff;
 }
-
 .pnl-weather-action--ghost {
   background: #fff;
   color: #334155;
 }
-
 .pnl-weather-action:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
 }
-
-.pnl-weather-meta {
-  margin: 0;
-  font-size: .74rem;
-  color: #94a3b8;
-  font-family: 'DM Mono', monospace;
+.pnl-weather-empty {
+  display: grid;
+  gap: .35rem;
+  text-align: left;
+  color: #475569;
 }
-
+.pnl-weather-empty i {
+  color: #94a3b8;
+  font-size: 1.35rem;
+}
+.pnl-weather-empty p {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.pnl-weather-empty span {
+  font-size: .8rem;
+  overflow-wrap: anywhere;
+}
 .pnl-weather-retry {
   margin-top: .2rem;
   width: fit-content;
 }
-
 .pnl-weather-skeleton {
   border-radius: .6rem;
   background: linear-gradient(
@@ -860,14 +748,52 @@
 .pnl-stock-fill  { height:100%; background:linear-gradient(90deg,var(--r),var(--a)); border-radius:99px; min-width:3px; }
 .pnl-stock-min  { font-size:.72rem; color:var(--mt); }
 
-/* ── timeline ─────────────────────────────────────────────────────────── */
-.pnl-timeline { display:flex; flex-direction:column; gap:.9rem; padding:1.1rem 1.4rem; }
-.pnl-tl { display:flex; gap:.8rem; }
-.pnl-tl-dot { width:8px; height:8px; border-radius:50%; background:var(--g); margin-top:.35rem; flex-shrink:0; box-shadow:0 0 0 3px var(--gs); }
-.pnl-tl-body { display:flex; flex-direction:column; gap:.1rem; }
-.pnl-tl-action { font-size:.84rem; font-weight:600; color:var(--tx); }
-.pnl-tl-note   { font-size:.78rem; color:var(--mt); }
-.pnl-tl-ts     { font-size:.7rem; color:#94a3b8; font-family:'DM Mono',monospace; }
+/* ── daily operations ─────────────────────────────────────────────────── */
+.pnl-ops-list { display:flex; flex-direction:column; gap:.65rem; padding:1.05rem 1.25rem 1.25rem; }
+.pnl-op {
+  display:grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items:center;
+  gap:.75rem;
+  border:1px solid var(--br);
+  border-radius:.75rem;
+  padding:.75rem;
+  color:var(--tx);
+  text-decoration:none;
+  transition:background .15s, border-color .15s, transform .15s;
+}
+.pnl-op:hover { background:#f8fafc; border-color:#cbd5e1; transform:translateY(-1px); }
+.pnl-op-ico {
+  width:36px; height:36px; border-radius:10px;
+  display:inline-flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.pnl-op--blue .pnl-op-ico { background:var(--bs); color:var(--b); }
+.pnl-op--green .pnl-op-ico { background:var(--gs); color:var(--g); }
+.pnl-op--amber .pnl-op-ico { background:var(--as); color:var(--a); }
+.pnl-op--red .pnl-op-ico { background:var(--rs); color:var(--r); }
+.pnl-op--slate .pnl-op-ico { background:var(--sls); color:var(--sl); }
+.pnl-op-body { display:flex; flex-direction:column; gap:.1rem; min-width:0; }
+.pnl-op-label { font-size:.84rem; font-weight:800; overflow-wrap:anywhere; }
+.pnl-op-desc { font-size:.74rem; color:var(--mt); overflow-wrap:anywhere; }
+.pnl-op-value {
+  min-width:32px;
+  text-align:right;
+  font-family:'DM Mono', monospace;
+  font-size:1.05rem;
+  color:var(--tx);
+}
+.pnl-ops-empty {
+  padding:1.4rem 1.25rem;
+  display:flex;
+  flex-direction:column;
+  gap:.25rem;
+  align-items:flex-start;
+  color:var(--mt);
+}
+.pnl-ops-empty i { font-size:1.6rem; color:var(--g); }
+.pnl-ops-empty strong { color:var(--tx); font-size:.9rem; }
+.pnl-ops-empty span { font-size:.78rem; line-height:1.45; }
 
 /* ── responsive ───────────────────────────────────────────────────────── */
 /* wide — 5 colunas de KPI se quiser adicionar mais */
@@ -884,7 +810,7 @@
   .pnl-kpis { grid-template-columns:repeat(2,1fr); }
   .pnl-body  { grid-template-columns:1fr; }
   .pnl-side  { display:grid; grid-template-columns:repeat(2,1fr); }
-  .pnl-weather-forecast-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .pnl-weather-forecast-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 /* tablet */
 @media (max-width:640px) {

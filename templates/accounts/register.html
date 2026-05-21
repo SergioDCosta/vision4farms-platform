@@ -1,13 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Criar Conta · Cooperativa{% endblock %}
+{% load static %}
+{% block title %}Criar Conta · Vision4Farms{% endblock %}
 {% block content %}
 <div class="auth-page">
   <div class="auth-split">
     <div class="auth-panel">
       <div class="auth-panel-inner">
-        <div class="auth-logo"><i class="bi bi-leaf-fill"></i></div>
+        <div class="auth-logo auth-logo--wide">
+          <img src="{% static 'brand/vision4farms-logo-white.svg' %}" alt="Vision4Farms">
+        </div>
         <h2 class="auth-panel-title">Junte-se à cooperativa</h2>
-        <p class="auth-panel-sub">Registe-se gratuitamente e comece a gerir a sua exploração e excedentes de forma inteligente.</p>
+        <p class="auth-panel-sub">Registe-se e comece a gerir stock, necessidades, excedentes e encomendas com mais clareza.</p>
         <div class="auth-panel-features">
           <div class="auth-feat"><i class="bi bi-person-check"></i><span>Conta ativa após confirmação de email</span></div>
           <div class="auth-feat"><i class="bi bi-shield-check"></i><span>Os seus dados estão seguros e protegidos</span></div>
@@ -18,6 +21,7 @@
     <div class="auth-form-side">
       <div class="auth-form-wrap" style="max-width:480px">
         <div class="auth-form-header">
+          <img class="auth-form-logo" src="{% static 'brand/vision4farms-logo-color.svg' %}" alt="Vision4Farms">
           <h1 class="auth-form-title">Criar nova conta</h1>
           <p class="auth-form-sub">Preencha os dados abaixo para se registar.</p>
         </div>

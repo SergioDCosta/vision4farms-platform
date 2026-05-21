@@ -132,8 +132,9 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 .sidebar-brand {
   display: flex;
   align-items: center;
-  gap: .75rem;
-  padding: 0 1rem;
+  justify-content: flex-start;
+  gap: .7rem;
+  padding: 0 1.15rem;
   height: var(--topbar-h);
   border-bottom: 1px solid rgba(255,255,255,.07);
   flex-shrink: 0;
@@ -155,6 +156,31 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   display: flex; align-items: center; justify-content: center;
   font-size: 1rem;
   flex-shrink: 0;
+}
+.sidebar-brand-logo {
+  display: block;
+  width: 164px;
+  max-width: calc(var(--sidebar-w) - 2.3rem);
+  height: auto;
+  flex: 0 0 auto;
+  transition: opacity var(--transition), width var(--transition), transform var(--transition);
+}
+.sidebar-brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.14);
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  flex: 0 0 auto;
 }
 .sidebar-brand-text {
   font-size: 1rem; font-weight: 800;
@@ -311,6 +337,9 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 
 /* ── COLLAPSED STATE ────────────────────────────────────────────────────── */
 .shell.sidebar-collapsed .app-sidebar { width: var(--sidebar-w-collapsed); }
+.shell.sidebar-collapsed .sidebar-brand-logo { opacity: 0; width: 0; transform: translateX(-.35rem); }
+.shell.sidebar-collapsed .sidebar-brand { justify-content: center; gap: 0; padding: 0; }
+.shell.sidebar-collapsed .sidebar-brand-mark { display: inline-flex; }
 .shell.sidebar-collapsed .sidebar-brand-text { opacity: 0; width: 0; }
 .shell.sidebar-collapsed .sidebar-collapse-btn { margin-left: 0; }
 .shell.sidebar-collapsed .sidebar-link-text { opacity: 0; width: 0; }
@@ -610,6 +639,9 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 @media (max-width: 1280px) {
   .shell:not(.sidebar-mobile-open) .app-sidebar { width: var(--sidebar-w-collapsed); }
   .shell:not(.sidebar-mobile-open) .shell-main  { margin-left: var(--sidebar-w-collapsed); }
+  .shell:not(.sidebar-mobile-open) .sidebar-brand-logo { opacity: 0; width: 0; transform: translateX(-.35rem); }
+  .shell:not(.sidebar-mobile-open) .sidebar-brand { justify-content: center; gap: 0; padding: 0; }
+  .shell:not(.sidebar-mobile-open) .sidebar-brand-mark { display: inline-flex; }
   .shell:not(.sidebar-mobile-open) .sidebar-brand-text { opacity: 0; width: 0; }
   .shell:not(.sidebar-mobile-open) .sidebar-link-text  { opacity: 0; width: 0; }
   .shell:not(.sidebar-mobile-open) .sidebar-link{
@@ -639,6 +671,13 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
     width: var(--sidebar-w);
   }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover ~ .shell-main { margin-left: var(--sidebar-w); }
+  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-brand-logo {
+    opacity: 1;
+    width: 164px;
+    transform: none;
+  }
+  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-brand { justify-content: flex-start; gap: .7rem; padding: 0 1.15rem; }
+  .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-brand-mark { display: none; }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-brand-text { opacity: 1; width: auto; }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-link-text  { opacity: 1; width: auto; }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-link{
@@ -682,6 +721,9 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   }
   .shell.sidebar-mobile-open .shell-overlay { display: block; }
   /* all links show text on mobile drawer */
+  .shell.sidebar-mobile-open .sidebar-brand { justify-content: flex-start !important; gap: .7rem !important; padding: 0 1.15rem !important; }
+  .shell.sidebar-mobile-open .sidebar-brand-logo { opacity: 1 !important; width: 164px !important; transform: none !important; }
+  .shell.sidebar-mobile-open .sidebar-brand-mark { display: none !important; }
   .shell.sidebar-mobile-open .sidebar-brand-text { opacity: 1 !important; width: auto !important; }
   .shell.sidebar-mobile-open .sidebar-link-text  { opacity: 1 !important; width: auto !important; }
   .shell.sidebar-mobile-open .sidebar-link       { justify-content: flex-start !important; padding: .65rem .75rem !important; }

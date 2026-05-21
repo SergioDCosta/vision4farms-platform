@@ -6,11 +6,11 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.alerts.models import Alert, AlertSeverity, AlertStatus
-from apps.dashboard.models import AuditLog
 from apps.dashboard.services.weather import get_dashboard_weather_snapshot
 from apps.inventory.models import ProducerProfile, Stock
 from apps.inventory.services import producer_has_active_inventory_products
 from apps.marketplace.models import ListingStatus, MarketplaceListing
+from apps.needs.models import Need, NeedStatus
 from apps.orders.models import DeliveryMethod, Order, OrderStatus
 
 
@@ -53,6 +53,11 @@ def build_client_dashboard_context(user):
         available_quantity_calc__lt=models.F("safety_stock"),
     ).order_by("available_quantity_calc")
     critical_stock_count = critical_stock_qs.count()
+    near_stock_qs = stocks_with_state.filter(
+        available_quantity_calc__gte=models.F("safety_stock"),
+        available_quantity_calc__lte=models.F("warning_upper_quantity_calc"),
+    )
+    near_stock_count = near_stock_qs.count()
 
     pending_orders_qs = Order.objects.filter(
         buyer_producer=producer,
@@ -70,6 +75,11 @@ def build_client_dashboard_context(user):
         status=ListingStatus.ACTIVE,
     ).order_by("-created_at")
     surplus_listings_count = active_listings_qs.count()
+
+    active_needs_count = Need.objects.filter(
+        producer=producer,
+        status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED],
+    ).count()
 
     listed_product_ids = active_listings_qs.values_list("product_id", flat=True)
     surplus_stock_candidate = (
@@ -102,7 +112,13 @@ def build_client_dashboard_context(user):
         "priority_alerts": active_alerts_qs.order_by("-created_at")[:3],
         "recommended_actions": recommended_actions,
         "low_stock_preview": critical_stock_qs[:3],
-        "recent_activity": AuditLog.objects.filter(user=user).order_by("-created_at")[:5],
+        "today_operations": _build_today_operations(
+            pending_orders_count=pending_orders_count,
+            critical_stock_count=critical_stock_count,
+            near_stock_count=near_stock_count,
+            surplus_listings_count=surplus_listings_count,
+            active_needs_count=active_needs_count,
+        ),
     }
 
 
@@ -199,10 +215,88 @@ def _build_recommended_actions(
     return actions
 
 
+def _build_today_operations(
+    *,
+    pending_orders_count,
+    critical_stock_count,
+    near_stock_count,
+    surplus_listings_count,
+    active_needs_count,
+):
+    items = []
+
+    if pending_orders_count:
+        items.append(
+            {
+                "tone": "blue",
+                "icon": "bi-truck",
+                "label": "Encomendas em curso",
+                "value": pending_orders_count,
+                "description": "pedidos a acompanhar",
+                "url": "/encomendas/",
+            }
+        )
+
+    if critical_stock_count or near_stock_count:
+        items.append(
+            {
+                "tone": "amber" if not critical_stock_count else "red",
+                "icon": "bi-box-seam",
+                "label": "Stocks a rever",
+                "value": critical_stock_count + near_stock_count,
+                "description": (
+                    f"{critical_stock_count} críticos"
+                    if critical_stock_count
+                    else "perto do stock de segurança"
+                ),
+                "url": "/inventario/produtos/?tab=stock",
+            }
+        )
+
+    if active_needs_count:
+        items.append(
+            {
+                "tone": "green",
+                "icon": "bi-megaphone",
+                "label": "Necessidades abertas",
+                "value": active_needs_count,
+                "description": "pedidos por cobrir",
+                "url": "/necessidades/",
+            }
+        )
+
+    if surplus_listings_count:
+        items.append(
+            {
+                "tone": "slate",
+                "icon": "bi-shop",
+                "label": "Anúncios ativos",
+                "value": surplus_listings_count,
+                "description": "ofertas no marketplace",
+                "url": "/marketplace/?tab=meus",
+            }
+        )
+
+    if items:
+        return {
+            "has_items": True,
+            "items": items[:4],
+            "summary": "Prioridades operacionais para acompanhar agora.",
+        }
+
+    return {
+        "has_items": False,
+        "items": [],
+        "summary": "Sem tarefas urgentes hoje.",
+    }
+
+
 def build_weather_card_context(user):
     producer = ProducerProfile.objects.only("id", "city", "district").get(user_id=user.id)
     weather_needs_location = not bool((producer.city or "").strip() or (producer.district or "").strip())
     weather = get_dashboard_weather_snapshot(city=producer.city, district=producer.district)
+    daily_forecast = weather.get("daily_forecast") or []
+    weather_today_forecast = next((day for day in daily_forecast if day.get("is_today")), None) or {}
 
     active_operations_qs = (
         Order.objects.filter(
@@ -230,6 +324,7 @@ def build_weather_card_context(user):
     return {
         "weather": weather,
         "weather_state": weather.get("state", "degraded"),
+        "weather_today_forecast": weather_today_forecast,
         "active_delivery_orders_count": active_delivery_orders_count,
         "presale_starting_soon_count": presale_starting_soon_count,
         "weather_needs_location": weather_needs_location,
