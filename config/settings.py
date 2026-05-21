@@ -126,9 +126,18 @@ CSRF_TRUSTED_ORIGINS = _split_csv_env(CSRF_TRUSTED_ORIGINS)
 
 APP_BASE_URL = config("APP_BASE_URL", default="").strip().rstrip("/")
 
-BRAND_LOGO_COLOR_URL = config("BRAND_LOGO_COLOR_URL", default="").strip()
-BRAND_LOGO_WHITE_URL = config("BRAND_LOGO_WHITE_URL", default="").strip()
-BRAND_FAVICON_URL = config("BRAND_FAVICON_URL", default="").strip()
+BRAND_LOGO_COLOR_URL = config(
+    "BRAND_LOGO_COLOR_URL",
+    default="https://res.cloudinary.com/db5vjz2ei/image/upload/v1779333002/brand/vision4farms-logo-color.svg",
+).strip()
+BRAND_LOGO_WHITE_URL = config(
+    "BRAND_LOGO_WHITE_URL",
+    default="https://res.cloudinary.com/db5vjz2ei/image/upload/v1779333004/brand/vision4farms-logo-white.svg",
+).strip()
+BRAND_FAVICON_URL = config(
+    "BRAND_FAVICON_URL",
+    default="https://res.cloudinary.com/db5vjz2ei/image/upload/v1779333005/brand/vision4farms-favicon.svg",
+).strip()
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
