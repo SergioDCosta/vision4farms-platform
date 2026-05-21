@@ -118,15 +118,17 @@ class MarketplaceDetailRoutingTests(SimpleTestCase):
 
 class MarketplaceListingVisibilityTests(SimpleTestCase):
     @patch("apps.marketplace.services.get_base_listing_queryset")
-    def test_public_marketplace_keeps_own_active_listings(self, base_queryset_mock):
+    def test_public_marketplace_excludes_own_active_listings(self, base_queryset_mock):
         qs = MagicMock()
         qs.filter.return_value = qs
+        qs.exclude.return_value = qs
         base_queryset_mock.return_value = qs
+        producer = SimpleNamespace(id="producer-1")
 
-        result = get_public_listings(producer=SimpleNamespace(id="producer-1"))
+        result = get_public_listings(producer=producer)
 
         self.assertIs(result, qs)
-        qs.exclude.assert_not_called()
+        qs.exclude.assert_called_once_with(producer=producer)
 
     @patch("apps.marketplace.services.get_base_listing_queryset")
     def test_my_marketplace_listings_exclude_need_responses(self, base_queryset_mock):

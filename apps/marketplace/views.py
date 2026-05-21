@@ -103,13 +103,10 @@ def _producer_profile_photo_url(user):
     return _listing_photo_url(preference.profile_photo)
 
 
-def _attach_listing_photo_urls(listings, *, owner_producer=None):
+def _attach_listing_photo_urls(listings):
     attached = []
     for listing in listings:
         listing.photo_url = _listing_photo_url(getattr(listing, "photo_path", None))
-        listing.is_owner_listing = bool(
-            owner_producer and getattr(listing, "producer_id", None) == owner_producer.id
-        )
         listing.can_edit_listing = is_listing_editable_in_marketplace(listing)
         listing.can_toggle_listing = is_listing_toggleable_in_marketplace(listing)
         listing.can_retire_listing = is_listing_retirable_in_marketplace(listing)
@@ -381,8 +378,8 @@ def _build_marketplace_index_context(
         if selected_listing and selected_listing.product and selected_listing.product.category:
             available_categories.append(selected_listing.product.category)
 
-    public_listings = _attach_listing_photo_urls(public_listings, owner_producer=producer)
-    my_listings = _attach_listing_photo_urls(my_listings, owner_producer=producer)
+    public_listings = _attach_listing_photo_urls(public_listings)
+    my_listings = _attach_listing_photo_urls(my_listings)
 
     return {
         "page_title": "Marketplace",
@@ -391,6 +388,8 @@ def _build_marketplace_index_context(
         "selected_category_id": category_id,
         "listings": public_listings,
         "my_listings": my_listings,
+        "public_listings_count": len(public_listings),
+        "my_listings_count": len(my_listings),
         "selected_need_id": selected_need_id,
         "selected_need_row": None,
         "need_prefill_product_id": need_prefill_product_id,

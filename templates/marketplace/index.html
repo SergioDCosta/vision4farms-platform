@@ -4,9 +4,18 @@
 
 <div class="mk-page">
   <header class="mk-header">
-    <div>
+    <div class="mk-header__copy">
+      <span>Marketplace da cooperativa</span>
       <h1>Marketplace</h1>
-      <p>Compre e venda produtos entre produtores da cooperativa.</p>
+      <p>Encontre produtos disponíveis de outros produtores e acompanhe os seus anúncios numa área separada.</p>
+      <div class="mk-header__stats">
+        <strong>{{ public_listings_count }}</strong>
+        <small>disponíveis de outros produtores</small>
+        {% if can_publish %}
+          <strong>{{ my_listings_count }}</strong>
+          <small>anúncios próprios</small>
+        {% endif %}
+      </div>
     </div>
 
     {% if can_publish %}
@@ -24,26 +33,68 @@
   </header>
 
   <div class="mk-tabs">
-    <a href="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
-       hx-get="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="mk-tab {% if active_tab == 'todos' %}is-active{% endif %}">
-      Todos os Anúncios
-    </a>
-    {% if can_publish %}
-      <a href="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
-         hx-get="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+    <nav class="mk-tab-list" aria-label="Secções do marketplace">
+      <a href="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+         hx-get="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
          hx-target="#shellMain"
          hx-select="#shellMain"
          hx-swap="outerHTML"
          hx-push-url="true"
-         class="mk-tab {% if active_tab == 'meus' %}is-active{% endif %}">
-        Meus Anúncios
+         class="mk-tab {% if active_tab == 'todos' %}is-active{% endif %}">
+        Anúncios disponíveis
+        <span>{{ public_listings_count }}</span>
       </a>
-    {% endif %}
+      {% if can_publish %}
+        <a href="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+           hx-get="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="mk-tab {% if active_tab == 'meus' %}is-active{% endif %}">
+          Meus Anúncios
+          <span>{{ my_listings_count }}</span>
+        </a>
+      {% endif %}
+    </nav>
+
+    <form method="get"
+          class="mk-filters"
+          hx-get="{% url 'marketplace:index' %}"
+          hx-trigger="keyup changed delay:350ms from:input[name='q'], change from:select[name='category'], submit"
+          hx-target="#shellMain"
+          hx-select="#shellMain"
+          hx-swap="outerHTML"
+          hx-push-url="true">
+      <input type="hidden" name="tab" value="{{ active_tab }}">
+      {% if selected_need_id %}
+        <input type="hidden" name="need" value="{{ selected_need_id }}">
+      {% endif %}
+      {% if show_need_form %}
+        <input type="hidden" name="show_need_form" value="1">
+      {% endif %}
+
+      <div class="mk-search">
+        <i class="bi bi-search"></i>
+        <input
+          type="text"
+          name="q"
+          value="{{ q }}"
+          placeholder="Pesquisar produto ou produtor..."
+        >
+      </div>
+
+      <div class="mk-filter-group">
+        <select name="category">
+          <option value="">Todas as categorias</option>
+          {% for category in available_categories %}
+            <option value="{{ category.id }}" {% if selected_category_id == category.id|stringformat:"s" %}selected{% endif %}>
+              {{ category.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
   </div>
 
   <section class="mk-help" id="mk-help">
@@ -68,44 +119,6 @@
     </a>
   </section>
 
-  <form method="get"
-        class="mk-filters"
-        hx-get="{% url 'marketplace:index' %}"
-        hx-trigger="keyup changed delay:350ms from:input[name='q'], change from:select[name='category'], submit"
-        hx-target="#mk-listings-region"
-        hx-select="#mk-listings-region"
-        hx-swap="outerHTML"
-        hx-push-url="true">
-    <input type="hidden" name="tab" value="{{ active_tab }}">
-    {% if selected_need_id %}
-      <input type="hidden" name="need" value="{{ selected_need_id }}">
-    {% endif %}
-    {% if show_need_form %}
-      <input type="hidden" name="show_need_form" value="1">
-    {% endif %}
-
-    <div class="mk-search">
-      <i class="bi bi-search"></i>
-      <input
-        type="text"
-        name="q"
-        value="{{ q }}"
-        placeholder="Pesquisar produto ou produtor..."
-      >
-    </div>
-
-    <div class="mk-filter-group">
-      <select name="category">
-        <option value="">Todas as categorias</option>
-        {% for category in available_categories %}
-          <option value="{{ category.id }}" {% if selected_category_id == category.id|stringformat:"s" %}selected{% endif %}>
-            {{ category.name }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-  </form>
-
   <div id="mk-listings-region">
     <section class="mk-grid">
       {% if active_tab == "meus" %}
@@ -126,9 +139,6 @@
               <div class="mk-card__badges">
                 <span class="mk-badge {% if item.status == 'CANCELLED' %}mk-badge--muted{% elif item.status == 'EXPIRED' %}mk-badge--warn{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'CLOSED' %}mk-badge--closed{% endif %}">{{ item.get_status_display }}</span>
                 <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
-                {% if item.need_id %}
-                  <span class="mk-badge mk-badge--private">Resposta privada</span>
-                {% endif %}
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
@@ -231,7 +241,7 @@
       {% endfor %}
       {% else %}
       {% for item in listings %}
-        <article class="mk-card {% if item.is_owner_listing %}mk-card--owner{% endif %}">
+        <article class="mk-card">
           <div class="mk-card__media">
             {% if item.photo_url %}
               <img src="{{ item.photo_url }}" alt="{{ item.product.name }}">
@@ -245,21 +255,14 @@
           <div class="mk-card__body">
             <div class="mk-card__top">
               <div class="mk-card__badges">
-                <span class="mk-badge">{{ item.get_status_display }}</span>
                 <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">{{ item.source_label|default:'Disponível agora' }}</span>
-                {% if item.is_owner_listing %}
-                  <span class="mk-badge mk-badge--owner">Meu anúncio</span>
-                {% endif %}
               </div>
               <span class="mk-price">{{ item.unit_price|floatformat:2 }} €/{{ item.product.unit }}</span>
             </div>
 
             <h3>{{ item.product.name }}</h3>
             <p class="mk-producer">
-              {% if item.is_owner_listing %}
-                Publicado por si
-              {% else %}
-                Produtor:
+              Produtor:
               {% if item.producer.display_name %}
                 {{ item.producer.display_name }}
               {% elif item.producer.company_name %}
@@ -270,7 +273,6 @@
                 {{ item.producer.user.email }}
               {% else %}
                 Produtor
-              {% endif %}
               {% endif %}
             </p>
 
@@ -284,57 +286,25 @@
           </div>
 
           <div class="mk-card__footer mk-card__footer--inline">
-            {% if item.is_owner_listing %}
-              <a href="{% url 'marketplace:owner_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
-                 hx-get="{% url 'marketplace:owner_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
-                 hx-target="#shellMain"
-                 hx-select="#shellMain"
-                 hx-swap="outerHTML"
-                 hx-push-url="true"
-                 class="mk-btn-card-outline">
-                Ver detalhes
-              </a>
-            {% else %}
-              <a href="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
-                 hx-get="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
-                 hx-target="#shellMain"
-                 hx-select="#shellMain"
-                 hx-swap="outerHTML"
-                 hx-push-url="true"
-                 class="mk-btn-card-outline">
-                Ver detalhes
-              </a>
-            {% endif %}
-            {% if item.is_owner_listing %}
-              {% if item.can_edit_listing %}
-                <a href="{% url 'marketplace:edit' item.id %}"
-                   hx-get="{% url 'marketplace:edit' item.id %}"
-                   hx-target="#shellMain"
-                   hx-select="#shellMain"
-                   hx-swap="outerHTML"
-                   hx-push-url="true"
-                   class="mk-btn-card-muted">
-                  <i class="bi bi-pencil"></i>
-                  Editar anúncio
-                </a>
-              {% else %}
-                <span class="mk-btn-card-muted is-disabled">
-                  <i class="bi bi-lock"></i>
-                  Edição bloqueada
-                </span>
-              {% endif %}
-            {% else %}
-              <a href="{% url 'messaging:start_listing_contact' item.id %}"
-                 hx-get="{% url 'messaging:start_listing_contact' item.id %}"
-                 hx-target="#shellMain"
-                 hx-select="#shellMain"
-                 hx-swap="outerHTML"
-                 hx-push-url="true"
-                 class="mk-btn-card-soft">
-                <i class="bi bi-chat-dots"></i>
-                Contactar Produtor
-              </a>
-            {% endif %}
+            <a href="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+               hx-get="{% url 'marketplace:public_detail' item.id %}{% if selected_need_id %}?need={{ selected_need_id }}{% endif %}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="mk-btn-card-outline">
+              Ver detalhes
+            </a>
+            <a href="{% url 'messaging:start_listing_contact' item.id %}"
+               hx-get="{% url 'messaging:start_listing_contact' item.id %}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="mk-btn-card-soft">
+              <i class="bi bi-chat-dots"></i>
+              Contactar Produtor
+            </a>
           </div>
         </article>
       {% empty %}
@@ -402,6 +372,24 @@
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:1rem;
+  padding:1.15rem;
+  box-shadow:0 1px 3px rgba(15, 23, 42, 0.05), 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.mk-header__copy {
+  min-width:0;
+}
+
+.mk-header__copy > span {
+  display:block;
+  color:#16a34a;
+  font-size:.72rem;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.03em;
 }
 
 .mk-header h1 {
@@ -416,6 +404,32 @@
   margin: 0.35rem 0 0;
   color: #64748b;
   font-size: 0.92rem;
+}
+
+.mk-header__stats {
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+  flex-wrap:wrap;
+  margin-top:.8rem;
+}
+
+.mk-header__stats strong {
+  min-width:2rem;
+  min-height:2rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:.65rem;
+  background:#f0fdf4;
+  color:#15803d;
+  font-size:.95rem;
+}
+
+.mk-header__stats small {
+  margin-right:.5rem;
+  color:#64748b;
+  font-weight:700;
 }
 
 .mk-btn-primary,
@@ -458,24 +472,57 @@
 
 .mk-tabs {
   display: flex;
-  gap: 0.25rem;
-  border-bottom: 1px solid #e2e8f0;
-  overflow: auto;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap: 0.5rem;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:1rem;
+  padding:.45rem;
+}
+
+.mk-tab-list {
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+  overflow:auto;
+  flex:0 0 auto;
 }
 
 .mk-tab {
   text-decoration: none;
-  padding: 0.9rem 1.1rem;
-  border-bottom: 2px solid transparent;
+  padding: 0.72rem 0.95rem;
+  border-radius:.75rem;
   color: #64748b;
   font-size: 0.9rem;
   font-weight: 700;
   white-space: nowrap;
+  display:inline-flex;
+  align-items:center;
+  gap:.45rem;
 }
 
 .mk-tab.is-active {
   color: #16a34a;
-  border-bottom-color: #16a34a;
+  background:#f0fdf4;
+}
+
+.mk-tab span {
+  min-width:1.35rem;
+  min-height:1.35rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:#e2e8f0;
+  color:#475569;
+  font-size:.75rem;
+}
+
+.mk-tab.is-active span {
+  background:#16a34a;
+  color:#fff;
 }
 
 .mk-help {
@@ -549,19 +596,17 @@
 .mk-filters {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: .55rem;
   flex-wrap: wrap;
-  padding: 1rem;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.04);
+  flex:1 1 30rem;
+  justify-content:flex-end;
+  margin:0;
 }
 
 .mk-search {
   position: relative;
-  flex: 1;
-  min-width: 260px;
+  flex: 1 1 18rem;
+  min-width: 14rem;
 }
 
 .mk-search i {
@@ -601,7 +646,7 @@
 }
 
 .mk-filter-group select {
-  min-width: 220px;
+  min-width: 13rem;
 }
 
 .mk-filter-actions {
@@ -617,7 +662,7 @@
 
 .mk-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
   gap: 1rem;
 }
 
@@ -631,11 +676,6 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-.mk-card--owner {
-  border-color: #86efac;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 8px 18px rgba(22, 163, 74, 0.08);
 }
 
 .mk-card__media {
@@ -725,16 +765,6 @@
 .mk-badge--forecast {
   background: #e0e7ff;
   color: #3730a3;
-}
-
-.mk-badge--private {
-  background: #f3e8ff;
-  color: #6b21a8;
-}
-
-.mk-badge--owner {
-  background: #dcfce7;
-  color: #15803d;
 }
 
 .mk-price {
@@ -895,28 +925,14 @@
 
 /* -------------------------------------------------------------------------- */
 
-@media (max-width: 1650px) {
-  .mk-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1320px) {
-  .mk-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 980px) {
-  .mk-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-}
-
 @media (max-width: 640px) {
   .mk-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mk-header,
+  .mk-help {
+    border-radius:.75rem;
   }
 
   .mk-card__footer--inline {
@@ -925,6 +941,20 @@
 }
 
 @media (max-width: 780px) {
+  .mk-tabs {
+    align-items:stretch;
+  }
+
+  .mk-tab-list,
+  .mk-filters,
+  .mk-search {
+    width:100%;
+  }
+
+  .mk-tab-list {
+    flex:1 1 auto;
+  }
+
   .mk-filter-group {
     width: 100%;
   }

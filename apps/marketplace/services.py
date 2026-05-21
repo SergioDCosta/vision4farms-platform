@@ -226,6 +226,8 @@ def get_public_listings(*, producer=None, q="", category_id=""):
         need_id__isnull=True,
         product__is_active=True,
     )
+    if producer:
+        qs = qs.exclude(producer=producer)
 
     if q:
         q = q.strip()
