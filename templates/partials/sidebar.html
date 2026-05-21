@@ -1,4 +1,3 @@
-{% load static %}
 <aside class="app-sidebar" id="appSidebar">
 
   {% if request.session.user_role == "ADMIN" %}
@@ -18,7 +17,7 @@
        hx-push-url="true"
        class="sidebar-brand">
   {% endif %}
-      <img class="sidebar-brand-logo" src="{% static 'brand/vision4farms-logo-white.svg' %}" alt="Vision4Farms">
+      <span class="sidebar-brand-logo sidebar-brand-wordmark">Vision4Farms</span>
       <span class="sidebar-brand-mark" aria-hidden="true">V4F</span>
     </a>
 

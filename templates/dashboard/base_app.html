@@ -158,12 +158,38 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   flex-shrink: 0;
 }
 .sidebar-brand-logo {
-  display: block;
+  display: inline-flex;
+  align-items: center;
   width: 164px;
   max-width: calc(var(--sidebar-w) - 2.3rem);
-  height: auto;
+  height: 36px;
   flex: 0 0 auto;
   transition: opacity var(--transition), width var(--transition), transform var(--transition);
+}
+.sidebar-brand-wordmark {
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -.035em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.sidebar-brand-wordmark::before {
+  content: "V4F";
+  width: 34px;
+  height: 34px;
+  margin-right: .6rem;
+  border-radius: 10px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.14);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
 }
 .sidebar-brand-mark {
   width: 36px;
