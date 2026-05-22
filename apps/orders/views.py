@@ -1,13 +1,14 @@
-from decimal import Decimal, InvalidOperation
 from django.http import Http404
 from django.contrib import messages
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 
 from apps.common.decorators import client_only_required
+from apps.common.redirects import get_safe_next_url
 from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import get_need_for_producer
 from apps.marketplace.models import MarketplaceListing, ListingStatus
+from apps.orders.forms import OrderCreateForm, SellerStatusUpdateForm
 from apps.orders.models import OrderStatus, OrderItemStatus
 from apps.orders.models import OrderItem
 from apps.orders.services import (
@@ -282,9 +283,19 @@ def create_order_from_listing_view(request, listing_id):
         status=ListingStatus.ACTIVE,
     )
 
-    quantity_raw = (request.POST.get("quantity") or request.POST.get("qty") or "").strip()
-    buyer_notes = (request.POST.get("buyer_notes") or "").strip()
-    need_id = (request.POST.get("need_id") or "").strip()
+    form_data = request.POST.copy()
+    if not (form_data.get("quantity") or "").strip() and (form_data.get("qty") or "").strip():
+        form_data["quantity"] = form_data.get("qty")
+
+    form = OrderCreateForm(form_data)
+    if not form.is_valid():
+        first_error = next(iter(form.errors.values()))[0]
+        messages.error(request, first_error)
+        return redirect("marketplace:detail", listing_id=listing.id)
+
+    quantity = form.cleaned_data["quantity"]
+    buyer_notes = form.cleaned_data["buyer_notes"].strip()
+    need_id = form.cleaned_data["need_id"].strip()
 
     need = None
     if listing.need_id:
@@ -312,12 +323,6 @@ def create_order_from_listing_view(request, listing_id):
         if need.product_id != listing.product_id:
             messages.error(request, "A necessidade selecionada não corresponde ao produto deste anúncio.")
             return redirect("marketplace:detail", listing_id=listing.id)
-
-    try:
-        quantity = Decimal(quantity_raw)
-    except (InvalidOperation, TypeError):
-        messages.error(request, "Quantidade inválida.")
-        return redirect("marketplace:detail", listing_id=listing.id)
 
     try:
         order_group, order = create_order_from_listing(
@@ -357,10 +362,10 @@ def confirm_order_receipt_view(request, order_id):
         return redirect("dashboard:painel")
 
     order = get_order_detail_for_buyer(buyer_producer=producer, order_id=order_id)
-    next_url = (request.POST.get("next") or "").strip()
+    next_url = get_safe_next_url(request, request.POST.get("next"))
 
     def _redirect_after_action():
-        if next_url.startswith("/") and not next_url.startswith("//"):
+        if next_url:
             return redirect(next_url)
         return redirect("orders:detail", order_id=order.id)
 
@@ -386,10 +391,16 @@ def seller_update_order_status_view(request, order_id, status):
 
     order = get_order_detail_for_seller(seller_producer=producer, order_id=order_id)
 
-    notes = (request.POST.get("notes") or "").strip()
+    form = SellerStatusUpdateForm(request.POST, status=status)
+    if not form.is_valid():
+        first_error = next(iter(form.errors.values()))[0]
+        messages.error(request, first_error)
+        return redirect("orders:detail", order_id=order.id)
+
+    notes = form.cleaned_data["notes"].strip()
 
     if status == OrderStatus.CANCELLED:
-        cancel_reason = (request.POST.get("cancel_reason") or "").strip()
+        cancel_reason = form.cleaned_data["cancel_reason"].strip()
         parts = []
         if cancel_reason:
             parts.append(f"Motivo: {cancel_reason}")

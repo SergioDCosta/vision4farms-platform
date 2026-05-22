@@ -81,6 +81,63 @@
     </div>
   </header>
 
+  <section class="ordd-card ordd-next-action">
+    <div class="ordd-next-action__icon">
+      {% if order.status == "COMPLETED" %}
+        <i class="bi bi-check2-circle"></i>
+      {% elif order.status == "CANCELLED" %}
+        <i class="bi bi-x-circle"></i>
+      {% elif order_role == "buyer" and can_confirm_receipt %}
+        <i class="bi bi-box-arrow-in-down"></i>
+      {% elif order_role == "seller" and can_seller_confirm %}
+        <i class="bi bi-exclamation-circle"></i>
+      {% elif order_role == "seller" and can_seller_start %}
+        <i class="bi bi-box-seam"></i>
+      {% elif order_role == "seller" and can_seller_deliver %}
+        <i class="bi bi-truck"></i>
+      {% else %}
+        <i class="bi bi-clock-history"></i>
+      {% endif %}
+    </div>
+    <div>
+      <span>Próxima ação</span>
+      {% if order.status == "COMPLETED" %}
+        <h3>Encomenda concluída</h3>
+        <p>A receção foi confirmada e os movimentos de stock já ficam registados.</p>
+      {% elif order.status == "CANCELLED" %}
+        <h3>Encomenda cancelada</h3>
+        <p>Esta encomenda já não pode avançar. Consulte a timeline para ver o motivo registado.</p>
+      {% elif order_role == "buyer" and can_confirm_receipt %}
+        <h3>Confirmar receção</h3>
+        <p>Confirme apenas quando tiver recebido todos os itens desta encomenda.</p>
+      {% elif order_role == "buyer" and order.status == "PENDING" %}
+        <h3>Aguardar aceitação</h3>
+        <p>O vendedor ainda precisa de aceitar o pedido antes da preparação.</p>
+      {% elif order_role == "buyer" and order.status == "CONFIRMED" %}
+        <h3>Aguardar preparação</h3>
+        <p>O vendedor já aceitou o pedido e deve preparar a encomenda.</p>
+      {% elif order_role == "buyer" and order.status == "IN_PROGRESS" %}
+        <h3>Em preparação</h3>
+        <p>A encomenda está a ser preparada pelo vendedor.</p>
+      {% elif order_role == "buyer" and order.status == "DELIVERING" %}
+        <h3>Aguardar entrega completa</h3>
+        <p>Quando todos os itens estiverem prontos para receção, poderá confirmar a entrada.</p>
+      {% elif order_role == "seller" and can_seller_confirm %}
+        <h3>Aceitar ou cancelar pedido</h3>
+        <p>Confirme o pedido se consegue cumprir a quantidade e as condições do anúncio.</p>
+      {% elif order_role == "seller" and can_seller_start %}
+        <h3>Marcar em preparação</h3>
+        <p>Use esta ação quando iniciar a preparação dos produtos para entrega ou levantamento.</p>
+      {% elif order_role == "seller" and can_seller_deliver %}
+        <h3>Marcar em entrega</h3>
+        <p>Use esta ação quando os produtos saírem para entrega ou estiverem prontos para levantamento.</p>
+      {% else %}
+        <h3>Sem ação pendente</h3>
+        <p>A encomenda está atualizada. Consulte a timeline para acompanhar o histórico.</p>
+      {% endif %}
+    </div>
+  </section>
+
   {% if is_presale_order %}
     <section class="ordd-card ordd-presale-channel">
       <div>
@@ -159,7 +216,7 @@
 
   <section class="ordd-grid">
     <article class="ordd-card">
-      <h3>Items da encomenda</h3>
+      <h3>Itens da encomenda</h3>
 
       <div class="ordd-table-wrap">
         <table class="ordd-table">
@@ -182,7 +239,7 @@
                   <td>{{ item.quantity|quantity }} {{ item.product.unit }}</td>
                   <td>{{ item.unit_price|floatformat:2 }} €</td>
                   <td>{{ item.subtotal|floatformat:2 }} €</td>
-                  <td>{{ item.get_item_status_display }}</td>
+                  <td><span class="ordd-status-pill ordd-status-pill--{{ item.item_status|lower }}">{{ item.get_item_status_display }}</span></td>
                 </tr>
               {% endfor %}
             {% else %}
@@ -193,7 +250,7 @@
                   <td>{{ item.quantity|quantity }} {{ item.product.unit }}</td>
                   <td>{{ item.unit_price|floatformat:2 }} €</td>
                   <td>{{ item.subtotal|floatformat:2 }} €</td>
-                  <td>{{ item.get_item_status_display }}</td>
+                  <td><span class="ordd-status-pill ordd-status-pill--{{ item.item_status|lower }}">{{ item.get_item_status_display }}</span></td>
                 </tr>
               {% endfor %}
             {% endif %}
@@ -261,6 +318,11 @@
 .ordd-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:1rem}
 .ordd-card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.05),0 6px 14px rgba(15,23,42,.04)}
 .ordd-card h3{margin:0 0 1rem 0;color:#0f172a}
+.ordd-next-action{display:flex;align-items:flex-start;gap:.9rem;border-left:4px solid #16a34a;background:#fbfefc}
+.ordd-next-action__icon{width:2.35rem;height:2.35rem;border-radius:.85rem;display:grid;place-items:center;background:#dcfce7;color:#166534;flex-shrink:0;font-size:1.1rem}
+.ordd-next-action span{display:block;color:#047857;font-size:.74rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.2rem}
+.ordd-next-action h3{margin:0;color:#0f172a;font-size:1.05rem}
+.ordd-next-action p{margin:.25rem 0 0;color:#475569}
 .ordd-danger-zone{padding:0;border-color:#fecaca;background:#fffafa;overflow:hidden}
 .ordd-danger-zone summary{
   list-style:none; cursor:pointer; padding:.9rem 1rem; display:flex; align-items:center; justify-content:space-between;
@@ -293,6 +355,12 @@
 .ordd-table{width:100%;border-collapse:collapse}
 .ordd-table th,.ordd-table td{padding:.8rem .7rem;border-bottom:1px solid #f1f5f9;text-align:left;font-size:.88rem}
 .ordd-table th{font-size:.75rem;text-transform:uppercase;color:#64748b}
+.ordd-status-pill{display:inline-flex;align-items:center;padding:.25rem .62rem;border-radius:999px;font-size:.74rem;font-weight:900;border:1px solid #cbd5e1;color:#475569;background:#fff}
+.ordd-status-pill--pending{border-color:#f59e0b;color:#b45309;background:#fffbeb}
+.ordd-status-pill--confirmed{border-color:#93c5fd;color:#1d4ed8;background:#eff6ff}
+.ordd-status-pill--in_delivery{border-color:#7dd3fc;color:#0369a1;background:#f0f9ff}
+.ordd-status-pill--completed{border-color:#86efac;color:#166534;background:#f0fdf4}
+.ordd-status-pill--cancelled{border-color:#fecaca;color:#b91c1c;background:#fef2f2}
 
 .ordd-cancel-form{display:flex;flex-direction:column;gap:.85rem}
 .ordd-cancel-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:.85rem}

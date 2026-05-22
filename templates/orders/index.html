@@ -63,19 +63,41 @@
 .ord-card__main{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}
 .ord-number{margin:0 0 .25rem 0;color:#16a34a;font-size:.82rem;font-weight:800}
 .ord-card h3{margin:0;color:#0f172a}
-.ord-source-chip{display:inline-flex;align-items:center;margin:.4rem 0 0 0;padding:.2rem .55rem;border-radius:.6rem;background:#e2e8f0;color:#334155;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.ord-title-row{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap}
+.ord-chip-row{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.45rem}
+.ord-source-chip,.ord-date-chip{display:inline-flex;align-items:center;padding:.22rem .58rem;border-radius:.65rem;font-size:.72rem;font-weight:800}
+.ord-source-chip{background:#ecfdf5;color:#047857;text-transform:uppercase;letter-spacing:.02em}
+.ord-date-chip{background:#f8fafc;color:#64748b;border:1px solid #e2e8f0}
+.ord-status-pill{display:inline-flex;align-items:center;padding:.25rem .62rem;border-radius:999px;font-size:.74rem;font-weight:900;border:1px solid #cbd5e1;color:#475569;background:#fff}
+.ord-status-pill--pending{border-color:#f59e0b;color:#b45309;background:#fffbeb}
+.ord-status-pill--confirmed{border-color:#93c5fd;color:#1d4ed8;background:#eff6ff}
+.ord-status-pill--in_progress{border-color:#c4b5fd;color:#6d28d9;background:#f5f3ff}
+.ord-status-pill--delivering{border-color:#7dd3fc;color:#0369a1;background:#f0f9ff}
+.ord-status-pill--completed{border-color:#86efac;color:#166534;background:#f0fdf4}
+.ord-status-pill--cancelled{border-color:#fecaca;color:#b91c1c;background:#fef2f2}
 .ord-meta{margin:.25rem 0 0 0;color:#64748b;font-size:.84rem}
 .ord-total{text-align:right}
 .ord-total span{display:block;color:#64748b;font-size:.82rem}
 .ord-total strong{font-size:1.2rem;color:#0f172a}
 
 .ord-card__items{margin-top:.85rem;padding-top:.85rem;border-top:1px solid #f1f5f9}
-.ord-card__items p{margin:.3rem 0;color:#334155;font-size:.88rem}
+.ord-mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;margin-bottom:.7rem}
+.ord-mini-grid div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:.8rem;padding:.65rem .75rem;min-width:0}
+.ord-mini-grid span{display:block;color:#64748b;font-size:.73rem;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.ord-mini-grid strong{display:block;color:#0f172a;margin-top:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ord-item-list{display:flex;flex-direction:column;gap:.4rem}
+.ord-card__items p{margin:0;color:#334155;font-size:.88rem}
+.ord-item-list p{display:flex;align-items:center;justify-content:space-between;gap:.8rem;padding:.45rem 0;border-bottom:1px solid #f8fafc}
+.ord-item-list p:last-child{border-bottom:none}
 .ord-card__items span{color:#64748b}
+.ord-item-list strong{color:#0f172a}
+.ord-item-list span{text-align:right}
 .ord-peer{font-weight:700;color:#0f172a}
+.ord-next{margin-top:.85rem;display:flex;align-items:flex-start;gap:.55rem;padding:.75rem .85rem;border-radius:.85rem;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:.88rem}
+.ord-next i{color:#16a34a;margin-top:.05rem}
 
 .ord-card__actions{margin-top:1rem;display:flex;justify-content:flex-end}
-.ord-btn{display:inline-flex;align-items:center;justify-content:center;padding:.8rem 1rem;border-radius:.85rem;background:#16a34a;color:#fff;text-decoration:none;font-weight:700}
+.ord-btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;padding:.8rem 1rem;border-radius:.85rem;background:#16a34a;color:#fff;text-decoration:none;font-weight:700}
 .ord-btn:hover{background:#15803d}
 
 .ord-empty{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:2rem;text-align:center;color:#64748b}
@@ -89,6 +111,12 @@
   .ord-filters{margin-left:0;width:100%}
   .ord-filters form{width:100%}
   .ord-select{width:100%;min-width:0}
+  .ord-card__main{flex-direction:column}
+  .ord-total{text-align:left}
+  .ord-mini-grid{grid-template-columns:1fr}
+  .ord-item-list p{align-items:flex-start;flex-direction:column;gap:.2rem}
+  .ord-item-list span{text-align:left}
+  .ord-card__actions,.ord-btn{width:100%}
 }
 </style>
 

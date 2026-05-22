@@ -56,9 +56,14 @@
           <div class="ord-card__main">
             <div>
               <p class="ord-number">Encomenda #{{ order.order_number }}</p>
-              <h3>{{ order.get_status_display }}</h3>
-              <p class="ord-source-chip">Origem: {{ order.order_source_label|default:"—" }}</p>
-              <p class="ord-meta">{{ order.items.count }} item(ns) · {{ order.created_at|date:"d/m/Y H:i" }}</p>
+              <div class="ord-title-row">
+                <h3>{{ order.get_status_display }}</h3>
+                <span class="ord-status-pill ord-status-pill--{{ order.status|lower }}">{{ order.get_status_display }}</span>
+              </div>
+              <div class="ord-chip-row">
+                <span class="ord-source-chip">{{ order.order_source_label|default:"Marketplace" }}</span>
+                <span class="ord-date-chip">{{ order.created_at|date:"d/m/Y H:i" }}</span>
+              </div>
             </div>
 
             <div class="ord-total">
@@ -68,21 +73,54 @@
           </div>
 
           <div class="ord-card__items">
-            <p class="ord-peer">
-              Comprador:
-              <span>{{ order.buyer_producer.display_name|default:order.buyer_producer.company_name|default:order.buyer_producer.user.email }}</span>
-            </p>
+            <div class="ord-mini-grid">
+              <div>
+                <span>Comprador</span>
+                <strong>{{ order.buyer_producer.display_name|default:order.buyer_producer.company_name|default:order.buyer_producer.user.email }}</strong>
+              </div>
+              <div>
+                <span>Itens</span>
+                <strong>{{ order.items.count }}</strong>
+              </div>
+            </div>
 
-            {% for item in order.items.all|slice:":3" %}
-              <p>
-                {{ item.product.name }} — {{ item.quantity|quantity }} {{ item.product.unit }}
-                <span>({{ item.get_item_status_display }})</span>
-              </p>
-            {% endfor %}
+            <div class="ord-item-list">
+              {% for item in order.items.all|slice:":3" %}
+                <p>
+                  <strong>{{ item.product.name }}</strong>
+                  <span>{{ item.quantity|quantity }} {{ item.product.unit }} · {{ item.get_item_status_display }}</span>
+                </p>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="ord-next">
+            {% if order.status == "PENDING" %}
+              <i class="bi bi-exclamation-circle"></i>
+              <span>Precisa de decisão: aceite ou cancele o pedido no detalhe.</span>
+            {% elif order.status == "CONFIRMED" %}
+              <i class="bi bi-box-seam"></i>
+              <span>Pedido aceite. O próximo passo é preparar a encomenda.</span>
+            {% elif order.status == "IN_PROGRESS" %}
+              <i class="bi bi-truck"></i>
+              <span>Encomenda em preparação. Marque em entrega quando sair.</span>
+            {% elif order.status == "DELIVERING" %}
+              <i class="bi bi-clock-history"></i>
+              <span>Aguarda confirmação de receção pelo comprador.</span>
+            {% elif order.status == "COMPLETED" %}
+              <i class="bi bi-check2-circle"></i>
+              <span>Concluída e refletida no histórico de stock.</span>
+            {% else %}
+              <i class="bi bi-x-circle"></i>
+              <span>Encomenda cancelada.</span>
+            {% endif %}
           </div>
 
           <div class="ord-card__actions">
-            <a href="{% url 'orders:detail' order.id %}" class="ord-btn">Ver detalhe</a>
+            <a href="{% url 'orders:detail' order.id %}" class="ord-btn">
+              Ver detalhe
+              <i class="bi bi-arrow-right"></i>
+            </a>
           </div>
         </article>
       {% empty %}
@@ -188,10 +226,14 @@
               {% else %}
                 <p class="ord-number">Encomenda #{{ entry.order.order_number }}</p>
               {% endif %}
-              <h3>{{ entry.status_label }}</h3>
-              <p class="ord-meta">
-                {{ entry.order_count }} encomenda(s) · {{ entry.item_count }} item(ns) · {{ entry.created_at|date:"d/m/Y H:i" }}
-              </p>
+              <div class="ord-title-row">
+                <h3>{{ entry.status_label }}</h3>
+                <span class="ord-status-pill ord-status-pill--{{ entry.status|lower }}">{{ entry.status_label }}</span>
+              </div>
+              <div class="ord-chip-row">
+                <span class="ord-source-chip">{% if entry.kind == "group" %}Grupo de compra{% else %}Compra direta{% endif %}</span>
+                <span class="ord-date-chip">{{ entry.created_at|date:"d/m/Y H:i" }}</span>
+              </div>
             </div>
 
             <div class="ord-total">
@@ -201,28 +243,69 @@
           </div>
 
           <div class="ord-card__items">
+            <div class="ord-mini-grid">
+              <div>
+                <span>Encomendas</span>
+                <strong>{{ entry.order_count }}</strong>
+              </div>
+              <div>
+                <span>Itens</span>
+                <strong>{{ entry.item_count }}</strong>
+              </div>
+            </div>
+
+            <div class="ord-item-list">
             {% if entry.kind == "group" %}
               {% for grouped_order in entry.orders|slice:":3" %}
                 <p>
-                  Encomenda #{{ grouped_order.order_number }} — {{ grouped_order.items.count }} item(ns)
-                  <span>({{ grouped_order.get_status_display }})</span>
+                  <strong>Encomenda #{{ grouped_order.order_number }}</strong>
+                  <span>{{ grouped_order.items.count }} item(ns) · {{ grouped_order.get_status_display }}</span>
                 </p>
               {% endfor %}
             {% else %}
               {% for item in entry.order.items.all|slice:":3" %}
                 <p>
-                  {{ item.product.name }} — {{ item.quantity|quantity }} {{ item.product.unit }}
-                  <span>({{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:item.seller_producer.user.email }})</span>
+                  <strong>{{ item.product.name }}</strong>
+                  <span>{{ item.quantity|quantity }} {{ item.product.unit }} · {{ item.seller_producer.display_name|default:item.seller_producer.company_name|default:item.seller_producer.user.email }}</span>
                 </p>
               {% endfor %}
+            {% endif %}
+            </div>
+          </div>
+
+          <div class="ord-next">
+            {% if entry.status == "PENDING" %}
+              <i class="bi bi-hourglass-split"></i>
+              <span>Aguarda aceitação do vendedor.</span>
+            {% elif entry.status == "CONFIRMED" %}
+              <i class="bi bi-box-seam"></i>
+              <span>Pedido aceite. O vendedor deve preparar a encomenda.</span>
+            {% elif entry.status == "IN_PROGRESS" %}
+              <i class="bi bi-truck-front"></i>
+              <span>Encomenda em preparação.</span>
+            {% elif entry.status == "DELIVERING" %}
+              <i class="bi bi-check2-circle"></i>
+              <span>Quando receber, confirme a receção no detalhe.</span>
+            {% elif entry.status == "COMPLETED" %}
+              <i class="bi bi-check2-circle"></i>
+              <span>Concluída e adicionada ao seu stock.</span>
+            {% else %}
+              <i class="bi bi-x-circle"></i>
+              <span>Encomenda cancelada.</span>
             {% endif %}
           </div>
 
           <div class="ord-card__actions">
             {% if entry.kind == "group" %}
-              <a href="{% url 'orders:group_detail' entry.group.id %}" class="ord-btn">Ver grupo</a>
+              <a href="{% url 'orders:group_detail' entry.group.id %}" class="ord-btn">
+                Ver grupo
+                <i class="bi bi-arrow-right"></i>
+              </a>
             {% else %}
-              <a href="{% url 'orders:detail' entry.order.id %}" class="ord-btn">Ver detalhe</a>
+              <a href="{% url 'orders:detail' entry.order.id %}" class="ord-btn">
+                Ver detalhe
+                <i class="bi bi-arrow-right"></i>
+              </a>
             {% endif %}
           </div>
         </article>

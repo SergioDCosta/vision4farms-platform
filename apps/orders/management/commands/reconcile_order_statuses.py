@@ -1,8 +1,7 @@
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from apps.orders.models import Order
-from apps.orders.services import compute_order_status_from_db
+from apps.orders.services import _create_status_history, _set_order_status, compute_order_status_from_db
 
 
 class Command(BaseCommand):
@@ -51,9 +50,17 @@ class Command(BaseCommand):
             )
 
             if apply_changes:
-                order.status = expected_status
-                order.updated_at = timezone.now()
-                order.save(update_fields=["status", "updated_at"])
+                previous_status = order.status
+                _set_order_status(order, expected_status)
+                _create_status_history(
+                    order=order,
+                    status=expected_status,
+                    changed_by=None,
+                    notes=(
+                        "Reconciliação técnica automática: "
+                        f"{previous_status} -> {expected_status}."
+                    ),
+                )
                 self.stdout.write(self.style.SUCCESS(f"[APLICADO] {line}"))
             else:
                 self.stdout.write(self.style.WARNING(f"[DRY-RUN] {line}"))

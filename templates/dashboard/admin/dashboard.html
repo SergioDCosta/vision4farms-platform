@@ -27,18 +27,23 @@
 <div class="adm-dash-grid adm-dash-grid--insights">
   <div class="adm-card">
     <div class="adm-card-head">
-      <h3 class="adm-sec-title">Atividade comercial semanal</h3>
+      <div>
+        <h3 class="adm-sec-title">Fluxo semanal de encomendas</h3>
+        <p class="adm-sec-sub">
+          Compara pedidos criados com vendas efetivamente concluídas. Uma compra só entra como venda quando a receção é confirmada.
+        </p>
+      </div>
     </div>
     {% if weekly_purchases_total or weekly_sales_total %}
       <div class="adm-chart-shell">
         <canvas id="adminWeeklyMarketChart" height="220"></canvas>
       </div>
       <div class="adm-chart-legend">
-        <span><i class="bi bi-square-fill" style="color:#2563eb"></i> Compras criadas: <strong>{{ weekly_purchases_total }}</strong></span>
-        <span><i class="bi bi-square-fill" style="color:#16a34a"></i> Vendas concluídas: <strong>{{ weekly_sales_total }}</strong></span>
+        <span><i class="bi bi-square-fill" style="color:#2563eb"></i> Pedidos criados: <strong>{{ weekly_purchases_total }}</strong></span>
+        <span><i class="bi bi-square-fill" style="color:#16a34a"></i> Itens vendidos e concluídos: <strong>{{ weekly_sales_total }}</strong></span>
       </div>
     {% else %}
-      <div class="adm-empty"><i class="bi bi-bar-chart"></i><p>Sem encomendas criadas ou vendas concluídas nas últimas 12 semanas.</p></div>
+      <div class="adm-empty"><i class="bi bi-bar-chart"></i><p>Sem pedidos criados ou vendas concluídas nas últimas 12 semanas.</p></div>
     {% endif %}
   </div>
 
@@ -201,8 +206,8 @@
       data: {
         labels: weekly.labels || [],
         datasets: [
-          { label: "Compras", data: weekly.purchases || [], backgroundColor: "#93c5fd", borderRadius: 8 },
-          { label: "Vendas", data: weekly.sales || [], backgroundColor: "#86efac", borderRadius: 8 }
+          { label: "Pedidos criados", data: weekly.purchases || [], backgroundColor: "#93c5fd", borderRadius: 8 },
+          { label: "Itens vendidos concluídos", data: weekly.sales || [], backgroundColor: "#86efac", borderRadius: 8 }
         ]
       },
       options: commonOptions
@@ -261,6 +266,7 @@
 .adm-dash-grid--single{grid-template-columns:1fr;}
 .adm-dash-grid--insights{align-items:stretch;}
 .adm-sec-title{font-size:.95rem;font-weight:700;color:#0f172a;margin:0;}
+.adm-sec-sub{margin:.25rem 0 0;color:#64748b;font-size:.78rem;line-height:1.4;max-width:46rem;}
 .adm-see-all{font-size:.78rem;font-weight:600;color:#16a34a;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;}
 .adm-see-all:hover{text-decoration:underline;}
 

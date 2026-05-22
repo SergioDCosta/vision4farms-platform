@@ -615,6 +615,57 @@ def _validate_listing_source_xor(listing):
     return has_stock_source, has_forecast_source
 
 
+def _is_persisted_model_instance(instance):
+    state = getattr(instance, "_state", None)
+    return bool(getattr(instance, "pk", None)) and state is not None and not state.adding
+
+
+def _lock_listing_for_order(listing):
+    if not _is_persisted_model_instance(listing):
+        return listing
+
+    return (
+        MarketplaceListing.objects
+        .select_for_update()
+        .select_related("product", "producer", "stock", "forecast", "need", "need__producer")
+        .get(id=listing.id)
+    )
+
+
+def _is_listing_expired(listing, now=None):
+    expires_at = getattr(listing, "expires_at", None)
+    return bool(expires_at and expires_at <= (now or timezone.now()))
+
+
+def _validate_listing_can_be_ordered(*, listing, buyer_producer, quantity):
+    if listing.producer_id == buyer_producer.id:
+        raise OrderServiceError("Não pode criar uma encomenda a partir do seu próprio anúncio.")
+
+    if listing.status != ListingStatus.ACTIVE:
+        raise OrderServiceError("O anúncio já não está ativo.")
+    if _is_listing_expired(listing):
+        raise OrderServiceError("O anúncio já expirou e não pode ser comprado.")
+
+    if listing.need_id and listing.need_response_status == NeedResponseStatus.REJECTED:
+        raise OrderServiceError("Esta oferta foi rejeitada e já não pode ser comprada.")
+
+    if listing.need_id and listing.need_response_status != NeedResponseStatus.PENDING:
+        raise OrderServiceError("Esta oferta já não está pendente e não pode ser comprada.")
+
+    if listing.need_id and getattr(getattr(listing, "need", None), "producer_id", None) != buyer_producer.id:
+        raise OrderServiceError("Esta oferta é dirigida ao produtor da necessidade e não está disponível para esta conta.")
+
+    quantity = quantize_qty(quantity)
+    if quantity <= 0:
+        raise OrderServiceError("A quantidade tem de ser superior a zero.")
+
+    available_quantity = quantize_qty(Decimal(str(listing.quantity_available or 0)))
+    if quantity > available_quantity:
+        raise OrderServiceError(
+            f"A quantidade pedida excede a disponível ({available_quantity} {listing.product.unit})."
+        )
+
+
 def _update_stock_reserved(stock, quantity, acting_user):
     if not stock:
         return
@@ -651,7 +702,7 @@ def _update_forecast_reserved(forecast, quantity):
     forecast.save(update_fields=["reserved_quantity", "updated_at"])
 
 
-def _consume_stock_reservation(stock, quantity, acting_user):
+def _consume_stock_reservation(stock, quantity, acting_user, *, order=None):
     if not stock:
         return
 
@@ -678,6 +729,17 @@ def _consume_stock_reservation(stock, quantity, acting_user):
         update_fields.append("updated_at")
 
     stock.save(update_fields=update_fields)
+
+    if order is not None:
+        StockMovement.objects.create(
+            stock=stock,
+            movement_type=StockMovementType.ORDER_OUT,
+            quantity_delta=-quantity,
+            reference_type="ORDER",
+            reference_id=order.id,
+            notes=f"Saída por conclusão da encomenda #{order.order_number}.",
+            performed_by=acting_user,
+        )
 
 
 def _consume_forecast_reservation(forecast, quantity):
@@ -830,6 +892,8 @@ def _reserve_listing_quantity(listing_id, quantity, acting_user):
 
     if listing.status != ListingStatus.ACTIVE:
         raise OrderServiceError("O anúncio já não está ativo.")
+    if _is_listing_expired(listing):
+        raise OrderServiceError("O anúncio já expirou e não pode ser comprado.")
 
     quantity = quantize_qty(quantity)
     available_quantity = quantize_qty(Decimal(str(listing.quantity_available or 0)))
@@ -909,7 +973,7 @@ def _release_listing_reservation(listing_id, quantity, acting_user):
     return listing
 
 
-def _consume_listing_reservation(listing_id, quantity, acting_user):
+def _consume_listing_reservation(listing_id, quantity, acting_user, *, order=None):
     listing = (
         MarketplaceListing.objects
         .select_for_update()
@@ -934,7 +998,7 @@ def _consume_listing_reservation(listing_id, quantity, acting_user):
 
     if has_stock_source:
         stock = Stock.objects.select_for_update().get(id=listing.stock_id)
-        _consume_stock_reservation(stock, quantity, acting_user)
+        _consume_stock_reservation(stock, quantity, acting_user, order=order)
     elif has_forecast_source:
         forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
         _consume_forecast_reservation(forecast, quantity)
@@ -1124,26 +1188,16 @@ def _recalculate_order_status(order, preferred_status=None):
 
 @transaction.atomic
 def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user, buyer_notes=None, need=None):
-    if listing.producer_id == buyer_producer.id:
-        raise OrderServiceError("Não pode criar uma encomenda a partir do seu próprio anúncio.")
-    if listing.need_id and listing.need_response_status == NeedResponseStatus.REJECTED:
-        raise OrderServiceError("Esta oferta foi rejeitada e já não pode ser comprada.")
-    if listing.need_id and listing.need_response_status != NeedResponseStatus.PENDING:
-        raise OrderServiceError("Esta oferta já não está pendente e não pode ser comprada.")
+    listing = _lock_listing_for_order(listing)
+    quantity = quantize_qty(quantity)
+    _validate_listing_can_be_ordered(
+        listing=listing,
+        buyer_producer=buyer_producer,
+        quantity=quantity,
+    )
     if listing.need_id and OrderItem.objects.filter(listing_id=listing.id, need_id=listing.need_id).exists():
         raise OrderServiceError("Esta oferta já originou uma encomenda e não pode ser comprada novamente.")
     _validate_listing_source_xor(listing)
-
-    quantity = quantize_qty(quantity)
-
-    if quantity <= 0:
-        raise OrderServiceError("A quantidade tem de ser superior a zero.")
-
-    available_quantity = quantize_qty(Decimal(str(listing.quantity_available or 0)))
-    if quantity > available_quantity:
-        raise OrderServiceError(
-            f"A quantidade pedida excede a disponível ({available_quantity} {listing.product.unit})."
-        )
 
     unit_price = Decimal(str(listing.unit_price))
     subtotal = quantize_money(quantity * unit_price)
@@ -1204,6 +1258,22 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
 
 @transaction.atomic
 def create_order_from_recommendation(*, buyer_producer, recommendation, acting_user):
+    recommendation = (
+        recommendation.__class__.objects
+        .select_for_update()
+        .select_related("product", "producer", "need")
+        .get(id=recommendation.id)
+    )
+
+    if recommendation.producer_id != buyer_producer.id:
+        raise OrderServiceError("Esta recomendação não pertence ao produtor atual.")
+
+    if recommendation.status == RecommendationStatus.ACCEPTED:
+        raise OrderServiceError("Esta recomendação já foi aceite.")
+
+    if recommendation.status in {RecommendationStatus.IGNORED, RecommendationStatus.EXPIRED}:
+        raise OrderServiceError("Esta recomendação já não pode ser aceite.")
+
     selected_items = list(
         recommendation.items.filter(is_selected=True).select_related(
             "listing",
@@ -1215,12 +1285,43 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
     if not selected_items:
         raise OrderServiceError("A recomendação não tem itens selecionados.")
 
+    required_by_listing = defaultdict(lambda: Decimal("0.000"))
+    for rec_item in selected_items:
+        if not rec_item.listing_id:
+            raise OrderServiceError("A recomendação contém um item sem anúncio associado.")
+        required_by_listing[rec_item.listing_id] = quantize_qty(
+            required_by_listing[rec_item.listing_id] + quantize_qty(rec_item.suggested_quantity)
+        )
+
+    locked_listings = {
+        listing.id: listing
+        for listing in (
+            MarketplaceListing.objects
+            .select_for_update()
+            .select_related("product", "producer", "stock", "forecast", "need", "need__producer")
+            .filter(id__in=required_by_listing.keys())
+        )
+    }
+
+    if len(locked_listings) != len(required_by_listing):
+        raise OrderServiceError("A recomendação contém um anúncio indisponível.")
+
+    for listing_id, required_quantity in required_by_listing.items():
+        _validate_listing_can_be_ordered(
+            listing=locked_listings[listing_id],
+            buyer_producer=buyer_producer,
+            quantity=required_quantity,
+        )
+
     grouped_items = defaultdict(list)
     for rec_item in selected_items:
-        listing = rec_item.listing
+        listing = locked_listings.get(rec_item.listing_id)
         if not listing:
             raise OrderServiceError("A recomendação contém um item sem anúncio associado.")
+        if rec_item.seller_producer_id != listing.producer_id or rec_item.product_id != listing.product_id:
+            raise OrderServiceError("A recomendação contém dados desatualizados do anúncio.")
 
+        rec_item.listing = listing
         source_kind = _listing_source_kind(listing)
         group_key = (str(rec_item.seller_producer_id), source_kind)
         grouped_items[group_key].append(rec_item)
@@ -1281,7 +1382,7 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
         order.save(update_fields=["total_amount", "delivery_method", "updated_at"])
 
         for listing_id in touched_listing_ids:
-            _reconcile_listing_reservation(listing_id, acting_user, strict=False)
+            _reconcile_listing_reservation(listing_id, acting_user, strict=True)
 
         _create_status_history(
             order=order,
@@ -1344,7 +1445,7 @@ def confirm_order_receipt(*, order, acting_user):
         item.save(update_fields=["item_status", "updated_at"])
 
         if item.listing_id:
-            _consume_listing_reservation(item.listing_id, item.quantity, acting_user)
+            _consume_listing_reservation(item.listing_id, item.quantity, acting_user, order=order)
 
         _register_buyer_order_inbound(
             buyer_producer=buyer_producer,
