@@ -1,0 +1,181 @@
+-- Fase 1 - Pedidos externos de clientes.
+--
+-- Este script cria a tabela que guarda pedidos externos detalhados.
+-- A tabela "needs" continua a representar procura agregada por produto.
+-- A tabela "marketplace_listings" continua a representar ofertas/vendas.
+--
+-- Seguro para executar mais do que uma vez.
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS public.external_customer_demands (
+    id uuid NOT NULL DEFAULT uuid_generate_v4(),
+    producer_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    client_name varchar(255) NOT NULL,
+    client_contact varchar(255) NULL,
+    client_reference varchar(120) NULL,
+    requested_quantity numeric(14,3) NOT NULL,
+    requested_delivery_date date NOT NULL,
+    status varchar(30) NOT NULL DEFAULT 'OPEN',
+    notes text NULL,
+    generated_need_id uuid NULL,
+    source_system varchar(30) NOT NULL DEFAULT 'MANUAL',
+    external_id varchar(120) NULL,
+    created_by_id uuid NULL,
+    updated_by_id uuid NULL,
+    cancelled_at timestamptz NULL,
+    fulfilled_at timestamptz NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT external_customer_demands_pkey PRIMARY KEY (id)
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_producer_id_fkey'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_producer_id_fkey
+        FOREIGN KEY (producer_id)
+        REFERENCES public.producer_profiles(id)
+        ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_product_id_fkey'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_product_id_fkey
+        FOREIGN KEY (product_id)
+        REFERENCES public.products(id)
+        ON DELETE RESTRICT;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_generated_need_id_fkey'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_generated_need_id_fkey
+        FOREIGN KEY (generated_need_id)
+        REFERENCES public.needs(id)
+        ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_created_by_id_fkey'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_created_by_id_fkey
+        FOREIGN KEY (created_by_id)
+        REFERENCES public.users(id)
+        ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_updated_by_id_fkey'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_updated_by_id_fkey
+        FOREIGN KEY (updated_by_id)
+        REFERENCES public.users(id)
+        ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_requested_quantity_check'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_requested_quantity_check
+        CHECK (requested_quantity > 0);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_status_check'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_status_check
+        CHECK (
+            status IN (
+                'OPEN',
+                'PARTIALLY_COVERED',
+                'COVERED',
+                'FULFILLED',
+                'CANCELLED'
+            )
+        );
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_source_system_check'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_source_system_check
+        CHECK (
+            source_system IN (
+                'MANUAL',
+                'VISION4FARMS',
+                'IMPORT',
+                'API'
+            )
+        );
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'external_customer_demands_client_name_not_blank_check'
+    ) THEN
+        ALTER TABLE public.external_customer_demands
+        ADD CONSTRAINT external_customer_demands_client_name_not_blank_check
+        CHECK (length(trim(client_name)) > 0);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS external_customer_demands_producer_product_status_idx
+ON public.external_customer_demands (producer_id, product_id, status);
+
+CREATE INDEX IF NOT EXISTS external_customer_demands_producer_product_delivery_idx
+ON public.external_customer_demands (producer_id, product_id, requested_delivery_date);
+
+CREATE INDEX IF NOT EXISTS external_customer_demands_generated_need_id_idx
+ON public.external_customer_demands (generated_need_id);
+
+CREATE INDEX IF NOT EXISTS external_customer_demands_created_by_id_idx
+ON public.external_customer_demands (created_by_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS external_customer_demands_source_external_unique_idx
+ON public.external_customer_demands (producer_id, source_system, external_id)
+WHERE external_id IS NOT NULL;

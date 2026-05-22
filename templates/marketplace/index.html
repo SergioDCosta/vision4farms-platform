@@ -6,8 +6,8 @@
   <header class="mk-head">
     <div>
       <span class="mk-eyebrow">Marketplace da cooperativa</span>
-      <h1>Comprar e vender com produtores da rede</h1>
-      <p>Encontre ofertas de outros produtores, compare quantidade, preço e condições, e gira os seus anúncios numa área própria.</p>
+      <h1>Comprar, vender e responder a procuras</h1>
+      <p>Encontre ofertas de outros produtores, veja procuras abertas e gira os seus anúncios numa área própria.</p>
     </div>
     {% if can_publish %}
       <a href="{% url 'marketplace:publish' %}"
@@ -26,19 +26,19 @@
   <section class="mk-toolbar">
     <div class="mk-toolbar__top">
       <nav class="mk-tabs" aria-label="Secções do marketplace">
-        <a href="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}{% if only_available %}&available=1{% endif %}"
-           hx-get="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}{% if only_available %}&available=1{% endif %}"
+        <a href="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}&kind={{ selected_kind|urlencode }}{% if only_available %}&available=1{% endif %}"
+           hx-get="{% url 'marketplace:index' %}?tab=todos&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}&kind={{ selected_kind|urlencode }}{% if only_available %}&available=1{% endif %}"
            hx-target="#shellMain"
            hx-select="#shellMain"
            hx-swap="outerHTML"
            hx-push-url="true"
            class="mk-tab {% if active_tab == 'todos' %}is-active{% endif %}">
-          Anúncios disponíveis
+          Marketplace
           <span>{{ public_listings_count }}</span>
         </a>
         {% if can_publish %}
-          <a href="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}{% if only_available %}&available=1{% endif %}"
-             hx-get="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}{% if only_available %}&available=1{% endif %}"
+          <a href="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}&kind={{ selected_kind|urlencode }}{% if only_available %}&available=1{% endif %}"
+             hx-get="{% url 'marketplace:index' %}?tab=meus&q={{ q|urlencode }}&category={{ selected_category_id|urlencode }}&origin={{ selected_origin|urlencode }}&sort={{ selected_sort|urlencode }}&kind={{ selected_kind|urlencode }}{% if only_available %}&available=1{% endif %}"
              hx-target="#shellMain"
              hx-select="#shellMain"
              hx-swap="outerHTML"
@@ -72,6 +72,15 @@
           <option value="{{ category.id }}" {% if selected_category_id == category.id|stringformat:"s" %}selected{% endif %}>{{ category.name }}</option>
         {% endfor %}
       </select>
+      {% if active_tab != "meus" %}
+        <select name="kind" aria-label="Tipo">
+          <option value="all" {% if selected_kind == "all" %}selected{% endif %}>Ofertas e procuras</option>
+          <option value="offers" {% if selected_kind == "offers" %}selected{% endif %}>Só ofertas</option>
+          <option value="needs" {% if selected_kind == "needs" %}selected{% endif %}>Só procuras</option>
+        </select>
+      {% else %}
+        <input type="hidden" name="kind" value="{{ selected_kind }}">
+      {% endif %}
       <select name="origin" aria-label="Origem">
         <option value="">Todas as origens</option>
         <option value="stock" {% if selected_origin == "stock" %}selected{% endif %}>Stock atual</option>
@@ -97,7 +106,10 @@
     {% if active_tab == "meus" %}
       A mostrar <strong>{{ my_listings_count }}</strong> anúncio{{ my_listings_count|pluralize:"s" }} próprio{{ my_listings_count|pluralize:"s" }}.
     {% else %}
-      A mostrar <strong>{{ public_listings_count }}</strong> anúncio{{ public_listings_count|pluralize:"s" }} no marketplace.
+      A mostrar <strong>{{ public_listings_count }}</strong> resultado{{ public_listings_count|pluralize:"s" }} no marketplace
+      {% if selected_kind == "all" %}
+        ({{ public_offers_count }} oferta{{ public_offers_count|pluralize:"s" }} · {{ public_needs_count }} procura{{ public_needs_count|pluralize:"s" }}).
+      {% endif %}
     {% endif %}
   </p>
 
@@ -117,11 +129,15 @@
       {% else %}
         {% for item in listings %}
           {% include "marketplace/partials/listing_card.html" with item=item mode="public" %}
-        {% empty %}
+        {% endfor %}
+        {% for row in marketplace_need_rows %}
+          {% include "marketplace/partials/need_card.html" with row=row %}
+        {% endfor %}
+        {% if not listings and not marketplace_need_rows %}
           <article class="mk-empty">
             <i class="bi bi-search"></i>
-            <h3>Sem anúncios disponíveis</h3>
-            <p>{% if q or selected_category_id or selected_origin %}Não encontrámos anúncios com os filtros aplicados.{% else %}Não existem anúncios ativos no marketplace neste momento.{% endif %}</p>
+            <h3>Sem resultados disponíveis</h3>
+            <p>{% if q or selected_category_id or selected_origin or selected_kind != "all" %}Não encontrámos ofertas ou procuras com os filtros aplicados.{% else %}Não existem ofertas nem procuras ativas no marketplace neste momento.{% endif %}</p>
             <a href="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}"
                hx-get="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}"
                hx-target="#shellMain"
@@ -132,7 +148,7 @@
               Anunciar necessidade
             </a>
           </article>
-        {% endfor %}
+        {% endif %}
       {% endif %}
     </section>
   </div>
@@ -154,7 +170,7 @@
 .mk-tab span{min-width:1.35rem;height:1.35rem;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#334155;font-size:.72rem;}
 .mk-tab.is-active{background:#ecfdf5;border-color:#86efac;color:#047857;}
 .mk-tab.is-active span{background:#10b981;color:#fff;}
-.mk-filterbar{display:grid;grid-template-columns:minmax(18rem,1fr) minmax(11rem,.55fr) minmax(10rem,.45fr) minmax(10rem,.45fr);gap:.7rem;align-items:center;padding-top:.85rem;border-top:1px solid #edf2f7;}
+.mk-filterbar{display:grid;grid-template-columns:minmax(18rem,1fr) minmax(11rem,.55fr) minmax(10rem,.45fr) minmax(10rem,.45fr) minmax(10rem,.45fr);gap:.7rem;align-items:center;padding-top:.85rem;border-top:1px solid #edf2f7;}
 .mk-search{position:relative;display:block;min-width:0;}
 .mk-search i{position:absolute;left:.9rem;top:50%;transform:translateY(-50%);color:#94a3b8;}
 .mk-search input,.mk-filterbar select{width:100%;min-height:2.65rem;border:1px solid #cbd5e1;border-radius:.75rem;background:#fff;color:#0f172a;font-size:.9rem;outline:none;padding:.65rem .8rem;}
@@ -173,14 +189,19 @@
 .mk-card__media{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);overflow:hidden;}
 .mk-card__media img{display:block;width:100%;height:100%;object-fit:cover;}
 .mk-card__media-empty{height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:1.65rem;}
+.mk-card__media--need{background:linear-gradient(135deg,#eff6ff,#ecfdf5);}
+.mk-need-visual{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;color:#1d4ed8;font-weight:900;}
+.mk-need-visual i{font-size:2rem;}
 .mk-card__badge-row{position:absolute;inset:.75rem .75rem auto;display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem;pointer-events:none;}
 .mk-badge{display:inline-flex;align-items:center;gap:.35rem;border-radius:.55rem;padding:.34rem .62rem;font-size:.72rem;font-weight:900;text-transform:uppercase;letter-spacing:.02em;box-shadow:0 6px 18px rgba(15,23,42,.10);}
 .mk-badge--stock{background:#059669;color:#fff;}
 .mk-badge--forecast{background:#eef2ff;color:#4338ca;}
+.mk-badge--need{background:#dbeafe;color:#1d4ed8;}
 .mk-badge--active{background:#ecfdf5;color:#047857;}
 .mk-badge--reserved,.mk-badge--warn{background:#f59e0b;color:#fff;}
 .mk-badge--closed,.mk-badge--muted{background:#e2e8f0;color:#475569;}
 .mk-card__body{padding:1rem 1.05rem;display:flex;flex-direction:column;gap:.75rem;flex:1;}
+.mk-card--need .mk-card__body{background:linear-gradient(180deg,#fff,#f8fafc);}
 .mk-producer-line,.mk-location-line,.mk-delivery-chip{display:flex;align-items:center;gap:.4rem;color:#64748b;font-size:.8rem;min-width:0;}
 .mk-producer-line span,.mk-location-line span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mk-card h3{margin:0;color:#0f172a;font-size:1.08rem;font-weight:850;line-height:1.25;min-height:2.65rem;}

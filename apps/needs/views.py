@@ -1,4 +1,5 @@
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -18,18 +19,22 @@ from apps.marketplace.services import (
     get_stock_for_product,
 )
 from apps.inventory.models import ProductionForecast
-from apps.needs.forms import NeedCreateForm, NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
+from apps.needs.forms import ExternalCustomerDemandForm, NeedCreateForm, NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
 from apps.needs.navigation import build_needs_index_url
-from apps.needs.models import Need, NeedSourceSystem, NeedStatus
+from apps.needs.models import ExternalCustomerDemand, ExternalCustomerDemandStatus, Need, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
+    cancel_external_customer_demand,
     DuplicateActiveNeedError,
+    create_external_customer_demand,
     create_need,
     build_need_response_for_listing,
     get_need_edit_help_text,
     get_need_minimum_edit_quantity,
     get_active_need_response_for_responder,
     get_critical_stock_product_ids,
+    get_external_customer_demand_for_producer,
+    get_external_customer_demand_summary,
     get_editable_need_response_for_responder,
     get_need_response_listing_for_viewer,
     get_need_candidate_products,
@@ -39,10 +44,14 @@ from apps.needs.services import (
     ignore_need,
     list_need_responses_for_owner,
     list_need_responses_for_responder,
+    build_external_demand_plans,
+    list_external_customer_demands,
     list_marketplace_my_needs,
     list_marketplace_public_needs,
+    normalize_external_demands_search_query,
     normalize_needs_search_query,
     reject_need_response,
+    update_external_customer_demand,
     update_need,
     update_need_response,
 )
@@ -191,6 +200,108 @@ def add_form_errors_to_messages(request, form):
             messages.error(request, f"{label}: {error}" if label else str(error))
 
 
+def build_external_demands_url(*, q="", status="", product_id="", show_form=False, edit_id=""):
+    params = {}
+    if q:
+        params["q"] = q
+    if status:
+        params["status"] = status
+    if product_id:
+        params["product"] = product_id
+    if show_form:
+        params["show_form"] = "1"
+    if edit_id:
+        params["edit"] = edit_id
+    query = urlencode(params)
+    base_url = reverse("needs:external_demands")
+    return f"{base_url}?{query}" if query else base_url
+
+
+def get_external_demands_filters(request):
+    source = request.POST if request.method == "POST" else request.GET
+    q = normalize_external_demands_search_query(source.get("q"))
+    status = (source.get("status") or "").strip()
+    product_id = (source.get("product") or source.get("product_id") or "").strip()
+    edit_id = (source.get("edit") or "").strip()
+    show_form = (source.get("show_form") or "").strip().lower() in {"1", "true", "yes", "on"}
+    return q, status, product_id, edit_id, show_form
+
+
+def build_external_demands_context(
+    producer,
+    *,
+    q="",
+    status="",
+    product_id="",
+    show_form=False,
+    edit_id="",
+    create_form=None,
+    edit_form=None,
+):
+    demand_rows = list(
+        list_external_customer_demands(
+            producer=producer,
+            q=q,
+            status=status,
+            product_id=product_id,
+        )
+    )
+    products = list(get_need_candidate_products(producer)) if producer else []
+    selected_demand = None
+    if edit_id:
+        selected_demand = get_external_customer_demand_for_producer(
+            producer=producer,
+            demand_id=edit_id,
+        )
+        if selected_demand and selected_demand.status in {
+            ExternalCustomerDemandStatus.OPEN,
+            ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+            ExternalCustomerDemandStatus.COVERED,
+        }:
+            edit_form = edit_form or ExternalCustomerDemandForm(producer=producer, demand=selected_demand)
+        else:
+            selected_demand = None
+            edit_id = ""
+
+    demand_plans = build_external_demand_plans(
+        producer=producer,
+        product_id=product_id,
+    )
+    summary = get_external_customer_demand_summary(
+        producer=producer,
+        demand_plans=demand_plans,
+    )
+
+    return {
+        "page_title": "Pedidos de clientes",
+        "q": q,
+        "selected_status": status,
+        "selected_product_id": product_id,
+        "show_form": show_form,
+        "demand_rows": demand_rows,
+        "products": products,
+        "status_choices": ExternalCustomerDemandStatus.choices,
+        "active_statuses": {
+            ExternalCustomerDemandStatus.OPEN,
+            ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+            ExternalCustomerDemandStatus.COVERED,
+        },
+        "summary": summary,
+        "demand_plans": demand_plans,
+        "create_form": create_form or ExternalCustomerDemandForm(producer=producer),
+        "selected_demand": selected_demand,
+        "edit_form": edit_form,
+        "edit_id": str(selected_demand.id) if selected_demand else "",
+        "current_url": build_external_demands_url(
+            q=q,
+            status=status,
+            product_id=product_id,
+            show_form=show_form,
+            edit_id=str(selected_demand.id) if selected_demand else "",
+        ),
+    }
+
+
 def build_needs_index_context(
     producer,
     *,
@@ -259,13 +370,8 @@ def build_needs_index_context(
                 need_prefill_quantity = str(matched_row["remaining_to_plan"])
             selected_need_row = matched_row or build_selected_need_row(selected_need)
 
-    if not selected_need_row and need_my_rows:
-        selected_need_row = need_my_rows[0]
-        validated_need_id = str(selected_need_row["need"].id)
-        if not need_prefill_product_id:
-            need_prefill_product_id = str(selected_need_row["need"].product_id)
-        if not need_prefill_quantity:
-            need_prefill_quantity = str(selected_need_row["remaining_to_plan"])
+    # Flat cards: não auto-selecionar a primeira need.
+    # Cards ficam colapsados por defeito; só expandem se houver selected_need_id explícito.
 
     validated_edit_need_id = ""
     is_editing_selected_need = False
@@ -311,6 +417,10 @@ def build_needs_index_context(
         response for response in all_need_response_rows
         if response.response_status != "PENDING"
     ]
+    all_active_received_proposals = [
+        response for response in all_need_response_rows
+        if response.response_status == "PENDING"
+    ]
     sent_need_response_rows = (
         list_need_responses_for_responder(
             responder_producer=producer,
@@ -329,6 +439,25 @@ def build_needs_index_context(
         if response.response_status != "PENDING"
     ]
 
+    generated_needs_count = sum(
+        1 for row in need_my_rows
+        if row.get("status") in {NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED}
+    )
+    received_proposals_pending_count = len(all_active_received_proposals)
+    sent_proposals_pending_count = len(sent_active_need_response_rows)
+
+    external_demands_open_count = (
+        ExternalCustomerDemand.objects.filter(
+            producer=producer,
+            status__in=[
+                ExternalCustomerDemandStatus.OPEN,
+                ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+            ],
+        ).count()
+        if producer
+        else 0
+    )
+
     return {
         "page_title": "Necessidades",
         "q": q,
@@ -344,6 +473,11 @@ def build_needs_index_context(
         "sent_need_response_rows": sent_need_response_rows,
         "sent_active_need_response_rows": sent_active_need_response_rows,
         "sent_past_need_response_rows": sent_past_need_response_rows,
+        "all_active_received_proposals": all_active_received_proposals,
+        "external_demands_open_count": external_demands_open_count,
+        "generated_needs_count": generated_needs_count,
+        "received_proposals_pending_count": received_proposals_pending_count,
+        "sent_proposals_pending_count": sent_proposals_pending_count,
         "selected_need_id": validated_need_id,
         "selected_need_row": selected_need_row,
         "need_prefill_product_id": need_prefill_product_id,
@@ -381,6 +515,185 @@ def build_needs_index_context(
             edit_need_id=validated_edit_need_id,
         ),
     }
+
+
+@client_only_required
+def external_customer_demands_view(request):
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    q, status, product_id, edit_id, show_form = get_external_demands_filters(request)
+    context = build_external_demands_context(
+        producer,
+        q=q,
+        status=status,
+        product_id=product_id,
+        edit_id=edit_id,
+        show_form=show_form,
+    )
+    return render(request, "needs/external_demands.html", context)
+
+
+@client_only_required
+def external_customer_demand_create_view(request):
+    if request.method != "POST":
+        return redirect("needs:external_demands")
+
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    q, status, product_id, _, _ = get_external_demands_filters(request)
+    form = ExternalCustomerDemandForm(request.POST, producer=producer)
+    if form.is_valid():
+        try:
+            create_external_customer_demand(
+                producer=producer,
+                product=form.cleaned_data["product_id"],
+                client_name=form.cleaned_data["client_name"],
+                client_contact=form.cleaned_data.get("client_contact"),
+                client_reference=form.cleaned_data.get("client_reference"),
+                requested_quantity=form.cleaned_data["requested_quantity"],
+                requested_delivery_date=form.cleaned_data["requested_delivery_date"],
+                notes=form.cleaned_data.get("notes"),
+                created_by=request.current_user,
+            )
+        except ValidationError as exc:
+            form.add_error(None, str(exc))
+        else:
+            messages.success(request, "Pedido externo registado com sucesso.")
+            sync_alerts_after_need_change(producer, request.current_user)
+            next_url = build_external_demands_url(q=q, status=status, product_id=product_id)
+            if _is_htmx(request):
+                context = build_external_demands_context(
+                    producer,
+                    q=q,
+                    status=status,
+                    product_id=product_id,
+                )
+                return render(request, "needs/external_demands.html", context)
+            return redirect(next_url)
+
+    add_form_errors_to_messages(request, form)
+    context = build_external_demands_context(
+        producer,
+        q=q,
+        status=status,
+        product_id=product_id,
+        show_form=True,
+        create_form=form,
+    )
+    return render(request, "needs/external_demands.html", context)
+
+
+@client_only_required
+def external_customer_demand_edit_view(request, demand_id):
+    if request.method != "POST":
+        return redirect(build_external_demands_url(edit_id=str(demand_id)))
+
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    q, status, product_id, _, show_form = get_external_demands_filters(request)
+    demand = get_external_customer_demand_for_producer(producer=producer, demand_id=demand_id)
+    if not demand:
+        messages.error(request, "Pedido externo não encontrado.")
+        return redirect("needs:external_demands")
+
+    form = ExternalCustomerDemandForm(request.POST, producer=producer, demand=demand)
+    if form.is_valid():
+        try:
+            update_external_customer_demand(
+                demand=demand,
+                producer=producer,
+                product=form.cleaned_data["product_id"],
+                client_name=form.cleaned_data["client_name"],
+                client_contact=form.cleaned_data.get("client_contact"),
+                client_reference=form.cleaned_data.get("client_reference"),
+                requested_quantity=form.cleaned_data["requested_quantity"],
+                requested_delivery_date=form.cleaned_data["requested_delivery_date"],
+                notes=form.cleaned_data.get("notes"),
+                updated_by=request.current_user,
+            )
+        except ValidationError as exc:
+            form.add_error(None, str(exc))
+        else:
+            messages.success(request, "Pedido externo atualizado com sucesso.")
+            sync_alerts_after_need_change(producer, request.current_user)
+            next_url = build_external_demands_url(q=q, status=status, product_id=product_id)
+            if _is_htmx(request):
+                context = build_external_demands_context(
+                    producer,
+                    q=q,
+                    status=status,
+                    product_id=product_id,
+                )
+                return render(request, "needs/external_demands.html", context)
+            return redirect(next_url)
+
+    add_form_errors_to_messages(request, form)
+    context = build_external_demands_context(
+        producer,
+        q=q,
+        status=status,
+        product_id=product_id,
+        show_form=show_form,
+        edit_id=str(demand.id),
+        edit_form=form,
+    )
+    return render(request, "needs/external_demands.html", context)
+
+
+@client_only_required
+def external_customer_demand_cancel_view(request, demand_id):
+    if request.method != "POST":
+        return redirect("needs:external_demands")
+
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    q, status, product_id, _, show_form = get_external_demands_filters(request)
+    demand = get_external_customer_demand_for_producer(producer=producer, demand_id=demand_id)
+    if not demand:
+        messages.error(request, "Pedido externo não encontrado.")
+        return redirect("needs:external_demands")
+
+    try:
+        _, changed = cancel_external_customer_demand(
+            demand=demand,
+            producer=producer,
+            updated_by=request.current_user,
+        )
+    except ValidationError as exc:
+        messages.error(request, str(exc))
+    else:
+        if changed:
+            messages.success(request, "Pedido externo cancelado.")
+            sync_alerts_after_need_change(producer, request.current_user)
+        else:
+            messages.info(request, "O pedido externo já estava cancelado.")
+
+    if _is_htmx(request):
+        context = build_external_demands_context(
+            producer,
+            q=q,
+            status=status,
+            product_id=product_id,
+            show_form=show_form,
+        )
+        return render(request, "needs/external_demands.html", context)
+    return redirect(build_external_demands_url(q=q, status=status, product_id=product_id, show_form=show_form))
 
 
 @client_only_required

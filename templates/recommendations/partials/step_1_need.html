@@ -32,7 +32,7 @@
                   <tr>
                     <th>Produto</th>
                     <th>Disponível</th>
-                    <th>Segurança</th>
+                    <th>Compromissos</th>
                     <th>A comprar</th>
                   </tr>
                 </thead>
@@ -58,7 +58,7 @@
                     >
                       <td>
                         <strong>{{ row.product_name }}</strong>
-                        <span>Stock abaixo do mínimo</span>
+                        <span>Em falta para pedidos externos</span>
                       </td>
                       <td>{{ row.available_stock|quantity }} {{ row.unit }}</td>
                       <td>{{ row.safety_stock|quantity }} {{ row.unit }}</td>
@@ -72,7 +72,7 @@
             <div class="rec-inventory-empty">
               <i class="bi bi-check2-circle"></i>
               <strong>Sem compras urgentes</strong>
-              <span>Não há produtos abaixo do stock de segurança.</span>
+              <span>Não há produtos abaixo dos compromissos externos.</span>
             </div>
           {% endif %}
         </section>
@@ -93,7 +93,7 @@
                   <tr>
                     <th>Produto</th>
                     <th>Disponível</th>
-                    <th>Segurança</th>
+                    <th>Compromissos</th>
                     <th>A vender</th>
                   </tr>
                 </thead>
@@ -119,7 +119,7 @@
                     >
                       <td>
                         <strong>{{ row.product_name }}</strong>
-                        <span>Excedente acima da segurança</span>
+                        <span>Excedente acima dos compromissos</span>
                       </td>
                       <td>{{ row.available_stock|quantity }} {{ row.unit }}</td>
                       <td>{{ row.safety_stock|quantity }} {{ row.unit }}</td>
@@ -133,7 +133,7 @@
             <div class="rec-inventory-empty">
               <i class="bi bi-box-seam"></i>
               <strong>Sem excedentes</strong>
-              <span>Não há produtos acima do stock de segurança.</span>
+              <span>Não há produtos acima dos compromissos externos.</span>
             </div>
           {% endif %}
         </section>

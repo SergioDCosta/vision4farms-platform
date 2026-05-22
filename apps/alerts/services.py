@@ -30,7 +30,14 @@ from apps.alerts.models import (
 )
 from apps.inventory.models import ProducerProfile, ProductionForecast, Stock
 from apps.marketplace.models import ListingStatus, MarketplaceListing
-from apps.needs.models import Need, NeedResponseStatus, NeedStatus
+from apps.needs.models import (
+    ExternalCustomerDemand,
+    ExternalCustomerDemandStatus,
+    Need,
+    NeedResponseStatus,
+    NeedSourceSystem,
+    NeedStatus,
+)
 from apps.needs.services import calculate_need_coverage
 from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderStatus
 from apps.marketplace.services import get_forecast_available_quantity
@@ -867,16 +874,38 @@ def _critical_stock_candidates(producer):
         unit = getattr(stock.product, "unit", "") or ""
         available_label = _quantity_label(available_quantity, unit)
         safety_label = _quantity_label(safety_stock, unit)
+        deficit_label = _quantity_label(max(safety_stock - available_quantity, Decimal("0.000")), unit)
+        first_external_deadline = (
+            ExternalCustomerDemand.objects
+            .filter(
+                producer=producer,
+                product=stock.product,
+                status__in=[
+                    ExternalCustomerDemandStatus.OPEN,
+                    ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+                    ExternalCustomerDemandStatus.COVERED,
+                ],
+            )
+            .order_by("requested_delivery_date")
+            .values_list("requested_delivery_date", flat=True)
+            .first()
+        )
+        deadline_label = (
+            formats.date_format(first_external_deadline, "SHORT_DATE_FORMAT")
+            if first_external_deadline
+            else None
+        )
         rows.append(
             _candidate(
                 alert_type=AlertType.CRITICAL_STOCK,
                 severity=AlertSeverity.CRITICAL,
                 category=AlertCategory.STOCK,
                 product=stock.product,
-                title=f"Stock crítico: {stock.product.name}",
+                title=f"Compromissos externos em risco: {stock.product.name}",
                 description=(
-                    f"Disponível: {available_label} · "
-                    f"Stock de segurança: {safety_label}."
+                    f"Faltam {deficit_label} para cumprir pedidos externos"
+                    + (f" até {deadline_label}." if deadline_label else ".")
+                    + f" Disponível: {available_label} · Necessário: {safety_label}."
                 ),
                 payload={
                     "available_quantity": str(available_quantity),
@@ -885,8 +914,8 @@ def _critical_stock_candidates(producer):
                     "action_label": "Ver detalhe do stock",
                     "secondary_action_url": f"/recomendacoes/?product={stock.product_id}",
                     "secondary_action_label": "Abrir recomendações",
-                    "impact_label": f"Faltam cuidados no stock de {stock.product.name}",
-                    "reason": "O stock disponível ficou abaixo do stock de segurança.",
+                    "impact_label": f"Falta stock para cumprir pedidos externos de {stock.product.name}",
+                    "reason": "O stock disponível ficou abaixo da quantidade necessária para pedidos externos.",
                 },
                 requires_action=True,
                 priority=10,
@@ -930,7 +959,7 @@ def _surplus_candidates(producer):
                 product=stock.product,
                 title=f"Excedente disponível: {stock.product.name}",
                 description=(
-                    f"Excedente real acima do stock de segurança: {surplus_label}."
+                    f"Excedente real acima dos compromissos externos: {surplus_label}."
                 ),
                 payload={
                     "real_surplus": str(real_surplus),
@@ -938,7 +967,7 @@ def _surplus_candidates(producer):
                         f"/marketplace/publicar/?source=stock&product={stock.product_id}&from=inventory"
                     ),
                     "action_label": "Publicar no marketplace",
-                    "reason": "Existe stock mais de 10% acima do nível de segurança.",
+                    "reason": "Existe stock mais de 10% acima dos compromissos externos.",
                 },
                 requires_action=False,
                 priority=55,
@@ -969,6 +998,7 @@ def _need_candidates(producer):
 
         unit = getattr(need.product, "unit", "") or ""
         remaining_label = _quantity_label(remaining_to_plan, unit)
+        is_customer_demand = getattr(need, "source_system", None) == NeedSourceSystem.CUSTOMER_DEMAND
         rows.append(
             _candidate(
                 alert_type=AlertType.NEED_UNDERCOVERED,
@@ -976,8 +1006,16 @@ def _need_candidates(producer):
                 category=AlertCategory.NEEDS,
                 product=need.product,
                 need=need,
-                title=f"Necessidade por cobrir: {need.product.name}",
-                description=f"Em falta para planear: {remaining_label}.",
+                title=(
+                    f"Procura de clientes por cobrir: {need.product.name}"
+                    if is_customer_demand
+                    else f"Necessidade por cobrir: {need.product.name}"
+                ),
+                description=(
+                    f"Faltam {remaining_label} para cumprir pedidos externos de clientes."
+                    if is_customer_demand
+                    else f"Em falta para planear: {remaining_label}."
+                ),
                 payload={
                     "required_quantity": str(coverage.get("required_quantity")),
                     "planned_qty": str(coverage.get("planned_qty")),
@@ -987,7 +1025,11 @@ def _need_candidates(producer):
                     "action_label": "Ver necessidade",
                     "secondary_action_url": f"/recomendacoes/?product={need.product_id}",
                     "secondary_action_label": "Abrir recomendações",
-                    "reason": "A necessidade ainda não tem quantidade suficiente planeada.",
+                    "reason": (
+                        "A procura gerada por pedidos externos ainda não tem quantidade suficiente planeada."
+                        if is_customer_demand
+                        else "A necessidade ainda não tem quantidade suficiente planeada."
+                    ),
                 },
                 requires_action=True,
                 priority=30,

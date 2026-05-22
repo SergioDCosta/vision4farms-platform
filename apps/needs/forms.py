@@ -15,6 +15,7 @@ from apps.marketplace.services import (
 )
 from apps.needs.models import NeedStatus
 from apps.needs.services import (
+    EXTERNAL_DEMAND_NOTES_MAX_LENGTH,
     NEED_NOTES_MAX_LENGTH,
     NEED_RESPONSE_NOTES_MAX_LENGTH,
     calculate_need_coverage,
@@ -136,6 +137,94 @@ class NeedEditForm(forms.Form):
                 f"A quantidade mínima permitida é {self.minimum_quantity} {unit}.",
             )
         return cleaned_data
+
+
+class ExternalCustomerDemandForm(forms.Form):
+    product_id = forms.ModelChoiceField(
+        label="Produto",
+        queryset=Product.objects.none(),
+        empty_label="Selecionar produto",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    client_name = forms.CharField(
+        label="Cliente",
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Nome do cliente ou entidade",
+            "maxlength": 255,
+        }),
+    )
+    client_contact = forms.CharField(
+        label="Contacto",
+        required=False,
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Email, telefone ou outro contacto",
+            "maxlength": 255,
+        }),
+    )
+    client_reference = forms.CharField(
+        label="Referência",
+        required=False,
+        max_length=120,
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Ex: encomenda externa #123",
+            "maxlength": 120,
+        }),
+    )
+    requested_quantity = forms.DecimalField(
+        label="Quantidade pedida",
+        min_value=Decimal("0.001"),
+        max_digits=14,
+        decimal_places=3,
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "0.001",
+            "min": "0.001",
+            "placeholder": "Ex: 100",
+        }),
+    )
+    requested_delivery_date = forms.DateField(
+        label="Data pretendida de entrega",
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"class": "form-control", "type": "date"},
+        ),
+    )
+    notes = forms.CharField(
+        label="Notas",
+        required=False,
+        max_length=EXTERNAL_DEMAND_NOTES_MAX_LENGTH,
+        widget=forms.Textarea(attrs={
+            "class": "form-control",
+            "rows": 3,
+            "maxlength": EXTERNAL_DEMAND_NOTES_MAX_LENGTH,
+            "placeholder": "Detalhes combinados com o cliente, qualidade, entrega ou observações internas.",
+        }),
+    )
+
+    def __init__(self, *args, producer=None, demand=None, **kwargs):
+        self.producer = producer
+        self.demand = demand
+        initial = kwargs.pop("initial", None) or {}
+        if demand:
+            initial = {
+                "product_id": demand.product_id,
+                "client_name": demand.client_name,
+                "client_contact": demand.client_contact or "",
+                "client_reference": demand.client_reference or "",
+                "requested_quantity": demand.requested_quantity,
+                "requested_delivery_date": demand.requested_delivery_date,
+                "notes": demand.notes or "",
+                **initial,
+            }
+        kwargs["initial"] = initial
+        super().__init__(*args, **kwargs)
+        self.fields["product_id"].queryset = get_need_candidate_products(producer) if producer else Product.objects.none()
 
 
 class NeedResponsePublishForm(forms.Form):

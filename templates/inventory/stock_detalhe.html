@@ -69,12 +69,12 @@
 
     <div class="inv-stat-card">
       <p class="inv-stat-value" style="color:#475569;">{{ stock.safety_stock|quantity }}</p>
-      <p class="inv-stat-label">Stock de segurança</p>
+      <p class="inv-stat-label">Compromissos externos</p>
       <p class="inv-help" style="margin-top:.35rem;">
         {% if stock_state.has_safety_stock %}
           Aviso até {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}
         {% else %}
-          Defina um stock de segurança para ativar avisos.
+          Registe pedidos externos para ativar avisos de compromissos.
         {% endif %}
       </p>
     </div>
@@ -88,18 +88,18 @@
   {% else %}
     {% if stock_state.key == "critical" %}
       <div class="inv-alert inv-alert--warning">
-        <strong>Stock abaixo do nível de segurança.</strong>
-        O disponível está abaixo do mínimo definido. Deve reforçar stock ou procurar recomendação de compra.
+        <strong>Stock abaixo dos compromissos externos.</strong>
+        O disponível está abaixo da quantidade necessária para pedidos externos. Deve reforçar stock ou procurar recomendação de compra.
       </div>
     {% elif stock_state.key == "warning" %}
       <div class="inv-alert inv-alert--warning">
-        <strong>Stock perto do nível de segurança.</strong>
-        O disponível está dentro da margem de 10% acima do mínimo. Ainda não é crítico, mas qualquer reserva ou venda pode deixar este produto abaixo do recomendado.
+        <strong>Stock perto dos compromissos externos.</strong>
+        O disponível está dentro da margem de 10% acima dos compromissos. Qualquer reserva ou venda pode deixar este produto em falta para clientes externos.
       </div>
     {% elif stock_state.key == "excess" %}
       <div class="inv-alert inv-alert--success">
         <strong>Existe potencial de excedente.</strong>
-        O disponível está acima da margem de segurança. Pode vender {{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }} sem tocar no stock de segurança.
+        O disponível está acima da margem dos compromissos. Pode vender {{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }} sem tocar na quantidade reservada para clientes externos.
       </div>
     {% endif %}
   {% endif %}
@@ -117,7 +117,7 @@
     <div class="inv-card-body inv-stock-health-grid">
       <div class="inv-progress-block">
         <div class="inv-progress-head">
-          <span>{% if stock_state.has_safety_stock %}Margem até zona segura{% else %}Stock de segurança{% endif %}</span>
+          <span>{% if stock_state.has_safety_stock %}Margem até zona segura{% else %}Compromissos externos{% endif %}</span>
           <strong>
             {% if stock_state.has_safety_stock %}
               {{ stock.available_quantity|quantity }} / {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}
@@ -131,7 +131,7 @@
         </div>
         <p class="inv-help">
           {% if stock_state.has_safety_stock %}
-            A app considera atenção quando o disponível está entre {{ stock.safety_stock|quantity }} e {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}.
+            A app considera atenção quando o disponível está entre {{ stock.safety_stock|quantity }} e {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }} face aos compromissos externos.
           {% else %}
             Sem este valor, a app não consegue distinguir stock baixo de stock saudável.
           {% endif %}
@@ -153,27 +153,27 @@
 
       <div class="inv-progress-block">
         <div class="inv-progress-head">
-          <span>Vendável sem tocar na segurança</span>
+          <span>Vendável sem tocar nos compromissos</span>
           <strong>{{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }}</strong>
         </div>
         <div class="inv-progress-track">
           <span class="inv-progress-fill inv-progress-fill--sellable" style="width:{% if stock_state.publishable_quantity > 0 %}100{% else %}0{% endif %}%;"></span>
         </div>
         <p class="inv-help">
-          Calculado como disponível menos stock de segurança. Se vender esta quantidade, fica exatamente no mínimo definido.
+          Calculado como disponível menos compromissos externos. Se vender esta quantidade, fica exatamente com a quantidade necessária para clientes externos.
         </p>
       </div>
 
       <div class="inv-progress-block">
         <div class="inv-progress-head">
-          <span>Falta para repor segurança</span>
+          <span>Falta para cumprir compromissos</span>
           <strong>{{ stock_state.deficit_quantity|quantity }} {{ stock.product.unit }}</strong>
         </div>
         <div class="inv-progress-track">
           <span class="inv-progress-fill inv-progress-fill--critical" style="width:{% if stock_state.deficit_quantity > 0 %}100{% else %}0{% endif %}%;"></span>
         </div>
         <p class="inv-help">
-          Só aparece quando o stock disponível está abaixo do stock de segurança.
+          Só aparece quando o stock disponível está abaixo dos compromissos externos.
         </p>
       </div>
     </div>

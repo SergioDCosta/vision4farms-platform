@@ -276,7 +276,7 @@
                       <span>Stock: {{ row.current_quantity|quantity }} {{ row.product.unit }}</span>
                     {% endif %}
                     <span>Reservado: {{ row.reserved_quantity|quantity }} {{ row.product.unit }}</span>
-                    <span>Publicável: {{ row.publishable_quantity|quantity }} {{ row.product.unit }}</span>
+                    <span>Publicável acima dos compromissos externos: {{ row.publishable_quantity|quantity }} {{ row.product.unit }}</span>
                     {% if row.period_start or row.period_end %}
                       <span>
                         Período:
@@ -292,7 +292,7 @@
           {% else %}
             <div class="mkp-summary-empty">
               <i class="bi bi-inbox"></i>
-              <p>Sem excedente publicável neste momento.</p>
+              <p>Sem excedente publicável acima dos compromissos externos neste momento.</p>
             </div>
           {% endif %}
         </section>

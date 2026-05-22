@@ -108,6 +108,20 @@ class NeedsRoutingTests(SimpleTestCase):
             f"/necessidades/{need_id}/editar/",
         )
 
+    def test_external_customer_demands_urls_are_public_needs_paths(self):
+        demand_id = uuid4()
+
+        self.assertEqual(reverse("needs:external_demands"), "/necessidades/pedidos-clientes/")
+        self.assertEqual(reverse("needs:external_demand_create"), "/necessidades/pedidos-clientes/criar/")
+        self.assertEqual(
+            reverse("needs:external_demand_edit", args=[demand_id]),
+            f"/necessidades/pedidos-clientes/{demand_id}/editar/",
+        )
+        self.assertEqual(
+            reverse("needs:external_demand_cancel", args=[demand_id]),
+            f"/necessidades/pedidos-clientes/{demand_id}/cancelar/",
+        )
+
 
 class NeedResponsePublishViewTests(SimpleTestCase):
     def _request(self):
@@ -642,7 +656,7 @@ class NeedsServiceTests(SimpleTestCase):
 
         self.assertEqual(rows[0]["public_status"], NeedStatus.OPEN)
         self.assertEqual(rows[0]["public_status_label"], "Aberta")
-        self.assertEqual(rows[0]["public_quantity"], Decimal("10.000"))
+        self.assertEqual(rows[0]["public_quantity"], Decimal("6.000"))
         self.assertEqual(rows[0]["public_offered_quantity"], Decimal("5.000"))
 
     def test_public_offered_quantity_counts_only_other_relevant_offers(self):

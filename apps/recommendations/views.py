@@ -106,9 +106,9 @@ def _recommendation_ui_meta(metrics):
         return {
             "recommendation_direction": direction,
             "quantity_label": "Quantidade a comprar",
-            "quantity_help": "Valor sugerido para repor o stock disponível até ao stock de segurança. Podes ajustar manualmente antes de gerar.",
+            "quantity_help": "Valor sugerido para cumprir pedidos externos em aberto. Podes ajustar manualmente antes de gerar.",
             "suggested_quantity_label": "Sugestão de compra",
-            "suggested_quantity_hint": "Valor sugerido para repor o stock disponível até ao stock de segurança.",
+            "suggested_quantity_hint": "Quantidade em falta para cumprir pedidos externos.",
             "submit_label": "Gerar recomendação de compra",
             "can_generate": True,
         }
@@ -116,16 +116,16 @@ def _recommendation_ui_meta(metrics):
         return {
             "recommendation_direction": direction,
             "quantity_label": "Quantidade a vender",
-            "quantity_help": "Valor sugerido para vender apenas o excedente acima do stock de segurança.",
+            "quantity_help": "Valor sugerido para vender apenas o excedente acima dos compromissos externos.",
             "suggested_quantity_label": "Sugestão de venda",
-            "suggested_quantity_hint": "Excedente disponível acima do stock de segurança.",
+            "suggested_quantity_hint": "Excedente disponível acima dos compromissos externos.",
             "submit_label": "Gerar recomendação de venda",
             "can_generate": True,
         }
     return {
         "recommendation_direction": direction,
         "quantity_label": "Quantidade sugerida",
-        "quantity_help": "O stock disponível está alinhado com o stock de segurança.",
+        "quantity_help": "O stock disponível está alinhado com os compromissos externos.",
         "suggested_quantity_label": "Stock equilibrado",
         "suggested_quantity_hint": "Não há compra nem venda recomendada neste momento.",
         "submit_label": "Sem ação recomendada",

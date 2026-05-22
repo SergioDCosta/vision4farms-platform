@@ -7,6 +7,18 @@ app_name = "needs"
 
 urlpatterns = [
     path("necessidades/", views.needs_index_view, name="index"),
+    path("necessidades/pedidos-clientes/", views.external_customer_demands_view, name="external_demands"),
+    path("necessidades/pedidos-clientes/criar/", views.external_customer_demand_create_view, name="external_demand_create"),
+    path(
+        "necessidades/pedidos-clientes/<uuid:demand_id>/editar/",
+        views.external_customer_demand_edit_view,
+        name="external_demand_edit",
+    ),
+    path(
+        "necessidades/pedidos-clientes/<uuid:demand_id>/cancelar/",
+        views.external_customer_demand_cancel_view,
+        name="external_demand_cancel",
+    ),
     path("necessidades/criar/", views.need_create_view, name="create"),
     path("necessidades/responder/", views.need_response_publish_view, name="respond"),
     path("necessidades/<uuid:need_id>/editar/", views.need_edit_view, name="edit"),

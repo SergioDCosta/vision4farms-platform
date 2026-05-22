@@ -1023,9 +1023,9 @@
       if (direction === "BUY") {
         return {
           quantityLabel: "Quantidade a comprar",
-          quantityHelp: "Valor sugerido para repor o stock disponível até ao stock de segurança. Pode ajustar manualmente antes de gerar.",
+          quantityHelp: "Valor sugerido para cumprir pedidos externos em aberto. Pode ajustar manualmente antes de gerar.",
           suggestedLabel: "Sugestão de compra",
-          suggestedHelp: "Valor sugerido para repor o stock disponível até ao stock de segurança.",
+          suggestedHelp: "Quantidade em falta para cumprir pedidos externos.",
           submitLabel: "Gerar recomendação de compra",
           actionLabel: "Comprar para repor stock"
         };
@@ -1033,16 +1033,16 @@
       if (direction === "SELL") {
         return {
           quantityLabel: "Quantidade a vender",
-          quantityHelp: "Valor sugerido para vender apenas o excedente acima do stock de segurança.",
+          quantityHelp: "Valor sugerido para vender apenas o excedente acima dos compromissos externos.",
           suggestedLabel: "Sugestão de venda",
-          suggestedHelp: "Excedente disponível acima do stock de segurança.",
+          suggestedHelp: "Excedente disponível acima dos compromissos externos.",
           submitLabel: "Gerar recomendação de venda",
           actionLabel: "Vender excedente"
         };
       }
       return {
         quantityLabel: "Quantidade sugerida",
-        quantityHelp: "O stock disponível está alinhado com o stock de segurança.",
+        quantityHelp: "O stock disponível está alinhado com os compromissos externos.",
         suggestedLabel: "Stock equilibrado",
         suggestedHelp: "Não há compra nem venda recomendada neste momento.",
         submitLabel: "Sem ação recomendada",
@@ -1112,7 +1112,7 @@
       if (currentHint) {
         currentHint.textContent = "Stock atual " + formatQuantity(row.dataset.currentStock, unit)
           + " · reservado " + formatQuantity(row.dataset.reservedQuantity, unit)
-          + " · segurança " + formatQuantity(row.dataset.safetyStock, unit) + ".";
+          + " · compromissos " + formatQuantity(row.dataset.safetyStock, unit) + ".";
       }
       if (suggestedLabel) suggestedLabel.textContent = meta.suggestedLabel;
       if (suggestedValue) suggestedValue.textContent = formatQuantity(suggested, unit);

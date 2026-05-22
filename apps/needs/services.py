@@ -1,17 +1,27 @@
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
+from urllib.parse import urlencode
+from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.catalog.models import Product
-from apps.inventory.models import Stock
+from apps.inventory.models import ProductionForecast, Stock
 from apps.marketplace.models import ListingStatus, MarketplaceListing
-from apps.needs.models import Need, NeedResponseStatus, NeedSourceSystem, NeedStatus
+from apps.needs.models import (
+    ExternalCustomerDemand,
+    ExternalCustomerDemandSourceSystem,
+    ExternalCustomerDemandStatus,
+    Need,
+    NeedResponseStatus,
+    NeedSourceSystem,
+    NeedStatus,
+)
 from apps.orders.models import OrderItem, OrderItemStatus, OrderStatus
 
 
@@ -31,6 +41,23 @@ PUBLIC_OFFERED_ORDER_STATUSES = [
 NEEDS_SEARCH_QUERY_MAX_LENGTH = 120
 NEED_NOTES_MAX_LENGTH = 1200
 NEED_RESPONSE_NOTES_MAX_LENGTH = 1200
+EXTERNAL_DEMAND_SEARCH_QUERY_MAX_LENGTH = 120
+EXTERNAL_DEMAND_NOTES_MAX_LENGTH = 1200
+EXTERNAL_DEMAND_ACTIVE_STATUSES = [
+    ExternalCustomerDemandStatus.OPEN,
+    ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+    ExternalCustomerDemandStatus.COVERED,
+]
+EXTERNAL_DEMAND_EDITABLE_STATUSES = [
+    ExternalCustomerDemandStatus.OPEN,
+    ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+    ExternalCustomerDemandStatus.COVERED,
+]
+CUSTOMER_DEMAND_NEED_NOTES = (
+    "Necessidade gerada automaticamente a partir de pedidos externos de clientes. "
+    "A quantidade reflete o maior défice temporal entre pedidos acumulados e "
+    "stock/previsão disponível até às datas de entrega."
+)
 
 
 class DuplicateActiveNeedError(ValidationError):
@@ -91,6 +118,656 @@ def _quantize_need_quantity(value):
 
 def normalize_needs_search_query(value):
     return (value or "").strip()[:NEEDS_SEARCH_QUERY_MAX_LENGTH]
+
+
+def normalize_external_demands_search_query(value):
+    return (value or "").strip()[:EXTERNAL_DEMAND_SEARCH_QUERY_MAX_LENGTH]
+
+
+def _clean_optional_text(value):
+    value = (value or "").strip()
+    return value or None
+
+
+def _is_uuid_like(value):
+    try:
+        UUID(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def get_external_customer_demand_for_producer(*, producer, demand_id):
+    if not producer or not demand_id or not _is_uuid_like(demand_id):
+        return None
+
+    return (
+        ExternalCustomerDemand.objects
+        .select_related("producer", "product", "product__category", "generated_need")
+        .filter(id=demand_id, producer=producer)
+        .first()
+    )
+
+
+def list_external_customer_demands(*, producer, q="", status="", product_id=""):
+    if not producer:
+        return ExternalCustomerDemand.objects.none()
+
+    qs = (
+        ExternalCustomerDemand.objects
+        .select_related("product", "product__category", "generated_need", "created_by", "updated_by")
+        .filter(producer=producer)
+        .order_by("requested_delivery_date", "-created_at")
+    )
+
+    q = normalize_external_demands_search_query(q)
+    if q:
+        qs = qs.filter(
+            Q(client_name__icontains=q)
+            | Q(client_contact__icontains=q)
+            | Q(client_reference__icontains=q)
+            | Q(product__name__icontains=q)
+            | Q(notes__icontains=q)
+        )
+
+    valid_statuses = {choice.value for choice in ExternalCustomerDemandStatus}
+    if status in valid_statuses:
+        qs = qs.filter(status=status)
+
+    if product_id and _is_uuid_like(product_id):
+        qs = qs.filter(product_id=product_id)
+    elif product_id:
+        qs = qs.none()
+
+    return qs
+
+
+def _as_local_date(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _forecast_available_date(forecast):
+    period_end_date = _as_local_date(getattr(forecast, "period_end", None))
+    if period_end_date:
+        return period_end_date
+    return _as_local_date(getattr(forecast, "period_start", None))
+
+
+def _forecast_available_quantity(forecast):
+    forecast_quantity = _quantize_need_quantity(getattr(forecast, "forecast_quantity", 0))
+    reserved_quantity = _quantize_need_quantity(getattr(forecast, "reserved_quantity", 0))
+    return _quantize_need_quantity(max(forecast_quantity - reserved_quantity, Decimal("0.000")))
+
+
+def _stock_available_quantity(stock):
+    if not stock:
+        return Decimal("0.000")
+    current_quantity = _quantize_need_quantity(getattr(stock, "current_quantity", 0))
+    reserved_quantity = _quantize_need_quantity(getattr(stock, "reserved_quantity", 0))
+    return _quantize_need_quantity(max(current_quantity - reserved_quantity, Decimal("0.000")))
+
+
+def calculate_external_demand_plan(*, producer, product):
+    active_demands = list(
+        ExternalCustomerDemand.objects
+        .select_related("product")
+        .filter(
+            producer=producer,
+            product=product,
+            status__in=EXTERNAL_DEMAND_ACTIVE_STATUSES,
+        )
+        .order_by("requested_delivery_date", "created_at")
+    )
+    stock = Stock.objects.filter(producer=producer, product=product).first()
+    available_stock_now = _stock_available_quantity(stock)
+
+    forecasts = []
+    for forecast in (
+        ProductionForecast.objects
+        .filter(producer=producer, product=product)
+        .only("id", "forecast_quantity", "reserved_quantity", "period_start", "period_end")
+    ):
+        available_date = _forecast_available_date(forecast)
+        available_quantity = _forecast_available_quantity(forecast)
+        if available_date and available_quantity > Decimal("0.000"):
+            forecasts.append({
+                "available_date": available_date,
+                "available_quantity": available_quantity,
+            })
+
+    demand_by_date = {}
+    for demand in active_demands:
+        delivery_date = demand.requested_delivery_date
+        demand_by_date[delivery_date] = _quantize_need_quantity(
+            demand_by_date.get(delivery_date, Decimal("0.000"))
+            + _quantize_need_quantity(demand.requested_quantity)
+        )
+
+    rows = []
+    total_external_demand = Decimal("0.000")
+    max_deficit = Decimal("0.000")
+    first_deficit_date = None
+    total_forecast_relevant = Decimal("0.000")
+
+    for delivery_date in sorted(demand_by_date):
+        total_external_demand = _quantize_need_quantity(
+            total_external_demand + demand_by_date[delivery_date]
+        )
+        forecast_until_date = Decimal("0.000")
+        for forecast in forecasts:
+            if forecast["available_date"] <= delivery_date:
+                forecast_until_date = _quantize_need_quantity(
+                    forecast_until_date + forecast["available_quantity"]
+                )
+        total_forecast_relevant = max(total_forecast_relevant, forecast_until_date)
+        capacity_until_date = _quantize_need_quantity(available_stock_now + forecast_until_date)
+        deficit_until_date = _quantize_need_quantity(
+            max(total_external_demand - capacity_until_date, Decimal("0.000"))
+        )
+        if deficit_until_date > max_deficit:
+            max_deficit = deficit_until_date
+        if deficit_until_date > Decimal("0.000") and first_deficit_date is None:
+            first_deficit_date = delivery_date
+
+        rows.append({
+            "delivery_date": delivery_date,
+            "demand_until_date": total_external_demand,
+            "forecast_until_date": forecast_until_date,
+            "capacity_until_date": capacity_until_date,
+            "deficit_until_date": deficit_until_date,
+        })
+
+    generated_need = _get_customer_demand_need_for_product(producer=producer, product=product)
+
+    return {
+        "product": product,
+        "total_external_demand": total_external_demand,
+        "available_stock_now": available_stock_now,
+        "total_forecast_relevant": total_forecast_relevant,
+        "max_deficit": max_deficit,
+        "first_deficit_date": first_deficit_date,
+        "rows": rows,
+        "has_deficit": max_deficit > Decimal("0.000"),
+        "generated_need": generated_need,
+        "generated_need_status": getattr(generated_need, "status", None),
+    }
+
+
+def _customer_demand_need_external_id(*, producer, product):
+    return f"customer_demands:{producer.id}:{product.id}"
+
+
+def _get_customer_demand_need_for_product(*, producer, product):
+    if not producer or not product:
+        return None
+    return (
+        Need.objects
+        .select_related("producer", "product", "product__category")
+        .filter(
+            producer=producer,
+            product=product,
+            source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+        )
+        .exclude(status__in=[NeedStatus.IGNORED, NeedStatus.CANCELLED])
+        .order_by("-updated_at", "-created_at")
+        .first()
+    )
+
+
+def _lock_need_for_customer_demand_sync(*, producer, product):
+    customer_need = (
+        Need.objects
+        .select_for_update()
+        .filter(
+            producer=producer,
+            product=product,
+            source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+        )
+        .exclude(status__in=[NeedStatus.IGNORED, NeedStatus.CANCELLED])
+        .order_by("-updated_at", "-created_at")
+        .first()
+    )
+    if customer_need:
+        return customer_need
+
+    return (
+        Need.objects
+        .select_for_update()
+        .filter(
+            producer=producer,
+            product=product,
+            status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED, NeedStatus.COVERED],
+        )
+        .order_by("-updated_at", "-created_at")
+        .first()
+    )
+
+
+def _set_external_demands_generated_need(*, producer, product, need):
+    active_qs = ExternalCustomerDemand.objects.filter(
+        producer=producer,
+        product=product,
+        status__in=EXTERNAL_DEMAND_ACTIVE_STATUSES,
+    )
+    inactive_qs = ExternalCustomerDemand.objects.filter(
+        producer=producer,
+        product=product,
+    ).exclude(status__in=EXTERNAL_DEMAND_ACTIVE_STATUSES)
+
+    active_qs.update(generated_need=need, updated_at=timezone.now())
+    inactive_qs.filter(generated_need=need).update(generated_need=None, updated_at=timezone.now())
+
+
+@transaction.atomic
+def sync_safety_stock_from_external_demands(*, producer, product, acting_user=None):
+    if not producer or not product:
+        return None
+
+    total = (
+        ExternalCustomerDemand.objects
+        .filter(
+            producer=producer,
+            product=product,
+            status__in=EXTERNAL_DEMAND_ACTIVE_STATUSES,
+        )
+        .aggregate(total=Sum("requested_quantity"))
+        .get("total")
+        or Decimal("0.000")
+    )
+    total = _quantize_need_quantity(total)
+
+    now = timezone.now()
+    defaults = {
+        "current_quantity": Decimal("0.000"),
+        "reserved_quantity": Decimal("0.000"),
+        "safety_stock": total,
+        "last_updated_at": now,
+    }
+    if hasattr(Stock, "updated_by"):
+        defaults["updated_by"] = acting_user
+
+    stock, created = (
+        Stock.objects
+        .select_for_update()
+        .get_or_create(
+            producer=producer,
+            product=product,
+            defaults=defaults,
+        )
+    )
+
+    if created:
+        return stock
+
+    if _quantize_need_quantity(stock.safety_stock) == total:
+        return stock
+
+    stock.safety_stock = total
+    update_fields = ["safety_stock"]
+    if hasattr(stock, "updated_by"):
+        stock.updated_by = acting_user
+        update_fields.append("updated_by")
+    if hasattr(stock, "last_updated_at"):
+        stock.last_updated_at = now
+        update_fields.append("last_updated_at")
+    if hasattr(stock, "updated_at"):
+        stock.updated_at = now
+        update_fields.append("updated_at")
+    stock.save(update_fields=list(dict.fromkeys(update_fields)))
+    return stock
+
+
+@transaction.atomic
+def sync_need_from_external_demands(*, producer, product, acting_user=None):
+    if not producer or not product:
+        return None, calculate_external_demand_plan(producer=producer, product=product), False
+
+    plan = calculate_external_demand_plan(producer=producer, product=product)
+    max_deficit = _quantize_need_quantity(plan.get("max_deficit"))
+    first_deficit_date = plan.get("first_deficit_date")
+    existing_need = _lock_need_for_customer_demand_sync(producer=producer, product=product)
+    changed = False
+
+    if max_deficit > Decimal("0.000"):
+        needed_by_date = _normalize_needed_by_date(first_deficit_date)
+        external_id = _customer_demand_need_external_id(producer=producer, product=product)
+
+        if existing_need:
+            update_fields = []
+            if _quantize_need_quantity(existing_need.required_quantity) != max_deficit:
+                existing_need.required_quantity = max_deficit
+                update_fields.append("required_quantity")
+            if existing_need.needed_by_date != needed_by_date:
+                existing_need.needed_by_date = needed_by_date
+                update_fields.append("needed_by_date")
+            if existing_need.source_system != NeedSourceSystem.CUSTOMER_DEMAND:
+                existing_need.source_system = NeedSourceSystem.CUSTOMER_DEMAND
+                update_fields.append("source_system")
+            if existing_need.external_id != external_id:
+                existing_need.external_id = external_id
+                update_fields.append("external_id")
+            if (existing_need.notes or "") != CUSTOMER_DEMAND_NEED_NOTES:
+                existing_need.notes = CUSTOMER_DEMAND_NEED_NOTES
+                update_fields.append("notes")
+            if existing_need.status == NeedStatus.COVERED:
+                existing_need.status = NeedStatus.OPEN
+                update_fields.append("status")
+
+            if update_fields:
+                if hasattr(existing_need, "updated_at"):
+                    existing_need.updated_at = timezone.now()
+                    update_fields.append("updated_at")
+                existing_need.save(update_fields=list(dict.fromkeys(update_fields)))
+                changed = True
+            need = existing_need
+        else:
+            need = Need.objects.create(
+                producer=producer,
+                product=product,
+                required_quantity=max_deficit,
+                needed_by_date=needed_by_date,
+                source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+                external_id=external_id,
+                notes=CUSTOMER_DEMAND_NEED_NOTES,
+                status=NeedStatus.OPEN,
+            )
+            changed = True
+
+        need, _, status_changed = recalculate_need_status(need, acting_user=acting_user)
+        _set_external_demands_generated_need(producer=producer, product=product, need=need)
+        return need, plan, bool(changed or status_changed)
+
+    if existing_need:
+        update_fields = []
+        if existing_need.source_system != NeedSourceSystem.CUSTOMER_DEMAND:
+            existing_need.source_system = NeedSourceSystem.CUSTOMER_DEMAND
+            update_fields.append("source_system")
+        external_id = _customer_demand_need_external_id(producer=producer, product=product)
+        if existing_need.external_id != external_id:
+            existing_need.external_id = external_id
+            update_fields.append("external_id")
+        if existing_need.status != NeedStatus.COVERED:
+            existing_need.status = NeedStatus.COVERED
+            update_fields.append("status")
+        if (existing_need.notes or "") != CUSTOMER_DEMAND_NEED_NOTES:
+            existing_need.notes = CUSTOMER_DEMAND_NEED_NOTES
+            update_fields.append("notes")
+        if update_fields:
+            if hasattr(existing_need, "updated_at"):
+                existing_need.updated_at = timezone.now()
+                update_fields.append("updated_at")
+            existing_need.save(update_fields=list(dict.fromkeys(update_fields)))
+            changed = True
+        _set_external_demands_generated_need(producer=producer, product=product, need=existing_need)
+        return existing_need, plan, changed
+
+    _set_external_demands_generated_need(producer=producer, product=product, need=None)
+    return None, plan, False
+
+
+@transaction.atomic
+def sync_external_customer_demand_state_for_product(*, producer, product, acting_user=None):
+    stock = sync_safety_stock_from_external_demands(
+        producer=producer,
+        product=product,
+        acting_user=acting_user,
+    )
+    need, plan, changed = sync_need_from_external_demands(
+        producer=producer,
+        product=product,
+        acting_user=acting_user,
+    )
+    return {
+        "stock": stock,
+        "need": need,
+        "plan": plan,
+        "changed": changed,
+    }
+
+
+def build_external_demand_plans(*, producer, product_id=""):
+    if not producer:
+        return []
+
+    product_ids_qs = (
+        ExternalCustomerDemand.objects
+        .filter(producer=producer, status__in=EXTERNAL_DEMAND_ACTIVE_STATUSES)
+        .values_list("product_id", flat=True)
+        .distinct()
+    )
+    if product_id and _is_uuid_like(product_id):
+        product_ids_qs = product_ids_qs.filter(product_id=product_id)
+    elif product_id:
+        return []
+
+    products = (
+        Product.objects
+        .filter(id__in=list(product_ids_qs), is_active=True)
+        .select_related("category")
+        .order_by("name")
+    )
+    plans = [calculate_external_demand_plan(producer=producer, product=product) for product in products]
+    return sorted(
+        plans,
+        key=lambda plan: (
+            plan["first_deficit_date"] is None,
+            plan["first_deficit_date"] or date.max,
+            -plan["max_deficit"],
+            plan["product"].name.lower(),
+        ),
+    )
+
+
+def get_external_customer_demand_summary(*, producer, demand_plans=None):
+    if not producer:
+        return {
+            "open_count": 0,
+            "product_count": 0,
+            "total_quantity": Decimal("0.000"),
+            "max_deficit": Decimal("0.000"),
+            "first_deficit_date": None,
+        }
+
+    rows = list(
+        ExternalCustomerDemand.objects
+        .filter(producer=producer, status__in=EXTERNAL_DEMAND_ACTIVE_STATUSES)
+        .values_list("product_id", "requested_quantity")
+    )
+    total_quantity = Decimal("0.000")
+    product_ids = set()
+    for product_id, quantity in rows:
+        product_ids.add(product_id)
+        total_quantity = _quantize_need_quantity(total_quantity + _quantize_need_quantity(quantity))
+
+    demand_plans = demand_plans if demand_plans is not None else build_external_demand_plans(producer=producer)
+    max_deficit = Decimal("0.000")
+    first_deficit_date = None
+    for plan in demand_plans:
+        if plan["max_deficit"] > max_deficit:
+            max_deficit = plan["max_deficit"]
+        current_date = plan.get("first_deficit_date")
+        if current_date and (first_deficit_date is None or current_date < first_deficit_date):
+            first_deficit_date = current_date
+
+    return {
+        "open_count": len(rows),
+        "product_count": len(product_ids),
+        "total_quantity": total_quantity,
+        "max_deficit": _quantize_need_quantity(max_deficit),
+        "first_deficit_date": first_deficit_date,
+    }
+
+
+def _validate_external_customer_demand_payload(*, product, client_name, requested_quantity, requested_delivery_date):
+    if not product:
+        raise ValidationError("Produto inválido para o pedido externo.")
+    if not (client_name or "").strip():
+        raise ValidationError("Indique o nome do cliente.")
+
+    quantity = _quantize_need_quantity(requested_quantity)
+    if quantity <= Decimal("0.000"):
+        raise ValidationError("A quantidade pedida deve ser superior a zero.")
+
+    if not requested_delivery_date:
+        raise ValidationError("Indique a data pretendida de entrega.")
+
+    return quantity
+
+
+@transaction.atomic
+def create_external_customer_demand(
+    *,
+    producer,
+    product,
+    client_name,
+    requested_quantity,
+    requested_delivery_date,
+    client_contact=None,
+    client_reference=None,
+    notes=None,
+    created_by=None,
+    source_system=ExternalCustomerDemandSourceSystem.MANUAL,
+    external_id=None,
+):
+    quantity = _validate_external_customer_demand_payload(
+        product=product,
+        client_name=client_name,
+        requested_quantity=requested_quantity,
+        requested_delivery_date=requested_delivery_date,
+    )
+
+    demand = ExternalCustomerDemand.objects.create(
+        producer=producer,
+        product=product,
+        client_name=(client_name or "").strip(),
+        client_contact=_clean_optional_text(client_contact),
+        client_reference=_clean_optional_text(client_reference),
+        requested_quantity=quantity,
+        requested_delivery_date=requested_delivery_date,
+        status=ExternalCustomerDemandStatus.OPEN,
+        notes=_clean_optional_text(notes),
+        source_system=source_system or ExternalCustomerDemandSourceSystem.MANUAL,
+        external_id=_clean_optional_text(external_id),
+        created_by=created_by,
+        updated_by=created_by,
+    )
+    sync_external_customer_demand_state_for_product(
+        producer=producer,
+        product=product,
+        acting_user=created_by,
+    )
+    return demand
+
+
+@transaction.atomic
+def update_external_customer_demand(
+    *,
+    demand,
+    producer,
+    product,
+    client_name,
+    requested_quantity,
+    requested_delivery_date,
+    client_contact=None,
+    client_reference=None,
+    notes=None,
+    updated_by=None,
+):
+    if not demand:
+        raise ValidationError("Pedido externo inválido.")
+
+    locked_demand = (
+        ExternalCustomerDemand.objects
+        .select_for_update()
+        .select_related("product", "producer")
+        .get(id=demand.id)
+    )
+    if locked_demand.producer_id != producer.id:
+        raise ValidationError("Não pode editar este pedido externo.")
+    if locked_demand.status not in EXTERNAL_DEMAND_EDITABLE_STATUSES:
+        raise ValidationError("Este pedido externo já não pode ser editado.")
+
+    quantity = _validate_external_customer_demand_payload(
+        product=product,
+        client_name=client_name,
+        requested_quantity=requested_quantity,
+        requested_delivery_date=requested_delivery_date,
+    )
+
+    previous_product = locked_demand.product
+    locked_demand.product = product
+    locked_demand.client_name = (client_name or "").strip()
+    locked_demand.client_contact = _clean_optional_text(client_contact)
+    locked_demand.client_reference = _clean_optional_text(client_reference)
+    locked_demand.requested_quantity = quantity
+    locked_demand.requested_delivery_date = requested_delivery_date
+    locked_demand.notes = _clean_optional_text(notes)
+    locked_demand.updated_by = updated_by
+    locked_demand.updated_at = timezone.now()
+    locked_demand.save(
+        update_fields=[
+            "product",
+            "client_name",
+            "client_contact",
+            "client_reference",
+            "requested_quantity",
+            "requested_delivery_date",
+            "notes",
+            "updated_by",
+            "updated_at",
+        ]
+    )
+    sync_external_customer_demand_state_for_product(
+        producer=producer,
+        product=product,
+        acting_user=updated_by,
+    )
+    if previous_product and previous_product.id != product.id:
+        sync_external_customer_demand_state_for_product(
+            producer=producer,
+            product=previous_product,
+            acting_user=updated_by,
+        )
+    return locked_demand
+
+
+@transaction.atomic
+def cancel_external_customer_demand(*, demand, producer, updated_by=None):
+    if not demand:
+        raise ValidationError("Pedido externo inválido.")
+
+    locked_demand = (
+        ExternalCustomerDemand.objects
+        .select_for_update()
+        .get(id=demand.id)
+    )
+    if locked_demand.producer_id != producer.id:
+        raise ValidationError("Não pode cancelar este pedido externo.")
+    if locked_demand.status == ExternalCustomerDemandStatus.CANCELLED:
+        return locked_demand, False
+    if locked_demand.status == ExternalCustomerDemandStatus.FULFILLED:
+        raise ValidationError("Este pedido externo já está cumprido e não pode ser cancelado.")
+
+    now = timezone.now()
+    locked_demand.status = ExternalCustomerDemandStatus.CANCELLED
+    locked_demand.cancelled_at = now
+    locked_demand.updated_by = updated_by
+    locked_demand.updated_at = now
+    locked_demand.save(update_fields=["status", "cancelled_at", "updated_by", "updated_at"])
+    sync_external_customer_demand_state_for_product(
+        producer=producer,
+        product=locked_demand.product,
+        acting_user=updated_by,
+    )
+    return locked_demand, True
 
 
 def is_listing_effectively_expired(listing, *, now=None):
@@ -210,6 +887,11 @@ def calculate_need_coverage(need):
 def _resolve_need_status(need, coverage):
     if need.status == NeedStatus.IGNORED:
         return NeedStatus.IGNORED
+
+    if getattr(need, "source_system", None) == NeedSourceSystem.CUSTOMER_DEMAND:
+        plan = calculate_external_demand_plan(producer=need.producer, product=need.product)
+        if _quantize_need_quantity(plan.get("max_deficit")) <= Decimal("0.000"):
+            return NeedStatus.COVERED
 
     if coverage["completed_qty"] >= coverage["required_quantity"]:
         return NeedStatus.COVERED
@@ -525,11 +1207,18 @@ def list_marketplace_public_needs(*, viewer_producer=None, q="", category_id="")
     rows = []
     for need in qs:
         row = _build_need_row(need)
-        if row["remaining_to_receive"] > 0:
+        if row["remaining_to_plan"] > 0:
             row["public_status_label"] = "Aberta"
             row["public_status"] = NeedStatus.OPEN
-            row["public_quantity"] = row["remaining_to_receive"]
+            row["public_quantity"] = row["remaining_to_plan"]
             row["public_offered_quantity"] = Decimal("0.000")
+            need_product_id = getattr(need, "product_id", None) or getattr(getattr(need, "product", None), "id", "")
+            response_query = urlencode({
+                "from": "need",
+                "need": str(need.id),
+                "product": str(need_product_id),
+            })
+            row["response_url"] = f"{reverse('needs:respond')}?{response_query}"
             rows.append(row)
 
     if viewer_producer and rows:

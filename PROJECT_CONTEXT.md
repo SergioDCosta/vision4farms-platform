@@ -409,6 +409,10 @@ Detalhe de anúncio:
 Páginas:
 
 - `/necessidades/`;
+- `/necessidades/pedidos-clientes/`;
+- `/necessidades/pedidos-clientes/criar/`;
+- `/necessidades/pedidos-clientes/<uuid>/editar/`;
+- `/necessidades/pedidos-clientes/<uuid>/cancelar/`;
 - `/necessidades/criar/`;
 - `/necessidades/responder/`;
 - `/necessidades/<uuid>/ignorar/`;
@@ -462,6 +466,22 @@ GETs:
 - views de necessidades não fazem alterações persistentes;
 - expiração persistida de listings fica para comando agendado;
 - leituras tratam listings expiradas como expiradas em memória.
+
+Pedidos externos de clientes:
+
+- primeira fase implementada em `external_customer_demands`;
+- modelo `ExternalCustomerDemand` é `managed=False`;
+- pedidos têm cliente, contacto, referência, produto, quantidade, data pretendida de entrega, estado e notas;
+- `requested_delivery_date` é `DATE`, não `TIMESTAMPTZ`;
+- `requested_quantity` tem de ser superior a zero;
+- CRUD simples disponível em `/necessidades/pedidos-clientes/`;
+- cancelar pedido faz soft cancel com estado `CANCELLED`;
+- já existe cálculo temporal por produto/data:
+  - compara pedidos acumulados até cada data com stock disponível atual e produção prevista útil até essa data;
+  - forecast conta se `period_end <= requested_delivery_date`; se não houver `period_end`, conta por `period_start`; forecasts sem data válida não contam;
+  - mostra maior défice e primeira data crítica;
+- nesta fase ainda não gera nem atualiza automaticamente `Need`;
+- próximas fases previstas: need agregada por produto, sync de compromissos externos para `stocks.safety_stock`, marketplace com cards de procura.
 
 ## 14) Respostas a Necessidades
 

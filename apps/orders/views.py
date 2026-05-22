@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.http import Http404
 from django.contrib import messages
 from django.shortcuts import redirect, render, get_object_or_404

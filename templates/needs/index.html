@@ -3,25 +3,78 @@
 {% block app_content %}
 
 <div class="nd-page">
+
+  {# ── Cabeçalho ─────────────────────────────────────────────────────────── #}
   <header class="nd-header">
     <div>
       <h1>Necessidades</h1>
-      <p>Gerir pedidos, acompanhar respostas recebidas e responder a necessidades abertas.</p>
+      <p>Acompanhe as necessidades geradas pelos pedidos dos seus clientes e as propostas recebidas de outros produtores.</p>
     </div>
-    {% if can_publish %}
-      <a href="{% url 'needs:index' %}?show_need_form=1{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
-         hx-get="{% url 'needs:index' %}?show_need_form=1{% if selected_need_id %}&need={{ selected_need_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+    <div class="nd-header__actions">
+      <a href="{% url 'needs:external_demands' %}?show_form=1"
+         hx-get="{% url 'needs:external_demands' %}?show_form=1"
          hx-target="#shellMain"
          hx-select="#shellMain"
          hx-swap="outerHTML"
          hx-push-url="true"
          class="nd-btn nd-btn--primary">
-        <i class="bi bi-plus-lg"></i>
-        Anunciar necessidade
+        <i class="bi bi-clipboard2-plus"></i>
+        Novo pedido de cliente
       </a>
-    {% endif %}
+      {% if can_publish %}
+      <a href="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+         hx-get="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="nd-btn nd-btn--ghost">
+        <i class="bi bi-megaphone"></i>
+        Criar procura manual
+      </a>
+      {% endif %}
+    </div>
   </header>
 
+  {# ── 4 cards de resumo ─────────────────────────────────────────────────── #}
+  <section class="nd-summary">
+    <a href="{% url 'needs:external_demands' %}"
+       hx-get="{% url 'needs:external_demands' %}"
+       hx-target="#shellMain"
+       hx-select="#shellMain"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="nd-summary__card nd-summary__card--blue">
+      <div>
+        <span class="nd-summary__label">Pedidos de clientes em aberto</span>
+        <span class="nd-summary__num">{{ external_demands_open_count|default:0 }}</span>
+      </div>
+      <i class="bi bi-clipboard2-check"></i>
+    </a>
+    <div class="nd-summary__card nd-summary__card--amber">
+      <div>
+        <span class="nd-summary__label">Necessidades geradas</span>
+        <span class="nd-summary__num">{{ generated_needs_count|default:0 }}</span>
+      </div>
+      <i class="bi bi-megaphone"></i>
+    </div>
+    <div class="nd-summary__card nd-summary__card--green">
+      <div>
+        <span class="nd-summary__label">Propostas recebidas</span>
+        <span class="nd-summary__num">{{ received_proposals_pending_count|default:0 }}</span>
+      </div>
+      <i class="bi bi-chat-square-text"></i>
+    </div>
+    <div class="nd-summary__card nd-summary__card--slate">
+      <div>
+        <span class="nd-summary__label">Propostas enviadas</span>
+        <span class="nd-summary__num">{{ sent_proposals_pending_count|default:0 }}</span>
+      </div>
+      <i class="bi bi-send"></i>
+    </div>
+  </section>
+
+  {# ── Filtros ───────────────────────────────────────────────────────────── #}
   <form method="get"
         action="{% url 'needs:index' %}"
         class="nd-filters"
@@ -38,7 +91,7 @@
 
     <label class="nd-search">
       <i class="bi bi-search"></i>
-      <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar produto, produtor ou observações...">
+      <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar por produto ou observações...">
     </label>
 
     <label class="nd-select">
@@ -54,12 +107,13 @@
     </label>
   </form>
 
+  {# ── Form de criar procura manual (toggle por show_need_form) ──────────── #}
   {% if show_need_form %}
     <section class="nd-panel nd-panel--form">
       <div class="nd-panel__head">
         <div>
-          <h2>Anunciar necessidade</h2>
-          <p>Registe o produto e a quantidade em falta para receber ofertas privadas.</p>
+          <h2>Criar procura manual</h2>
+          <p>Anuncie uma necessidade independente dos pedidos de clientes para receber ofertas privadas.</p>
         </div>
         <a href="{% url 'needs:index' %}{% if selected_need_id or q or selected_category_id %}?{% if selected_need_id %}need={{ selected_need_id }}{% endif %}{% if q %}{% if selected_need_id %}&{% endif %}q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if selected_need_id or q %}&{% endif %}category={{ selected_category_id|urlencode }}{% endif %}{% endif %}"
            hx-get="{% url 'needs:index' %}{% if selected_need_id or q or selected_category_id %}?{% if selected_need_id %}need={{ selected_need_id }}{% endif %}{% if q %}{% if selected_need_id %}&{% endif %}q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if selected_need_id or q %}&{% endif %}category={{ selected_category_id|urlencode }}{% endif %}{% endif %}"
@@ -92,7 +146,7 @@
             <option value="">Selecionar produto</option>
             {% for product in need_products %}
               <option value="{{ product.id }}" {% if need_prefill_product_id == product.id|stringformat:"s" %}selected{% endif %}>
-                {{ product.name }}{% if product.is_critical_stock %} (stock crítico){% endif %}
+                {{ product.name }}{% if product.is_critical_stock %} (compromissos externos por cobrir){% endif %}
               </option>
             {% endfor %}
           </select>
@@ -106,441 +160,502 @@
           <input type="date" name="needed_by_date">
         </label>
         <label class="nd-form__wide">
-          Observações da necessidade
+          Observações da procura
           <textarea name="notes" rows="2" maxlength="1200" placeholder="Ex: preciso desta quantidade até à próxima semana."></textarea>
         </label>
         <button type="submit" class="nd-btn nd-btn--primary">
           <i class="bi bi-megaphone"></i>
-          Guardar necessidade
+          Guardar procura
         </button>
       </form>
     </section>
   {% endif %}
 
-  <section class="nd-workspace">
-    <aside class="nd-panel nd-master">
-      <div class="nd-panel__head">
-        <div>
-          <h2>As minhas necessidades</h2>
-          <p>Selecione um pedido para ver progresso e respostas.</p>
-        </div>
+  {# ── Secção principal: Necessidades geradas (cards flat) ───────────────── #}
+  <section class="nd-section">
+    <div class="nd-section-head">
+      <div>
+        <h2>Necessidades geradas</h2>
+        <p>Procuras criadas automaticamente a partir dos pedidos de clientes e procuras manuais.</p>
       </div>
+    </div>
 
-      <div class="nd-master-list">
-        {% for row in need_my_rows %}
-          <a href="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}{% if show_need_form %}&show_need_form=1{% endif %}"
-             hx-get="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}{% if show_need_form %}&show_need_form=1{% endif %}"
-             hx-target="#shellMain"
-             hx-select="#shellMain"
-             hx-swap="outerHTML"
-             hx-push-url="true"
-             class="nd-master-item{% if selected_need_id == row.need.id|stringformat:'s' %} is-selected{% endif %}">
-            <span class="nd-master-item__title">{{ row.need.product.name }}</span>
-            <span class="nd-master-item__meta">
-              {{ row.remaining_to_plan|quantity }} {{ row.need.product.unit }} em falta
-            </span>
-            <span class="nd-master-item__foot">
-              <span class="nd-badge {% if row.status == 'COVERED' %}nd-badge--ok{% elif row.status == 'PARTIALLY_COVERED' %}nd-badge--info{% else %}nd-badge--warn{% endif %}">
-                {{ row.status_label }}
+    <div class="nd-needs-grid">
+      {% for row in need_my_rows %}
+        {% with row_is_selected=selected_need_id|stringformat:"s" %}
+        {% with is_expanded=row.need.id|stringformat:"s" %}
+        <article class="nd-need-card{% if row_is_selected == is_expanded %} is-expanded{% endif %}{% if row.status == 'COVERED' %} nd-need-card--ok{% elif row.status == 'PARTIALLY_COVERED' %} nd-need-card--info{% else %} nd-need-card--warn{% endif %}">
+          <div class="nd-need-card__head">
+            <div>
+              <span class="nd-need-card__kicker">
+                {% if row.need.source_system == 'CUSTOMER_DEMAND' %}
+                  <i class="bi bi-clipboard2-check"></i> Pedidos de clientes
+                {% elif row.need.source_system == 'VISION4FARMS' %}
+                  <i class="bi bi-magic"></i> Recomendação Vision4Farms
+                {% else %}
+                  <i class="bi bi-pencil"></i> Procura manual
+                {% endif %}
               </span>
-              <span>{{ row.response_count|default:0 }} resposta{{ row.response_count|default:0|pluralize }}</span>
+              <h3>{{ row.need.product.name }}</h3>
+              <p>
+                {% if row.need.needed_by_date %}
+                  Data crítica: {{ row.need.needed_by_date|date:"d/m/Y" }}
+                {% else %}
+                  Sem data crítica
+                {% endif %}
+              </p>
+            </div>
+            <span class="nd-badge {% if row.status == 'COVERED' %}nd-badge--ok{% elif row.status == 'PARTIALLY_COVERED' %}nd-badge--info{% else %}nd-badge--warn{% endif %}">
+              {{ row.status_label }}
             </span>
-          </a>
-        {% empty %}
-          <div class="nd-empty">
-            <i class="bi bi-inbox"></i>
-            <h3>Sem necessidades próprias</h3>
-            <p>Ainda não anunciou necessidades.</p>
           </div>
-        {% endfor %}
-      </div>
-    </aside>
 
-    <article class="nd-panel nd-detail">
-      {% if selected_need_row %}
-        <div class="nd-detail-stack">
-          <section class="nd-detail-block nd-detail-block--overview">
-            <div class="nd-detail-head">
-              <div>
-                <span class="nd-kicker">Detalhe da necessidade</span>
-                <h2>{{ selected_need_row.need.product.name }}</h2>
-                <p>
-                  Pedido por si
-                  {% if selected_need_row.need.needed_by_date %}
-                    · data limite {{ selected_need_row.need.needed_by_date|date:"d/m/Y" }}
-                  {% endif %}
-                </p>
-              </div>
-              <span class="nd-badge {% if selected_need_row.status == 'COVERED' %}nd-badge--ok{% elif selected_need_row.status == 'PARTIALLY_COVERED' %}nd-badge--info{% else %}nd-badge--warn{% endif %}">
-                {{ selected_need_row.status_label }}
-              </span>
+          <div class="nd-need-card__metrics">
+            <div class="nd-metric">
+              <span>Por cobrir</span>
+              <strong class="nd-metric--accent">{{ row.remaining_to_plan|quantity }} {{ row.need.product.unit }}</strong>
             </div>
-
-            <div class="nd-progress">
-              <div class="nd-progress__bar">
-                <span style="width: {{ selected_need_row.progress_percent|floatformat:'0' }}%;"></span>
-              </div>
-              <div class="nd-progress__metrics">
-                <span>Necessário <strong>{{ selected_need_row.required_quantity|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
-                <span>Planeado <strong>{{ selected_need_row.planned_qty|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
-                <span>Recebido <strong>{{ selected_need_row.completed_qty|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
-                <span>Em falta <strong>{{ selected_need_row.remaining_to_plan|quantity }} {{ selected_need_row.need.product.unit }}</strong></span>
-              </div>
+            <div class="nd-metric">
+              <span>Já proposto</span>
+              <strong>{{ row.planned_qty|quantity }} {{ row.need.product.unit }}</strong>
             </div>
+            <div class="nd-metric">
+              <span>Já recebido</span>
+              <strong>{{ row.completed_qty|quantity }} {{ row.need.product.unit }}</strong>
+            </div>
+            <div class="nd-metric">
+              <span>Total necessário</span>
+              <strong>{{ row.required_quantity|quantity }} {{ row.need.product.unit }}</strong>
+            </div>
+          </div>
 
-            {% if selected_need_row.planned_excess_qty > 0 %}
-              <div class="nd-note nd-note--warning">
-                <span>Aviso de quantidade</span>
-                <p>O total planeado excede a quantidade necessária em {{ selected_need_row.planned_excess_qty|quantity }} {{ selected_need_row.need.product.unit }}.</p>
-              </div>
+          <div class="nd-progress nd-progress--inline">
+            <div class="nd-progress__bar">
+              <span style="width: {{ row.progress_percent|floatformat:'0' }}%;"></span>
+            </div>
+            <div class="nd-progress__hint">
+              {{ row.progress_percent|floatformat:0 }}% recebido
+            </div>
+          </div>
+
+          {% if row.need.notes %}
+            <div class="nd-note">
+              <span>Observações</span>
+              <p>{{ row.need.notes }}</p>
+            </div>
+          {% endif %}
+
+          <div class="nd-need-card__actions">
+            <a href="{% url 'needs:external_demands' %}?product={{ row.need.product_id }}"
+               hx-get="{% url 'needs:external_demands' %}?product={{ row.need.product_id }}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="nd-btn nd-btn--soft">
+              <i class="bi bi-clipboard2-data"></i>
+              Ver planeamento
+            </a>
+            <a href="{% url 'marketplace:index' %}?q={{ row.need.product.name|urlencode }}"
+               hx-get="{% url 'marketplace:index' %}?q={{ row.need.product.name|urlencode }}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="nd-btn nd-btn--soft">
+              <i class="bi bi-shop"></i>
+              Ver no marketplace
+            </a>
+            {% if row_is_selected == is_expanded %}
+              <a href="{% url 'needs:index' %}{% if q %}?q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if q %}&{% else %}?{% endif %}category={{ selected_category_id|urlencode }}{% endif %}"
+                 hx-get="{% url 'needs:index' %}{% if q %}?q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if q %}&{% else %}?{% endif %}category={{ selected_category_id|urlencode }}{% endif %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="nd-btn nd-btn--primary">
+                <i class="bi bi-chevron-up"></i>
+                Ocultar propostas
+              </a>
+            {% else %}
+              <a href="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+                 hx-get="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="nd-btn nd-btn--ghost">
+                <i class="bi bi-chat-square-text"></i>
+                Ver propostas ({{ row.response_count|default:0 }})
+              </a>
             {% endif %}
+          </div>
 
-            {% if selected_need_row.need.notes %}
-              <div class="nd-note">
-                <span>Observações da necessidade</span>
-                <p>{{ selected_need_row.need.notes }}</p>
-              </div>
-            {% endif %}
+          {# ── Conteúdo expandido (só na card selecionada) ── #}
+          {% if row_is_selected == is_expanded and selected_need_row %}
+            <div class="nd-need-card__expanded">
 
-            {% if is_editing_selected_need and need_edit_form %}
-              <form method="post"
-                    action="{% url 'needs:edit' selected_need_row.need.id %}"
-                    hx-post="{% url 'needs:edit' selected_need_row.need.id %}"
-                    hx-target="#shellMain"
-                    hx-select="#shellMain"
-                    hx-swap="outerHTML"
-                    hx-push-url="false"
-                    class="nd-edit-form">
-                {% csrf_token %}
-                <input type="hidden" name="q" value="{{ q }}">
-                <input type="hidden" name="category" value="{{ selected_category_id }}">
-                <input type="hidden" name="need" value="{{ selected_need_id }}">
-                {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
-
-                <div class="nd-edit-form__head">
-                  <div>
-                    <h3>Editar necessidade</h3>
-                    <p>{{ selected_need_row.edit_help_text }}</p>
-                  </div>
-                  <span class="nd-badge nd-badge--muted">Produto fixo: {{ selected_need_row.need.product.name }}</span>
+              {% if selected_need_row.planned_excess_qty > 0 %}
+                <div class="nd-note nd-note--warning">
+                  <span>Aviso de quantidade</span>
+                  <p>O total proposto excede a quantidade necessária em {{ selected_need_row.planned_excess_qty|quantity }} {{ selected_need_row.need.product.unit }}.</p>
                 </div>
-
-                {% if need_edit_form.non_field_errors %}
-                  <div class="nd-note nd-note--warning">
-                    <span>Erro na edição</span>
-                    {% for error in need_edit_form.non_field_errors %}
-                      <p>{{ error }}</p>
-                    {% endfor %}
-                  </div>
-                {% endif %}
-
-                {% if selected_need_row.minimum_edit_quantity > 0 %}
-                  <div class="nd-note nd-note--warning">
-                    <span>Limite de segurança</span>
-                    <p>Esta necessidade já tem encomendas associadas. A quantidade mínima permitida é {{ selected_need_row.minimum_edit_quantity|quantity }} {{ selected_need_row.need.product.unit }}.</p>
-                  </div>
-                {% endif %}
-
-                <div class="nd-edit-grid">
-                  <label class="{% if need_edit_form.required_quantity.errors %}has-error{% endif %}">
-                    {{ need_edit_form.required_quantity.label }}
-                    <div class="nd-input-suffix">
-                      {{ need_edit_form.required_quantity }}
-                      <span>{{ selected_need_row.need.product.unit }}</span>
-                    </div>
-                    {% if need_edit_form.required_quantity.errors %}
-                      <small>{{ need_edit_form.required_quantity.errors.0 }}</small>
-                    {% endif %}
-                  </label>
-
-                  <label class="{% if need_edit_form.needed_by_date.errors %}has-error{% endif %}">
-                    {{ need_edit_form.needed_by_date.label }}
-                    {{ need_edit_form.needed_by_date }}
-                    {% if need_edit_form.needed_by_date.errors %}
-                      <small>{{ need_edit_form.needed_by_date.errors.0 }}</small>
-                    {% endif %}
-                  </label>
-
-                  <label class="nd-edit-grid__wide {% if need_edit_form.notes.errors %}has-error{% endif %}">
-                    {{ need_edit_form.notes.label }}
-                    {{ need_edit_form.notes }}
-                    {% if need_edit_form.notes.errors %}
-                      <small>{{ need_edit_form.notes.errors.0 }}</small>
-                    {% endif %}
-                  </label>
-                </div>
-
-                <div class="nd-actions nd-actions--edit">
-                  <button type="submit" class="nd-btn nd-btn--primary">
-                    <i class="bi bi-check2"></i>
-                    Guardar alterações
-                  </button>
-                  <a href="{{ close_edit_need_url }}"
-                     hx-get="{{ close_edit_need_url }}"
-                     hx-target="#shellMain"
-                     hx-select="#shellMain"
-                     hx-swap="outerHTML"
-                     hx-push-url="true"
-                     class="nd-btn nd-btn--ghost">
-                    Cancelar
-                  </a>
-                </div>
-              </form>
-            {% endif %}
-
-            <div class="nd-actions nd-actions--detail">
-              {% if selected_need_row.can_edit and not is_editing_selected_need %}
-                <a href="{{ edit_need_url }}"
-                   hx-get="{{ edit_need_url }}"
-                   hx-target="#shellMain"
-                   hx-select="#shellMain"
-                   hx-swap="outerHTML"
-                   hx-push-url="true"
-                   class="nd-btn nd-btn--soft">
-                  <i class="bi bi-pencil-square"></i>
-                  Editar
-                </a>
               {% endif %}
-              <form method="post"
-                    id="nd-ignore-need-form"
-                    action="{% url 'needs:ignore' selected_need_row.need.id %}"
-                    hx-post="{% url 'needs:ignore' selected_need_row.need.id %}"
-                    hx-target="#shellMain"
-                    hx-select="#shellMain"
-                    hx-swap="outerHTML"
-                    hx-push-url="false">
-                {% csrf_token %}
-                <input type="hidden" name="q" value="{{ q }}">
-                <input type="hidden" name="category" value="{{ selected_category_id }}">
-                <input type="hidden" name="need" value="{{ selected_need_id }}">
-                {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
-                <button type="button"
-                        class="nd-btn nd-btn--ghost"
-                        data-nd-open-ignore-modal>
-                  {% if selected_need_row.status == 'COVERED' %}Remover da lista{% else %}Ignorar necessidade{% endif %}
-                </button>
-              </form>
-            </div>
 
-            <div class="nd-confirm-modal" id="nd-ignore-need-modal" hidden>
-              <div class="nd-confirm-modal__backdrop" data-nd-close-ignore-modal></div>
-              <div class="nd-confirm-modal__card" role="dialog" aria-modal="true" aria-labelledby="nd-ignore-need-title">
-                <div class="nd-confirm-modal__icon">
-                  <i class="bi {% if selected_need_row.status == 'COVERED' %}bi-archive{% else %}bi-eye-slash{% endif %}"></i>
-                </div>
-                <div class="nd-confirm-modal__body">
-                  <span>{% if selected_need_row.status == 'COVERED' %}Remover necessidade{% else %}Ignorar necessidade{% endif %}</span>
-                  <h3 id="nd-ignore-need-title">
-                    {% if selected_need_row.status == 'COVERED' %}
-                      Remover "{{ selected_need_row.need.product.name }}" da lista?
-                    {% else %}
-                      Ignorar "{{ selected_need_row.need.product.name }}"?
-                    {% endif %}
-                  </h3>
-                  <p>
-                    {% if selected_need_row.status == 'COVERED' %}
-                      A necessidade fica fora da sua lista principal, mas o histórico associado mantém-se disponível.
-                    {% else %}
-                      A necessidade deixa de aparecer nas suas necessidades ativas e deixa de receber novas respostas visíveis.
-                    {% endif %}
-                  </p>
-                </div>
-                <div class="nd-confirm-modal__actions">
-                  <button type="button" class="nd-btn nd-btn--ghost" data-nd-close-ignore-modal>
-                    Cancelar
-                  </button>
-                  <button type="button" class="nd-btn nd-btn--danger" data-nd-confirm-ignore-modal>
-                    {% if selected_need_row.status == 'COVERED' %}Remover{% else %}Ignorar{% endif %}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
+              {% if is_editing_selected_need and need_edit_form %}
+                <form method="post"
+                      action="{% url 'needs:edit' selected_need_row.need.id %}"
+                      hx-post="{% url 'needs:edit' selected_need_row.need.id %}"
+                      hx-target="#shellMain"
+                      hx-select="#shellMain"
+                      hx-swap="outerHTML"
+                      hx-push-url="false"
+                      class="nd-edit-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="q" value="{{ q }}">
+                  <input type="hidden" name="category" value="{{ selected_category_id }}">
+                  <input type="hidden" name="need" value="{{ selected_need_id }}">
+                  {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
 
-          <section class="nd-detail-block nd-detail-block--active nd-responses">
-            <div class="nd-section-title">
-              <div>
-                <h3>Ofertas ativas</h3>
-                <p>{{ active_need_response_rows|length }} oferta{{ active_need_response_rows|length|pluralize }} ainda por decidir para este pedido.</p>
-              </div>
-            </div>
-
-            <div class="nd-response-list">
-              {% for response in active_need_response_rows %}
-                <article class="nd-response-card">
-                  <div class="nd-response-card__head">
+                  <div class="nd-edit-form__head">
                     <div>
-                      <h4>Resposta de {{ response.producer_label }}</h4>
-                      <p>{{ response.product_name }} · {{ response.source_label }}</p>
+                      <h3>Editar procura</h3>
+                      <p>{{ selected_need_row.edit_help_text }}</p>
                     </div>
-                    <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+                    <span class="nd-badge nd-badge--muted">Produto fixo: {{ selected_need_row.need.product.name }}</span>
                   </div>
-                  <div class="nd-metrics nd-metrics--response">
-                    <span>Quantidade proposta <strong>{{ response.offered_quantity|quantity }} {{ response.product_unit }}</strong></span>
-                    {% if response.can_buy %}
-                      <span>Disponível <strong>{{ response.available_quantity|quantity }} {{ response.product_unit }}</strong></span>
-                    {% endif %}
-                    <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
-                  </div>
-                  {% if response.notes %}
-                    <div class="nd-note">
-                      <span>Observações da resposta</span>
-                      <p>{{ response.notes }}</p>
-                    </div>
-                  {% endif %}
-                  {% if response.available_quantity > selected_need_row.remaining_to_receive %}
+
+                  {% if need_edit_form.non_field_errors %}
                     <div class="nd-note nd-note--warning">
-                      <span>Aviso de quantidade</span>
-                      <p>Esta oferta é superior à quantidade ainda por receber. Pode comprar na mesma, mas confirme se quer aceitar este excesso.</p>
+                      <span>Erro na edição</span>
+                      {% for error in need_edit_form.non_field_errors %}
+                        <p>{{ error }}</p>
+                      {% endfor %}
                     </div>
                   {% endif %}
-                  <div class="nd-card-actions">
-                    <a href="{{ response.detail_url }}"
-                       hx-get="{{ response.detail_url }}"
+
+                  {% if selected_need_row.minimum_edit_quantity > 0 %}
+                    <div class="nd-note nd-note--warning">
+                      <span>Compromissos externos já assumidos</span>
+                      <p>Esta procura já tem encomendas associadas. A quantidade mínima permitida é {{ selected_need_row.minimum_edit_quantity|quantity }} {{ selected_need_row.need.product.unit }}.</p>
+                    </div>
+                  {% endif %}
+
+                  <div class="nd-edit-grid">
+                    <label class="{% if need_edit_form.required_quantity.errors %}has-error{% endif %}">
+                      {{ need_edit_form.required_quantity.label }}
+                      <div class="nd-input-suffix">
+                        {{ need_edit_form.required_quantity }}
+                        <span>{{ selected_need_row.need.product.unit }}</span>
+                      </div>
+                      {% if need_edit_form.required_quantity.errors %}
+                        <small>{{ need_edit_form.required_quantity.errors.0 }}</small>
+                      {% endif %}
+                    </label>
+
+                    <label class="{% if need_edit_form.needed_by_date.errors %}has-error{% endif %}">
+                      {{ need_edit_form.needed_by_date.label }}
+                      {{ need_edit_form.needed_by_date }}
+                      {% if need_edit_form.needed_by_date.errors %}
+                        <small>{{ need_edit_form.needed_by_date.errors.0 }}</small>
+                      {% endif %}
+                    </label>
+
+                    <label class="nd-edit-grid__wide {% if need_edit_form.notes.errors %}has-error{% endif %}">
+                      {{ need_edit_form.notes.label }}
+                      {{ need_edit_form.notes }}
+                      {% if need_edit_form.notes.errors %}
+                        <small>{{ need_edit_form.notes.errors.0 }}</small>
+                      {% endif %}
+                    </label>
+                  </div>
+
+                  <div class="nd-actions nd-actions--edit">
+                    <button type="submit" class="nd-btn nd-btn--primary">
+                      <i class="bi bi-check2"></i>
+                      Guardar alterações
+                    </button>
+                    <a href="{{ close_edit_need_url }}"
+                       hx-get="{{ close_edit_need_url }}"
                        hx-target="#shellMain"
                        hx-select="#shellMain"
                        hx-swap="outerHTML"
                        hx-push-url="true"
-                       class="nd-btn nd-btn--primary">
-                      <i class="bi bi-cart-check"></i>
-                      {{ response.cta_label }}
+                       class="nd-btn nd-btn--ghost">
+                      Cancelar
                     </a>
-                    {% if response.can_reject %}
-                      <form method="post"
-                            action="{{ response.reject_url }}"
-                            onsubmit="return confirm('Rejeitar esta oferta? Esta ação fecha a resposta e impede a compra futura.');">
-                        {% csrf_token %}
-                        <input type="hidden" name="next" value="{{ current_url }}">
-                        <button type="submit" class="nd-btn nd-btn--danger">
-                          <i class="bi bi-x-circle"></i>
-                          Rejeitar
-                        </button>
-                      </form>
-                    {% endif %}
                   </div>
-                </article>
-              {% empty %}
-                <div class="nd-empty">
-                  <i class="bi bi-chat-square-text"></i>
-                  <h3>Sem ofertas ativas</h3>
-                  <p>As novas respostas pendentes aparecem aqui para decisão.</p>
-                </div>
-              {% endfor %}
-            </div>
-          </section>
+                </form>
+              {% endif %}
 
-        </div>
-      {% else %}
-        <div class="nd-empty nd-empty--large">
-          <i class="bi bi-megaphone"></i>
-          <h3>Comece por anunciar uma necessidade</h3>
-          <p>Depois de criar um pedido, este painel mostra progresso, respostas recebidas e ações.</p>
-          {% if can_publish %}
-            <a href="{% url 'needs:index' %}?show_need_form=1"
-               hx-get="{% url 'needs:index' %}?show_need_form=1"
+              <div class="nd-expanded-section">
+                <div class="nd-section-title">
+                  <div>
+                    <h4>Propostas ativas para esta procura</h4>
+                    <p>{{ active_need_response_rows|length }} oferta{{ active_need_response_rows|length|pluralize }} pendente{{ active_need_response_rows|length|pluralize }}.</p>
+                  </div>
+                </div>
+
+                <div class="nd-response-list">
+                  {% for response in active_need_response_rows %}
+                    <article class="nd-response-card">
+                      <div class="nd-response-card__head">
+                        <div>
+                          <h4>Proposta de {{ response.producer_label }}</h4>
+                          <p>{{ response.product_name }} · {{ response.source_label }}</p>
+                        </div>
+                        <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+                      </div>
+                      <div class="nd-metrics nd-metrics--response">
+                        <span>Quantidade proposta <strong>{{ response.offered_quantity|quantity }} {{ response.product_unit }}</strong></span>
+                        {% if response.can_buy %}
+                          <span>Disponível <strong>{{ response.available_quantity|quantity }} {{ response.product_unit }}</strong></span>
+                        {% endif %}
+                        <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
+                      </div>
+                      {% if response.notes %}
+                        <div class="nd-note">
+                          <span>Observações da proposta</span>
+                          <p>{{ response.notes }}</p>
+                        </div>
+                      {% endif %}
+                      {% if response.available_quantity > selected_need_row.remaining_to_receive %}
+                        <div class="nd-note nd-note--warning">
+                          <span>Aviso de quantidade</span>
+                          <p>Esta proposta é superior à quantidade ainda por receber. Pode comprar na mesma, mas confirme se quer aceitar este excesso.</p>
+                        </div>
+                      {% endif %}
+                      <div class="nd-card-actions">
+                        <a href="{{ response.detail_url }}"
+                           hx-get="{{ response.detail_url }}"
+                           hx-target="#shellMain"
+                           hx-select="#shellMain"
+                           hx-swap="outerHTML"
+                           hx-push-url="true"
+                           class="nd-btn nd-btn--primary">
+                          <i class="bi bi-cart-check"></i>
+                          {{ response.cta_label }}
+                        </a>
+                        {% if response.can_reject %}
+                          <form method="post"
+                                action="{{ response.reject_url }}"
+                                onsubmit="return confirm('Rejeitar esta proposta? Esta ação fecha a resposta e impede a compra futura.');">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ current_url }}">
+                            <button type="submit" class="nd-btn nd-btn--danger">
+                              <i class="bi bi-x-circle"></i>
+                              Rejeitar
+                            </button>
+                          </form>
+                        {% endif %}
+                      </div>
+                    </article>
+                  {% empty %}
+                    <div class="nd-empty nd-empty--compact">
+                      <i class="bi bi-chat-square-text"></i>
+                      <h3>Sem propostas pendentes</h3>
+                      <p>Quando outros produtores responderem a esta procura, as propostas aparecem aqui.</p>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="nd-actions nd-actions--expanded">
+                {% if selected_need_row.can_edit and not is_editing_selected_need %}
+                  <a href="{{ edit_need_url }}"
+                     hx-get="{{ edit_need_url }}"
+                     hx-target="#shellMain"
+                     hx-select="#shellMain"
+                     hx-swap="outerHTML"
+                     hx-push-url="true"
+                     class="nd-btn nd-btn--soft">
+                    <i class="bi bi-pencil-square"></i>
+                    Editar procura
+                  </a>
+                {% endif %}
+                <form method="post"
+                      id="nd-ignore-need-form"
+                      action="{% url 'needs:ignore' selected_need_row.need.id %}"
+                      hx-post="{% url 'needs:ignore' selected_need_row.need.id %}"
+                      hx-target="#shellMain"
+                      hx-select="#shellMain"
+                      hx-swap="outerHTML"
+                      hx-push-url="false">
+                  {% csrf_token %}
+                  <input type="hidden" name="q" value="{{ q }}">
+                  <input type="hidden" name="category" value="{{ selected_category_id }}">
+                  <input type="hidden" name="need" value="{{ selected_need_id }}">
+                  {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
+                  <button type="button"
+                          class="nd-btn nd-btn--ghost"
+                          data-nd-open-ignore-modal>
+                    {% if selected_need_row.status == 'COVERED' %}Remover da lista{% else %}Ignorar procura{% endif %}
+                  </button>
+                </form>
+              </div>
+            </div>
+          {% endif %}
+        </article>
+        {% endwith %}
+        {% endwith %}
+      {% empty %}
+        <div class="nd-empty nd-empty--full">
+          <i class="bi bi-inbox"></i>
+          <h3>Sem necessidades geradas</h3>
+          <p>Registe pedidos de clientes para o sistema avaliar se precisa de procurar produto junto de outros produtores. Também pode criar uma procura manual.</p>
+          <div class="nd-empty__actions">
+            <a href="{% url 'needs:external_demands' %}?show_form=1"
+               hx-get="{% url 'needs:external_demands' %}?show_form=1"
                hx-target="#shellMain"
                hx-select="#shellMain"
                hx-swap="outerHTML"
                hx-push-url="true"
                class="nd-btn nd-btn--primary">
-              Anunciar necessidade
+              <i class="bi bi-clipboard2-plus"></i>
+              Novo pedido de cliente
             </a>
-          {% endif %}
-        </div>
-      {% endif %}
-    </article>
-  </section>
-
-  <section class="nd-panel nd-open">
-    <div class="nd-panel__head">
-      <div>
-        <h2>Responder a necessidades abertas</h2>
-        <p>Pedidos de outros produtores com quantidade ainda por cobrir.</p>
-      </div>
-    </div>
-
-    <div class="nd-open-grid">
-      {% for row in need_public_rows %}
-        <article class="nd-open-card">
-          <div class="nd-item__top">
-            <div>
-              <h3>{{ row.need.product.name }}</h3>
-              <p>{{ row.producer_label }}</p>
-            </div>
-            <span class="nd-badge nd-badge--warn">{{ row.public_status_label }}</span>
-          </div>
-          <div class="nd-metrics">
-            <span>Quantidade em falta <strong>{{ row.public_quantity|quantity }} {{ row.need.product.unit }}</strong></span>
-            <span>Oferecido por outros <strong>{{ row.public_offered_quantity|default:0|quantity }} {{ row.need.product.unit }}</strong></span>
-            {% if row.need.needed_by_date %}
-              <span>Data limite <strong>{{ row.need.needed_by_date|date:"d/m/Y" }}</strong></span>
-            {% endif %}
-          </div>
-          {% if row.need.notes %}
-            <div class="nd-note">
-              <span>Observações da necessidade</span>
-              <p>{{ row.need.notes }}</p>
-            </div>
-          {% endif %}
-          {% if row.viewer_response_summary %}
-            <div class="nd-response-state">
-              <span class="nd-badge nd-badge--{{ row.viewer_response_summary.badge_class }}">
-                A sua oferta: {{ row.viewer_response_summary.status_label }}
-              </span>
-              <p>{{ row.viewer_response_summary.message }}</p>
-            </div>
-          {% endif %}
-          {% if row.viewer_response_summary and row.viewer_response_summary.can_edit %}
-            {% with response_action_url=row.viewer_response_summary.edit_url response_action_label="Editar proposta" response_action_icon="bi-pencil-square" response_action_style="nd-btn--primary" %}
-              <a href="{{ response_action_url }}"
-                 hx-get="{{ response_action_url }}"
+            {% if can_publish %}
+              <a href="{% url 'needs:index' %}?show_need_form=1"
+                 hx-get="{% url 'needs:index' %}?show_need_form=1"
                  hx-target="#shellMain"
                  hx-select="#shellMain"
                  hx-swap="outerHTML"
                  hx-push-url="true"
-                 class="nd-btn {{ response_action_style }}">
-                <i class="bi {{ response_action_icon }}"></i>
-                {{ response_action_label }}
+                 class="nd-btn nd-btn--ghost">
+                <i class="bi bi-megaphone"></i>
+                Criar procura manual
               </a>
-            {% endwith %}
-          {% elif row.viewer_response_summary and not row.viewer_response_summary.can_send_new_proposal %}
-            <a href="{{ row.viewer_response_summary.detail_url }}"
-               hx-get="{{ row.viewer_response_summary.detail_url }}"
-               hx-target="#shellMain"
-               hx-select="#shellMain"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="nd-btn nd-btn--ghost">
-              <i class="bi bi-eye"></i>
-              Ver estado
-            </a>
-          {% else %}
-            <a href="{% url 'needs:respond' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
-             hx-get="{% url 'needs:respond' %}?from=need&need={{ row.need.id }}&product={{ row.need.product_id }}"
-             hx-target="#shellMain"
-             hx-select="#shellMain"
-             hx-swap="outerHTML"
-             hx-push-url="true"
-             class="nd-btn nd-btn--primary">
-              <i class="bi bi-reply"></i>
-              {% if row.viewer_response_summary and row.viewer_response_summary.can_send_new_proposal %}
-                Enviar nova proposta
-              {% else %}
-                Responder
-              {% endif %}
-            </a>
-          {% endif %}
-        </article>
-      {% empty %}
-        <div class="nd-empty">
-          <i class="bi bi-search"></i>
-          <h3>Sem necessidades abertas</h3>
-          <p>Não existem necessidades compatíveis com os filtros atuais.</p>
+            {% endif %}
+          </div>
         </div>
       {% endfor %}
     </div>
   </section>
 
+  {# ── Modal de confirmação (partilhada pela card expandida) ─────────────── #}
+  {% if selected_need_row %}
+    <div class="nd-confirm-modal" id="nd-ignore-need-modal" hidden>
+      <div class="nd-confirm-modal__backdrop" data-nd-close-ignore-modal></div>
+      <div class="nd-confirm-modal__card" role="dialog" aria-modal="true" aria-labelledby="nd-ignore-need-title">
+        <div class="nd-confirm-modal__icon">
+          <i class="bi {% if selected_need_row.status == 'COVERED' %}bi-archive{% else %}bi-eye-slash{% endif %}"></i>
+        </div>
+        <div class="nd-confirm-modal__body">
+          <span>{% if selected_need_row.status == 'COVERED' %}Remover procura{% else %}Ignorar procura{% endif %}</span>
+          <h3 id="nd-ignore-need-title">
+            {% if selected_need_row.status == 'COVERED' %}
+              Remover "{{ selected_need_row.need.product.name }}" da lista?
+            {% else %}
+              Ignorar "{{ selected_need_row.need.product.name }}"?
+            {% endif %}
+          </h3>
+          <p>
+            {% if selected_need_row.status == 'COVERED' %}
+              A procura fica fora da sua lista principal, mas o histórico associado mantém-se disponível.
+            {% else %}
+              A procura deixa de aparecer nas suas necessidades ativas e deixa de receber novas propostas visíveis.
+            {% endif %}
+          </p>
+        </div>
+        <div class="nd-confirm-modal__actions">
+          <button type="button" class="nd-btn nd-btn--ghost" data-nd-close-ignore-modal>
+            Cancelar
+          </button>
+          <button type="button" class="nd-btn nd-btn--danger" data-nd-confirm-ignore-modal>
+            {% if selected_need_row.status == 'COVERED' %}Remover{% else %}Ignorar{% endif %}
+          </button>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {# ── Secção: Propostas recebidas (flat, todas as procuras) ─────────────── #}
+  <section class="nd-section">
+    <div class="nd-section-head">
+      <div>
+        <h2>Propostas recebidas</h2>
+        <p>Ofertas pendentes de outros produtores para todas as suas procuras ativas.</p>
+      </div>
+    </div>
+
+    <div class="nd-proposals-grid">
+      {% for response in all_active_received_proposals %}
+        <article class="nd-response-card">
+          <div class="nd-response-card__head">
+            <div>
+              <h4>Proposta de {{ response.producer_label }}</h4>
+              <p>{{ response.product_name }} · {{ response.source_label }}</p>
+            </div>
+            <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+          </div>
+          <div class="nd-metrics nd-metrics--response">
+            <span>Quantidade proposta <strong>{{ response.offered_quantity|quantity }} {{ response.product_unit }}</strong></span>
+            {% if response.can_buy %}
+              <span>Disponível <strong>{{ response.available_quantity|quantity }} {{ response.product_unit }}</strong></span>
+            {% endif %}
+            <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
+          </div>
+          {% if response.notes %}
+            <div class="nd-note">
+              <span>Observações da proposta</span>
+              <p>{{ response.notes }}</p>
+            </div>
+          {% endif %}
+          <div class="nd-card-actions">
+            <a href="{{ response.detail_url }}"
+               hx-get="{{ response.detail_url }}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="nd-btn nd-btn--primary">
+              <i class="bi bi-cart-check"></i>
+              {{ response.cta_label }}
+            </a>
+            {% if response.can_reject %}
+              <form method="post"
+                    action="{{ response.reject_url }}"
+                    onsubmit="return confirm('Rejeitar esta proposta? Esta ação fecha a resposta e impede a compra futura.');">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ current_url }}">
+                <button type="submit" class="nd-btn nd-btn--danger">
+                  <i class="bi bi-x-circle"></i>
+                  Rejeitar
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% empty %}
+        <div class="nd-empty">
+          <i class="bi bi-chat-square-text"></i>
+          <h3>Sem propostas pendentes</h3>
+          <p>Quando outros produtores responderem às suas procuras, as ofertas aparecem aqui.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ── CTA: Procuras de outros produtores ────────────────────────────────── #}
+  <section class="nd-cta">
+    <div class="nd-cta__text">
+      <span class="nd-kicker">Procuras de outros produtores</span>
+      <h2>Quer ajudar outros produtores?</h2>
+      <p>Veja procuras abertas no marketplace e envie propostas a partir de lá.</p>
+    </div>
+    <a href="{% url 'marketplace:index' %}"
+       hx-get="{% url 'marketplace:index' %}"
+       hx-target="#shellMain"
+       hx-select="#shellMain"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="nd-btn nd-btn--primary">
+      <i class="bi bi-shop"></i>
+      Ir para marketplace
+    </a>
+  </section>
+
+  {# ── Histórico de propostas recebidas ──────────────────────────────────── #}
   <section class="nd-panel nd-history nd-history--collapsed" data-nd-history-section>
     <div class="nd-panel__head nd-history-head"
          data-nd-history-toggle
@@ -548,8 +663,8 @@
          tabindex="0"
          aria-expanded="false">
       <div>
-        <h2>Histórico de ofertas recebidas</h2>
-        <p>{{ received_past_need_response_rows|length }} oferta{{ received_past_need_response_rows|length|pluralize }} aceite{{ received_past_need_response_rows|length|pluralize }}, rejeitada{{ received_past_need_response_rows|length|pluralize }}, concluída{{ received_past_need_response_rows|length|pluralize }} ou encerrada{{ received_past_need_response_rows|length|pluralize }} nas suas necessidades.</p>
+        <h2>Histórico de propostas recebidas</h2>
+        <p>{{ received_past_need_response_rows|length }} proposta{{ received_past_need_response_rows|length|pluralize }} aceite{{ received_past_need_response_rows|length|pluralize }}, rejeitada{{ received_past_need_response_rows|length|pluralize }}, concluída{{ received_past_need_response_rows|length|pluralize }} ou encerrada{{ received_past_need_response_rows|length|pluralize }} nas suas procuras.</p>
       </div>
       <div class="nd-history-toggle" aria-hidden="true">
         <i class="bi bi-chevron-down"></i>
@@ -562,7 +677,7 @@
           <article class="nd-response-card nd-response-card--past">
             <div class="nd-response-card__head">
               <div>
-                <h4>Resposta de {{ response.producer_label }}</h4>
+                <h4>Proposta de {{ response.producer_label }}</h4>
                 <p>{{ response.product_name }} · {{ response.source_label }}</p>
               </div>
               <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
@@ -572,11 +687,11 @@
               <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
             </div>
             <div class="nd-note">
-              <span>Observações da resposta</span>
+              <span>Observações da proposta</span>
               {% if response.notes %}
                 <p>{{ response.notes }}</p>
               {% else %}
-                <p>Sem observações da resposta.</p>
+                <p>Sem observações.</p>
               {% endif %}
             </div>
             <div class="nd-card-actions">
@@ -595,14 +710,15 @@
         {% empty %}
           <div class="nd-empty nd-empty--compact">
             <i class="bi bi-clock-history"></i>
-            <h3>Sem histórico de ofertas recebidas</h3>
-            <p>As ofertas aceites, rejeitadas, concluídas ou encerradas ficam guardadas aqui.</p>
+            <h3>Sem histórico de propostas recebidas</h3>
+            <p>As propostas aceites, rejeitadas, concluídas ou encerradas ficam guardadas aqui.</p>
           </div>
         {% endfor %}
       </div>
     </div>
   </section>
 
+  {# ── Histórico de propostas enviadas ───────────────────────────────────── #}
   <section class="nd-panel nd-history nd-history--collapsed" data-nd-history-section>
     <div class="nd-panel__head nd-history-head"
          data-nd-history-toggle
@@ -610,7 +726,7 @@
          tabindex="0"
          aria-expanded="false">
       <div>
-        <h2>Ofertas enviadas</h2>
+        <h2>Histórico de propostas enviadas</h2>
         <p>{{ sent_need_response_rows|length }} proposta{{ sent_need_response_rows|length|pluralize }} enviada{{ sent_need_response_rows|length|pluralize }}. Veja as pendentes e o histórico no mesmo espaço.</p>
       </div>
       <div class="nd-history-toggle" aria-hidden="true">
@@ -630,7 +746,7 @@
               <article class="nd-response-card">
                 <div class="nd-response-card__head">
                   <div>
-                    <h4>Oferta enviada para {{ response.need_owner_label }}</h4>
+                    <h4>Proposta enviada para {{ response.need_owner_label }}</h4>
                     <p>{{ response.product_name }} · {{ response.source_label }}</p>
                   </div>
                   <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
@@ -644,11 +760,11 @@
                   <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
                 </div>
                 <div class="nd-note">
-                  <span>Observações da resposta</span>
+                  <span>Observações da proposta</span>
                   {% if response.notes %}
                     <p>{{ response.notes }}</p>
                   {% else %}
-                    <p>Sem observações da resposta.</p>
+                    <p>Sem observações.</p>
                   {% endif %}
                 </div>
                 <div class="nd-card-actions">
@@ -696,7 +812,7 @@
               <article class="nd-response-card nd-response-card--past">
                 <div class="nd-response-card__head">
                   <div>
-                    <h4>Oferta enviada para {{ response.need_owner_label }}</h4>
+                    <h4>Proposta enviada para {{ response.need_owner_label }}</h4>
                     <p>{{ response.product_name }} · {{ response.source_label }}</p>
                   </div>
                   <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
@@ -707,11 +823,11 @@
                   <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
                 </div>
                 <div class="nd-note">
-                  <span>Observações da resposta</span>
+                  <span>Observações da proposta</span>
                   {% if response.notes %}
                     <p>{{ response.notes }}</p>
                   {% else %}
-                    <p>Sem observações da resposta.</p>
+                    <p>Sem observações.</p>
                   {% endif %}
                 </div>
                 <div class="nd-card-actions">
@@ -730,7 +846,7 @@
             {% empty %}
               <div class="nd-empty nd-empty--compact">
                 <i class="bi bi-clock-history"></i>
-                <h3>Sem histórico enviado</h3>
+                <h3>Sem histórico de envios</h3>
                 <p>Propostas aceites, rejeitadas, concluídas ou encerradas aparecem aqui.</p>
               </div>
             {% endfor %}
@@ -740,8 +856,8 @@
         <div class="nd-history-grid">
           <div class="nd-empty nd-empty--compact">
             <i class="bi bi-send"></i>
-            <h3>Sem ofertas enviadas</h3>
-            <p>Quando responder a uma necessidade, a proposta aparece aqui com o estado atualizado.</p>
+            <h3>Sem propostas enviadas</h3>
+            <p>Quando responder a uma procura, a proposta aparece aqui com o estado atualizado.</p>
           </div>
         </div>
       {% endif %}
@@ -751,22 +867,216 @@
 
 <style>
 .nd-page { display:flex; flex-direction:column; gap:1rem; color:#0f172a; }
+
+/* ── Header ──────────────────────────────────────────────────────────── */
 .nd-header {
   background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
   padding:1rem 1.1rem; display:flex; justify-content:space-between; gap:1rem; align-items:center;
 }
 .nd-header h1 { margin:0; font-size:1.45rem; line-height:1.15; }
-.nd-header p { margin:.35rem 0 0; color:#64748b; overflow-wrap:anywhere; }
+.nd-header p { margin:.35rem 0 0; color:#64748b; overflow-wrap:anywhere; font-size:.9rem; line-height:1.45; }
+.nd-header__actions { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; justify-content:flex-end; }
+
+/* ── Botões ──────────────────────────────────────────────────────────── */
 .nd-btn {
   min-height:2.35rem; display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
   border:1px solid #cbd5e1; border-radius:.45rem; padding:.5rem .8rem;
   background:#fff; color:#0f172a; font-size:.84rem; font-weight:800; text-decoration:none; cursor:pointer;
   text-align:center;
+  transition:transform .12s, box-shadow .12s, background .12s;
 }
+.nd-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(15,23,42,.08); }
 .nd-btn--primary { background:#16a34a; border-color:#16a34a; color:#fff; }
+.nd-btn--primary:hover { background:#15803d; border-color:#15803d; color:#fff; }
 .nd-btn--soft { background:#f8fafc; }
 .nd-btn--ghost { background:#f1f5f9; }
 .nd-btn--danger { background:#dc2626; border-color:#dc2626; color:#fff; }
+.nd-btn--danger:hover { background:#b91c1c; border-color:#b91c1c; color:#fff; }
+
+/* ── 4 cards de resumo ──────────────────────────────────────────────── */
+.nd-summary {
+  display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.75rem;
+}
+.nd-summary__card {
+  display:flex; align-items:center; justify-content:space-between; gap:.75rem;
+  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
+  padding:1rem 1.1rem;
+  text-decoration:none; color:#0f172a;
+  position:relative; overflow:hidden;
+  transition:transform .15s, box-shadow .15s;
+}
+.nd-summary__card:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(15,23,42,.08); }
+.nd-summary__card::after {
+  content:""; position:absolute; left:.45rem; right:.45rem; bottom:.45rem;
+  height:3px; border-radius:999px;
+}
+.nd-summary__card--blue::after  { background:#2563eb; }
+.nd-summary__card--amber::after { background:#d97706; }
+.nd-summary__card--green::after { background:#16a34a; }
+.nd-summary__card--slate::after { background:#475569; }
+.nd-summary__card > div { display:flex; flex-direction:column; gap:.15rem; min-width:0; }
+.nd-summary__label {
+  font-size:.7rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#64748b;
+  overflow-wrap:anywhere;
+}
+.nd-summary__num {
+  font-family:'DM Mono', monospace; font-size:2rem; font-weight:800; color:#0f172a; line-height:1;
+}
+.nd-summary__card > i { font-size:1.3rem; flex-shrink:0; }
+.nd-summary__card--blue  > i { color:#2563eb; }
+.nd-summary__card--amber > i { color:#d97706; }
+.nd-summary__card--green > i { color:#16a34a; }
+.nd-summary__card--slate > i { color:#475569; }
+
+/* ── Filtros ─────────────────────────────────────────────────────────── */
+.nd-filters {
+  display:grid; grid-template-columns:minmax(14rem, 1fr) minmax(12rem, 18rem);
+  gap:.75rem; align-items:stretch;
+}
+.nd-search, .nd-select {
+  background:#fff; border:1px solid #e2e8f0; border-radius:.5rem;
+  min-height:3.35rem; display:flex; align-items:center; gap:.55rem; padding:.55rem .7rem;
+  box-sizing:border-box;
+}
+.nd-search i { color:#64748b; }
+.nd-search input, .nd-select select {
+  width:100%; min-height:1.8rem; border:0; outline:0; background:transparent; color:#0f172a; font-weight:700;
+}
+.nd-select { flex-direction:column; align-items:flex-start; gap:.2rem; }
+.nd-select span { color:#64748b; font-size:.72rem; font-weight:800; text-transform:uppercase; }
+
+/* ── Panels e secções ─────────────────────────────────────────────────── */
+.nd-panel {
+  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
+  padding:1rem; display:flex; flex-direction:column; gap:.9rem; min-width:0;
+}
+.nd-panel--form { border-color:#bbf7d0; background:#f8fff9; }
+.nd-panel__head, .nd-section-title {
+  display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;
+}
+.nd-panel__head h2, .nd-section-title h3, .nd-section-title h4 {
+  margin:0; font-size:1rem; line-height:1.25; overflow-wrap:anywhere;
+}
+.nd-panel__head p, .nd-section-title p {
+  margin:.3rem 0 0; color:#64748b; font-size:.83rem; overflow-wrap:anywhere;
+}
+.nd-section { display:flex; flex-direction:column; gap:.8rem; }
+.nd-section-head { display:flex; justify-content:space-between; gap:.75rem; align-items:flex-end; padding:0 .15rem; }
+.nd-section-head h2 { margin:0; font-size:1.1rem; line-height:1.2; color:#0f172a; }
+.nd-section-head p { margin:.25rem 0 0; color:#64748b; font-size:.85rem; overflow-wrap:anywhere; }
+.nd-kicker { color:#16a34a; font-size:.72rem; font-weight:900; text-transform:uppercase; letter-spacing:.04em; }
+
+/* ── Form criar procura manual ────────────────────────────────────────── */
+.nd-form { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.75rem; }
+.nd-form label { display:flex; flex-direction:column; gap:.35rem; color:#334155; font-size:.82rem; font-weight:800; }
+.nd-form input, .nd-form select, .nd-form textarea {
+  width:100%; border:1px solid #cbd5e1; border-radius:.45rem; background:#fff;
+  padding:.65rem .75rem; outline:0; color:#0f172a;
+}
+.nd-form input:focus, .nd-form select:focus, .nd-form textarea:focus {
+  border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.12);
+}
+.nd-form__wide { grid-column:1 / -1; }
+
+/* ── Grid de necessidades geradas (flat cards) ────────────────────────── */
+.nd-needs-grid {
+  display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.85rem;
+}
+.nd-needs-grid > .nd-empty {
+  grid-column:1 / -1;
+  justify-self:stretch; width:100%; box-sizing:border-box;
+}
+.nd-need-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:.6rem;
+  padding:1rem; display:flex; flex-direction:column; gap:.75rem; min-width:0;
+  border-left:4px solid #cbd5e1;
+  transition:box-shadow .15s, border-color .15s;
+}
+.nd-need-card:hover { box-shadow:0 4px 14px rgba(15,23,42,.06); }
+.nd-need-card--warn { border-left-color:#d97706; }
+.nd-need-card--info { border-left-color:#2563eb; }
+.nd-need-card--ok   { border-left-color:#16a34a; }
+.nd-need-card.is-expanded {
+  grid-column:1 / -1;
+  box-shadow:0 6px 18px rgba(15,23,42,.08);
+}
+.nd-need-card__head {
+  display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;
+}
+.nd-need-card__kicker {
+  display:inline-flex; align-items:center; gap:.3rem;
+  color:#475569; font-size:.7rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+}
+.nd-need-card__kicker i { font-size:.85rem; }
+.nd-need-card__head h3 { margin:.25rem 0 0; font-size:1.05rem; line-height:1.2; color:#0f172a; overflow-wrap:anywhere; }
+.nd-need-card__head p  { margin:.25rem 0 0; color:#64748b; font-size:.8rem; overflow-wrap:anywhere; }
+.nd-need-card__metrics {
+  display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:.5rem;
+}
+.nd-metric {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:.45rem; padding:.55rem .65rem;
+  display:flex; flex-direction:column; gap:.18rem; min-width:0;
+}
+.nd-metric span {
+  color:#64748b; font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.03em;
+  overflow-wrap:anywhere;
+}
+.nd-metric strong {
+  color:#0f172a; font-size:.95rem; font-weight:800; font-family:'DM Mono', monospace;
+  overflow-wrap:anywhere;
+}
+.nd-metric--accent { color:#b45309; }
+
+.nd-progress { border:1px solid #e2e8f0; border-radius:.55rem; padding:.7rem; background:#f8fafc; }
+.nd-progress--inline { padding:.5rem .7rem; display:flex; gap:.65rem; align-items:center; }
+.nd-progress__bar {
+  flex:1; height:.5rem; border-radius:999px; background:#e2e8f0; overflow:hidden; min-width:6rem;
+}
+.nd-progress__bar span { display:block; height:100%; max-width:100%; border-radius:999px; background:#16a34a; }
+.nd-progress__hint { font-size:.74rem; color:#475569; font-weight:700; white-space:nowrap; }
+
+.nd-progress__metrics, .nd-metrics {
+  display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:.45rem .75rem; color:#475569; font-size:.8rem;
+}
+.nd-metrics span { min-width:0; overflow-wrap:anywhere; }
+.nd-metrics strong { color:#0f172a; }
+.nd-metrics--response { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+
+.nd-need-card__actions {
+  display:flex; flex-wrap:wrap; gap:.5rem;
+}
+.nd-need-card__actions > * { flex:1 1 11rem; }
+.nd-need-card__actions .nd-btn { width:100%; }
+
+.nd-need-card__expanded {
+  margin-top:.4rem; padding-top:.85rem; border-top:1px dashed #e2e8f0;
+  display:flex; flex-direction:column; gap:.85rem;
+}
+.nd-expanded-section { display:flex; flex-direction:column; gap:.6rem; }
+.nd-expanded-section h4 { margin:0; font-size:.95rem; color:#0f172a; }
+.nd-expanded-section p { margin:.25rem 0 0; color:#64748b; font-size:.82rem; }
+
+/* ── Badges ───────────────────────────────────────────────────────────── */
+.nd-badge { flex:0 0 auto; border-radius:999px; padding:.22rem .55rem; font-size:.7rem; font-weight:800; }
+.nd-badge--warn { background:#fef3c7; color:#92400e; }
+.nd-badge--info { background:#dbeafe; color:#1d4ed8; }
+.nd-badge--ok { background:#dcfce7; color:#166534; }
+.nd-badge--danger { background:#fee2e2; color:#991b1b; }
+.nd-badge--muted { background:#e2e8f0; color:#475569; }
+
+/* ── Notes ────────────────────────────────────────────────────────────── */
+.nd-note {
+  border:1px solid #e2e8f0; border-radius:.45rem; background:#fff; padding:.65rem .7rem;
+}
+.nd-note--warning { border-color:#fde68a; background:#fffbeb; }
+.nd-note span {
+  display:block; color:#64748b; font-size:.72rem; font-weight:800; text-transform:uppercase;
+}
+.nd-note.nd-note--warning span { color:#92400e; }
+.nd-note p { margin:.25rem 0 0; color:#334155; font-size:.82rem; line-height:1.5; overflow-wrap:anywhere; }
+
+/* ── Modal de confirmação ─────────────────────────────────────────────── */
 .nd-confirm-modal[hidden] { display:none; }
 .nd-confirm-modal {
   position:fixed; inset:0; z-index:1300; display:flex; align-items:center; justify-content:center;
@@ -799,137 +1109,13 @@
   from { opacity:0; transform:translateY(8px) scale(.985); }
   to { opacity:1; transform:translateY(0) scale(1); }
 }
-.nd-filters {
-  display:grid; grid-template-columns:minmax(14rem, 1fr) minmax(12rem, 18rem);
-  gap:.75rem; align-items:stretch;
-}
-.nd-search, .nd-select {
-  background:#fff; border:1px solid #e2e8f0; border-radius:.5rem;
-  min-height:3.35rem; display:flex; align-items:center; gap:.55rem; padding:.55rem .7rem;
-  box-sizing:border-box;
-}
-.nd-search i { color:#64748b; }
-.nd-search input, .nd-select select {
-  width:100%; min-height:1.8rem; border:0; outline:0; background:transparent; color:#0f172a; font-weight:700;
-}
-.nd-select { flex-direction:column; align-items:flex-start; gap:.2rem; }
-.nd-select span { color:#64748b; font-size:.72rem; font-weight:800; text-transform:uppercase; }
-.nd-panel {
-  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
-  padding:1rem; display:flex; flex-direction:column; gap:.9rem; min-width:0;
-}
-.nd-panel--form { border-color:#bbf7d0; background:#f8fff9; }
-.nd-panel__head, .nd-detail-head, .nd-section-title {
-  display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;
-}
-.nd-panel__head h2, .nd-detail-head h2, .nd-section-title h3 {
-  margin:0; font-size:1rem; line-height:1.25; overflow-wrap:anywhere;
-}
-.nd-detail-head h2 { font-size:1.3rem; }
-.nd-panel__head p, .nd-detail-head p, .nd-section-title p {
-  margin:.3rem 0 0; color:#64748b; font-size:.83rem; overflow-wrap:anywhere;
-}
-.nd-history-head {
-  cursor:pointer; border-radius:.5rem; padding:.15rem 0 .25rem; margin:0;
-  transition:background .18s ease, box-shadow .18s ease;
-}
-.nd-history-head:hover { background:#f8fafc; }
-.nd-history-head:focus-visible { outline:0; box-shadow:0 0 0 3px rgba(22,163,74,.16); }
-.nd-history-toggle {
-  width:2.15rem; height:2.15rem; display:inline-flex; align-items:center; justify-content:center;
-  border:1px solid #cbd5e1; border-radius:999px;
-  background:#f8fafc; color:#0f172a; font-size:.9rem; pointer-events:none;
-  flex:0 0 2.15rem;
-}
-.nd-history-toggle i { transition:transform .22s ease; }
-.nd-history:not(.nd-history--collapsed) .nd-history-toggle i { transform:rotate(180deg); }
-.nd-history { gap:0; }
-.nd-history-collapse {
-  overflow:hidden; max-height:0; opacity:0; transition:max-height .28s ease, opacity .2s ease;
-}
-.nd-history:not(.nd-history--collapsed) .nd-history-collapse { opacity:1; margin-top:.9rem; }
-.nd-history-group { display:flex; flex-direction:column; gap:.65rem; }
-.nd-history-group + .nd-history-group {
-  margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;
-}
-.nd-history-group__head {
-  display:flex; justify-content:space-between; align-items:center; gap:.75rem;
-}
-.nd-history-group__head h3 { margin:0; font-size:.9rem; color:#0f172a; }
-.nd-history-group__head span {
-  min-width:1.75rem; height:1.75rem; display:inline-flex; align-items:center; justify-content:center;
-  border-radius:999px; background:#f1f5f9; color:#475569; font-weight:900; font-size:.8rem;
-}
-.nd-kicker { color:#16a34a; font-size:.72rem; font-weight:900; text-transform:uppercase; }
-.nd-form { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.75rem; }
-.nd-form label { display:flex; flex-direction:column; gap:.35rem; color:#334155; font-size:.82rem; font-weight:800; }
-.nd-form input, .nd-form select, .nd-form textarea {
-  width:100%; border:1px solid #cbd5e1; border-radius:.45rem; background:#fff;
-  padding:.65rem .75rem; outline:0; color:#0f172a;
-}
-.nd-form input:focus, .nd-form select:focus, .nd-form textarea:focus {
-  border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.12);
-}
-.nd-form__wide { grid-column:1 / -1; }
-.nd-workspace { display:grid; grid-template-columns:minmax(17rem, 22rem) minmax(0, 1fr); gap:1rem; align-items:stretch; }
-.nd-master, .nd-detail { height:100%; }
-.nd-detail { padding:.75rem; background:#f8fafc; gap:0; }
-.nd-detail-stack { display:flex; flex-direction:column; gap:1rem; min-width:0; }
-.nd-detail-block {
-  background:#fff; border:1px solid #e2e8f0; border-radius:.55rem;
-  padding:1rem; display:flex; flex-direction:column; gap:.85rem; min-width:0;
-}
-.nd-detail-block--overview { border-left:4px solid #16a34a; }
-.nd-detail-block--active { border-left:4px solid #2563eb; }
-.nd-detail-block--past { border-left:4px solid #94a3b8; }
-.nd-master-list, .nd-response-list { display:flex; flex-direction:column; gap:.65rem; }
-.nd-master-item {
-  border:1px solid #e2e8f0; border-radius:.5rem; background:#f8fafc;
-  padding:.8rem; display:flex; flex-direction:column; gap:.45rem; text-decoration:none; color:#0f172a;
-}
-.nd-master-item.is-selected { border-color:#16a34a; background:#f0fdf4; box-shadow:inset 3px 0 0 #16a34a; }
-.nd-master-item__title { font-weight:900; overflow-wrap:anywhere; }
-.nd-master-item__meta { color:#475569; font-size:.82rem; overflow-wrap:anywhere; }
-.nd-master-item__foot { display:flex; align-items:center; justify-content:space-between; gap:.5rem; color:#64748b; font-size:.76rem; }
-.nd-badge { flex:0 0 auto; border-radius:999px; padding:.22rem .5rem; font-size:.72rem; font-weight:800; }
-.nd-badge--warn { background:#fef3c7; color:#92400e; }
-.nd-badge--info { background:#dbeafe; color:#1d4ed8; }
-.nd-badge--ok { background:#dcfce7; color:#166534; }
-.nd-badge--danger { background:#fee2e2; color:#991b1b; }
-.nd-badge--muted { background:#e2e8f0; color:#475569; }
-.nd-progress { border:1px solid #e2e8f0; border-radius:.55rem; padding:.85rem; background:#f8fafc; }
-.nd-progress__bar { height:.55rem; border-radius:999px; background:#e2e8f0; overflow:hidden; }
-.nd-progress__bar span { display:block; height:100%; max-width:100%; border-radius:999px; background:#16a34a; }
-.nd-progress__metrics, .nd-metrics {
-  display:grid; grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:.45rem .75rem; color:#475569; font-size:.8rem;
-}
-.nd-progress__metrics { margin-top:.75rem; }
-.nd-metrics span, .nd-progress__metrics span { min-width:0; overflow-wrap:anywhere; }
-.nd-metrics strong, .nd-progress__metrics strong { color:#0f172a; }
-.nd-metrics--response { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-.nd-note {
-  border:1px solid #e2e8f0; border-radius:.45rem; background:#fff; padding:.65rem .7rem;
-}
-.nd-note--warning { border-color:#fde68a; background:#fffbeb; }
-.nd-note span {
-  display:block; color:#64748b; font-size:.72rem; font-weight:800; text-transform:uppercase;
-}
-.nd-note.nd-note--warning span { color:#92400e; }
-.nd-note p {
-  margin:.25rem 0 0; color:#334155; font-size:.82rem; line-height:1.5; overflow-wrap:anywhere;
-}
-.nd-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
-.nd-actions > * { flex:1 1 12rem; }
-.nd-actions form { margin:0; }
-.nd-actions .nd-btn { width:100%; }
+
+/* ── Editar procura form ──────────────────────────────────────────────── */
 .nd-edit-form {
   border:1px solid #bbf7d0; border-radius:.55rem; background:#f8fff9;
   padding:.9rem; display:flex; flex-direction:column; gap:.8rem;
 }
-.nd-edit-form__head {
-  display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem;
-}
+.nd-edit-form__head { display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem; }
 .nd-edit-form__head h3 { margin:0; font-size:1rem; color:#0f172a; }
 .nd-edit-form__head p { margin:.25rem 0 0; color:#64748b; font-size:.83rem; line-height:1.45; }
 .nd-edit-grid {
@@ -952,74 +1138,118 @@
 .nd-input-suffix { display:flex; align-items:center; border:1px solid #cbd5e1; border-radius:.45rem; background:#fff; overflow:hidden; }
 .nd-input-suffix input { border:0; border-radius:0; box-shadow:none; }
 .nd-input-suffix span { padding:0 .75rem; color:#64748b; font-weight:900; }
+.nd-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+.nd-actions > * { flex:1 1 12rem; }
+.nd-actions form { margin:0; }
+.nd-actions .nd-btn { width:100%; }
 .nd-actions--edit { justify-content:flex-end; }
 .nd-actions--edit > * { flex:0 1 12rem; }
-.nd-card-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
-.nd-card-actions > * { flex:1 1 12rem; margin:0; }
-.nd-card-actions .nd-btn { width:100%; }
-.nd-response-state {
-  border:1px solid #e2e8f0; border-radius:.45rem; background:#fff; padding:.65rem .7rem;
-  display:flex; flex-direction:column; gap:.35rem;
+.nd-actions--expanded { gap:.5rem; }
+.nd-actions--expanded > * { flex:0 0 auto; }
+.nd-actions--expanded form { margin:0; }
+.nd-actions--expanded .nd-btn { width:auto; }
+
+/* ── Response cards ───────────────────────────────────────────────────── */
+.nd-response-list, .nd-history-grid, .nd-proposals-grid {
+  display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.75rem;
 }
-.nd-response-state p { margin:0; color:#475569; font-size:.8rem; line-height:1.45; overflow-wrap:anywhere; }
+.nd-history-grid > .nd-empty,
+.nd-proposals-grid > .nd-empty {
+  grid-column:1 / -1; justify-self:stretch; width:100%; box-sizing:border-box;
+}
+.nd-response-card {
+  border:1px solid #e2e8f0; border-radius:.5rem; background:#f8fafc;
+  padding:.85rem; display:flex; flex-direction:column; gap:.7rem; min-width:0;
+}
+.nd-response-card--past { background:#fff; }
+.nd-response-card__head {
+  display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;
+}
+.nd-response-card h4 { margin:0; font-size:.96rem; line-height:1.25; overflow-wrap:anywhere; }
+.nd-response-card p { margin:.2rem 0 0; color:#64748b; font-size:.8rem; overflow-wrap:anywhere; }
+.nd-card-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+.nd-card-actions > * { flex:1 1 11rem; margin:0; }
+.nd-card-actions .nd-btn { width:100%; }
 .nd-response-message {
   border:1px solid #dbeafe; border-radius:.45rem; background:#eff6ff;
   color:#1e3a8a; padding:.55rem .65rem; font-size:.8rem; line-height:1.45; overflow-wrap:anywhere;
 }
-.nd-response-card, .nd-open-card {
-  border:1px solid #e2e8f0; border-radius:.5rem; background:#f8fafc;
-  padding:.85rem; display:flex; flex-direction:column; gap:.7rem; min-width:0;
+
+/* ── CTA Procuras de outros produtores ────────────────────────────────── */
+.nd-cta {
+  background:linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 60%, #ffffff 100%);
+  border:1px solid #bbf7d0; border-radius:.6rem;
+  padding:1.1rem 1.25rem;
+  display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;
 }
-.nd-responses--past {
-  margin-top:0;
+.nd-cta__text { display:flex; flex-direction:column; gap:.25rem; min-width:0; }
+.nd-cta__text h2 { margin:.2rem 0 0; font-size:1.05rem; color:#0f172a; line-height:1.25; }
+.nd-cta__text p  { margin:.25rem 0 0; color:#475569; font-size:.85rem; overflow-wrap:anywhere; }
+.nd-cta .nd-btn { flex:0 0 auto; min-width:13rem; }
+
+/* ── Histórico ────────────────────────────────────────────────────────── */
+.nd-history-head {
+  cursor:pointer; border-radius:.5rem; padding:.15rem 0 .25rem; margin:0;
+  transition:background .18s ease, box-shadow .18s ease;
 }
-.nd-response-card--past { background:#fff; }
-.nd-response-card__head, .nd-item__top {
-  display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;
+.nd-history-head:hover { background:#f8fafc; }
+.nd-history-head:focus-visible { outline:0; box-shadow:0 0 0 3px rgba(22,163,74,.16); }
+.nd-history-toggle {
+  width:2.15rem; height:2.15rem; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid #cbd5e1; border-radius:999px;
+  background:#f8fafc; color:#0f172a; font-size:.9rem; pointer-events:none;
+  flex:0 0 2.15rem;
 }
-.nd-response-card h4, .nd-open-card h3 { margin:0; font-size:.96rem; line-height:1.25; overflow-wrap:anywhere; }
-.nd-response-card p, .nd-open-card p { margin:.2rem 0 0; color:#64748b; font-size:.8rem; overflow-wrap:anywhere; }
-.nd-open-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.75rem; }
-.nd-history-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.75rem; }
-.nd-history-grid > .nd-empty {
-  grid-column:1 / -1;
-  justify-self:stretch;
-  width:100%;
-  box-sizing:border-box;
+.nd-history-toggle i { transition:transform .22s ease; }
+.nd-history:not(.nd-history--collapsed) .nd-history-toggle i { transform:rotate(180deg); }
+.nd-history { gap:0; }
+.nd-history-collapse {
+  overflow:hidden; max-height:0; opacity:0; transition:max-height .28s ease, opacity .2s ease;
 }
-.nd-open-grid > .nd-empty {
-  grid-column:1 / -1;
-  justify-self:stretch;
-  width:100%;
-  box-sizing:border-box;
-  align-self:stretch;
+.nd-history:not(.nd-history--collapsed) .nd-history-collapse { opacity:1; margin-top:.9rem; }
+.nd-history-group { display:flex; flex-direction:column; gap:.65rem; }
+.nd-history-group + .nd-history-group { margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0; }
+.nd-history-group__head { display:flex; justify-content:space-between; align-items:center; gap:.75rem; }
+.nd-history-group__head h3 { margin:0; font-size:.9rem; color:#0f172a; }
+.nd-history-group__head span {
+  min-width:1.75rem; height:1.75rem; display:inline-flex; align-items:center; justify-content:center;
+  border-radius:999px; background:#f1f5f9; color:#475569; font-weight:900; font-size:.8rem;
 }
+
+/* ── Empty states ─────────────────────────────────────────────────────── */
 .nd-empty {
-  border:1px dashed #cbd5e1; border-radius:.5rem; padding:1rem; text-align:center; color:#64748b;
+  border:1px dashed #cbd5e1; border-radius:.5rem; padding:1.1rem; text-align:center; color:#64748b;
   display:flex; flex-direction:column; align-items:center; gap:.45rem;
 }
-.nd-empty i { color:#16a34a; font-size:1.35rem; }
+.nd-empty i { color:#16a34a; font-size:1.5rem; }
 .nd-empty h3 { margin:0; color:#0f172a; font-size:1rem; }
-.nd-empty p { margin:0; overflow-wrap:anywhere; }
-.nd-empty--large { min-height:22rem; justify-content:center; }
+.nd-empty p { margin:0; overflow-wrap:anywhere; font-size:.85rem; }
 .nd-empty--compact { padding:.85rem; }
+.nd-empty--full { padding:2rem 1rem; }
+.nd-empty__actions { display:flex; gap:.6rem; flex-wrap:wrap; margin-top:.45rem; }
 
+/* ── Responsivo ───────────────────────────────────────────────────────── */
 @media (max-width: 1180px) {
-  .nd-workspace, .nd-open-grid, .nd-history-grid { grid-template-columns:1fr; }
+  .nd-summary { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .nd-needs-grid, .nd-response-list, .nd-history-grid, .nd-proposals-grid { grid-template-columns:1fr; }
+  .nd-need-card__metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
-  .nd-header, .nd-panel__head, .nd-detail-head, .nd-section-title, .nd-response-card__head, .nd-item__top {
+  .nd-header, .nd-panel__head, .nd-section-title, .nd-response-card__head, .nd-need-card__head {
     flex-direction:column; align-items:stretch;
   }
+  .nd-summary { grid-template-columns:1fr 1fr; }
   .nd-filters, .nd-form, .nd-edit-grid, .nd-progress__metrics, .nd-metrics { grid-template-columns:1fr; }
+  .nd-need-card__metrics { grid-template-columns:1fr 1fr; }
   .nd-edit-form__head { flex-direction:column; align-items:stretch; }
   .nd-edit-grid__wide { grid-column:auto; }
   .nd-header .nd-btn, .nd-panel__head .nd-btn, .nd-btn { width:100%; }
-  .nd-master-item__foot { align-items:flex-start; flex-direction:column; }
-  .nd-badge { align-self:flex-start; }
+  .nd-cta { flex-direction:column; align-items:stretch; text-align:left; }
+  .nd-cta .nd-btn { width:100%; min-width:0; }
   .nd-confirm-modal__actions .nd-btn { width:100%; }
 }
 </style>
+
 <script>
 (function () {
   function getModal() {

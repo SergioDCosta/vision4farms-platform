@@ -22,6 +22,7 @@ from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     get_need_for_producer,
+    list_marketplace_public_needs,
 )
 from apps.needs.navigation import build_needs_index_url
 from apps.marketplace.forms import MarketplacePublishForm, MarketplaceEditForm
@@ -339,14 +340,17 @@ def _get_index_filters(request):
     if sort not in {"recent", "price_asc", "price_desc", "quantity_desc"}:
         sort = "recent"
     only_available = (source.get("available") or "").strip().lower() in {"1", "true", "yes", "on"}
+    kind = (source.get("kind") or "all").strip()
+    if kind not in {"all", "offers", "needs"}:
+        kind = "all"
     need_id = (source.get("need") or "").strip()
     requested_product_id = (source.get("product") or source.get("product_id") or "").strip()
     requested_quantity = (source.get("qty") or source.get("required_quantity") or "").strip()
     show_need_form = (source.get("show_need_form") or "").strip().lower() in {"1", "true", "yes", "on"}
-    return active_tab, q, category_id, origin, sort, only_available, need_id, requested_product_id, requested_quantity, show_need_form
+    return active_tab, q, category_id, origin, sort, only_available, kind, need_id, requested_product_id, requested_quantity, show_need_form
 
 
-def _build_marketplace_index_query(*, active_tab, q, category_id, origin="", sort="recent", only_available=False):
+def _build_marketplace_index_query(*, active_tab, q, category_id, origin="", sort="recent", only_available=False, kind="all"):
     params = {"tab": active_tab, "q": q, "category": category_id}
     if origin:
         params["origin"] = origin
@@ -354,6 +358,8 @@ def _build_marketplace_index_query(*, active_tab, q, category_id, origin="", sor
         params["sort"] = sort
     if only_available:
         params["available"] = "1"
+    if kind and kind != "all":
+        params["kind"] = kind
     return urlencode(params)
 
 
@@ -366,6 +372,7 @@ def _build_marketplace_index_context(
     origin="",
     sort="recent",
     only_available=False,
+    kind="all",
     selected_need_id="",
     need_prefill_product_id="",
     need_prefill_quantity="",
@@ -378,6 +385,15 @@ def _build_marketplace_index_context(
         origin=origin,
         sort=sort,
         only_available=True,
+    ) if kind in {"all", "offers"} else []
+    marketplace_need_rows = (
+        list_marketplace_public_needs(
+            viewer_producer=producer,
+            q=q,
+            category_id=category_id,
+        )
+        if active_tab == "todos" and kind in {"all", "needs"}
+        else []
     )
     my_listings = get_my_listings(
         producer=producer,
@@ -394,6 +410,20 @@ def _build_marketplace_index_context(
         else get_public_listings(producer=producer, q=q, category_id="", origin=origin, sort=sort, only_available=True)
     )
     available_categories = list(get_listing_categories_for_queryset(categories_source))
+    need_category_map = {
+        str(row["need"].product.category.id): row["need"].product.category
+        for row in marketplace_need_rows
+        if getattr(getattr(row["need"], "product", None), "category", None)
+    }
+    existing_category_ids = {str(category.id) for category in available_categories}
+    for category_id_key, category in need_category_map.items():
+        if category_id_key not in existing_category_ids:
+            available_categories.append(category)
+            existing_category_ids.add(category_id_key)
+    available_categories = sorted(
+        available_categories,
+        key=lambda category: (category.name or "").lower(),
+    )
 
     if category_id and all(str(category.id) != category_id for category in available_categories):
         selected_public = (
@@ -413,6 +443,7 @@ def _build_marketplace_index_context(
 
     public_listings = _attach_listing_photo_urls(public_listings)
     my_listings = _attach_listing_photo_urls(my_listings)
+    public_marketplace_count = len(public_listings) + len(marketplace_need_rows)
 
     return {
         "page_title": "Marketplace",
@@ -422,9 +453,13 @@ def _build_marketplace_index_context(
         "selected_origin": origin,
         "selected_sort": sort,
         "only_available": only_available,
+        "selected_kind": kind,
         "listings": public_listings,
+        "marketplace_need_rows": marketplace_need_rows,
         "my_listings": my_listings,
-        "public_listings_count": len(public_listings),
+        "public_listings_count": public_marketplace_count,
+        "public_offers_count": len(public_listings),
+        "public_needs_count": len(marketplace_need_rows),
         "my_listings_count": len(my_listings),
         "selected_need_id": selected_need_id,
         "selected_need_row": None,
@@ -708,7 +743,7 @@ def marketplace_index_view(request):
     current_user = request.current_user
     producer = get_current_producer_for_user(current_user)
     expire_due_active_listings()
-    active_tab, q, category_id, origin, sort, only_available, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
+    active_tab, q, category_id, origin, sort, only_available, kind, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
     if active_tab == "necessidades":
         return redirect(
             build_needs_index_url(
@@ -730,6 +765,7 @@ def marketplace_index_view(request):
         origin=origin,
         sort=sort,
         only_available=only_available,
+        kind=kind,
         selected_need_id=selected_need_id,
         need_prefill_product_id=requested_product_id,
         need_prefill_quantity=requested_quantity,
@@ -1168,7 +1204,7 @@ def marketplace_delete_view(request, listing_id):
         id=listing_id,
         producer=producer,
     )
-    active_tab, q, category_id, origin, sort, only_available, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
+    active_tab, q, category_id, origin, sort, only_available, kind, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
 
     if listing.need_id:
         messages.warning(
@@ -1191,6 +1227,7 @@ def marketplace_delete_view(request, listing_id):
                 origin=origin,
                 sort=sort,
                 only_available=only_available,
+                kind=kind,
                 selected_need_id=selected_need_id,
                 need_prefill_product_id=requested_product_id,
                 need_prefill_quantity=requested_quantity,
@@ -1217,6 +1254,7 @@ def marketplace_delete_view(request, listing_id):
                 origin=origin,
                 sort=sort,
                 only_available=only_available,
+                kind=kind,
                 selected_need_id=selected_need_id,
                 need_prefill_product_id=requested_product_id,
                 need_prefill_quantity=requested_quantity,
@@ -1244,6 +1282,7 @@ def marketplace_delete_view(request, listing_id):
             origin=origin,
             sort=sort,
             only_available=only_available,
+            kind=kind,
             selected_need_id=selected_need_id,
             need_prefill_product_id=requested_product_id,
             need_prefill_quantity=requested_quantity,
@@ -1312,7 +1351,7 @@ def marketplace_toggle_status_view(request, listing_id):
             detail_context = _build_marketplace_detail_context(request, detail_listing, producer)
             return render(request, "marketplace/detail.html", detail_context)
 
-        active_tab, q, category_id, origin, sort, only_available, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
+        active_tab, q, category_id, origin, sort, only_available, kind, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
         context = _build_marketplace_index_context(
             producer,
             active_tab=active_tab,
@@ -1321,6 +1360,7 @@ def marketplace_toggle_status_view(request, listing_id):
             origin=origin,
             sort=sort,
             only_available=only_available,
+            kind=kind,
             selected_need_id=selected_need_id,
             need_prefill_product_id=requested_product_id,
             need_prefill_quantity=requested_quantity,
@@ -1340,6 +1380,7 @@ def marketplace_toggle_status_view(request, listing_id):
             origin=origin,
             sort=sort,
             only_available=only_available,
+            kind=kind,
         )
         return redirect(f"{reverse('marketplace:index')}?{query}")
 
@@ -1360,7 +1401,7 @@ def marketplace_toggle_status_view(request, listing_id):
         detail_context = _build_marketplace_detail_context(request, detail_listing, producer)
         return render(request, "marketplace/detail.html", detail_context)
 
-    active_tab, q, category_id, origin, sort, only_available, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
+    active_tab, q, category_id, origin, sort, only_available, kind, selected_need_id, requested_product_id, requested_quantity, show_need_form = _get_index_filters(request)
     context = _build_marketplace_index_context(
         producer,
         active_tab=active_tab,
@@ -1369,6 +1410,7 @@ def marketplace_toggle_status_view(request, listing_id):
         origin=origin,
         sort=sort,
         only_available=only_available,
+        kind=kind,
         selected_need_id=selected_need_id,
         need_prefill_product_id=requested_product_id,
         need_prefill_quantity=requested_quantity,
@@ -1385,5 +1427,6 @@ def marketplace_toggle_status_view(request, listing_id):
         origin=origin,
         sort=sort,
         only_available=only_available,
+        kind=kind,
     )
     return redirect(f"{reverse('marketplace:index')}?{query}")

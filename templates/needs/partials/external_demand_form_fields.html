@@ -1,0 +1,47 @@
+{% if form.non_field_errors %}
+  <div class="ecd-form__wide ecd-form-errors">
+    {{ form.non_field_errors.0 }}
+  </div>
+{% endif %}
+
+<label>
+  {{ form.client_name.label }}
+  {{ form.client_name }}
+  {% if form.client_name.errors %}<span class="ecd-field-error">{{ form.client_name.errors.0 }}</span>{% endif %}
+</label>
+
+<label>
+  {{ form.product_id.label }}
+  {{ form.product_id }}
+  {% if form.product_id.errors %}<span class="ecd-field-error">{{ form.product_id.errors.0 }}</span>{% endif %}
+</label>
+
+<label>
+  {{ form.requested_quantity.label }}
+  {{ form.requested_quantity }}
+  {% if form.requested_quantity.errors %}<span class="ecd-field-error">{{ form.requested_quantity.errors.0 }}</span>{% endif %}
+</label>
+
+<label>
+  {{ form.requested_delivery_date.label }}
+  {{ form.requested_delivery_date }}
+  {% if form.requested_delivery_date.errors %}<span class="ecd-field-error">{{ form.requested_delivery_date.errors.0 }}</span>{% endif %}
+</label>
+
+<label>
+  {{ form.client_contact.label }}
+  {{ form.client_contact }}
+  {% if form.client_contact.errors %}<span class="ecd-field-error">{{ form.client_contact.errors.0 }}</span>{% endif %}
+</label>
+
+<label>
+  {{ form.client_reference.label }}
+  {{ form.client_reference }}
+  {% if form.client_reference.errors %}<span class="ecd-field-error">{{ form.client_reference.errors.0 }}</span>{% endif %}
+</label>
+
+<label class="ecd-form__wide">
+  {{ form.notes.label }}
+  {{ form.notes }}
+  {% if form.notes.errors %}<span class="ecd-field-error">{{ form.notes.errors.0 }}</span>{% endif %}
+</label>

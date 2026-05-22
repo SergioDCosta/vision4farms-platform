@@ -1,0 +1,481 @@
+Claro. Aqui vai um resumo concreto do sprint, já organizado para poderes usar em relatório, contexto do projeto ou para orientar os próximos testes.
+
+# Sprint — Necessidades baseadas em pedidos externos de clientes
+
+## Objetivo principal
+
+Reformular o módulo de **Necessidades** para cumprir a regra clarificada pelo orientador:
+
+> O agricultor deve registar pedidos externos dos seus clientes. O sistema avalia se o stock atual + produção prevista disponível até à data de entrega chega para cumprir esses pedidos. Se não chegar, gera uma necessidade/procura no marketplace.
+
+Antes, a necessidade era mais genérica: “preciso de X kg”.
+Agora passa a ter uma origem real: **compromissos externos com clientes**.
+
+---
+
+# O que ficou feito
+
+## 1. Nova entidade: pedidos externos dos clientes
+
+Foi criada a base para registar pedidos externos através da tabela/modelo:
+
+```text
+external_customer_demands
+```
+
+Estes pedidos representam compromissos fora da app, por exemplo:
+
+```text
+Cliente: Frutaria Central
+Produto: Pera Rocha
+Quantidade: 200 kg
+Data de entrega: 20/05/2026
+```
+
+Foi implementado:
+
+* SQL/model `managed=False`;
+* formulário;
+* serviços de criar, editar, listar e cancelar;
+* página `/necessidades/pedidos-clientes/`;
+* filtros por pesquisa, produto e estado;
+* estados como `OPEN`, `COVERED`, `FULFILLED`, `CANCELLED`.
+
+## 2. Cálculo temporal da necessidade
+
+Foi implementada a regra mais importante do orientador:
+
+```text
+necessidade = pedidos externos até à data
+-
+(stock disponível atual + produção prevista útil até essa data)
+```
+
+Ou seja, uma previsão de produção só conta se chegar a tempo.
+
+Regras implementadas:
+
+* forecast conta se `period_end <= requested_delivery_date`;
+* se não houver `period_end`, conta se `period_start <= requested_delivery_date`;
+* forecast sem data válida não conta;
+* stock disponível = `current_quantity - reserved_quantity`;
+* défice é calculado por data de entrega.
+
+Isto permite responder corretamente a casos como:
+
+```text
+Pedido para 20/05
+Forecast para 25/05
+```
+
+Neste caso, o forecast **não conta**, porque chega tarde.
+
+## 3. Nova UI da página “Pedidos dos meus clientes”
+
+A página `/necessidades/pedidos-clientes/` foi redesenhada como painel operacional.
+
+Ela agora mostra:
+
+* cards de resumo;
+* total de pedidos abertos;
+* produtos com pedidos;
+* maior défice;
+* próxima data crítica;
+* tabela de pedidos;
+* planeamento por produto;
+* tabela temporal com:
+
+  * pedidos acumulados;
+  * stock disponível;
+  * produção prevista útil;
+  * capacidade até à data;
+  * quantidade em falta.
+
+Isto ficou bem alinhado com o que o orientador mostrou na imagem.
+
+## 4. Geração automática de Need agregada
+
+Depois do cálculo temporal, o sistema passou a gerar/atualizar automaticamente uma `Need`.
+
+Fluxo:
+
+```text
+Pedido externo
+→ cálculo temporal
+→ défice encontrado
+→ Need agregada criada/atualizada
+```
+
+Regras:
+
+* uma `Need` por produtor/produto;
+* evita duplicados;
+* `required_quantity = maior défice`;
+* `needed_by_date = primeira data crítica`;
+* `source_system = CUSTOMER_DEMAND`;
+* pedidos externos ficam ligados através de `generated_need_id`;
+* se deixar de haver défice, a need é marcada como `COVERED`.
+
+## 5. Sincronização de `safety_stock`
+
+O campo `stocks.safety_stock` passou a representar os compromissos externos em aberto.
+
+Nova interpretação:
+
+```text
+safety_stock = soma dos pedidos externos em aberto desse produto
+```
+
+Isto faz sentido porque impede que o agricultor publique/venda stock que já está comprometido com clientes externos.
+
+Na prática:
+
+```text
+Stock atual: 500 kg
+Pedidos externos: 300 kg
+Quantidade publicável: 200 kg
+```
+
+## 6. Marketplace mostra procuras
+
+O marketplace agora consegue mostrar dois tipos de cards:
+
+```text
+Ofertas = MarketplaceListing
+Procuras = Need
+```
+
+As `Needs` não foram transformadas em `MarketplaceListing`, o que está correto.
+
+Ficou assim:
+
+* ofertas continuam a ser anúncios de venda;
+* procuras aparecem como cards de “Procura”;
+* outro produtor pode responder;
+* resposta continua a ser uma listing privada com `need_id`.
+
+## 7. Integrações ajustadas
+
+Foram ajustados pontos em:
+
+* `needs`;
+* `inventory`;
+* `marketplace`;
+* `orders`;
+* `alerts`;
+* `recommendations`.
+
+E os testes automáticos passaram:
+
+```text
+99 tests OK
+```
+
+---
+
+# Porque isto foi feito
+
+## Antes
+
+O sistema tinha needs, marketplace e recomendações, mas a origem da necessidade era menos clara.
+
+A app dizia:
+
+```text
+Este produtor precisa de X kg.
+```
+
+Mas não explicava bem **porquê**.
+
+## Agora
+
+A necessidade nasce de compromissos concretos:
+
+```text
+Tenho pedidos de clientes para cumprir.
+O meu stock + produção prevista não chegam.
+Preciso de procurar produto junto de outros produtores.
+```
+
+Isto é muito mais forte funcionalmente e academicamente.
+
+---
+
+# Objetivos atingidos
+
+## Objetivo 1 — Alinhar com o orientador
+
+Cumprido.
+
+O sistema agora avalia:
+
+```text
+stock + previsão disponível até à data de entrega
+```
+
+e não apenas stock/previsão total.
+
+## Objetivo 2 — Tornar necessidades explicáveis
+
+Cumprido.
+
+A need já não aparece “do nada”. Vem de pedidos externos.
+
+## Objetivo 3 — Evitar venda de stock comprometido
+
+Cumprido parcialmente.
+
+Como `safety_stock` passou a refletir pedidos externos, o stock publicável fica protegido.
+
+## Objetivo 4 — Integrar procura no marketplace
+
+Cumprido.
+
+O marketplace agora mostra ofertas e procuras.
+
+## Objetivo 5 — Manter arquitetura limpa
+
+Cumprido.
+
+Separação mantida:
+
+```text
+external_customer_demands = pedidos externos
+needs = procura agregada
+marketplace_listings = ofertas/vendas
+```
+
+---
+
+# O que ainda falta melhorar
+
+## 1. UI da página `/necessidades/`
+
+É o ponto principal.
+
+A lógica está boa, mas a página “Necessidades” ainda está confusa visualmente.
+
+Ela deve passar a ser um **centro de controlo das procuras**, com:
+
+* necessidades geradas;
+* propostas recebidas;
+* propostas enviadas;
+* histórico;
+* ligação clara aos pedidos dos clientes.
+
+Não deve dar tanto destaque a “Responder a necessidades abertas”, porque isso agora pertence mais ao marketplace.
+
+## 2. Textos antigos
+
+Ainda tens de confirmar se ficaram textos como:
+
+```text
+Stock de segurança
+```
+
+Onde agora devia aparecer:
+
+```text
+Compromissos externos
+```
+
+ou:
+
+```text
+Reservado para clientes externos
+```
+
+Isto é importante para não confundir.
+
+## 3. Estado `FULFILLED`
+
+Ainda não está fechado o fluxo de quando um pedido externo é realmente cumprido ao cliente final.
+
+Para já está certo ficar manual/futuro, mas falta decidir:
+
+* quem marca como cumprido;
+* quando;
+* se isso gera histórico;
+* se afeta métricas.
+
+## 4. Cobertura individual por pedido externo
+
+Neste momento, a cobertura é agregada pela `Need`.
+
+Ou seja:
+
+```text
+Need de 300 kg para Alface
+```
+
+mas ainda não há alocação detalhada:
+
+```text
+100 kg para Cliente A
+200 kg para Cliente B
+```
+
+Isto pode ficar fora da v1.
+
+## 5. Marketplace UI
+
+O marketplace já está bom, mas os cards de procura podem ser melhorados com textos mais naturais:
+
+* “Procura”;
+* “Precisa de”;
+* “Já proposto”;
+* “Por cobrir”;
+* “Fazer proposta”.
+
+---
+
+# Testes manuais obrigatórios
+
+## A. Pedido externo sem défice
+
+1. Criar stock suficiente.
+2. Criar pedido externo inferior ao stock.
+3. Confirmar:
+
+```text
+não cria Need ativa
+ou marca Need automática como COVERED
+```
+
+## B. Pedido externo com défice
+
+1. Criar pedido externo acima do stock disponível.
+2. Confirmar:
+
+```text
+Need CUSTOMER_DEMAND criada
+required_quantity = défice
+needed_by_date = primeira data crítica
+```
+
+## C. Forecast antes da data
+
+1. Pedido para 20/06.
+2. Forecast com `period_end = 15/06`.
+3. Confirmar:
+
+```text
+forecast conta
+défice reduz
+```
+
+## D. Forecast depois da data
+
+1. Pedido para 20/06.
+2. Forecast com `period_end = 25/06`.
+3. Confirmar:
+
+```text
+forecast não conta
+défice mantém-se
+```
+
+## E. Forecast sem data
+
+Confirmar:
+
+```text
+não conta
+```
+
+## F. Edição do pedido externo
+
+1. Aumentar quantidade.
+
+2. Confirmar:
+
+   * défice aumenta;
+   * Need atualiza.
+
+3. Reduzir quantidade.
+
+4. Confirmar:
+
+   * défice reduz;
+   * Need atualiza ou fica `COVERED`.
+
+## G. Cancelamento do pedido externo
+
+1. Cancelar pedido.
+2. Confirmar:
+
+   * `safety_stock` recalcula;
+   * Need recalcula;
+   * marketplace deixa de mostrar procura se já não houver défice.
+
+## H. Safety stock / compromissos externos
+
+Confirmar na BD:
+
+```text
+stocks.safety_stock = soma dos pedidos externos em aberto
+```
+
+Estados que contam:
+
+```text
+OPEN
+PARTIALLY_COVERED
+COVERED
+```
+
+Estados que não contam:
+
+```text
+CANCELLED
+FULFILLED
+```
+
+## I. Marketplace
+
+1. Criar necessidade com défice.
+2. Abrir marketplace com outro produtor.
+3. Confirmar:
+
+   * aparece card de procura;
+   * não aparecem as próprias procuras;
+   * botão responder abre fluxo certo.
+
+## J. Resposta à procura
+
+1. Outro produtor responde.
+2. Confirmar:
+
+   * cria listing privada com `need_id`;
+   * não aparece no feed público normal;
+   * dono da need vê proposta recebida.
+
+## K. Aceitar proposta
+
+1. Dono da need aceita.
+2. Confirmar:
+
+   * cria encomenda;
+   * `order_items.need_id` preenchido;
+   * cobertura da need atualiza;
+   * pedido externo individual não fecha automaticamente.
+
+---
+
+# Resumo final do sprint
+
+Este sprint transformou o módulo de necessidades de uma lógica genérica de “procura manual” para uma lógica muito mais realista:
+
+```text
+pedidos externos dos clientes
+→ análise temporal de stock e produção
+→ défice
+→ necessidade automática
+→ procura no marketplace
+→ proposta de outro produtor
+→ encomenda
+→ cobertura
+```
+
+Isto é uma evolução grande e muito importante para o projeto.
+O que falta agora não é tanto lógica de backend; é sobretudo **polir a UI da página `/necessidades/` e validar o fluxo completo com dados reais**.

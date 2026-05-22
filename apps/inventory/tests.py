@@ -105,7 +105,7 @@ class InventoryStockStateTests(SimpleTestCase):
         state = get_stock_state(stock)
 
         self.assertEqual(state["key"], "warning")
-        self.assertEqual(state["label"], "Perto do mínimo")
+        self.assertEqual(state["label"], "Perto dos compromissos")
         self.assertEqual(state["pill_class"], "inv-status inv-status--warning")
 
     def test_stock_below_safety_stock_is_critical(self):

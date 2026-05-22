@@ -146,7 +146,7 @@ def _stock_state(stock):
     - critical: available_quantity < safety_stock
     - warning: safety_stock <= available_quantity <= safety_stock + 10%
     - excess: available_quantity > safety_stock + 10%
-    - normal: sem stock de segurança definido e sem excedente operacional
+    - normal: sem compromissos externos definidos e sem excedente operacional
     """
     current_quantity = stock.current_quantity if stock else ZERO
     safety_stock = stock.safety_stock if stock else ZERO
@@ -196,7 +196,7 @@ def _stock_state(stock):
     if safety_stock > ZERO and available_quantity <= warning_upper_quantity:
         return state_base | {
             "key": "warning",
-            "label": "Perto do mínimo",
+            "label": "Perto dos compromissos",
             "row_class": "inv-row--warning",
             "pill_class": "inv-status inv-status--warning",
             "text_class": "inv-value inv-value--warning",

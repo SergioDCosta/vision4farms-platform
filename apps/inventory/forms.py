@@ -33,12 +33,12 @@ class AddProducerProductForm(forms.Form):
     )
 
     safety_stock = forms.DecimalField(
-        label="Stock de segurança",
+        label="Compromissos externos",
         min_value=0,
         max_digits=14,
         decimal_places=3,
         initial=0,
-        help_text="Recebe alerta quando o stock descer abaixo deste valor.",
+        help_text="Quantidade necessaria para pedidos externos em aberto.",
         widget=forms.NumberInput(attrs={
             "class": "form-control",
             "step": "0.001",
@@ -89,7 +89,7 @@ class CreateCustomProductForm(forms.Form):
     )
 
     safety_stock = forms.DecimalField(
-        label="Stock de segurança",
+        label="Compromissos externos",
         min_value=0,
         max_digits=14,
         decimal_places=3,
@@ -113,7 +113,7 @@ class CreateCustomProductForm(forms.Form):
 
 
 class UpdateStockForm(forms.Form):
-    """Atualizar a quantidade em stock e o stock de segurança."""
+    """Atualizar a quantidade em stock e os compromissos externos."""
 
     MOVEMENT_CHOICES = [
         (StockMovementType.MANUAL_ADJUSTMENT, "Ajuste manual"),
@@ -135,7 +135,7 @@ class UpdateStockForm(forms.Form):
     )
 
     safety_stock = forms.DecimalField(
-        label="Stock de segurança",
+        label="Compromissos externos",
         min_value=0,
         max_digits=14,
         decimal_places=3,

@@ -106,6 +106,7 @@ def build_client_dashboard_context(user):
         "active_alerts_count": active_alerts_count,
         "critical_alerts_count": critical_alerts_count,
         "critical_stock_count": critical_stock_count,
+        "near_stock_count": near_stock_count,
         "pending_orders_count": pending_orders_count,
         "surplus_listings_count": surplus_listings_count,
         "has_active_inventory_products": has_active_inventory_products,
@@ -158,7 +159,7 @@ def _build_recommended_actions(
                     "title": f"Reforçar stock de {low_stock.product.name}",
                     "description": (
                         f"Stock atual: {low_stock.current_quantity} {low_stock.product.unit} | "
-                        f"Stock de segurança: {low_stock.safety_stock} {low_stock.product.unit}"
+                        f"Compromissos externos: {low_stock.safety_stock} {low_stock.product.unit}"
                     ),
                     "url": "/inventario/produtos/?tab=stock",
                     "button_label": "Ver stocks",
@@ -191,7 +192,7 @@ def _build_recommended_actions(
                 "title": "Publicar um possível excedente",
                 "description": (
                     f"O produto {surplus_stock_candidate.product.name} parece ter stock acima "
-                    "do stock de segurança e ainda não está anunciado no marketplace."
+                    "dos compromissos externos e ainda não está anunciado no marketplace."
                 ),
                 "url": "/marketplace/",
                 "button_label": "Ir ao marketplace",
@@ -247,7 +248,7 @@ def _build_today_operations(
                 "description": (
                     f"{critical_stock_count} críticos"
                     if critical_stock_count
-                    else "perto do stock de segurança"
+                    else "perto dos compromissos externos"
                 ),
                 "url": "/inventario/produtos/?tab=stock",
             }

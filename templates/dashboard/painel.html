@@ -9,7 +9,7 @@
   {# ══ HERO ═══════════════════════════════════════════════════════════════ #}
   <div class="pnl-hero">
     <div class="pnl-hero-text">
-      <p class="pnl-greeting"><span class="pnl-pulse"></span>Sessão ativa</p>
+      <p class="pnl-greeting" id="pnl-date-line"><span class="pnl-pulse"></span></p>
         <h1 class="pnl-hero-title"><span id="pnl-saudacao">Olá</span>, <span class="pnl-hero-accent">{{ producer.display_name|truncatewords:2 }}</span></h1>      <p class="pnl-hero-sub">
         {% if critical_alerts_count > 0 %}
           Tens <strong>{{ critical_alerts_count }} alerta{{ critical_alerts_count|pluralize:"s" }} crítico{{ critical_alerts_count|pluralize:"s" }}</strong> que precisam de atenção.
@@ -54,7 +54,7 @@
         <span class="pnl-kpi-ico"><i class="bi bi-box-seam-fill"></i></span>
       </div>
       <div class="pnl-kpi-num">{{ critical_stock_count }}</div>
-      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>produto{{ critical_stock_count|pluralize:"s" }} abaixo do stock de segurança</div>
+      <div class="pnl-kpi-foot"><span class="pnl-dot"></span>{{ critical_stock_count }} crítico{{ critical_stock_count|pluralize:"s" }}{% if near_stock_count %} · {{ near_stock_count }} em atenção{% endif %}</div>
     </a>
 
     <a href="/encomendas/" class="pnl-kpi pnl-kpi--blue">
@@ -77,11 +77,22 @@
   </div>
 
   {# ══ BODY GRID ════════════════════════════════════════════════════════════ #}
+
+  {# Snippets reutilizáveis para evitar repetição #}
+
+  {# ── Quick actions card (usado em ambos os layouts) ─────────────────── #}
+  {% comment %}QA_CARD_START{% endcomment %}
+
+  {# ── Layout condicional: alertas reais vs. tudo OK ─────────────────── #}
+  {% if priority_alerts or recommended_actions.0.variant != 'secondary' %}
+
+  {# ═══ LAYOUT COM ALERTAS / AÇÕES REAIS ═══════════════════════════════ #}
   <div class="pnl-body">
 
     {# ── coluna central (alertas + recomendações) ── #}
     <div class="pnl-center">
 
+      {% if priority_alerts %}
       <div class="pnl-card">
         <div class="pnl-card-head">
           <div>
@@ -90,7 +101,6 @@
           </div>
           <a href="/alertas/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>
         </div>
-
         <div class="pnl-alert-list">
           {% for alert in priority_alerts %}
             <div class="pnl-alert pnl-alert--{{ alert.severity|lower }}">
@@ -106,7 +116,7 @@
                 <p class="pnl-alert-desc">{{ alert.description|default:""|truncatechars:110 }}</p>
               </div>
               <div class="pnl-alert-cta">
-                {% if alert.type in 'SHORTAGE,BUY_OPPORTUNITY,EXTERNAL_DEFICIT' %}
+                {% if alert.type == 'SHORTAGE' or alert.type == 'BUY_OPPORTUNITY' or alert.type == 'EXTERNAL_DEFICIT' %}
                   <a href="/recomendacoes/" class="pnl-cta-red">Resolver</a>
                 {% elif alert.type == 'CRITICAL_STOCK' %}
                   <a href="/alertas/" class="pnl-cta-ghost">Ver stock</a>
@@ -115,16 +125,12 @@
                 {% endif %}
               </div>
             </div>
-          {% empty %}
-            <div class="pnl-empty">
-              <i class="bi bi-check-circle-fill" style="font-size:2rem;color:#16a34a;display:block;margin-bottom:.6rem"></i>
-              <p style="margin:0;font-size:.875rem;color:#64748b">Sem alertas prioritários neste momento.</p>
-            </div>
           {% endfor %}
         </div>
       </div>
+      {% endif %}
 
-      {% if recommended_actions %}
+      {% if recommended_actions.0.variant != 'secondary' %}
       <div class="pnl-card">
         <div class="pnl-card-head">
           <div>
@@ -149,7 +155,7 @@
 
     </div>
 
-    {# ── coluna direita (ações + stocks + actividade) ── #}
+    {# ── coluna direita ── #}
     <div class="pnl-side">
 
       <div
@@ -195,15 +201,87 @@
         </div>
       </div>
 
+      {% if low_stock_preview %}
       <div class="pnl-card">
         <div class="pnl-card-head">
           <div>
             <h2 class="pnl-card-title">Stocks críticos</h2>
-            <p class="pnl-card-hint">Abaixo do stock de segurança.</p>
+            <p class="pnl-card-hint">Abaixo dos compromissos externos.</p>
           </div>
-          {% if low_stock_preview %}<a href="/alertas/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>{% endif %}
+          <a href="/alertas/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>
         </div>
+        <div class="pnl-stock-list">
+          {% for stock in low_stock_preview %}
+            <div class="pnl-stock">
+              <div class="pnl-stock-row">
+                <span class="pnl-stock-name">{{ stock.product.name }}</span>
+                <span class="pnl-stock-val">{{ stock.current_quantity|quantity }}<small> {{ stock.product.unit }}</small></span>
+              </div>
+              <div class="pnl-stock-track">
+                {% widthratio stock.current_quantity stock.safety_stock 100 as pct %}
+                <div class="pnl-stock-fill" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
+              </div>
+              <span class="pnl-stock-min">mín. {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if today_operations.has_items %}
+      <div class="pnl-card">
+        <div class="pnl-card-head">
+          <div>
+            <h2 class="pnl-card-title">Hoje na exploração</h2>
+            <p class="pnl-card-hint">{{ today_operations.summary }}</p>
+          </div>
+        </div>
+        <div class="pnl-ops-list">
+          {% for item in today_operations.items %}
+            <a href="{{ item.url }}" class="pnl-op pnl-op--{{ item.tone }}">
+              <div class="pnl-op-ico"><i class="bi {{ item.icon }}"></i></div>
+              <div class="pnl-op-body">
+                <span class="pnl-op-label">{{ item.label }}</span>
+                <span class="pnl-op-desc">{{ item.description }}</span>
+              </div>
+              <strong class="pnl-op-value">{{ item.value }}</strong>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+  {% else %}
+
+  {# ═══ LAYOUT "TUDO OK" — sem alertas nem ações urgentes ══════════════ #}
+  <div class="pnl-body pnl-body--ok">
+
+    {# coluna principal: clima + stocks/hoje quando existem #}
+    <div class="pnl-ok-main">
+      <div
+        id="pnlWeatherCardSlot"
+        hx-get="{% url 'dashboard:painel_weather_card' %}"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+      >
+        {% include "dashboard/partials/weather_card.html" with weather_state="loading" %}
+      </div>
+
+      {% if low_stock_preview or today_operations.has_items %}
+      <div class="pnl-ok-row">
+
         {% if low_stock_preview %}
+        <div class="pnl-card">
+          <div class="pnl-card-head">
+            <div>
+              <h2 class="pnl-card-title">Stocks críticos</h2>
+              <p class="pnl-card-hint">Abaixo dos compromissos externos.</p>
+            </div>
+            <a href="/alertas/" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>
+          </div>
           <div class="pnl-stock-list">
             {% for stock in low_stock_preview %}
               <div class="pnl-stock">
@@ -215,23 +293,21 @@
                   {% widthratio stock.current_quantity stock.safety_stock 100 as pct %}
                   <div class="pnl-stock-fill" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
                 </div>
-                <span class="pnl-stock-min">stock de segurança: {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
+                <span class="pnl-stock-min">mín. {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
               </div>
             {% endfor %}
           </div>
-        {% else %}
-          <div class="pnl-empty"><p style="margin:0;font-size:.875rem;color:#64748b">Sem stocks críticos.</p></div>
-        {% endif %}
-      </div>
-
-      <div class="pnl-card">
-        <div class="pnl-card-head">
-          <div>
-            <h2 class="pnl-card-title">Hoje na exploração</h2>
-            <p class="pnl-card-hint">{{ today_operations.summary }}</p>
-          </div>
         </div>
+        {% endif %}
+
         {% if today_operations.has_items %}
+        <div class="pnl-card">
+          <div class="pnl-card-head">
+            <div>
+              <h2 class="pnl-card-title">Hoje na exploração</h2>
+              <p class="pnl-card-hint">{{ today_operations.summary }}</p>
+            </div>
+          </div>
           <div class="pnl-ops-list">
             {% for item in today_operations.items %}
               <a href="{{ item.url }}" class="pnl-op pnl-op--{{ item.tone }}">
@@ -244,17 +320,58 @@
               </a>
             {% endfor %}
           </div>
-        {% else %}
-          <div class="pnl-ops-empty">
-            <i class="bi bi-check2-circle"></i>
-            <strong>Sem tarefas urgentes hoje</strong>
-            <span>Continue a acompanhar stocks, encomendas e necessidades ao longo do dia.</span>
-          </div>
+        </div>
         {% endif %}
-      </div>
 
+      </div>
+      {% endif %}
     </div>
+
+    {# coluna lateral: ações rápidas (sempre presente) #}
+    <div class="pnl-ok-side">
+      <div class="pnl-card">
+        <div class="pnl-card-head"><h2 class="pnl-card-title">Ações rápidas</h2></div>
+        <div class="pnl-qa-list">
+          {% if has_active_inventory_products %}
+          <a href="/recomendacoes/" class="pnl-qa pnl-qa--blue">
+            <div class="pnl-qa-ico"><i class="bi bi-magic"></i></div>
+            <div class="pnl-qa-txt"><b>Recomendações</b><span>Sugestões de compra</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          <a href="/marketplace/" class="pnl-qa pnl-qa--green">
+            <div class="pnl-qa-ico"><i class="bi bi-shop"></i></div>
+            <div class="pnl-qa-txt"><b>Publicar excedente</b><span>Gerir anúncios</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          {% else %}
+          <a href="{% url 'inventory:adicionar_produto' %}" class="pnl-qa pnl-qa--green">
+            <div class="pnl-qa-ico"><i class="bi bi-plus-circle"></i></div>
+            <div class="pnl-qa-txt"><b>Adicionar produto</b><span>Começar a gerir stock</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          {% endif %}
+          <a href="{% url 'inventory:meus_produtos' %}?tab=stock" class="pnl-qa pnl-qa--amber">
+            <div class="pnl-qa-ico"><i class="bi bi-box-seam-fill"></i></div>
+            <div class="pnl-qa-txt"><b>Atualizar stock</b><span>Registar consumos</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          <a href="/encomendas/" class="pnl-qa pnl-qa--slate">
+            <div class="pnl-qa-ico"><i class="bi bi-truck"></i></div>
+            <div class="pnl-qa-txt"><b>Ver encomendas</b><span>Acompanhar estados</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+          <a href="/necessidades/" class="pnl-qa pnl-qa--slate">
+            <div class="pnl-qa-ico"><i class="bi bi-megaphone"></i></div>
+            <div class="pnl-qa-txt"><b>Necessidades</b><span>Procuras em aberto</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+
   </div>
+
+  {% endif %}
 </div>
 
 <style>
@@ -368,6 +485,22 @@
 }
 .pnl-center, .pnl-side { display:flex; flex-direction:column; gap:1.25rem; }
 
+/* layout "tudo OK": clima toma a posição central (maior), ações à direita */
+.pnl-body--ok {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.pnl-ok-main, .pnl-ok-side { display:flex; flex-direction:column; gap:1.25rem; }
+/* linha opcional de stocks+hoje lado a lado dentro da coluna principal */
+.pnl-ok-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
 /* ── card ─────────────────────────────────────────────────────────────── */
 .pnl-card { background:var(--cbg); border-radius:var(--rad); border:1px solid var(--br); box-shadow:var(--shd); overflow:hidden; }
 .pnl-card-head {
@@ -382,6 +515,8 @@
 }
 .pnl-see-all:hover { text-decoration:underline; }
 .pnl-empty { text-align:center; padding:1.75rem 1rem; }
+.pnl-empty-icon { font-size:2rem; color:var(--g); display:block; margin-bottom:.6rem; }
+.pnl-empty p { margin:0; font-size:.875rem; color:var(--mt); }
 
 /* ── weather card ─────────────────────────────────────────────────────── */
 .pnl-weather-card .pnl-card-head,
@@ -788,7 +923,8 @@
   display:flex;
   flex-direction:column;
   gap:.25rem;
-  align-items:flex-start;
+  align-items:center;
+  text-align:center;
   color:var(--mt);
 }
 .pnl-ops-empty i { font-size:1.6rem; color:var(--g); }
@@ -809,7 +945,9 @@
 @media (max-width:960px) {
   .pnl-kpis { grid-template-columns:repeat(2,1fr); }
   .pnl-body  { grid-template-columns:1fr; }
+  .pnl-body--ok { grid-template-columns:1fr; }
   .pnl-side  { display:grid; grid-template-columns:repeat(2,1fr); }
+  .pnl-ok-row { grid-template-columns:1fr; }
   .pnl-weather-forecast-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 /* tablet */
@@ -836,6 +974,15 @@
   const h = new Date().getHours();
   const s = h < 12 ? 'Bom dia' : h < 19 ? 'Boa tarde' : 'Boa noite';
   document.getElementById('pnl-saudacao').textContent = s;
+
+  const dias   = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+  const meses  = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out.','nov.','dez.'];
+  const n      = new Date();
+  const dateLine = document.getElementById('pnl-date-line');
+  if (dateLine) {
+    dateLine.innerHTML = '<span class="pnl-pulse"></span>' +
+      dias[n.getDay()] + ', ' + n.getDate() + ' ' + meses[n.getMonth()] + ' ' + n.getFullYear();
+  }
 })();
 </script>
 

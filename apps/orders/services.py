@@ -16,7 +16,11 @@ from apps.inventory.models import (
     StockMovementType,
 )
 from apps.needs.models import NeedResponseStatus
-from apps.needs.services import recalculate_needs_for_order, sync_need_response_status_for_listing
+from apps.needs.services import (
+    recalculate_needs_for_order,
+    sync_external_customer_demand_state_for_product,
+    sync_need_response_status_for_listing,
+)
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.orders.models import (
     OrderGroup,
@@ -1141,6 +1145,17 @@ def _sync_need_response_statuses_for_listing_ids(listing_ids):
         sync_need_response_status_for_listing(listing)
 
 
+def _sync_external_demands_for_product_change(producer, product, acting_user):
+    try:
+        sync_external_customer_demand_state_for_product(
+            producer=producer,
+            product=product,
+            acting_user=acting_user,
+        )
+    except Exception:
+        return
+
+
 def compute_order_status_from_db(order_id, *, preferred_status=None, current_status=None):
     item_statuses = list(
         OrderItem.objects.filter(order_id=order_id).values_list("item_status", flat=True)
@@ -1453,6 +1468,11 @@ def confirm_order_receipt(*, order, acting_user):
             product=item.product,
             quantity=item.quantity,
             acting_user=acting_user,
+        )
+        _sync_external_demands_for_product_change(
+            buyer_producer,
+            item.product,
+            acting_user,
         )
 
     _set_order_status(order, OrderStatus.COMPLETED)

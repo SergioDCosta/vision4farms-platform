@@ -187,7 +187,7 @@
 
         <div class="modal-body" style="padding:1.1rem 1.2rem;">
           <p class="text-muted small mb-3">
-            Define o stock inicial, o stock de segurança e a tua descrição específica para este produto.
+            Define o stock inicial, os compromissos externos e a tua descrição específica para este produto.
           </p>
 
           <div class="mb-3">
@@ -202,7 +202,7 @@
 
           <div class="mb-3">
             <label class="form-label fw-semibold" for="{{ form.safety_stock.id_for_label }}">
-              Stock de segurança <span class="text-muted fw-normal" id="catalogModalUnitThreshold"></span>
+              Compromissos externos <span class="text-muted fw-normal" id="catalogModalUnitThreshold"></span>
             </label>
             {{ form.safety_stock }}
             {% if form.safety_stock.errors %}

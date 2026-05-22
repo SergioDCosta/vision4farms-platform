@@ -29,6 +29,18 @@ def _sync_alerts_after_inventory_change(producer, acting_user):
         return
 
 
+def _sync_external_customer_demands_after_inventory_change(producer, product, acting_user):
+    try:
+        from apps.needs.services import sync_external_customer_demand_state_for_product
+        sync_external_customer_demand_state_for_product(
+            producer=producer,
+            product=product,
+            acting_user=acting_user,
+        )
+    except Exception:
+        return
+
+
 def _get_producer_or_redirect(request):
     producer = services.get_producer_profile(request.current_user.id)
     if not producer:
@@ -471,6 +483,11 @@ def guardar_previsao(request, product_id):
             elif forecast_id:
                 messages.success(request, "Produção futura atualizada com sucesso.")
 
+            _sync_external_customer_demands_after_inventory_change(
+                producer,
+                stock.product,
+                request.current_user,
+            )
             _sync_alerts_after_inventory_change(producer, request.current_user)
             return redirect("inventory:stock_detalhe", product_id=product_id)
         except ValidationError as exc:
@@ -527,6 +544,11 @@ def remover_previsao(request, product_id, forecast_id):
         messages.error(request, f"Não foi possível eliminar a previsão: {exc}")
     else:
         messages.success(request, "Previsão eliminada com sucesso.")
+        _sync_external_customer_demands_after_inventory_change(
+            producer,
+            stock.product,
+            request.current_user,
+        )
         _sync_alerts_after_inventory_change(producer, request.current_user)
 
     return redirect("inventory:stock_detalhe", product_id=product_id)
@@ -568,6 +590,11 @@ def assimilar_previsao(request, product_id, forecast_id):
             request,
             f"Previsão assimilada com sucesso: +{assimilated_qty} {stock.product.unit} no stock atual.",
         )
+        _sync_external_customer_demands_after_inventory_change(
+            producer,
+            stock.product,
+            request.current_user,
+        )
         _sync_alerts_after_inventory_change(producer, request.current_user)
 
     return redirect("inventory:stock_detalhe", product_id=product_id)
@@ -607,6 +634,11 @@ def atualizar_stock(request, product_id):
                     notes=form.cleaned_data.get("notes", ""),
                 )
                 messages.success(request, "Stock atualizado com sucesso.")
+                _sync_external_customer_demands_after_inventory_change(
+                    producer,
+                    stock.product,
+                    request.current_user,
+                )
                 _sync_alerts_after_inventory_change(producer, request.current_user)
                 return redirect("inventory:stock_detalhe", product_id=product_id)
 

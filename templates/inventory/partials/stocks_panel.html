@@ -6,7 +6,7 @@
       <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
         {{ stock_total_count }} produto{{ stock_total_count|pluralize }} ·
         {{ critical_count }} crítico{{ critical_count|pluralize }} ·
-        {{ warning_count }} perto do mínimo ·
+        {{ warning_count }} perto dos compromissos ·
         {{ excess_count }} com potencial de venda
       </p>
     </div>
@@ -72,7 +72,7 @@
                     <th>Produto</th>
                     <th>Stock Atual</th>
                     <th>Reservado</th>
-                    <th>Stock de segurança</th>
+                    <th>Compromissos externos</th>
                     <th>Estado</th>
                     <th style="text-align:right;">Ações</th>
                     <th class="inv-context-col">Sugestão</th>
@@ -175,7 +175,7 @@
                           {% elif row.state.key == "warning" %}
                             <a href="{% url 'recommendations:index' %}?product={{ row.product_id }}"
                                class="inv-icon-btn inv-icon-btn--amber"
-                               title="Stock perto do nível de segurança">
+                               title="Stock perto dos compromissos externos">
                               <i class="bi bi-exclamation-triangle"></i>
                             </a>
                           {% elif row.state.key == "excess" %}

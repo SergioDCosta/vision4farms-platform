@@ -1,0 +1,80 @@
+<article class="mk-card mk-card--need">
+  <div class="mk-card__media mk-card__media--need">
+    <div class="mk-need-visual">
+      <i class="bi bi-megaphone"></i>
+      <span>Procura ativa</span>
+    </div>
+    <div class="mk-card__badge-row">
+      <span class="mk-badge mk-badge--need">
+        <i class="bi bi-search"></i>
+        Procura
+      </span>
+      <span class="mk-badge mk-badge--warn">Em falta</span>
+    </div>
+  </div>
+
+  <div class="mk-card__body">
+    <div class="mk-producer-line">
+      <i class="bi bi-person"></i>
+      <span>{{ row.producer_label|default:"Produtor" }}</span>
+    </div>
+    <h3>{{ row.need.product.name }}</h3>
+    <div class="mk-location-line">
+      <i class="bi bi-calendar-event"></i>
+      <span>{% if row.need.needed_by_date %}Até {{ row.need.needed_by_date|date:"d/m/Y" }}{% else %}Data a combinar{% endif %}</span>
+    </div>
+
+    <div class="mk-card__facts">
+      <div class="mk-fact">
+        <span>Quantidade em falta</span>
+        <strong>{{ row.public_quantity|quantity }} {{ row.need.product.unit }}</strong>
+      </div>
+      {% if row.public_offered_quantity %}
+        <div class="mk-fact">
+          <span>Já oferecido por outros</span>
+          <strong>{{ row.public_offered_quantity|quantity }} {{ row.need.product.unit }}</strong>
+        </div>
+      {% endif %}
+      <div class="mk-delivery-chip">
+        <i class="bi bi-info-circle"></i>
+        <span>Produtor procura {{ row.public_quantity|quantity }} {{ row.need.product.unit }}{% if row.need.needed_by_date %} até {{ row.need.needed_by_date|date:"d/m/Y" }}{% endif %}.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mk-card__footer">
+    <a href="{% url 'needs:index' %}?need={{ row.need.id }}"
+       hx-get="{% url 'needs:index' %}?need={{ row.need.id }}"
+       hx-target="#shellMain"
+       hx-select="#shellMain"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="mk-card-action mk-card-action--ghost">
+      <i class="bi bi-eye"></i>
+      Ver necessidade
+    </a>
+    {% if row.viewer_response_summary and row.viewer_response_summary.can_edit %}
+      <a href="{{ row.viewer_response_summary.edit_url }}"
+         hx-get="{{ row.viewer_response_summary.edit_url }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-card-action mk-card-action--primary">
+        <i class="bi bi-pencil-square"></i>
+        Editar proposta
+      </a>
+    {% else %}
+      <a href="{{ row.response_url }}"
+         hx-get="{{ row.response_url }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-card-action mk-card-action--primary">
+        <i class="bi bi-send"></i>
+        Responder
+      </a>
+    {% endif %}
+  </div>
+</article>
