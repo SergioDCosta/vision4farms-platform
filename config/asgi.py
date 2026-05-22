@@ -1,5 +1,6 @@
 import os
 from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.security.websocket import AllowedHostsOriginValidator
 from channels.sessions import SessionMiddlewareStack
 from django.core.asgi import get_asgi_application
 
@@ -12,11 +13,13 @@ import apps.support.routing
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
-    "websocket": SessionMiddlewareStack(
-        URLRouter(
-            apps.messaging.routing.websocket_urlpatterns
-            + apps.support.routing.websocket_urlpatterns
-            + apps.alerts.routing.websocket_urlpatterns
+    "websocket": AllowedHostsOriginValidator(
+        SessionMiddlewareStack(
+            URLRouter(
+                apps.messaging.routing.websocket_urlpatterns
+                + apps.support.routing.websocket_urlpatterns
+                + apps.alerts.routing.websocket_urlpatterns
+            )
         )
     ),
 })

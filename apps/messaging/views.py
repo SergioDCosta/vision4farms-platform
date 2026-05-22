@@ -2,8 +2,6 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 
 from apps.common.decorators import client_only_required
 from apps.marketplace.models import MarketplaceListing
@@ -15,7 +13,6 @@ from apps.messaging.services import (
     archive_conversation_for_user,
     create_file_message,
     get_conversation_for_user,
-    get_unread_totals_for_conversation_participants,
     get_unread_totals_for_user,
     get_conversation_messages,
     get_current_producer_for_user,
@@ -34,6 +31,14 @@ def _is_htmx(request):
     return request.headers.get("HX-Request") == "true"
 
 
+def _parse_message_limit(raw_value, *, default=150, maximum=600):
+    try:
+        value = int(raw_value or default)
+    except (TypeError, ValueError):
+        value = default
+    return min(max(value, 50), maximum)
+
+
 @client_only_required
 def messages_index_view(request):
     producer = get_current_producer_for_user(request.current_user)
@@ -45,6 +50,7 @@ def messages_index_view(request):
     requested_conversation_id = (request.GET.get("c") or "").strip()
     force_list_view = (request.GET.get("view") or "").strip().lower() == "list"
     is_archived_tab = selected_tab == MESSAGE_TAB_ARCHIVED
+    message_limit = _parse_message_limit(request.GET.get("message_limit"))
 
     listing_context = list_conversations_for_user(request.current_user, archived=is_archived_tab)
     conversation_entries = listing_context["conversations"]
@@ -77,18 +83,16 @@ def messages_index_view(request):
         else:
             messages.warning(request, "Não foi possível abrir esta conversa.")
 
-    if not force_list_view and not active_conversation and conversation_entries:
-        active_conversation = get_conversation_for_user(
-            user=request.current_user,
-            conversation_id=conversation_entries[0]["conversation"].id,
-            archived=is_archived_tab,
-        )
-
     active_messages = []
     active_entry = None
+    message_history_has_more = False
+    next_message_limit = message_limit
     if active_conversation:
         mark_conversation_as_read(user=request.current_user, conversation=active_conversation)
-        active_messages = get_conversation_messages(conversation=active_conversation)
+        active_messages = get_conversation_messages(conversation=active_conversation, limit=message_limit)
+        total_message_count = active_conversation.messages.count()
+        message_history_has_more = total_message_count > len(active_messages)
+        next_message_limit = min(message_limit + 150, total_message_count)
 
         active_key = str(active_conversation.id)
         tab_unread_total = 0
@@ -106,6 +110,8 @@ def messages_index_view(request):
         "active_conversation": active_conversation,
         "active_entry": active_entry,
         "active_messages": active_messages,
+        "message_history_has_more": message_history_has_more,
+        "next_message_limit": next_message_limit,
         "force_list_view": force_list_view,
         "total_unread": tab_unread_total,
         "active_unread_total": unread_totals["active_unread_total"],
@@ -202,6 +208,7 @@ def upload_attachment_view(request):
             conversation=conversation,
             sender_user=request.current_user,
             uploaded_file=uploaded_file,
+            broadcast_realtime=True,
         )
         message_payload = serialize_message_payload(message=message)
     except MessagingServiceError as exc:
@@ -209,29 +216,9 @@ def upload_attachment_view(request):
     except Exception:
         return JsonResponse({"ok": False, "error": "Não foi possível enviar o anexo."}, status=500)
 
-    try:
-        channel_layer = get_channel_layer()
-        if channel_layer:
-            async_to_sync(channel_layer.group_send)(
-                f"conversation_{conversation.id}",
-                {
-                    "type": "message_created",
-                    "message": message_payload,
-                },
-            )
-
-            unread_targets = get_unread_totals_for_conversation_participants(conversation=conversation)
-            for target in unread_targets:
-                async_to_sync(channel_layer.group_send)(
-                    f"messaging_user_{target['user_id']}",
-                    {
-                        "type": "unread_totals",
-                        "active_unread_total": target["active_unread_total"],
-                        "archived_unread_total": target["archived_unread_total"],
-                    },
-                )
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Anexo guardado, mas falhou o envio em tempo real."}, status=500)
+    realtime_warning = ""
+    if not getattr(message, "realtime_dispatched", False):
+        realtime_warning = "Anexo enviado. Atualize a conversa se não aparecer imediatamente."
 
     sender_archived_state = is_conversation_archived_for_user(
         user=request.current_user,
@@ -243,6 +230,7 @@ def upload_attachment_view(request):
             "message": message_payload,
             "conversation_unarchived": sender_archived_state is False,
             "target_tab": MESSAGE_TAB_ACTIVE if sender_archived_state is False else MESSAGE_TAB_ARCHIVED,
+            "warning": realtime_warning,
         },
         status=200,
     )

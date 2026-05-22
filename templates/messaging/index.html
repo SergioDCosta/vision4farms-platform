@@ -194,9 +194,20 @@
         </header>
 
         <div class="msg-thread__messages" id="msgMessages">
+          {% if message_history_has_more %}
+            <a href="{% url 'messaging:index' %}?tab={{ selected_tab }}&c={{ active_conversation.id }}&message_limit={{ next_message_limit }}"
+               hx-get="{% url 'messaging:index' %}?tab={{ selected_tab }}&c={{ active_conversation.id }}&message_limit={{ next_message_limit }}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="msg-load-more">
+              Carregar mensagens anteriores
+            </a>
+          {% endif %}
           {% for message in active_messages %}
             <div class="msg-bubble-wrap {% if message.sender_user_id == request.current_user.id %}is-me{% else %}is-other{% endif %}" data-message-id="{{ message.id }}">
-              {% if not forloop.first %}{% else %}
+              {% if message.show_date_divider %}
                 <span class="msg-date-divider">{{ message.created_at|date:"d \d\e F" }}</span>
               {% endif %}
               <article class="msg-bubble">
@@ -734,6 +745,28 @@
   background-size: 24px 24px;
 }
 
+.msg-load-more {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: .45rem .85rem;
+  border: 1px solid #dbe7f3;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: .78rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .06);
+}
+
+.msg-load-more:hover {
+  border-color: #b7c8dc;
+  color: #0f172a;
+}
+
 .msg-date-divider {
   display: block;
   text-align: center;
@@ -908,6 +941,24 @@
   max-width: 200px;
 }
 
+.msg-file-chip.is-uploading {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.msg-file-chip.is-sent {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.msg-file-chip.is-failed {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
 .msg-file-chip__thumb {
   width: 28px;
   height: 28px;
@@ -920,6 +971,19 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.msg-file-chip__meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: .05rem;
+}
+
+.msg-file-chip__status {
+  font-size: .64rem;
+  font-weight: 700;
+  opacity: .75;
 }
 
 .msg-file-chip button {
@@ -1378,15 +1442,15 @@
   setConnectionStatus("A ligar...", "connecting");
 
   socket.addEventListener("open", () => {
-    setConnectionStatus("Online", "online");
+    setConnectionStatus("Ligação ativa", "online");
   });
 
   socket.addEventListener("close", () => {
-    setConnectionStatus("Offline", "offline");
+    setConnectionStatus("Sem ligação", "offline");
   });
 
   socket.addEventListener("error", () => {
-    setConnectionStatus("Offline", "offline");
+    setConnectionStatus("Sem ligação", "offline");
   });
 
   const getCookie = (name) => {
@@ -1534,12 +1598,13 @@
 
   // ── File attachment ────────────────────────────────────────
   let pendingFiles = [];
+  const fileKey = (file) => `${file.name}-${file.size}-${file.lastModified || 0}`;
 
   if (fileInput) {
     fileInput.addEventListener("change", () => {
       const files = Array.from(fileInput.files || []);
       files.forEach(file => {
-        if (pendingFiles.find(f => f.name === file.name && f.size === file.size)) return;
+        if (pendingFiles.find(f => fileKey(f) === fileKey(file))) return;
         pendingFiles.push(file);
         renderFileChip(file);
       });
@@ -1551,7 +1616,7 @@
   function renderFileChip(file) {
     const chip = document.createElement("div");
     chip.className = "msg-file-chip";
-    chip.dataset.name = file.name;
+    chip.dataset.key = fileKey(file);
 
     let previewNode = null;
     if (isImageAttachment(file.type)) {
@@ -1564,14 +1629,24 @@
       previewNode.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
     }
 
+    const meta = document.createElement("div");
+    meta.className = "msg-file-chip__meta";
+
     const name = document.createElement("span");
     name.textContent = file.name;
+
+    const status = document.createElement("small");
+    status.className = "msg-file-chip__status";
+    status.textContent = "Pronto";
+
+    meta.appendChild(name);
+    meta.appendChild(status);
 
     const remove = document.createElement("button");
     remove.type = "button";
     remove.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
     remove.addEventListener("click", () => {
-      pendingFiles = pendingFiles.filter(f => !(f.name === file.name && f.size === file.size));
+      pendingFiles = pendingFiles.filter(f => fileKey(f) !== fileKey(file));
       if (previewNode && previewNode.tagName === "IMG") {
         URL.revokeObjectURL(previewNode.src);
       }
@@ -1580,9 +1655,20 @@
     });
 
     chip.appendChild(previewNode);
-    chip.appendChild(name);
+    chip.appendChild(meta);
     chip.appendChild(remove);
     filePreviewInner.appendChild(chip);
+  }
+
+  function setFileChipStatus(file, label, state) {
+    const chip = Array.from(filePreviewInner.querySelectorAll(".msg-file-chip"))
+      .find((item) => item.dataset.key === fileKey(file));
+    if (!chip) return;
+    chip.classList.toggle("is-uploading", state === "uploading");
+    chip.classList.toggle("is-sent", state === "sent");
+    chip.classList.toggle("is-failed", state === "failed");
+    const status = chip.querySelector(".msg-file-chip__status");
+    if (status) status.textContent = label;
   }
 
   async function uploadAttachment(file) {
@@ -1641,23 +1727,34 @@
     if (pendingFiles.length) {
       const filesToUpload = [...pendingFiles];
       pendingFiles = [];
-      filePreviewInner.innerHTML = "";
-      filePreview.style.display = "none";
 
       for (const file of filesToUpload) {
+        setFileChipStatus(file, "A enviar...", "uploading");
         try {
           const uploadResult = await uploadAttachment(file);
+          setFileChipStatus(file, "Enviado", "sent");
           const sentMessage = uploadResult.message;
           if (socket.readyState !== WebSocket.OPEN && sentMessage) {
             appendMessage(sentMessage);
+          }
+          if (uploadResult.warning) {
+            showToast(uploadResult.warning, "success");
           }
           if (String(uploadResult.target_tab || "").toLowerCase() === "active" && selectedTab === "archived") {
             shouldRedirectToActive = true;
           }
         } catch (error) {
+          setFileChipStatus(file, "Falhou", "failed");
           showToast(error.message || "Falha no envio do anexo.");
         }
       }
+
+      window.setTimeout(() => {
+        if (!pendingFiles.length) {
+          filePreviewInner.innerHTML = "";
+          filePreview.style.display = "none";
+        }
+      }, 1800);
     }
 
     if (shouldRedirectToActive) {

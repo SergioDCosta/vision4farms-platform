@@ -1,0 +1,2 @@
+class MessagingServiceError(Exception):
+    pass

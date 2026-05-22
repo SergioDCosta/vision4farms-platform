@@ -9,9 +9,7 @@ from apps.messaging.models import (
     ConversationParticipant,
 )
 from apps.messaging.services import (
-    broadcast_unread_totals_for_user_ids,
     create_text_message,
-    get_unread_totals_for_conversation_participants,
     get_unread_totals_for_user,
     mark_conversation_as_read,
     serialize_message_payload,
@@ -67,7 +65,7 @@ class ConversationConsumer(_BaseMessagingConsumer):
             return
 
         try:
-            message_payload = await self._create_text_message(content)
+            message_result = await self._create_text_message(content)
         except Exception:
             await self._send_json(
                 {
@@ -77,14 +75,13 @@ class ConversationConsumer(_BaseMessagingConsumer):
             )
             return
 
-        await self.channel_layer.group_send(
-            self.group_name,
-            {
-                "type": "message_created",
-                "message": message_payload,
-            },
-        )
-        await self._broadcast_unread_totals()
+        if not message_result.get("realtime_dispatched"):
+            await self._send_json(
+                {
+                    "type": "message.created",
+                    "message": message_result.get("message", {}),
+                }
+            )
 
     async def message_created(self, event):
         message_payload = event.get("message", {})
@@ -120,6 +117,7 @@ class ConversationConsumer(_BaseMessagingConsumer):
 
     @database_sync_to_async
     def _broadcast_current_user_unread_totals(self):
+        from apps.messaging.services import broadcast_unread_totals_for_user_ids
         return bool(broadcast_unread_totals_for_user_ids([self.current_user.id]))
 
     @database_sync_to_async
@@ -130,32 +128,12 @@ class ConversationConsumer(_BaseMessagingConsumer):
             conversation=conversation,
             sender_user=self.current_user,
             content=content,
+            broadcast_realtime=True,
         )
-        return serialize_message_payload(message=message)
-
-    @database_sync_to_async
-    def _get_unread_targets(self):
-        conversation = (
-            Conversation.objects
-            .prefetch_related("participants__user")
-            .filter(id=self.conversation_id, is_active=True)
-            .first()
-        )
-        if not conversation:
-            return []
-        return get_unread_totals_for_conversation_participants(conversation=conversation)
-
-    async def _broadcast_unread_totals(self):
-        unread_targets = await self._get_unread_targets()
-        for target in unread_targets:
-            await self.channel_layer.group_send(
-                f"messaging_user_{target['user_id']}",
-                {
-                    "type": "unread_totals",
-                    "active_unread_total": target["active_unread_total"],
-                    "archived_unread_total": target["archived_unread_total"],
-                },
-            )
+        return {
+            "message": serialize_message_payload(message=message),
+            "realtime_dispatched": bool(getattr(message, "realtime_dispatched", False)),
+        }
 
 
 class UnreadCounterConsumer(_BaseMessagingConsumer):

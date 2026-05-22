@@ -50,15 +50,79 @@ def create_notification(
 
 
 def create_message_notification(*, user, message, sender_name, preview_text, action_url):
+    if not user or not message:
+        return None
+
     title = f"Nova mensagem de {(sender_name or 'Utilizador').strip() or 'Utilizador'}"
-    return create_notification(
-        user=user,
-        notification_type=NotificationType.MESSAGE,
-        title=title,
-        body=(preview_text or "").strip() or "Tem uma nova mensagem.",
-        action_url=action_url,
-        message=message,
+    body = (preview_text or "").strip() or "Tem uma nova mensagem."
+    normalized_action_url = (action_url or "").strip() or None
+
+    with transaction.atomic():
+        notifications = list(
+            Notification.objects
+            .select_for_update()
+            .filter(
+                user=user,
+                type=NotificationType.MESSAGE,
+                message__conversation_id=message.conversation_id,
+            )
+            .order_by("-created_at", "-id")
+        )
+        if notifications:
+            notification = notifications[0]
+            duplicate_ids = [item.id for item in notifications[1:]]
+            if duplicate_ids:
+                Notification.objects.filter(id__in=duplicate_ids).delete()
+
+            now = timezone.now()
+            notification.message = message
+            notification.title = title
+            notification.body = body
+            notification.action_url = normalized_action_url
+            notification.is_read = False
+            notification.read_at = None
+            notification.created_at = now
+            notification.save(
+                update_fields=[
+                    "message",
+                    "title",
+                    "body",
+                    "action_url",
+                    "is_read",
+                    "read_at",
+                    "created_at",
+                ]
+            )
+            return notification
+
+        return create_notification(
+            user=user,
+            notification_type=NotificationType.MESSAGE,
+            title=title,
+            body=body,
+            action_url=normalized_action_url,
+            message=message,
+        )
+
+
+@transaction.atomic
+def mark_message_notifications_read_for_conversation(*, user, conversation):
+    if not user or not conversation:
+        return 0
+
+    qs = (
+        Notification.objects
+        .select_for_update()
+        .filter(
+            user=user,
+            type=NotificationType.MESSAGE,
+            is_read=False,
+            message__conversation=conversation,
+        )
     )
+    now = timezone.now()
+    updated = qs.update(is_read=True, read_at=now)
+    return updated
 
 
 def create_order_update_notification(*, user, order, title, body, action_url):
