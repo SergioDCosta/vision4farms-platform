@@ -221,7 +221,7 @@
                 {% widthratio stock.current_quantity stock.safety_stock 100 as pct %}
                 <div class="pnl-stock-fill" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
               </div>
-              <span class="pnl-stock-min">mín. {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
+              <span class="pnl-stock-min">compromissos {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
             </div>
           {% endfor %}
         </div>
@@ -293,7 +293,7 @@
                   {% widthratio stock.current_quantity stock.safety_stock 100 as pct %}
                   <div class="pnl-stock-fill" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
                 </div>
-                <span class="pnl-stock-min">mín. {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
+                <span class="pnl-stock-min">compromissos {{ stock.safety_stock|quantity }} {{ stock.product.unit }}</span>
               </div>
             {% endfor %}
           </div>

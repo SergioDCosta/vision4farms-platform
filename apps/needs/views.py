@@ -452,6 +452,7 @@ def build_needs_index_context(
             status__in=[
                 ExternalCustomerDemandStatus.OPEN,
                 ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+                ExternalCustomerDemandStatus.COVERED,
             ],
         ).count()
         if producer
@@ -974,6 +975,14 @@ def need_edit_view(request, need_id):
     if not need:
         messages.error(request, "Necessidade não encontrada.")
         return redirect("needs:index")
+
+    if need.source_system == NeedSourceSystem.CUSTOMER_DEMAND:
+        messages.warning(
+            request,
+            "Esta procura é gerada automaticamente a partir dos pedidos de clientes. "
+            "Para alterar a quantidade ou a data, edite os pedidos de origem.",
+        )
+        return redirect(f"{reverse('needs:external_demands')}?product={need.product_id}")
 
     form = NeedEditForm(request.POST, need=need)
     if form.is_valid():

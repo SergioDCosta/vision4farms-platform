@@ -264,7 +264,7 @@ def adicionar_produto(request):
                         name=custom_form.cleaned_data["name"],
                         producer_description=custom_form.cleaned_data.get("producer_description", ""),
                         initial_quantity=custom_form.cleaned_data["initial_quantity"],
-                        safety_stock=custom_form.cleaned_data["safety_stock"],
+                        safety_stock=Decimal("0.000"),
                         user=request.current_user,
                     )
 
@@ -315,7 +315,7 @@ def adicionar_produto(request):
                         product_id=form.cleaned_data["product_id"],
                         producer_description=form.cleaned_data.get("producer_description", ""),
                         initial_quantity=form.cleaned_data["initial_quantity"],
-                        safety_stock=form.cleaned_data["safety_stock"],
+                        safety_stock=Decimal("0.000"),
                         user=request.current_user,
                     )
 
@@ -624,11 +624,10 @@ def atualizar_stock(request, product_id):
         if form.is_valid():
             try:
                 new_quantity = Decimal(str(form.cleaned_data["new_quantity"]))
-                safety_stock = Decimal(str(form.cleaned_data["safety_stock"]))
                 services.update_stock(
                     stock=stock,
                     new_quantity=new_quantity,
-                    safety_stock=safety_stock,
+                    safety_stock=Decimal(str(stock.safety_stock or 0)),
                     movement_type=form.cleaned_data["movement_type"],
                     user=request.current_user,
                     notes=form.cleaned_data.get("notes", ""),
@@ -650,7 +649,6 @@ def atualizar_stock(request, product_id):
     else:
         form = UpdateStockForm(initial={
             "new_quantity": _decimal_form_initial(stock.current_quantity),
-            "safety_stock": _decimal_form_initial(stock.safety_stock),
         })
 
     context = {

@@ -1,34 +1,35 @@
 {% extends "dashboard/base_app.html" %}
-{% block app_title %}Pedidos dos meus clientes{% endblock %}
+{% block app_title %}Pedidos de clientes{% endblock %}
 {% block app_content %}
 
 <div class="ecd-page">
+
+  {# ── Cabeçalho ─────────────────────────────────────────────────────────── #}
   <header class="ecd-hero">
     <div>
-      <a href="{% url 'needs:index' %}" class="ecd-back">
-        <i class="bi bi-arrow-left"></i>
-        Voltar às necessidades
+      <a href="{% url 'needs:index' %}"
+         hx-get="{% url 'needs:index' %}"
+         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+         class="ecd-back">
+        <i class="bi bi-arrow-left"></i> Necessidades
       </a>
       <h1>Pedidos dos meus clientes</h1>
-      <p>Registe aqui os pedidos externos que tem de cumprir. O sistema calcula automaticamente se o seu stock e produção prevista chegam a tempo.</p>
+      <p>Registe aqui os compromissos com clientes externos. O sistema calcula automaticamente se o stock e a produção prevista chegam a tempo de cumprir cada pedido.</p>
     </div>
     <a href="{% url 'needs:external_demands' %}?show_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
        hx-get="{% url 'needs:external_demands' %}?show_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
+       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
        class="ecd-btn ecd-btn--primary ecd-btn--hero">
-      <i class="bi bi-plus-lg"></i>
-      Novo pedido de cliente
+      <i class="bi bi-plus-lg"></i> Novo pedido
     </a>
   </header>
 
+  {# ── KPIs ─────────────────────────────────────────────────────────────── #}
   <section class="ecd-kpis" aria-label="Resumo dos pedidos externos">
     <article class="ecd-kpi">
       <span class="ecd-kpi__icon ecd-kpi__icon--green"><i class="bi bi-clipboard2-check"></i></span>
       <div>
-        <span>Total em pedidos abertos</span>
+        <span>Total em pedidos em aberto</span>
         <strong>{{ summary.total_quantity|quantity }} kg</strong>
       </div>
     </article>
@@ -41,11 +42,11 @@
     </article>
     <article class="ecd-kpi">
       <span class="ecd-kpi__icon {% if summary.max_deficit > 0 %}ecd-kpi__icon--red{% else %}ecd-kpi__icon--green{% endif %}">
-        <i class="bi bi-exclamation-triangle"></i>
+        <i class="bi bi-{% if summary.max_deficit > 0 %}exclamation-triangle{% else %}check-circle{% endif %}"></i>
       </span>
       <div>
-        <span>Maior défice atual</span>
-        <strong>{{ summary.max_deficit|quantity }} kg</strong>
+        <span>Maior défice calculado</span>
+        <strong>{% if summary.max_deficit > 0 %}{{ summary.max_deficit|quantity }} kg{% else %}Sem défice{% endif %}</strong>
       </div>
     </article>
     <article class="ecd-kpi">
@@ -54,24 +55,50 @@
       </span>
       <div>
         <span>Próxima data crítica</span>
-        <strong>{% if summary.first_deficit_date %}{{ summary.first_deficit_date|date:"d/m/Y" }}{% else %}Sem défice{% endif %}</strong>
+        <strong>{% if summary.first_deficit_date %}{{ summary.first_deficit_date|date:"d/m/Y" }}{% else %}Tudo coberto{% endif %}</strong>
       </div>
     </article>
   </section>
 
+  {# ── Card explicativo da fórmula ────────────────────────────────────────── #}
+  <div class="ecd-formula-card">
+    <div class="ecd-formula-card__head">
+      <i class="bi bi-calculator"></i>
+      <strong>Como é calculada a necessidade?</strong>
+    </div>
+    <div class="ecd-formula">
+      <div class="ecd-formula__item ecd-formula__item--blue">
+        <i class="bi bi-clipboard2-check"></i>
+        <span>Pedidos dos clientes até à data de entrega</span>
+      </div>
+      <div class="ecd-formula__op">−</div>
+      <div class="ecd-formula__item ecd-formula__item--green">
+        <i class="bi bi-boxes"></i>
+        <span>Stock disponível + produção prevista útil até essa data</span>
+      </div>
+      <div class="ecd-formula__op">=</div>
+      <div class="ecd-formula__item ecd-formula__item--amber">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>Quantidade em falta → gera procura automática</span>
+      </div>
+    </div>
+    <p class="ecd-formula-card__note">
+      <i class="bi bi-info-circle"></i>
+      A produção prevista só conta se estiver disponível <strong>antes ou na data de entrega</strong> do pedido. Previsões futuras não antecipam.
+    </p>
+  </div>
+
+  {# ── Filtros ───────────────────────────────────────────────────────────── #}
   <form method="get"
         action="{% url 'needs:external_demands' %}"
         class="ecd-filters"
         hx-get="{% url 'needs:external_demands' %}"
         hx-trigger="keyup changed delay:350ms from:input[name='q'], change from:#ecd-filter-status, change from:#ecd-filter-product, submit"
-        hx-target="#shellMain"
-        hx-select="#shellMain"
-        hx-swap="outerHTML"
-        hx-push-url="true">
+        hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true">
     {% if show_form %}<input type="hidden" name="show_form" value="1">{% endif %}
     <label class="ecd-search">
       <i class="bi bi-search"></i>
-      <input type="text" name="q" value="{{ q }}" maxlength="120" placeholder="Pesquisar cliente, produto, contacto ou referência...">
+      <input type="text" name="q" value="{{ q }}" maxlength="120" placeholder="Pesquisar cliente, produto, referência...">
     </label>
     <label>
       Estado
@@ -93,87 +120,97 @@
     </label>
   </form>
 
+  {# ── Formulário de novo pedido ─────────────────────────────────────────── #}
   {% if show_form %}
     <section class="ecd-card ecd-form-card">
       <div class="ecd-card__head">
         <div>
-          <span class="ecd-eyebrow">Pedido externo</span>
-          <h2>Novo pedido de cliente</h2>
-          <p>Registe o que o cliente pediu e a data em que pretende receber.</p>
+          <span class="ecd-eyebrow">Novo compromisso com cliente</span>
+          <h2>Registar pedido externo</h2>
+          <p>Preencha os dados do pedido do cliente. A quantidade em falta será calculada automaticamente.</p>
         </div>
         <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
            hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
-           hx-target="#shellMain"
-           hx-select="#shellMain"
-           hx-swap="outerHTML"
-           hx-push-url="true"
-           class="ecd-btn ecd-btn--ghost">Fechar</a>
+           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+           class="ecd-btn ecd-btn--ghost ecd-btn--sm">
+          <i class="bi bi-x-lg"></i> Fechar
+        </a>
       </div>
       <form method="post"
             action="{% url 'needs:external_demand_create' %}"
             hx-post="{% url 'needs:external_demand_create' %}"
-            hx-target="#shellMain"
-            hx-select="#shellMain"
-            hx-swap="outerHTML"
+            hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
             class="ecd-form">
         {% csrf_token %}
         <input type="hidden" name="q" value="{{ q }}">
         <input type="hidden" name="status" value="{{ selected_status }}">
         <input type="hidden" name="product" value="{{ selected_product_id }}">
         {% include "needs/partials/external_demand_form_fields.html" with form=create_form %}
-        <button type="submit" class="ecd-btn ecd-btn--primary">
-          <i class="bi bi-check2"></i>
-          Guardar pedido
-        </button>
+        <div class="ecd-form__actions">
+          <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+             hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+             class="ecd-btn ecd-btn--ghost">
+            Cancelar
+          </a>
+          <button type="submit" class="ecd-btn ecd-btn--primary">
+            <i class="bi bi-check2"></i> Guardar pedido
+          </button>
+        </div>
       </form>
     </section>
   {% endif %}
 
+  {# ── Formulário de edição ──────────────────────────────────────────────── #}
   {% if selected_demand and edit_form %}
     <section class="ecd-card ecd-form-card ecd-form-card--edit">
       <div class="ecd-card__head">
         <div>
-          <span class="ecd-eyebrow">Editar pedido</span>
+          <span class="ecd-eyebrow">Editar pedido existente</span>
           <h2>{{ selected_demand.client_name }}</h2>
-          <p>Atualize os dados combinados com o cliente externo.</p>
+          <p>Atualize os dados do pedido conforme combinado com o cliente.</p>
         </div>
         <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
            hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
-           hx-target="#shellMain"
-           hx-select="#shellMain"
-           hx-swap="outerHTML"
-           hx-push-url="true"
-           class="ecd-btn ecd-btn--ghost">Cancelar edição</a>
+           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+           class="ecd-btn ecd-btn--ghost ecd-btn--sm">
+          <i class="bi bi-x-lg"></i> Cancelar
+        </a>
       </div>
       <form method="post"
             action="{% url 'needs:external_demand_edit' selected_demand.id %}"
             hx-post="{% url 'needs:external_demand_edit' selected_demand.id %}"
-            hx-target="#shellMain"
-            hx-select="#shellMain"
-            hx-swap="outerHTML"
+            hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
             class="ecd-form">
         {% csrf_token %}
         <input type="hidden" name="q" value="{{ q }}">
         <input type="hidden" name="status" value="{{ selected_status }}">
         <input type="hidden" name="product" value="{{ selected_product_id }}">
         {% include "needs/partials/external_demand_form_fields.html" with form=edit_form %}
-        <button type="submit" class="ecd-btn ecd-btn--primary">
-          <i class="bi bi-check2"></i>
-          Guardar alterações
-        </button>
+        <div class="ecd-form__actions">
+          <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+             hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+             class="ecd-btn ecd-btn--ghost">
+            Cancelar
+          </a>
+          <button type="submit" class="ecd-btn ecd-btn--primary">
+            <i class="bi bi-check2"></i> Guardar alterações
+          </button>
+        </div>
       </form>
     </section>
   {% endif %}
 
+  {# ── Tabela de pedidos ─────────────────────────────────────────────────── #}
   <section class="ecd-card">
     <div class="ecd-card__head">
       <div>
-        <span class="ecd-eyebrow">Pedidos externos à aplicação</span>
+        <span class="ecd-eyebrow">Registo de pedidos</span>
         <h2>Pedidos dos meus clientes</h2>
-        <p>Estes pedidos representam compromissos externos que o agricultor registou manualmente.</p>
+        <p>Compromissos externos em aberto e histórico recente.</p>
       </div>
     </div>
-
     <div class="ecd-table-wrap">
       <table class="ecd-table">
         <thead>
@@ -203,32 +240,26 @@
                   <div class="ecd-actions">
                     <a href="{% url 'needs:external_demands' %}?edit={{ demand.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
                        hx-get="{% url 'needs:external_demands' %}?edit={{ demand.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
-                       hx-target="#shellMain"
-                       hx-select="#shellMain"
-                       hx-swap="outerHTML"
-                       hx-push-url="true"
+                       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
                        class="ecd-mini-btn">
-                      <i class="bi bi-pencil"></i>
-                      Editar
+                      <i class="bi bi-pencil"></i> Editar
                     </a>
                     <form method="post"
                           action="{% url 'needs:external_demand_cancel' demand.id %}"
                           hx-post="{% url 'needs:external_demand_cancel' demand.id %}"
-                          hx-target="#shellMain"
-                          hx-select="#shellMain"
-                          hx-swap="outerHTML">
+                          hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
+                          onsubmit="return confirm('Cancelar este pedido?');">
                       {% csrf_token %}
                       <input type="hidden" name="q" value="{{ q }}">
                       <input type="hidden" name="status" value="{{ selected_status }}">
                       <input type="hidden" name="product" value="{{ selected_product_id }}">
                       <button type="submit" class="ecd-mini-btn ecd-mini-btn--danger">
-                        <i class="bi bi-x-lg"></i>
-                        Cancelar
+                        <i class="bi bi-x-lg"></i> Cancelar
                       </button>
                     </form>
                   </div>
                 {% else %}
-                  <span class="ecd-muted">Sem ações</span>
+                  <span class="ecd-muted">—</span>
                 {% endif %}
               </td>
             </tr>
@@ -236,17 +267,14 @@
             <tr>
               <td colspan="6">
                 <div class="ecd-empty">
-                  <i class="bi bi-inbox"></i>
-                  <strong>Ainda não existem pedidos externos.</strong>
-                  <span>Registe o primeiro pedido recebido de um cliente para começar a planear por produto e data.</span>
+                  <i class="bi bi-clipboard2"></i>
+                  <strong>Ainda não existem pedidos registados</strong>
+                  <span>Registe o primeiro pedido de um cliente para começar a planear por produto e data de entrega.</span>
                   <a href="{% url 'needs:external_demands' %}?show_form=1"
                      hx-get="{% url 'needs:external_demands' %}?show_form=1"
-                     hx-target="#shellMain"
-                     hx-select="#shellMain"
-                     hx-swap="outerHTML"
-                     hx-push-url="true"
+                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
                      class="ecd-btn ecd-btn--primary">
-                    Criar primeiro pedido
+                    <i class="bi bi-plus-lg"></i> Registar primeiro pedido
                   </a>
                 </div>
               </td>
@@ -257,12 +285,14 @@
     </div>
   </section>
 
+  {# ── Planeamento por produto ────────────────────────────────────────────── #}
+  {% if demand_plans %}
   <section class="ecd-planning">
     <div class="ecd-section-title">
       <div>
-        <span class="ecd-eyebrow">Planeamento agrícola</span>
+        <span class="ecd-eyebrow">Análise de capacidade</span>
         <h2>Planeamento por produto</h2>
-        <p>Compara pedidos acumulados com stock disponível e produção prevista útil até cada data de entrega.</p>
+        <p>Compara os pedidos dos clientes com o stock disponível e a produção prevista útil até cada data de entrega.</p>
       </div>
     </div>
 
@@ -273,23 +303,23 @@
             <span class="ecd-eyebrow">{{ plan.product.category.name|default:"Produto" }}</span>
             <h3>{{ plan.product.name }}</h3>
             {% if plan.has_deficit %}
-              <p>Faltam <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>{% if plan.first_deficit_date %} até {{ plan.first_deficit_date|date:"d/m/Y" }}{% endif %}.</p>
+              <p>Faltam <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>{% if plan.first_deficit_date %} — data crítica: <strong>{{ plan.first_deficit_date|date:"d/m/Y" }}</strong>{% endif %}</p>
             {% else %}
-              <p>Tem stock suficiente para cumprir estes pedidos com o stock atual e previsão disponível.</p>
+              <p>Stock e produção prevista suficientes para cumprir todos os pedidos nos prazos previstos.</p>
             {% endif %}
           </div>
           <span class="ecd-plan-badge {% if plan.has_deficit %}is-deficit{% else %}is-covered{% endif %}">
-            {% if plan.has_deficit %}Atenção{% else %}Coberto{% endif %}
+            {% if plan.has_deficit %}<i class="bi bi-exclamation-triangle"></i> Em défice{% else %}<i class="bi bi-check-circle"></i> Coberto{% endif %}
           </span>
         </div>
 
         <div class="ecd-plan-metrics">
           <div>
-            <span>Total de pedidos externos</span>
+            <span>Total de pedidos</span>
             <strong>{{ plan.total_external_demand|quantity }} {{ plan.product.unit }}</strong>
           </div>
           <div>
-            <span>Stock disponível atual</span>
+            <span>Stock disponível agora</span>
             <strong>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</strong>
           </div>
           <div>
@@ -297,53 +327,50 @@
             <strong>{{ plan.total_forecast_relevant|quantity }} {{ plan.product.unit }}</strong>
           </div>
           <div>
-            <span>Défice calculado</span>
-            <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>
+            <span>Quantidade em falta</span>
+            <strong class="{% if plan.has_deficit %}ecd-deficit{% else %}ecd-covered{% endif %}">{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>
           </div>
         </div>
 
         <div class="ecd-need-box {% if plan.has_deficit %}is-deficit{% else %}is-covered{% endif %}">
           {% if plan.has_deficit %}
             <div>
-              <span>{% if plan.generated_need %}Necessidade gerada{% else %}Necessidade prevista{% endif %}</span>
+              <span>{% if plan.generated_need %}Procura gerada automaticamente{% else %}Procura prevista{% endif %}</span>
               <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }} em falta</strong>
-              <p>A produção prevista só conta se estiver disponível até à data de entrega. Esta procura é agregada por produto para evitar pedidos duplicados.</p>
+              <p>A procura é criada automaticamente no marketplace para que outros produtores possam responder. A produção prevista só conta se estiver disponível antes da data de entrega.</p>
             </div>
             <div class="ecd-need-actions">
-              <span class="ecd-critical-date">Data crítica: {{ plan.first_deficit_date|date:"d/m/Y" }}</span>
+              <span class="ecd-critical-date"><i class="bi bi-calendar-event"></i> {{ plan.first_deficit_date|date:"d/m/Y" }}</span>
               {% if plan.generated_need %}
                 <a href="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
                    hx-get="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
-                   hx-target="#shellMain"
-                   hx-select="#shellMain"
-                   hx-swap="outerHTML"
-                   hx-push-url="true"
-                   class="ecd-btn ecd-btn--ghost">Ver necessidade</a>
+                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                   class="ecd-btn ecd-btn--ghost">
+                  <i class="bi bi-megaphone"></i> Ver procura gerada
+                </a>
                 {% if plan.generated_need.status == "OPEN" or plan.generated_need.status == "PARTIALLY_COVERED" %}
                   <a href="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
                      hx-get="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
-                     hx-target="#shellMain"
-                     hx-select="#shellMain"
-                     hx-swap="outerHTML"
-                     hx-push-url="true"
-                     class="ecd-btn ecd-btn--primary">Ver no marketplace</a>
+                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                     class="ecd-btn ecd-btn--primary">
+                    <i class="bi bi-shop"></i> Ver no marketplace
+                  </a>
                 {% endif %}
               {% endif %}
             </div>
           {% else %}
             <div>
-              <span>{% if plan.generated_need %}Necessidade coberta{% else %}Sem necessidade prevista{% endif %}</span>
-              <strong>Pedidos cobertos</strong>
-              <p>Todos os pedidos deste produto estão cobertos com o stock atual e previsão disponível até às datas de entrega.</p>
+              <span>{% if plan.generated_need %}Procura coberta{% else %}Sem procura necessária{% endif %}</span>
+              <strong>Todos os pedidos estão cobertos</strong>
+              <p>O stock disponível e a produção prevista útil são suficientes para cumprir todos os pedidos nos prazos acordados.</p>
             </div>
             {% if plan.generated_need %}
               <a href="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
                  hx-get="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
-                 hx-target="#shellMain"
-                 hx-select="#shellMain"
-                 hx-swap="outerHTML"
-                 hx-push-url="true"
-                 class="ecd-btn ecd-btn--ghost">Ver necessidade coberta</a>
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 class="ecd-btn ecd-btn--ghost">
+                <i class="bi bi-megaphone"></i> Ver procura coberta
+              </a>
             {% endif %}
           {% endif %}
         </div>
@@ -356,7 +383,7 @@
                 <th>Pedidos acumulados</th>
                 <th>Stock disponível</th>
                 <th>Produção prevista útil</th>
-                <th>Capacidade até à data</th>
+                <th>Capacidade total até à data</th>
                 <th>Quantidade em falta</th>
               </tr>
             </thead>
@@ -381,94 +408,267 @@
           </table>
         </div>
       </article>
-    {% empty %}
-      <div class="ecd-empty ecd-empty--planning">
-        <i class="bi bi-graph-up-arrow"></i>
-        <strong>Sem pedidos em aberto para planear.</strong>
-        <span>Quando existirem pedidos externos ativos, a análise por produto aparece aqui.</span>
-      </div>
     {% endfor %}
   </section>
+  {% endif %}
+
 </div>
 
 <style>
-.ecd-page{display:grid;gap:1rem;color:#0f172a;}
-.ecd-hero{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;background:linear-gradient(135deg,#ffffff 0%,#f0fdf4 100%);border:1px solid #dbe5ef;border-radius:1.15rem;padding:1.2rem;box-shadow:0 10px 28px rgba(15,23,42,.06);}
-.ecd-hero h1{margin:.25rem 0 .3rem;font-size:clamp(1.65rem,2.4vw,2.45rem);font-weight:950;letter-spacing:0;}
-.ecd-hero p,.ecd-card__head p,.ecd-section-title p,.ecd-plan-head p,.ecd-need-box p{margin:0;color:#64748b;}
-.ecd-back{display:inline-flex;align-items:center;gap:.35rem;color:#2563eb;text-decoration:none;font-weight:850;}
-.ecd-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border:1px solid #d8e2ee;border-radius:.8rem;padding:.72rem 1rem;font-weight:900;text-decoration:none;background:#fff;color:#0f172a;cursor:pointer;}
-.ecd-btn--primary{background:#059669;border-color:#059669;color:#fff;}
-.ecd-btn--ghost{background:#f8fafc;}
-.ecd-btn--hero{min-height:3rem;padding-inline:1.2rem;box-shadow:0 12px 22px rgba(5,150,105,.18);}
-.ecd-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.85rem;}
-.ecd-kpi{display:flex;gap:.8rem;align-items:center;background:#fff;border:1px solid #dbe5ef;border-radius:1rem;padding:1rem;box-shadow:0 1px 3px rgba(15,23,42,.04);}
-.ecd-kpi__icon{width:2.6rem;height:2.6rem;border-radius:.85rem;display:inline-flex;align-items:center;justify-content:center;font-size:1.1rem;}
-.ecd-kpi__icon--green{background:#dcfce7;color:#15803d;}
-.ecd-kpi__icon--blue{background:#dbeafe;color:#1d4ed8;}
-.ecd-kpi__icon--amber{background:#fef3c7;color:#a16207;}
-.ecd-kpi__icon--red{background:#fee2e2;color:#b91c1c;}
-.ecd-kpi span:not(.ecd-kpi__icon){display:block;color:#64748b;font-size:.78rem;font-weight:900;text-transform:uppercase;}
-.ecd-kpi strong{display:block;margin-top:.18rem;font-size:1.35rem;}
-.ecd-filters{display:grid;grid-template-columns:minmax(16rem,1fr) minmax(12rem,.35fr) minmax(12rem,.45fr);gap:.75rem;background:#fff;border:1px solid #dbe5ef;border-radius:1rem;padding:1rem;}
-.ecd-filters label,.ecd-form label{display:grid;gap:.35rem;color:#334155;font-size:.82rem;font-weight:900;}
-.ecd-search{position:relative;}
-.ecd-search i{position:absolute;left:.85rem;top:50%;transform:translateY(-50%);color:#94a3b8;}
-.ecd-search input{padding-left:2.35rem!important;}
-.ecd-filters input,.ecd-filters select,.ecd-form input,.ecd-form select,.ecd-form textarea{width:100%;border:1px solid #cbd5e1;border-radius:.75rem;padding:.72rem .85rem;background:#fff;color:#0f172a;}
-.ecd-field-error{color:#dc2626;font-size:.78rem;font-weight:800;}
-.ecd-form-errors{border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:.75rem;padding:.75rem;font-weight:800;}
-.ecd-card,.ecd-plan-card,.ecd-empty--planning{background:#fff;border:1px solid #dbe5ef;border-radius:1rem;box-shadow:0 1px 3px rgba(15,23,42,.04);}
-.ecd-card{padding:1rem;}
-.ecd-card__head,.ecd-section-title{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem;}
-.ecd-card__head h2,.ecd-section-title h2{margin:.15rem 0 .2rem;font-size:1.18rem;font-weight:950;}
-.ecd-eyebrow{display:inline-flex;color:#059669;font-size:.74rem;font-weight:950;text-transform:uppercase;letter-spacing:.04em;}
-.ecd-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;}
-.ecd-form__wide{grid-column:1/-1;}
-.ecd-table-wrap,.ecd-timeline-wrap{overflow:auto;}
-.ecd-table,.ecd-timeline{width:100%;border-collapse:separate;border-spacing:0 .55rem;}
-.ecd-table th,.ecd-timeline th{text-align:left;color:#64748b;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;padding:.2rem .7rem;}
-.ecd-table td,.ecd-timeline td{background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:.8rem .7rem;vertical-align:middle;}
-.ecd-table td:first-child,.ecd-timeline td:first-child{border-left:1px solid #e2e8f0;border-radius:.75rem 0 0 .75rem;}
-.ecd-table td:last-child,.ecd-timeline td:last-child{border-right:1px solid #e2e8f0;border-radius:0 .75rem .75rem 0;}
-.ecd-table small{display:block;color:#64748b;margin-top:.18rem;}
-.ecd-status{display:inline-flex;border-radius:999px;padding:.24rem .55rem;font-size:.72rem;font-weight:950;background:#e2e8f0;color:#475569;white-space:nowrap;}
-.ecd-status--open{background:#dcfce7;color:#15803d;}
-.ecd-status--partially_covered{background:#fef3c7;color:#a16207;}
-.ecd-status--covered{background:#dbeafe;color:#1d4ed8;}
-.ecd-status--fulfilled{background:#ede9fe;color:#6d28d9;}
-.ecd-status--cancelled{background:#fee2e2;color:#b91c1c;}
-.ecd-actions{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;}
-.ecd-actions form{margin:0;}
-.ecd-mini-btn{display:inline-flex;align-items:center;justify-content:center;gap:.35rem;border:1px solid #d8e2ee;border-radius:.65rem;background:#fff;color:#2563eb;text-decoration:none;font-weight:900;font-size:.82rem;padding:.5rem .65rem;cursor:pointer;}
-.ecd-mini-btn--danger{color:#dc2626;}
-.ecd-muted{color:#94a3b8;font-size:.8rem;font-weight:850;}
-.ecd-planning{display:grid;gap:.85rem;}
-.ecd-plan-card{padding:1rem;display:grid;gap:1rem;}
-.ecd-plan-card--deficit{border-color:#fecaca;}
-.ecd-plan-card--covered{border-color:#bbf7d0;}
-.ecd-plan-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;}
-.ecd-plan-head h3{margin:.15rem 0 .25rem;font-size:1.3rem;font-weight:950;}
-.ecd-plan-badge{display:inline-flex;border-radius:999px;padding:.35rem .7rem;font-size:.78rem;font-weight:950;}
-.ecd-plan-badge.is-deficit{background:#fee2e2;color:#b91c1c;}
-.ecd-plan-badge.is-covered{background:#dcfce7;color:#15803d;}
-.ecd-plan-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.65rem;}
-.ecd-plan-metrics div{border:1px solid #e2e8f0;border-radius:.85rem;padding:.8rem;background:#f8fafc;}
-.ecd-plan-metrics span,.ecd-need-box span{display:block;color:#64748b;font-size:.74rem;font-weight:950;text-transform:uppercase;}
-.ecd-plan-metrics strong,.ecd-need-box strong{display:block;margin-top:.2rem;font-size:1.05rem;}
-.ecd-need-box{display:flex;justify-content:space-between;gap:1rem;align-items:center;border-radius:.9rem;padding:1rem;border:1px solid #e2e8f0;background:#f8fafc;}
-.ecd-need-box.is-deficit{background:#fff7ed;border-color:#fed7aa;}
-.ecd-need-box.is-covered{background:#f0fdf4;border-color:#bbf7d0;}
-.ecd-critical-date{display:inline-flex!important;border-radius:999px;background:#fff;color:#c2410c!important;padding:.4rem .65rem;white-space:nowrap;}
-.ecd-need-actions{display:flex;gap:.55rem;align-items:center;justify-content:flex-end;flex-wrap:wrap;}
-.ecd-timeline tr.has-deficit td{background:#fff7ed;border-color:#fed7aa;}
-.ecd-deficit{color:#b91c1c;}
-.ecd-covered{color:#15803d;font-weight:900;}
-.ecd-empty{display:grid;justify-items:center;text-align:center;gap:.45rem;padding:2rem;color:#64748b;}
-.ecd-empty i{font-size:1.9rem;color:#94a3b8;}
-@media (max-width:1180px){.ecd-kpis,.ecd-plan-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media (max-width:900px){.ecd-hero,.ecd-card__head,.ecd-section-title,.ecd-plan-head,.ecd-need-box{flex-direction:column}.ecd-filters,.ecd-form{grid-template-columns:1fr}.ecd-btn--hero{width:100%}.ecd-table,.ecd-timeline{min-width:760px}}
-@media (max-width:620px){.ecd-kpis,.ecd-plan-metrics{grid-template-columns:1fr}.ecd-page{gap:.85rem}.ecd-hero,.ecd-card,.ecd-plan-card{border-radius:.9rem;padding:.9rem}}
+/* ═══════════════════════════════════════════════════════════════════
+   BASE
+═══════════════════════════════════════════════════════════════════ */
+.ecd-page {
+  display: grid; gap: 1rem; color: #0f172a;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CABEÇALHO HERO
+═══════════════════════════════════════════════════════════════════ */
+.ecd-hero {
+  display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start;
+  background: linear-gradient(135deg, #f8fafc 0%, #f0fdf4 100%);
+  border: 1px solid #dbe5ef; border-radius: 1rem;
+  padding: 1.25rem; box-shadow: 0 2px 8px rgba(15,23,42,.05);
+}
+.ecd-hero h1 { margin: .25rem 0 .3rem; font-size: clamp(1.5rem, 2.2vw, 2.1rem); font-weight: 900; letter-spacing: -.02em; }
+.ecd-hero p { margin: 0; color: #64748b; font-size: .875rem; line-height: 1.55; max-width: 52rem; }
+.ecd-back { display: inline-flex; align-items: center; gap: .35rem; color: #2563eb; text-decoration: none; font-weight: 700; font-size: .84rem; margin-bottom: .4rem; }
+.ecd-back:hover { text-decoration: underline; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOTÕES
+═══════════════════════════════════════════════════════════════════ */
+.ecd-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  border: 1px solid #d8e2ee; border-radius: .7rem;
+  padding: .55rem .9rem; font-weight: 800; font-size: .84rem;
+  text-decoration: none; background: #fff; color: #0f172a;
+  cursor: pointer; transition: transform .12s, box-shadow .12s, background .12s;
+  white-space: nowrap;
+}
+.ecd-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(15,23,42,.1); }
+.ecd-btn--primary { background: #059669; border-color: #059669; color: #fff; }
+.ecd-btn--primary:hover { background: #047857; color: #fff; }
+.ecd-btn--ghost { background: #f1f5f9; border-color: #e2e8f0; }
+.ecd-btn--sm { padding: .4rem .7rem; font-size: .78rem; border-radius: .55rem; }
+.ecd-btn--hero { min-height: 2.75rem; padding-inline: 1.1rem; box-shadow: 0 8px 18px rgba(5,150,105,.2); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   KPIs
+═══════════════════════════════════════════════════════════════════ */
+.ecd-kpis { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .75rem; }
+.ecd-kpi {
+  display: flex; gap: .75rem; align-items: center;
+  background: #fff; border: 1px solid #dbe5ef; border-radius: .85rem;
+  padding: .9rem 1rem; box-shadow: 0 1px 3px rgba(15,23,42,.04);
+}
+.ecd-kpi__icon { width: 2.4rem; height: 2.4rem; border-radius: .75rem; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+.ecd-kpi__icon--green { background: #dcfce7; color: #15803d; }
+.ecd-kpi__icon--blue  { background: #dbeafe; color: #1d4ed8; }
+.ecd-kpi__icon--amber { background: #fef3c7; color: #a16207; }
+.ecd-kpi__icon--red   { background: #fee2e2; color: #b91c1c; }
+.ecd-kpi span:not(.ecd-kpi__icon) { display: block; color: #64748b; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
+.ecd-kpi strong { display: block; margin-top: .15rem; font-size: 1.25rem; font-weight: 800; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CARD DE FÓRMULA
+═══════════════════════════════════════════════════════════════════ */
+.ecd-formula-card {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .85rem;
+  padding: .9rem 1.1rem; display: flex; flex-direction: column; gap: .65rem;
+}
+.ecd-formula-card__head {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .84rem; font-weight: 800; color: #334155;
+}
+.ecd-formula-card__head i { color: #475569; font-size: 1rem; }
+.ecd-formula {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+}
+.ecd-formula__item {
+  display: inline-flex; align-items: center; gap: .4rem;
+  border-radius: .6rem; padding: .45rem .7rem;
+  font-size: .8rem; font-weight: 700; flex: 1 1 auto; min-width: 0;
+}
+.ecd-formula__item i { font-size: .9rem; flex-shrink: 0; }
+.ecd-formula__item--blue  { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.ecd-formula__item--green { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+.ecd-formula__item--amber { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.ecd-formula__op { font-size: 1.2rem; font-weight: 900; color: #94a3b8; flex-shrink: 0; padding: 0 .1rem; }
+.ecd-formula-card__note {
+  display: flex; align-items: flex-start; gap: .4rem;
+  font-size: .8rem; color: #475569; line-height: 1.5; margin: 0;
+  padding-top: .4rem; border-top: 1px solid #e2e8f0;
+}
+.ecd-formula-card__note i { color: #64748b; flex-shrink: 0; margin-top: .1rem; }
+.ecd-formula-card__note strong { color: #334155; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   FILTROS
+═══════════════════════════════════════════════════════════════════ */
+.ecd-filters {
+  display: grid; grid-template-columns: minmax(16rem,1fr) minmax(11rem,.32fr) minmax(11rem,.4fr);
+  gap: .65rem; background: #fff; border: 1px solid #dbe5ef; border-radius: .85rem; padding: .85rem;
+}
+.ecd-filters label { display: grid; gap: .3rem; color: #334155; font-size: .8rem; font-weight: 800; }
+.ecd-search { position: relative; }
+.ecd-search i { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+.ecd-search input { padding-left: 2.25rem !important; }
+.ecd-filters input, .ecd-filters select { width: 100%; border: 1px solid #cbd5e1; border-radius: .6rem; padding: .6rem .75rem; background: #fff; color: #0f172a; font-size: .875rem; }
+.ecd-filters input:focus, .ecd-filters select:focus { border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,.12); outline: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   FORMULÁRIOS (criar / editar)
+═══════════════════════════════════════════════════════════════════ */
+.ecd-card { background: #fff; border: 1px solid #dbe5ef; border-radius: .85rem; padding: 1rem; box-shadow: 0 1px 3px rgba(15,23,42,.04); }
+.ecd-form-card { border-left: 4px solid #059669; }
+.ecd-form-card--edit { border-left-color: #2563eb; }
+.ecd-card__head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: .85rem; }
+.ecd-card__head h2 { margin: .12rem 0 .18rem; font-size: 1.1rem; font-weight: 900; }
+.ecd-card__head p { margin: 0; color: #64748b; font-size: .84rem; line-height: 1.45; }
+.ecd-eyebrow { display: inline-block; color: #059669; font-size: .7rem; font-weight: 900; text-transform: uppercase; letter-spacing: .05em; }
+.ecd-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: .65rem;
+}
+.ecd-form label { display: grid; gap: .28rem; color: #334155; font-size: .82rem; font-weight: 800; }
+.ecd-form input, .ecd-form select {
+  width: 100%; border: 1px solid #cbd5e1; border-radius: .6rem;
+  padding: .6rem .75rem; background: #fff; color: #0f172a; font-size: .875rem;
+}
+.ecd-form textarea {
+  width: 100%; border: 1px solid #cbd5e1; border-radius: .6rem;
+  padding: .55rem .75rem; background: #fff; color: #0f172a; font-size: .875rem;
+  resize: vertical; min-height: 3.5rem; max-height: 6rem;
+}
+.ecd-form input:focus, .ecd-form select:focus, .ecd-form textarea:focus {
+  border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,.12); outline: 0;
+}
+.ecd-form__wide { grid-column: 1 / -1; }
+.ecd-form__actions {
+  grid-column: 1 / -1;
+  display: flex; justify-content: flex-end; align-items: center; gap: .5rem;
+  padding-top: .25rem; border-top: 1px solid #e2e8f0; margin-top: .2rem;
+}
+.ecd-field-error { color: #dc2626; font-size: .78rem; font-weight: 700; }
+.ecd-form-errors { border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; border-radius: .6rem; padding: .7rem; font-weight: 700; font-size: .84rem; grid-column: 1/-1; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   TABELA DE PEDIDOS
+═══════════════════════════════════════════════════════════════════ */
+.ecd-table-wrap { overflow: auto; }
+.ecd-table { width: 100%; border-collapse: separate; border-spacing: 0 .45rem; }
+.ecd-table th { text-align: left; color: #64748b; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; padding: .2rem .7rem; font-weight: 800; }
+.ecd-table td { background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: .75rem .7rem; vertical-align: middle; font-size: .875rem; }
+.ecd-table td:first-child { border-left: 1px solid #e2e8f0; border-radius: .65rem 0 0 .65rem; }
+.ecd-table td:last-child  { border-right: 1px solid #e2e8f0; border-radius: 0 .65rem .65rem 0; }
+.ecd-table small { display: block; color: #64748b; margin-top: .12rem; font-size: .78rem; }
+.ecd-status { display: inline-flex; border-radius: 999px; padding: .22rem .55rem; font-size: .72rem; font-weight: 800; background: #e2e8f0; color: #475569; white-space: nowrap; }
+.ecd-status--open              { background: #dcfce7; color: #15803d; }
+.ecd-status--partially_covered { background: #fef3c7; color: #a16207; }
+.ecd-status--covered           { background: #dbeafe; color: #1d4ed8; }
+.ecd-status--fulfilled         { background: #ede9fe; color: #6d28d9; }
+.ecd-status--cancelled         { background: #fee2e2; color: #b91c1c; }
+.ecd-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.ecd-actions form { margin: 0; }
+.ecd-mini-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .3rem;
+  border: 1px solid #d8e2ee; border-radius: .55rem; background: #fff; color: #2563eb;
+  text-decoration: none; font-weight: 800; font-size: .78rem; padding: .4rem .6rem;
+  cursor: pointer; transition: background .12s;
+}
+.ecd-mini-btn:hover { background: #eff6ff; }
+.ecd-mini-btn--danger { color: #dc2626; }
+.ecd-mini-btn--danger:hover { background: #fef2f2; }
+.ecd-muted { color: #94a3b8; font-size: .82rem; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   PLANEAMENTO POR PRODUTO
+═══════════════════════════════════════════════════════════════════ */
+.ecd-planning { display: grid; gap: .85rem; }
+.ecd-section-title { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.ecd-section-title h2 { margin: .12rem 0 .18rem; font-size: 1.2rem; font-weight: 900; }
+.ecd-section-title p { margin: 0; color: #64748b; font-size: .84rem; }
+.ecd-plan-card { background: #fff; border: 1px solid #e2e8f0; border-radius: .85rem; padding: 1rem; display: grid; gap: .85rem; box-shadow: 0 1px 3px rgba(15,23,42,.04); }
+.ecd-plan-card--deficit { border-left: 4px solid #fca5a5; }
+.ecd-plan-card--covered { border-left: 4px solid #86efac; }
+.ecd-plan-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.ecd-plan-head h3 { margin: .12rem 0 .2rem; font-size: 1.2rem; font-weight: 900; }
+.ecd-plan-head p { margin: 0; color: #64748b; font-size: .84rem; line-height: 1.45; }
+.ecd-plan-head p strong { color: #0f172a; }
+.ecd-plan-badge { display: inline-flex; align-items: center; gap: .3rem; border-radius: 999px; padding: .3rem .65rem; font-size: .76rem; font-weight: 900; white-space: nowrap; }
+.ecd-plan-badge.is-deficit { background: #fee2e2; color: #b91c1c; }
+.ecd-plan-badge.is-covered { background: #dcfce7; color: #15803d; }
+.ecd-plan-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .55rem; }
+.ecd-plan-metrics div { border: 1px solid #e2e8f0; border-radius: .7rem; padding: .7rem .8rem; background: #f8fafc; }
+.ecd-plan-metrics span { display: block; color: #64748b; font-size: .7rem; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+.ecd-plan-metrics strong { display: block; margin-top: .18rem; font-size: 1rem; font-weight: 800; }
+.ecd-need-box {
+  display: flex; justify-content: space-between; gap: 1rem; align-items: center;
+  border-radius: .8rem; padding: .9rem 1rem; border: 1px solid #e2e8f0; background: #f8fafc;
+  flex-wrap: wrap;
+}
+.ecd-need-box.is-deficit { background: #fff7ed; border-color: #fed7aa; }
+.ecd-need-box.is-covered { background: #f0fdf4; border-color: #bbf7d0; }
+.ecd-need-box span { display: block; color: #64748b; font-size: .7rem; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .2rem; }
+.ecd-need-box strong { display: block; font-size: 1rem; font-weight: 800; margin-bottom: .2rem; }
+.ecd-need-box p { margin: 0; color: #64748b; font-size: .82rem; line-height: 1.5; }
+.ecd-need-actions { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.ecd-critical-date {
+  display: inline-flex; align-items: center; gap: .3rem;
+  border-radius: 999px; background: #fff; border: 1px solid #fed7aa;
+  color: #c2410c; padding: .35rem .65rem; font-size: .8rem; font-weight: 800; white-space: nowrap;
+}
+.ecd-timeline-wrap { overflow: auto; }
+.ecd-timeline { width: 100%; border-collapse: separate; border-spacing: 0 .4rem; min-width: 700px; }
+.ecd-timeline th { text-align: left; color: #64748b; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; padding: .15rem .65rem; font-weight: 800; }
+.ecd-timeline td { background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: .7rem .65rem; vertical-align: middle; font-size: .84rem; }
+.ecd-timeline td:first-child { border-left: 1px solid #e2e8f0; border-radius: .6rem 0 0 .6rem; }
+.ecd-timeline td:last-child  { border-right: 1px solid #e2e8f0; border-radius: 0 .6rem .6rem 0; }
+.ecd-timeline tr.has-deficit td { background: #fff7ed; border-color: #fed7aa; }
+.ecd-deficit { color: #b91c1c; font-weight: 800; }
+.ecd-covered { color: #15803d; font-weight: 800; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════════════════════════════════ */
+.ecd-empty {
+  display: grid; justify-items: center; text-align: center; gap: .45rem;
+  padding: 2rem 1rem; color: #64748b;
+}
+.ecd-empty i { font-size: 1.75rem; color: #94a3b8; }
+.ecd-empty strong { color: #0f172a; font-size: .95rem; font-weight: 800; }
+.ecd-empty span { font-size: .85rem; line-height: 1.5; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVO
+═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
+  .ecd-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .ecd-plan-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 860px) {
+  .ecd-hero { flex-direction: column; }
+  .ecd-btn--hero { width: 100%; }
+  .ecd-filters { grid-template-columns: 1fr; }
+  .ecd-card__head { flex-direction: column; align-items: stretch; }
+  .ecd-form { grid-template-columns: 1fr; }
+  .ecd-form__wide, .ecd-form__actions { grid-column: auto; }
+  .ecd-form__actions { justify-content: stretch; flex-direction: column-reverse; }
+  .ecd-form__actions .ecd-btn { width: 100%; justify-content: center; }
+  .ecd-plan-head, .ecd-need-box { flex-direction: column; align-items: stretch; }
+  .ecd-formula { flex-direction: column; align-items: stretch; }
+  .ecd-formula__op { text-align: center; }
+}
+@media (max-width: 580px) {
+  .ecd-kpis { grid-template-columns: 1fr 1fr; }
+  .ecd-plan-metrics { grid-template-columns: 1fr 1fr; }
+  .ecd-need-actions { justify-content: stretch; flex-direction: column; }
+  .ecd-need-actions .ecd-btn { width: 100%; justify-content: center; }
+}
 </style>
 
 {% endblock %}

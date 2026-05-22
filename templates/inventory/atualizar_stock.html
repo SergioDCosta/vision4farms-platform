@@ -77,14 +77,9 @@
             </div>
 
             <div class="inv-field">
-              <label for="{{ form.safety_stock.id_for_label }}">
-                {{ form.safety_stock.label }} ({{ stock.product.unit }})
-              </label>
-              {{ form.safety_stock }}
-              {% if form.safety_stock.errors %}
-                <div class="inv-errors">{{ form.safety_stock.errors.0 }}</div>
-              {% endif %}
-              <div class="inv-help">Este valor será usado para sinalizar stock baixo ou crítico.</div>
+              <span class="inv-readonly-label">Compromissos externos</span>
+              <strong class="inv-readonly-value">{{ stock.safety_stock|quantity }} {{ stock.product.unit }}</strong>
+              <div class="inv-help">Calculado automaticamente a partir dos pedidos dos clientes. Para alterar este valor, edite os pedidos em “Pedidos dos meus clientes”.</div>
             </div>
 
           </div>

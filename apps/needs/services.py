@@ -922,6 +922,11 @@ def update_need(
     )
     if locked_need.producer_id != producer.id:
         raise ValidationError("Não pode editar esta necessidade.")
+    if getattr(locked_need, "source_system", None) == NeedSourceSystem.CUSTOMER_DEMAND:
+        raise ValidationError(
+            "Esta procura é gerada automaticamente a partir dos pedidos de clientes. "
+            "Para alterar a quantidade ou a data, edite os pedidos de origem."
+        )
     if locked_need.status not in EDITABLE_NEED_STATUSES:
         raise ValidationError("Esta necessidade já não pode ser editada.")
 

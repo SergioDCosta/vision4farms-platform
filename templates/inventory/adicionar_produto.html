@@ -187,7 +187,7 @@
 
         <div class="modal-body" style="padding:1.1rem 1.2rem;">
           <p class="text-muted small mb-3">
-            Define o stock inicial, os compromissos externos e a tua descrição específica para este produto.
+            Define o stock inicial e a tua descrição específica para este produto. Os compromissos externos são calculados automaticamente a partir dos pedidos dos clientes.
           </p>
 
           <div class="mb-3">
@@ -197,16 +197,6 @@
             {{ form.initial_quantity }}
             {% if form.initial_quantity.errors %}
               <div class="text-danger small mt-1">{{ form.initial_quantity.errors.0 }}</div>
-            {% endif %}
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label fw-semibold" for="{{ form.safety_stock.id_for_label }}">
-              Compromissos externos <span class="text-muted fw-normal" id="catalogModalUnitThreshold"></span>
-            </label>
-            {{ form.safety_stock }}
-            {% if form.safety_stock.errors %}
-              <div class="text-danger small mt-1">{{ form.safety_stock.errors.0 }}</div>
             {% endif %}
           </div>
 
@@ -281,16 +271,6 @@
               {{ custom_form.initial_quantity }}
               {% if custom_form.initial_quantity.errors %}
                 <div class="text-danger small mt-1">{{ custom_form.initial_quantity.errors.0 }}</div>
-              {% endif %}
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label fw-semibold" for="{{ custom_form.safety_stock.id_for_label }}">
-                {{ custom_form.safety_stock.label }}
-              </label>
-              {{ custom_form.safety_stock }}
-              {% if custom_form.safety_stock.errors %}
-                <div class="text-danger small mt-1">{{ custom_form.safety_stock.errors.0 }}</div>
               {% endif %}
             </div>
 
@@ -499,7 +479,6 @@
       document.getElementById("id_product_id").value = productId;
       document.getElementById("catalogModalTitle").textContent = "Adicionar: " + productName;
       document.getElementById("catalogModalUnitInitial").textContent = "(" + productUnit + ")";
-      document.getElementById("catalogModalUnitThreshold").textContent = "(" + productUnit + ")";
     });
   });
 
@@ -530,7 +509,6 @@
       document.getElementById("id_product_id").value = "{{ selected_product.id }}";
       document.getElementById("catalogModalTitle").textContent = "Adicionar: {{ selected_product.name|escapejs }}";
       document.getElementById("catalogModalUnitInitial").textContent = "({{ selected_product.unit|escapejs }})";
-      document.getElementById("catalogModalUnitThreshold").textContent = "({{ selected_product.unit|escapejs }})";
 
       const catalogModalElement = document.getElementById("catalogProductModal");
       if (catalogModalElement && window.bootstrap) {

@@ -43,16 +43,6 @@
   </div>
 
   <div class="mk-card__footer">
-    <a href="{% url 'needs:index' %}?need={{ row.need.id }}"
-       hx-get="{% url 'needs:index' %}?need={{ row.need.id }}"
-       hx-target="#shellMain"
-       hx-select="#shellMain"
-       hx-swap="outerHTML"
-       hx-push-url="true"
-       class="mk-card-action mk-card-action--ghost">
-      <i class="bi bi-eye"></i>
-      Ver necessidade
-    </a>
     {% if row.viewer_response_summary and row.viewer_response_summary.can_edit %}
       <a href="{{ row.viewer_response_summary.edit_url }}"
          hx-get="{{ row.viewer_response_summary.edit_url }}"
@@ -73,7 +63,7 @@
          hx-push-url="true"
          class="mk-card-action mk-card-action--primary">
         <i class="bi bi-send"></i>
-        Responder
+        Fazer proposta
       </a>
     {% endif %}
   </div>

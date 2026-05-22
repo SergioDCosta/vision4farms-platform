@@ -179,3 +179,23 @@ ON public.external_customer_demands (created_by_id);
 CREATE UNIQUE INDEX IF NOT EXISTS external_customer_demands_source_external_unique_idx
 ON public.external_customer_demands (producer_id, source_system, external_id)
 WHERE external_id IS NOT NULL;
+
+-- A procura agregada gerada a partir destes pedidos usa:
+-- needs.source_system = 'CUSTOMER_DEMAND'.
+-- Em bases de dados antigas pode existir uma constraint que ainda só aceita
+-- MANUAL, VISION4FARMS e ALERT. Este bloco atualiza a constraint de forma
+-- idempotente para permitir a nova origem.
+
+ALTER TABLE IF EXISTS public.needs
+DROP CONSTRAINT IF EXISTS needs_source_system_check;
+
+ALTER TABLE IF EXISTS public.needs
+ADD CONSTRAINT needs_source_system_check
+CHECK (
+    source_system IN (
+        'MANUAL',
+        'VISION4FARMS',
+        'ALERT',
+        'CUSTOMER_DEMAND'
+    )
+);

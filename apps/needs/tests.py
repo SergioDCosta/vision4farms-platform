@@ -1239,7 +1239,7 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(update_listing.call_args.kwargs["listing"], listing)
         self.assertEqual(update_listing.call_args.kwargs["quantity_total"], Decimal("8"))
 
-    def test_needs_context_selects_first_own_need_when_none_selected(self):
+    def test_needs_context_does_not_auto_select_first_own_need(self):
         need = SimpleNamespace(
             id="need-1",
             product_id="product-1",
@@ -1267,19 +1267,21 @@ class NeedsServiceTests(SimpleTestCase):
             patch("apps.needs.views.get_need_response_counts_for_owner", return_value={"need-1": 1}),
             patch("apps.needs.views.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
             patch("apps.needs.views.list_need_responses_for_responder", return_value=[active_response, past_response]) as sent_responses,
+            patch("apps.needs.views.ExternalCustomerDemand.objects.filter") as demand_filter,
         ):
+            demand_filter.return_value.count.return_value = 0
             context = build_needs_index_context(
                 SimpleNamespace(id="owner-1"),
                 q="",
                 category_id="",
             )
 
-        self.assertEqual(context["selected_need_id"], "need-1")
-        self.assertIs(context["selected_need_row"], own_row)
+        self.assertEqual(context["selected_need_id"], "")
+        self.assertIsNone(context["selected_need_row"])
         self.assertEqual(context["need_my_rows"][0]["response_count"], 1)
-        self.assertEqual(context["need_response_rows"], [active_response, past_response])
-        self.assertEqual(context["active_need_response_rows"], [active_response])
-        self.assertEqual(context["past_need_response_rows"], [past_response])
+        self.assertEqual(context["need_response_rows"], [])
+        self.assertEqual(context["active_need_response_rows"], [])
+        self.assertEqual(context["past_need_response_rows"], [])
         self.assertEqual(context["all_past_need_response_rows"], [past_response])
         self.assertEqual(context["received_past_need_response_rows"], [past_response])
         self.assertEqual(context["sent_need_response_rows"], [active_response, past_response])
@@ -1290,6 +1292,5 @@ class NeedsServiceTests(SimpleTestCase):
             owner_producer=SimpleNamespace(id="owner-1"),
             q="",
             category_id="",
-            need_id="need-1",
         )
         sent_responses.assert_called_once()

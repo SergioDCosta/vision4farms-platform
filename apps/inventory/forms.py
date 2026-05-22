@@ -32,20 +32,6 @@ class AddProducerProductForm(forms.Form):
         }),
     )
 
-    safety_stock = forms.DecimalField(
-        label="Compromissos externos",
-        min_value=0,
-        max_digits=14,
-        decimal_places=3,
-        initial=0,
-        help_text="Quantidade necessaria para pedidos externos em aberto.",
-        widget=forms.NumberInput(attrs={
-            "class": "form-control",
-            "step": "0.001",
-            "placeholder": "0",
-        }),
-    )
-
 class CreateCustomProductForm(forms.Form):
     """Criar um novo produto no catálogo e associá-lo ao produtor."""
 
@@ -88,19 +74,6 @@ class CreateCustomProductForm(forms.Form):
         }),
     )
 
-    safety_stock = forms.DecimalField(
-        label="Compromissos externos",
-        min_value=0,
-        max_digits=14,
-        decimal_places=3,
-        initial=0,
-        widget=forms.NumberInput(attrs={
-            "class": "form-control",
-            "step": "0.001",
-            "placeholder": "0",
-        }),
-    )
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["category"].queryset = ProductCategory.objects.order_by("name")
@@ -113,7 +86,7 @@ class CreateCustomProductForm(forms.Form):
 
 
 class UpdateStockForm(forms.Form):
-    """Atualizar a quantidade em stock e os compromissos externos."""
+    """Atualizar a quantidade em stock."""
 
     MOVEMENT_CHOICES = [
         (StockMovementType.MANUAL_ADJUSTMENT, "Ajuste manual"),
@@ -123,19 +96,6 @@ class UpdateStockForm(forms.Form):
 
     new_quantity = forms.DecimalField(
         label="Nova quantidade em stock",
-        min_value=0,
-        max_digits=14,
-        decimal_places=3,
-        widget=forms.NumberInput(attrs={
-            "class": "form-control",
-            "step": "0.001",
-            "inputmode": "decimal",
-            "placeholder": "0",
-        }),
-    )
-
-    safety_stock = forms.DecimalField(
-        label="Compromissos externos",
         min_value=0,
         max_digits=14,
         decimal_places=3,

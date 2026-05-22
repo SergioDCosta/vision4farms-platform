@@ -123,7 +123,6 @@ class InventoryStockFormTests(SimpleTestCase):
         form = UpdateStockForm(
             data={
                 "new_quantity": "20.5",
-                "safety_stock": "10.25",
                 "movement_type": "MANUAL_ADJUSTMENT",
                 "notes": "",
             }
@@ -131,7 +130,7 @@ class InventoryStockFormTests(SimpleTestCase):
 
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(str(form.cleaned_data["new_quantity"]), "20.5")
-        self.assertEqual(str(form.cleaned_data["safety_stock"]), "10.25")
+        self.assertNotIn("safety_stock", form.fields)
 
 
 class InventoryCommercialReportTests(SimpleTestCase):
