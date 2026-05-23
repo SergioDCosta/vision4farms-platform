@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from datetime import datetime
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, SimpleTestCase
@@ -10,6 +11,7 @@ from apps.catalog.services import CatalogValidationError
 from apps.inventory.forms import CreateCustomProductForm, UpdateStockForm
 from apps.inventory import views
 from apps.inventory.services import (
+    calculate_inventory_commitment_state,
     create_custom_product_for_producer,
     get_stock_state,
     producer_has_active_inventory_products,
@@ -116,6 +118,95 @@ class InventoryStockStateTests(SimpleTestCase):
         )
 
         self.assertEqual(get_stock_state(stock)["key"], "critical")
+
+    @patch("apps.needs.services.calculate_external_demand_plan")
+    def test_commitment_state_uses_forecast_cover_before_deadline(self, plan_mock):
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        producer = SimpleNamespace(id="producer-1")
+        stock = SimpleNamespace(
+            current_quantity=Decimal("500.000"),
+            reserved_quantity=Decimal("0.000"),
+            safety_stock=Decimal("625.000"),
+        )
+        plan_mock.return_value = {
+            "total_external_demand": Decimal("625.000"),
+            "available_stock_now": Decimal("500.000"),
+            "total_forecast_relevant": Decimal("300.000"),
+            "max_deficit": Decimal("0.000"),
+            "first_deficit_date": None,
+            "rows": [
+                {
+                    "delivery_date": "2026-06-01",
+                    "demand_until_date": Decimal("125.000"),
+                    "capacity_until_date": Decimal("500.000"),
+                },
+                {
+                    "delivery_date": "2026-09-01",
+                    "demand_until_date": Decimal("625.000"),
+                    "capacity_until_date": Decimal("800.000"),
+                },
+            ],
+        }
+
+        commitment_state = calculate_inventory_commitment_state(producer, product, stock=stock)
+        stock_state = get_stock_state(stock, commitment_state=commitment_state)
+
+        self.assertNotEqual(stock_state["key"], "critical")
+        self.assertEqual(commitment_state["temporal_sellable_quantity"], Decimal("175.000"))
+        self.assertEqual(stock_state["publishable_quantity"], Decimal("175.000"))
+
+    @patch("apps.needs.services.calculate_external_demand_plan")
+    def test_commitment_state_is_critical_when_forecast_arrives_too_late(self, plan_mock):
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        producer = SimpleNamespace(id="producer-1")
+        stock = SimpleNamespace(
+            current_quantity=Decimal("500.000"),
+            reserved_quantity=Decimal("0.000"),
+            safety_stock=Decimal("625.000"),
+        )
+        plan_mock.return_value = {
+            "total_external_demand": Decimal("625.000"),
+            "available_stock_now": Decimal("500.000"),
+            "total_forecast_relevant": Decimal("0.000"),
+            "max_deficit": Decimal("125.000"),
+            "first_deficit_date": "2026-06-01",
+            "rows": [
+                {
+                    "delivery_date": "2026-06-01",
+                    "demand_until_date": Decimal("625.000"),
+                    "capacity_until_date": Decimal("500.000"),
+                },
+            ],
+        }
+
+        commitment_state = calculate_inventory_commitment_state(producer, product, stock=stock)
+        stock_state = get_stock_state(stock, commitment_state=commitment_state)
+
+        self.assertEqual(stock_state["key"], "critical")
+        self.assertEqual(stock_state["deficit_quantity"], Decimal("125.000"))
+
+    @patch("apps.needs.services.calculate_external_demand_plan")
+    def test_commitment_state_without_external_demands_is_not_critical(self, plan_mock):
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        producer = SimpleNamespace(id="producer-1")
+        stock = SimpleNamespace(
+            current_quantity=Decimal("0.000"),
+            reserved_quantity=Decimal("0.000"),
+            safety_stock=Decimal("100.000"),
+        )
+        plan_mock.return_value = {
+            "total_external_demand": Decimal("0.000"),
+            "available_stock_now": Decimal("0.000"),
+            "total_forecast_relevant": Decimal("0.000"),
+            "max_deficit": Decimal("0.000"),
+            "first_deficit_date": None,
+            "rows": [],
+        }
+
+        commitment_state = calculate_inventory_commitment_state(producer, product, stock=stock)
+
+        self.assertFalse(commitment_state["has_external_demands"])
+        self.assertEqual(commitment_state["state_key"], "normal")
 
 
 class InventoryStockFormTests(SimpleTestCase):

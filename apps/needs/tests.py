@@ -772,12 +772,14 @@ class NeedsServiceTests(SimpleTestCase):
         stocks = [
             SimpleNamespace(
                 product_id="critical-product",
+                product=SimpleNamespace(id="critical-product"),
                 current_quantity=Decimal("9.000"),
                 reserved_quantity=Decimal("2.000"),
                 safety_stock=Decimal("8.000"),
             ),
             SimpleNamespace(
                 product_id="normal-product",
+                product=SimpleNamespace(id="normal-product"),
                 current_quantity=Decimal("12.000"),
                 reserved_quantity=Decimal("1.000"),
                 safety_stock=Decimal("8.000"),
@@ -785,9 +787,21 @@ class NeedsServiceTests(SimpleTestCase):
         ]
         qs = MagicMock()
         qs.filter.return_value = qs
+        qs.select_related.return_value = qs
         qs.only.return_value = stocks
 
-        with patch("apps.needs.services.Stock.objects.filter", return_value=qs):
+        def commitment_side_effect(producer, product, stock=None):
+            return {
+                "state_key": "critical" if stock.product_id == "critical-product" else "normal",
+            }
+
+        with (
+            patch("apps.needs.services.Stock.objects.filter", return_value=qs),
+            patch(
+                "apps.inventory.services.calculate_inventory_commitment_state",
+                side_effect=commitment_side_effect,
+            ),
+        ):
             product_ids = get_critical_stock_product_ids(
                 producer,
                 product_ids=["critical-product", "normal-product"],

@@ -23,7 +23,11 @@
         <span class="sidebar-brand-logo sidebar-brand-wordmark">Vision4Farms</span>
       {% endif %}
       <span class="sidebar-brand-mark" aria-hidden="true">
-        {% if brand_favicon_url %}
+        {% if brand_sidebar_compact_logo_url %}
+          <img src="{{ brand_sidebar_compact_logo_url }}" alt="">
+        {% elif brand_logo_white_url %}
+          <img src="{{ brand_logo_white_url }}" alt="">
+        {% elif brand_favicon_url %}
           <img src="{{ brand_favicon_url }}" alt="">
         {% else %}
           V4F

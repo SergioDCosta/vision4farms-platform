@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal
 from datetime import datetime, time
 
@@ -21,11 +22,15 @@ from apps.inventory.forms import (
 from apps.orders.services import get_buyer_incoming_forecast_projection
 
 
+logger = logging.getLogger(__name__)
+
+
 def _sync_alerts_after_inventory_change(producer, acting_user):
     try:
         from apps.alerts.services import sync_alerts_for_producer
         sync_alerts_for_producer(producer, acting_user=acting_user)
     except Exception:
+        logger.exception("Failed to sync alerts after inventory change for producer=%s", getattr(producer, "id", None))
         return
 
 
@@ -38,6 +43,11 @@ def _sync_external_customer_demands_after_inventory_change(producer, product, ac
             acting_user=acting_user,
         )
     except Exception:
+        logger.exception(
+            "Failed to sync external customer demand state for producer=%s product=%s",
+            getattr(producer, "id", None),
+            getattr(product, "id", None),
+        )
         return
 
 
@@ -112,7 +122,12 @@ def _build_stock_detail_context(
     ):
         edit_forecast_id = str(forecast_primary.id)
 
-    stock_state = services.get_stock_state(stock)
+    commitment_state = services.calculate_inventory_commitment_state(
+        producer,
+        stock.product,
+        stock=stock,
+    )
+    stock_state = services.get_stock_state(stock, commitment_state=commitment_state)
     incoming_forecast = incoming_forecast or {}
     incoming_forecast_qty = Decimal(str(incoming_forecast.get("incoming_qty") or 0))
     incoming_forecast_period_start = incoming_forecast.get("period_start_min")
@@ -138,6 +153,7 @@ def _build_stock_detail_context(
     context = {
         "stock": stock,
         "stock_state": stock_state,
+        "commitment_state": commitment_state,
         "producer_product": producer_product,
         "is_product_active": is_product_active,
         "stock_back_tab": "stock" if is_product_active else "desativados",

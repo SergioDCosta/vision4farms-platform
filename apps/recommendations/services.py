@@ -6,6 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.inventory.models import Stock
+from apps.inventory.services import calculate_inventory_commitment_state
 from apps.catalog.models import Product
 from apps.marketplace.models import MarketplaceListing, ListingStatus
 from apps.recommendations.models import (
@@ -66,22 +67,19 @@ def get_producer_products(producer):
 
 def calculate_current_deficit(producer, product):
     stock = Stock.objects.filter(producer=producer, product=product).first()
-    if not stock:
-        safety_stock = Decimal("0.000")
-        reserved_quantity = Decimal("0.000")
-        current_stock = Decimal("0.000")
-    else:
-        safety_stock = quantize_qty(Decimal(str(stock.safety_stock or 0)))
-        reserved_quantity = quantize_qty(Decimal(str(stock.reserved_quantity or 0)))
-        current_stock = quantize_qty(Decimal(str(stock.current_quantity or 0)))
+    commitment_state = calculate_inventory_commitment_state(producer, product, stock=stock)
 
-    available_stock = quantize_qty(current_stock - reserved_quantity)
-    buy_quantity = quantize_qty(max(safety_stock - available_stock, Decimal("0.000")))
-    sell_quantity = quantize_qty(max(available_stock - safety_stock, Decimal("0.000")))
+    safety_stock = quantize_qty(Decimal(str(commitment_state.get("total_external_demand") or 0)))
+    reserved_quantity = quantize_qty(Decimal(str(commitment_state.get("reserved_quantity") or 0)))
+    current_stock = quantize_qty(Decimal(str(commitment_state.get("current_quantity") or 0)))
+    available_stock = quantize_qty(Decimal(str(commitment_state.get("available_stock_now") or 0)))
+    buy_quantity = quantize_qty(Decimal(str(commitment_state.get("max_deficit") or 0)))
+    sell_quantity = quantize_qty(Decimal(str(commitment_state.get("temporal_sellable_quantity") or 0)))
+
     if buy_quantity > 0:
         direction = RECOMMENDATION_DIRECTION_BUY
         suggested_quantity = buy_quantity
-    elif _has_sell_recommendation(available_stock=available_stock, safety_stock=safety_stock):
+    elif commitment_state.get("state_key") == "excess" and sell_quantity > 0:
         direction = RECOMMENDATION_DIRECTION_SELL
         suggested_quantity = sell_quantity
     else:
@@ -98,6 +96,8 @@ def calculate_current_deficit(producer, product):
         "sell_quantity": sell_quantity,
         "suggested_quantity": suggested_quantity,
         "recommendation_direction": direction,
+        "useful_forecast_total": quantize_qty(Decimal(str(commitment_state.get("useful_forecast_total") or 0))),
+        "first_deficit_date": commitment_state.get("first_deficit_date"),
     }
 
 
@@ -132,23 +132,19 @@ def build_recommendation_inventory_rows(producer, products):
 
     for product in products:
         stock = stock_by_product.get(product.id)
-        if stock:
-            safety_stock = quantize_qty(Decimal(str(stock.safety_stock or 0)))
-            reserved_quantity = quantize_qty(Decimal(str(stock.reserved_quantity or 0)))
-            current_stock = quantize_qty(Decimal(str(stock.current_quantity or 0)))
-        else:
-            safety_stock = Decimal("0.000")
-            reserved_quantity = Decimal("0.000")
-            current_stock = Decimal("0.000")
+        commitment_state = calculate_inventory_commitment_state(producer, product, stock=stock)
 
-        available_stock = quantize_qty(current_stock - reserved_quantity)
-        buy_quantity = quantize_qty(max(safety_stock - available_stock, Decimal("0.000")))
-        sell_quantity = quantize_qty(max(available_stock - safety_stock, Decimal("0.000")))
+        safety_stock = quantize_qty(Decimal(str(commitment_state.get("total_external_demand") or 0)))
+        reserved_quantity = quantize_qty(Decimal(str(commitment_state.get("reserved_quantity") or 0)))
+        current_stock = quantize_qty(Decimal(str(commitment_state.get("current_quantity") or 0)))
+        available_stock = quantize_qty(Decimal(str(commitment_state.get("available_stock_now") or 0)))
+        buy_quantity = quantize_qty(Decimal(str(commitment_state.get("max_deficit") or 0)))
+        sell_quantity = quantize_qty(Decimal(str(commitment_state.get("temporal_sellable_quantity") or 0)))
 
         if buy_quantity > 0:
             direction = RECOMMENDATION_DIRECTION_BUY
             suggested_quantity = buy_quantity
-        elif _has_sell_recommendation(available_stock=available_stock, safety_stock=safety_stock):
+        elif commitment_state.get("state_key") == "excess" and sell_quantity > 0:
             direction = RECOMMENDATION_DIRECTION_SELL
             suggested_quantity = sell_quantity
         else:
@@ -168,6 +164,8 @@ def build_recommendation_inventory_rows(producer, products):
             "sell_quantity": sell_quantity,
             "suggested_quantity": suggested_quantity,
             "recommendation_direction": direction,
+            "useful_forecast_total": quantize_qty(Decimal(str(commitment_state.get("useful_forecast_total") or 0))),
+            "first_deficit_date": commitment_state.get("first_deficit_date"),
         }
         all_rows.append(row)
         if direction == RECOMMENDATION_DIRECTION_BUY:

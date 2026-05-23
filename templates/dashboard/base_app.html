@@ -195,11 +195,11 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   object-fit: contain;
 }
 .sidebar-brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.14);
+  width: 52px;
+  height: 42px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
   color: #fff;
   display: none;
   align-items: center;
@@ -210,10 +210,13 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   line-height: 1;
   text-align: center;
   flex: 0 0 auto;
+  overflow: visible;
 }
 .sidebar-brand-mark img {
-  width: 24px;
-  height: 24px;
+  width: 48px;
+  max-width: 100%;
+  height: auto;
+  max-height: 36px;
   object-fit: contain;
   display: block;
 }

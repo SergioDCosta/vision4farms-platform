@@ -16,6 +16,7 @@ from apps.alerts.services import (
     normalize_alert_type,
     resolve_alert,
     run_operational_alerts_job,
+    _critical_stock_candidates,
     _quantity_label,
 )
 
@@ -34,6 +35,45 @@ class AlertLabelsTests(SimpleTestCase):
 class AlertQuantityLabelsTests(SimpleTestCase):
     def test_quantity_labels_do_not_show_unneeded_decimal_places(self):
         self.assertEqual(_quantity_label(Decimal("200.000"), "kg"), "200 kg")
+
+
+class AlertTemporalStockCandidatesTests(SimpleTestCase):
+    @patch("apps.alerts.services.calculate_inventory_commitment_state")
+    @patch("apps.alerts.services.Stock")
+    def test_no_critical_alert_when_forecast_covers_external_demands(self, stock_model_mock, commitment_mock):
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        stock = SimpleNamespace(product=product, product_id="product-1")
+        stock_model_mock.objects.select_related.return_value.filter.return_value.distinct.return_value = [stock]
+        commitment_mock.return_value = {
+            "max_deficit": Decimal("0.000"),
+            "available_stock_now": Decimal("500.000"),
+            "useful_forecast_total": Decimal("300.000"),
+            "total_external_demand": Decimal("625.000"),
+            "first_deficit_date": None,
+        }
+
+        rows = _critical_stock_candidates(SimpleNamespace(id="producer-1"))
+
+        self.assertEqual(rows, [])
+
+    @patch("apps.alerts.services.calculate_inventory_commitment_state")
+    @patch("apps.alerts.services.Stock")
+    def test_critical_alert_uses_temporal_deficit(self, stock_model_mock, commitment_mock):
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        stock = SimpleNamespace(product=product, product_id="product-1")
+        stock_model_mock.objects.select_related.return_value.filter.return_value.distinct.return_value = [stock]
+        commitment_mock.return_value = {
+            "max_deficit": Decimal("125.000"),
+            "available_stock_now": Decimal("500.000"),
+            "useful_forecast_total": Decimal("0.000"),
+            "total_external_demand": Decimal("625.000"),
+            "first_deficit_date": timezone.localdate(),
+        }
+
+        rows = _critical_stock_candidates(SimpleNamespace(id="producer-1"))
+
+        self.assertEqual(len(rows), 1)
+        self.assertIn("Faltam 125 kg", rows[0]["description"])
 
 
 class ClientAlertsBadgeStateTests(SimpleTestCase):

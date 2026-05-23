@@ -383,7 +383,7 @@
                 <th>Pedidos acumulados</th>
                 <th>Stock disponível</th>
                 <th>Produção prevista útil</th>
-                <th>Capacidade total até à data</th>
+                <th>Capacidade restante após pedidos</th>
                 <th>Quantidade em falta</th>
               </tr>
             </thead>
@@ -394,7 +394,7 @@
                   <td>{{ row.demand_until_date|quantity }} {{ plan.product.unit }}</td>
                   <td>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</td>
                   <td>{{ row.forecast_until_date|quantity }} {{ plan.product.unit }}</td>
-                  <td><strong>{{ row.capacity_until_date|quantity }} {{ plan.product.unit }}</strong></td>
+                  <td><strong>{{ row.remaining_capacity_until_date|quantity }} {{ plan.product.unit }}</strong></td>
                   <td>
                     {% if row.deficit_until_date > 0 %}
                       <strong class="ecd-deficit">{{ row.deficit_until_date|quantity }} {{ plan.product.unit }}</strong>

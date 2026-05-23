@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.common.decorators import client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
+from apps.inventory.services import calculate_inventory_commitment_state
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import NeedSourceSystem
 from apps.needs.services import (
@@ -73,25 +74,29 @@ def _get_form_products(producer):
         return products
 
     product_ids = [product.id for product in products]
-    stock_rows = Stock.objects.filter(
-        producer=producer,
-        product_id__in=product_ids,
-    ).values_list("product_id", "current_quantity", "reserved_quantity", "safety_stock")
+    stock_by_product_id = {
+        stock.product_id: stock
+        for stock in Stock.objects.filter(
+            producer=producer,
+            product_id__in=product_ids,
+        )
+    }
 
     # Sem registo de stock assume crítico enquanto não houver dados reais de inventário.
     critical_product_ids = {str(product_id) for product_id in product_ids}
     surplus_product_ids = set()
 
-    for product_id, current_quantity, reserved_quantity, safety_stock in stock_rows:
-        current_qty = Decimal(str(current_quantity or 0))
-        reserved_qty = Decimal(str(reserved_quantity or 0))
-        minimum_qty = Decimal(str(safety_stock or 0))
-        available_qty = current_qty - reserved_qty
-        warning_upper_qty = minimum_qty + (minimum_qty * Decimal("0.10"))
-        if available_qty >= minimum_qty:
-            critical_product_ids.discard(str(product_id))
-        if available_qty > minimum_qty and (minimum_qty <= 0 or available_qty > warning_upper_qty):
-            surplus_product_ids.add(str(product_id))
+    for product in products:
+        commitment_state = calculate_inventory_commitment_state(
+            producer,
+            product,
+            stock=stock_by_product_id.get(product.id),
+        )
+        product_id = str(product.id)
+        if commitment_state.get("state_key") != "critical":
+            critical_product_ids.discard(product_id)
+        if commitment_state.get("state_key") == "excess":
+            surplus_product_ids.add(product_id)
 
     for product in products:
         product.is_critical_stock = str(product.id) in critical_product_ids

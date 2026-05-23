@@ -269,6 +269,9 @@ def calculate_external_demand_plan(*, producer, product):
                 )
         total_forecast_relevant = max(total_forecast_relevant, forecast_until_date)
         capacity_until_date = _quantize_need_quantity(available_stock_now + forecast_until_date)
+        remaining_capacity_until_date = _quantize_need_quantity(
+            max(capacity_until_date - total_external_demand, Decimal("0.000"))
+        )
         deficit_until_date = _quantize_need_quantity(
             max(total_external_demand - capacity_until_date, Decimal("0.000"))
         )
@@ -282,6 +285,7 @@ def calculate_external_demand_plan(*, producer, product):
             "demand_until_date": total_external_demand,
             "forecast_until_date": forecast_until_date,
             "capacity_until_date": capacity_until_date,
+            "remaining_capacity_until_date": remaining_capacity_until_date,
             "deficit_until_date": deficit_until_date,
         })
 
@@ -1308,11 +1312,22 @@ def get_critical_stock_product_ids(producer, *, product_ids=None):
         qs = qs.filter(product_id__in=product_ids)
 
     critical_product_ids = set()
-    for stock in qs.only("product_id", "current_quantity", "reserved_quantity", "safety_stock"):
-        current_quantity = Decimal(str(stock.current_quantity or 0))
-        reserved_quantity = Decimal(str(stock.reserved_quantity or 0))
-        safety_stock = Decimal(str(stock.safety_stock or 0))
-        if current_quantity - reserved_quantity < safety_stock:
+    from apps.inventory.services import calculate_inventory_commitment_state
+
+    for stock in qs.select_related("product").only(
+        "product_id",
+        "product__id",
+        "product__name",
+        "current_quantity",
+        "reserved_quantity",
+        "safety_stock",
+    ):
+        commitment_state = calculate_inventory_commitment_state(
+            producer,
+            stock.product,
+            stock=stock,
+        )
+        if commitment_state.get("state_key") == "critical":
             critical_product_ids.add(str(stock.product_id))
     return critical_product_ids
 

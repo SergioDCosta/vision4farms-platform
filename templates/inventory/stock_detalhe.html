@@ -72,7 +72,11 @@
       <p class="inv-stat-label">Compromissos externos</p>
       <p class="inv-help" style="margin-top:.35rem;">
         {% if stock_state.has_safety_stock %}
-          Aviso até {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}
+          {% if stock_state.has_external_demands %}
+            Previsão útil: {{ stock_state.useful_forecast_total|quantity }} {{ stock.product.unit }}
+          {% else %}
+            Aviso até {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}
+          {% endif %}
         {% else %}
           Registe pedidos externos para ativar avisos de compromissos.
         {% endif %}
@@ -89,17 +93,22 @@
     {% if stock_state.key == "critical" %}
       <div class="inv-alert inv-alert--warning">
         <strong>Stock abaixo dos compromissos externos.</strong>
-        O disponível está abaixo da quantidade necessária para pedidos externos. Deve reforçar stock ou procurar recomendação de compra.
+        Faltam {{ stock_state.deficit_quantity|quantity }} {{ stock.product.unit }}{% if stock_state.first_deficit_date %} até {{ stock_state.first_deficit_date|date:"d/m/Y" }}{% endif %} para cumprir os pedidos externos dentro das datas prometidas.
       </div>
     {% elif stock_state.key == "warning" %}
       <div class="inv-alert inv-alert--warning">
-        <strong>Stock perto dos compromissos externos.</strong>
-        O disponível está dentro da margem de 10% acima dos compromissos. Qualquer reserva ou venda pode deixar este produto em falta para clientes externos.
+        <strong>Pedidos cobertos, mas com pouca margem.</strong>
+        O stock atual e a produção prevista chegam a tempo, mas a margem vendável é curta.
       </div>
     {% elif stock_state.key == "excess" %}
       <div class="inv-alert inv-alert--success">
-        <strong>Existe potencial de excedente.</strong>
-        O disponível está acima da margem dos compromissos. Pode vender {{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }} sem tocar na quantidade reservada para clientes externos.
+        <strong>Pedidos cobertos.</strong>
+        {{ stock_state.state_message|default:"Existe margem disponível para venda." }} Pode vender até {{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }} sem comprometer os pedidos externos registados.
+      </div>
+    {% elif stock_state.has_external_demands %}
+      <div class="inv-alert inv-alert--success">
+        <strong>Pedidos cobertos.</strong>
+        {{ stock_state.state_message|default:"O stock atual e a produção prevista chegam a tempo." }}
       </div>
     {% endif %}
   {% endif %}
@@ -117,9 +126,11 @@
     <div class="inv-card-body inv-stock-health-grid">
       <div class="inv-progress-block">
         <div class="inv-progress-head">
-          <span>{% if stock_state.has_safety_stock %}Margem até zona segura{% else %}Compromissos externos{% endif %}</span>
+          <span>{% if stock_state.has_external_demands %}Cobertura temporal{% elif stock_state.has_safety_stock %}Margem até zona segura{% else %}Compromissos externos{% endif %}</span>
           <strong>
-            {% if stock_state.has_safety_stock %}
+            {% if stock_state.has_external_demands %}
+              {{ stock_state.available_quantity|quantity }} + {{ stock_state.useful_forecast_total|quantity }} / {{ stock_state.safety_stock|quantity }} {{ stock.product.unit }}
+            {% elif stock_state.has_safety_stock %}
               {{ stock.available_quantity|quantity }} / {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }}
             {% else %}
               Não definido
@@ -127,10 +138,12 @@
           </strong>
         </div>
         <div class="inv-progress-track">
-          <span class="inv-progress-fill inv-progress-fill--{{ stock_state.key }}" style="width:{{ stock_state.warning_progress_percent }}%;"></span>
+          <span class="inv-progress-fill inv-progress-fill--{{ stock_state.key }}" style="width:{% if stock_state.has_external_demands %}{{ stock_state.temporal_coverage_progress_percent }}{% else %}{{ stock_state.warning_progress_percent }}{% endif %}%;"></span>
         </div>
         <p class="inv-help">
-          {% if stock_state.has_safety_stock %}
+          {% if stock_state.has_external_demands %}
+            Compara pedidos externos por data com stock disponível atual e produção prevista útil até cada entrega.
+          {% elif stock_state.has_safety_stock %}
             A app considera atenção quando o disponível está entre {{ stock.safety_stock|quantity }} e {{ stock_state.warning_upper_quantity|quantity }} {{ stock.product.unit }} face aos compromissos externos.
           {% else %}
             Sem este valor, a app não consegue distinguir stock baixo de stock saudável.
@@ -160,7 +173,11 @@
           <span class="inv-progress-fill inv-progress-fill--sellable" style="width:{% if stock_state.publishable_quantity > 0 %}100{% else %}0{% endif %}%;"></span>
         </div>
         <p class="inv-help">
-          Calculado como disponível menos compromissos externos. Se vender esta quantidade, fica exatamente com a quantidade necessária para clientes externos.
+          {% if stock_state.has_external_demands %}
+            Calculado pela menor margem entre pedidos acumulados e capacidade disponível até cada data.
+          {% else %}
+            Sem pedidos externos ativos, corresponde ao stock disponível atual.
+          {% endif %}
         </p>
       </div>
 
@@ -173,7 +190,7 @@
           <span class="inv-progress-fill inv-progress-fill--critical" style="width:{% if stock_state.deficit_quantity > 0 %}100{% else %}0{% endif %}%;"></span>
         </div>
         <p class="inv-help">
-          Só aparece quando o stock disponível está abaixo dos compromissos externos.
+          Só aparece quando o stock atual e a produção prevista útil não chegam a tempo dos pedidos externos.
         </p>
       </div>
     </div>

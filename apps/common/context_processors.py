@@ -34,6 +34,8 @@ def brand_assets(request):
     return {
         "brand_logo_color_url": getattr(settings, "BRAND_LOGO_COLOR_URL", ""),
         "brand_logo_white_url": getattr(settings, "BRAND_LOGO_WHITE_URL", ""),
+        "brand_login_logo_white_url": getattr(settings, "BRAND_LOGIN_LOGO_WHITE_URL", ""),
+        "brand_sidebar_compact_logo_url": getattr(settings, "BRAND_SIDEBAR_COMPACT_LOGO_URL", ""),
         "brand_favicon_url": getattr(settings, "BRAND_FAVICON_URL", ""),
     }
 

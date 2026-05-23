@@ -1,6 +1,6 @@
 # VISION4FARMS - Contexto Atual do Projeto
 
-Última revisão: 2026-05-21.
+Última revisão: 2026-05-23.
 
 Este ficheiro serve como mapa funcional e técnico atual da aplicação. O objetivo é ajudar a explicar o projeto em relatório, manter o contexto entre sessões de desenvolvimento e evitar decisões baseadas em informação desatualizada.
 
@@ -12,9 +12,9 @@ Funcionalidades principais:
 
 - gestão de conta, perfil de produtor e localização;
 - catálogo global de produtos e categorias;
-- inventário do produtor com stock atual, stock de segurança, previsões de produção e movimentos;
-- marketplace de anúncios públicos de stock atual e pré-venda;
-- necessidades de compra/procura entre produtores;
+- inventário do produtor com stock atual, compromissos externos, previsões de produção e movimentos;
+- marketplace de anúncios públicos de stock atual, pré-venda e procuras agregadas;
+- necessidades/procuras entre produtores geradas manualmente ou a partir de pedidos externos de clientes;
 - recomendações bidirecionais para comprar ou vender;
 - encomendas com workflow operacional;
 - alertas operacionais e notificações informativas;
@@ -43,6 +43,8 @@ Branding atual:
 - variáveis suportadas:
   - `BRAND_LOGO_COLOR_URL`;
   - `BRAND_LOGO_WHITE_URL`;
+  - `BRAND_LOGIN_LOGO_WHITE_URL`;
+  - `BRAND_SIDEBAR_COMPACT_LOGO_URL`;
   - `BRAND_FAVICON_URL`;
 - se as variáveis não forem definidas, `settings.py` usa defaults Cloudinary;
 - a app já não depende de ficheiros estáticos `static/brand/*.svg`, evitando erros de manifest do WhiteNoise.
@@ -99,7 +101,7 @@ Comportamento visual:
 
 - quando não há foto de perfil, o avatar mostra as iniciais do primeiro e último nome;
 - o sino da topbar só mostra ping vermelho quando existem alertas pendentes;
-- o logo compacto `V4F` fica centrado no modo mobile/colapsado.
+- o logo compacto da sidebar usa SVG Cloudinary, sem moldura/quadrado, e fica centrado no modo mobile/colapsado.
 
 ## 5) Accounts
 
@@ -215,6 +217,13 @@ O painel do produtor mostra:
 - card operacional "Hoje na exploração";
 - indicadores de encomendas, necessidades, anúncios e stock.
 
+Inventário no painel:
+
+- produtos críticos são apenas os que têm défice temporal real (`max_deficit > 0`);
+- produção futura útil é considerada antes de mostrar risco;
+- produtos com pedidos externos cobertos por stock atual + previsão disponível a tempo não contam como críticos;
+- o painel usa a mesma fonte central do inventário: `calculate_inventory_commitment_state`.
+
 Regras de UX:
 
 - botões "Recomendações" e "Publicar excedente" só aparecem quando o produtor tem produtos ativos no inventário;
@@ -326,19 +335,24 @@ Stock:
 - `current_quantity`: quantidade real em stock;
 - `reserved_quantity`: quantidade reservada em encomendas/listings;
 - `available = current_quantity - reserved_quantity`;
-- `safety_stock`: quantidade mínima desejada;
-- `sellable/publicable = max(available - safety_stock, 0)`.
+- `safety_stock`: campo técnico mantido por compatibilidade, atualmente sincronizado com a soma dos pedidos externos em aberto do produtor/produto;
+- na UI este valor aparece como "Compromissos externos" ou "Reservado para clientes externos";
+- quantidade vendável/publicável é calculada por margem temporal quando existem pedidos externos, não apenas por `available - safety_stock`.
 
 Estado de stock:
 
-- crítico: `available < safety_stock`;
-- atenção: `safety_stock <= available <= safety_stock + 10%`;
-- excedente: `available > safety_stock + 10%`.
+- fonte central: `calculate_inventory_commitment_state(producer, product)`;
+- quando existem pedidos externos, o estado usa `calculate_external_demand_plan`;
+- crítico: existe `max_deficit > 0`, ou seja, stock atual + produção prevista útil não chegam a tempo dos pedidos externos;
+- atenção/coberto no limite: não há défice, mas a margem temporal disponível é curta;
+- coberto/excedente: pedidos externos estão cobertos e existe margem temporal vendável;
+- sem pedidos externos ativos, o fallback considera apenas stock disponível atual e não cria estado crítico por compromissos inexistentes.
 
 Detalhe de stock:
 
-- card de saúde mostra margem face ao stock de segurança;
-- progress bars mostram margem, reservado, quantidade vendável e défice;
+- card de saúde mostra cobertura temporal dos compromissos externos;
+- mostra stock disponível, compromissos externos, produção prevista útil, défice temporal e margem vendável;
+- progress bars mostram cobertura, reservado, quantidade vendável temporal e défice real;
 - movimentos recentes mostram histórico vindo de `stock_movements`;
 - produções futuras podem ser assumidas no stock quando chegam ao período definido.
 
@@ -346,6 +360,11 @@ Produções futuras:
 
 - vivem em `production_forecasts`;
 - são separadas do stock real até serem assumidas;
+- contam para cobertura de pedidos externos apenas quando estão disponíveis a tempo:
+  - `period_end <= requested_delivery_date`;
+  - se não houver `period_end`, usa `period_start <= requested_delivery_date`;
+  - forecast sem data válida não conta;
+  - quantidade útil = `forecast_quantity - reserved_quantity`;
 - ao assumir previsão:
   - quantidade passa para stock atual;
   - movimento é registado em `stock_movements`;
@@ -372,8 +391,9 @@ Páginas:
 
 Feed público:
 
-- mostra anúncios de outros produtores;
+- mostra anúncios/ofertas de outros produtores e procuras agregadas de outros produtores;
 - não mostra anúncios do próprio produtor;
+- não mostra procuras do próprio produtor no feed geral;
 - filtros: pesquisa, categoria, origem, ordenação e "apenas disponíveis";
 - cards modernos com imagem, origem, estado, produtor, localização, quantidade, preço/kg, entrega e CTAs.
 
@@ -389,11 +409,19 @@ Tipos de anúncio:
 - pré-venda (`forecast_id`);
 - resposta privada a necessidade (`need_id`).
 
+Procuras no marketplace:
+
+- vêm de `needs`, não de `marketplace_listings`;
+- são cards de procura visualmente distintos das ofertas;
+- aparecem quando a necessidade está `OPEN` ou `PARTIALLY_COVERED` e ainda existe quantidade por planear;
+- CTA principal abre `/necessidades/responder/?need=<id>&product=<id>`;
+- não existe página pública própria de detalhe da necessidade nesta fase.
+
 Regras:
 
 - anúncios públicos têm `need_id IS NULL`;
 - respostas a necessidades têm `need_id IS NOT NULL` e não aparecem no feed público;
-- publicar excedente usa quantidade vendável calculada pelo inventário;
+- publicar excedente usa quantidade vendável temporal calculada pelo inventário;
 - editar anúncio fechado é bloqueado;
 - eliminar fisicamente anúncio referenciado por recomendação/encomenda pode falhar por FK, por isso o fluxo deve preferir fechar/cancelar em vez de apagar quando já existe histórico relacionado.
 
@@ -469,19 +497,31 @@ GETs:
 
 Pedidos externos de clientes:
 
-- primeira fase implementada em `external_customer_demands`;
+- implementados em `external_customer_demands`;
 - modelo `ExternalCustomerDemand` é `managed=False`;
 - pedidos têm cliente, contacto, referência, produto, quantidade, data pretendida de entrega, estado e notas;
 - `requested_delivery_date` é `DATE`, não `TIMESTAMPTZ`;
 - `requested_quantity` tem de ser superior a zero;
 - CRUD simples disponível em `/necessidades/pedidos-clientes/`;
 - cancelar pedido faz soft cancel com estado `CANCELLED`;
-- já existe cálculo temporal por produto/data:
+- cálculo temporal por produto/data:
   - compara pedidos acumulados até cada data com stock disponível atual e produção prevista útil até essa data;
   - forecast conta se `period_end <= requested_delivery_date`; se não houver `period_end`, conta por `period_start`; forecasts sem data válida não contam;
   - mostra maior défice e primeira data crítica;
-- nesta fase ainda não gera nem atualiza automaticamente `Need`;
-- próximas fases previstas: need agregada por produto, sync de compromissos externos para `stocks.safety_stock`, marketplace com cards de procura.
+- quando existe défice temporal, gera ou atualiza uma `Need` agregada com `source_system=CUSTOMER_DEMAND`;
+- `required_quantity` da need automática é o maior défice temporal;
+- `needed_by_date` da need automática é a primeira data crítica;
+- se o défice desaparecer, a need automática passa para `COVERED`;
+- pedidos externos ativos recebem `generated_need_id` da need agregada;
+- pedidos externos individuais não são fechados automaticamente na v1;
+- `stocks.safety_stock` é sincronizado com a soma dos pedidos externos em aberto do produtor/produto.
+
+Need automática por pedidos externos:
+
+- continua a ser uma `Need`, não uma `MarketplaceListing`;
+- não pode ser editada diretamente pelo endpoint de edição de needs;
+- para alterar quantidade/data, o produtor deve editar os pedidos externos de origem;
+- evita duplicar necessidades ativas para o mesmo produtor/produto.
 
 ## 14) Respostas a Necessidades
 
@@ -500,7 +540,7 @@ Estados da proposta (`need_response_status`):
 Fluxo do produtor que responde:
 
 - abre `/necessidades/responder/?need=<id>&product=<id>`;
-- vê card "O seu inventário" com stock atual, reservado, disponível, stock de segurança, produção futura e máximo publicável;
+- vê card "O seu inventário" com stock atual, reservado, disponível, compromissos externos, produção futura e máximo publicável;
 - envia proposta com quantidade, preço, entrega e observações;
 - se já existir proposta pendente para essa necessidade, edita a proposta existente;
 - só pode criar nova proposta depois de a anterior deixar de estar pendente.
@@ -533,15 +573,17 @@ Objetivo:
 Passo 1:
 
 - mostra duas tabelas:
-  - produtos a comprar, quando stock disponível está abaixo do stock de segurança;
-  - produtos a vender, quando stock disponível está acima do stock de segurança;
+  - produtos a comprar, quando existe défice temporal para cumprir pedidos externos;
+  - produtos a vender, quando existe margem temporal acima dos compromissos externos;
 - o card "Ação selecionada" fica centrado e resume o produto/direção/quantidade.
 
 Métricas:
 
-- `available_stock = current_quantity - reserved_quantity`;
-- `buy_quantity = max(safety_stock - available_stock, 0)`;
-- `sell_quantity = max(available_stock - safety_stock, 0)`.
+- usa `calculate_inventory_commitment_state`;
+- `buy_quantity = max_deficit`;
+- `sell_quantity = temporal_sellable_quantity`;
+- quando não existem pedidos externos ativos, usa fallback seguro baseado no stock disponível atual;
+- não recomenda compra quando a produção prevista útil cobre os pedidos externos a tempo.
 
 Compra:
 
@@ -633,8 +675,8 @@ Secções de alertas ativos:
 
 Alertas geridos:
 
-- stock crítico;
-- excedente disponível;
+- stock crítico temporal;
+- excedente/margem vendável temporal;
 - necessidade por cobrir;
 - resposta recebida;
 - prazo de necessidade a aproximar;
@@ -643,6 +685,14 @@ Alertas geridos:
 - encomenda a exigir confirmação;
 - entrega em atraso;
 - anúncio a expirar.
+
+Lógica de stock em alertas:
+
+- usa `calculate_inventory_commitment_state`;
+- alerta crítico só é criado quando existe `max_deficit > 0`;
+- produção futura útil é considerada antes de gerar alerta;
+- texto indica quantidade em falta e primeira data crítica;
+- alertas de excedente usam a margem temporal vendável, evitando sugerir venda de stock necessário para pedidos futuros.
 
 Ações:
 
@@ -790,7 +840,7 @@ FAQ atual:
 - problemas em encomendas;
 - ajuda sobre marketplace;
 - ajuda sobre necessidades;
-- interpretação de stock atual, reservado, disponível, stock de segurança, produção futura e máximo publicável.
+- interpretação de stock atual, reservado, disponível, compromissos externos, produção futura e máximo publicável.
 
 ## 21) Notifications, Badges e Realtime
 
@@ -855,6 +905,7 @@ Inventário:
 
 Marketplace e necessidades:
 
+- `external_customer_demands`;
 - `marketplace_listings`;
 - `needs`;
 - `recommendations`;
@@ -896,11 +947,13 @@ Operacional:
 - `users` 1-1 `producer_profiles`.
 - `producer_profiles` N-N `products` via `producer_products`.
 - `stocks` e `production_forecasts` pertencem a produtor/produto.
+- `external_customer_demands` pertencem a produtor/produto e podem apontar para uma need agregada em `generated_need_id`.
 - `marketplace_listings.stock_id` aponta para stock atual.
 - `marketplace_listings.forecast_id` aponta para pré-venda.
 - `marketplace_listings.need_id` transforma a listing em resposta privada a necessidade.
 - `marketplace_listings.need_response_status` controla o estado explícito da proposta.
 - `needs.producer_id` aponta para o produtor que precisa do produto.
+- `needs.source_system=CUSTOMER_DEMAND` identifica procura gerada por pedidos externos de clientes.
 - `order_items.need_id` permite recalcular cobertura da necessidade.
 - `recommendations.need_id` liga recomendação a necessidade criada/atualizada.
 - `messages` pertencem a `conversation`.
@@ -927,6 +980,8 @@ Variáveis importantes:
 - `CLOUDINARY_API_SECRET`;
 - `BRAND_LOGO_COLOR_URL`;
 - `BRAND_LOGO_WHITE_URL`;
+- `BRAND_LOGIN_LOGO_WHITE_URL`;
+- `BRAND_SIDEBAR_COMPACT_LOGO_URL`;
 - `BRAND_FAVICON_URL`.
 
 Comandos/tarefas:

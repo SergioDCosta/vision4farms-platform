@@ -1,14 +1,16 @@
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
 from apps.alerts.models import Alert, AlertSeverity, AlertStatus
 from apps.dashboard.services.weather import get_dashboard_weather_snapshot
 from apps.inventory.models import ProducerProfile, Stock
-from apps.inventory.services import producer_has_active_inventory_products
+from apps.inventory.services import (
+    calculate_inventory_commitment_state,
+    producer_has_active_inventory_products,
+)
 from apps.marketplace.models import ListingStatus, MarketplaceListing
 from apps.needs.models import Need, NeedStatus
 from apps.orders.models import DeliveryMethod, Order, OrderStatus
@@ -27,37 +29,35 @@ def build_client_dashboard_context(user):
         severity=AlertSeverity.CRITICAL
     ).count()
 
-    available_qty_expr = models.ExpressionWrapper(
-        models.F("current_quantity") - models.F("reserved_quantity"),
-        output_field=models.DecimalField(max_digits=14, decimal_places=3),
-    )
-    real_surplus_expr = models.ExpressionWrapper(
-        available_qty_expr - models.F("safety_stock"),
-        output_field=models.DecimalField(max_digits=14, decimal_places=3),
-    )
-    warning_upper_expr = models.ExpressionWrapper(
-        models.F("safety_stock") * Decimal("1.10"),
-        output_field=models.DecimalField(max_digits=14, decimal_places=3),
-    )
-
-    stocks_with_state = (
+    stocks_with_state = list(
         Stock.objects.select_related("product")
         .filter(producer=producer)
-        .annotate(
-            available_quantity_calc=available_qty_expr,
-            real_surplus_calc=real_surplus_expr,
-            warning_upper_quantity_calc=warning_upper_expr,
+    )
+
+    stock_commitment_rows = []
+    for stock in stocks_with_state:
+        commitment_state = calculate_inventory_commitment_state(
+            producer,
+            stock.product,
+            stock=stock,
         )
-    )
-    critical_stock_qs = stocks_with_state.filter(
-        available_quantity_calc__lt=models.F("safety_stock"),
-    ).order_by("available_quantity_calc")
-    critical_stock_count = critical_stock_qs.count()
-    near_stock_qs = stocks_with_state.filter(
-        available_quantity_calc__gte=models.F("safety_stock"),
-        available_quantity_calc__lte=models.F("warning_upper_quantity_calc"),
-    )
-    near_stock_count = near_stock_qs.count()
+        stock.commitment_state = commitment_state
+        stock.available_quantity_calc = commitment_state.get("available_stock_now")
+        stock.temporal_sellable_quantity = commitment_state.get("temporal_sellable_quantity")
+        stock.max_deficit = commitment_state.get("max_deficit")
+        stock_commitment_rows.append((stock, commitment_state))
+
+    critical_stock_rows = [
+        stock for stock, state in stock_commitment_rows
+        if state.get("state_key") == "critical"
+    ]
+    critical_stock_rows.sort(key=lambda stock: stock.max_deficit or Decimal("0"))
+    critical_stock_count = len(critical_stock_rows)
+    near_stock_rows = [
+        stock for stock, state in stock_commitment_rows
+        if state.get("state_key") == "warning"
+    ]
+    near_stock_count = len(near_stock_rows)
 
     pending_orders_qs = Order.objects.filter(
         buyer_producer=producer,
@@ -82,19 +82,27 @@ def build_client_dashboard_context(user):
     ).count()
 
     listed_product_ids = active_listings_qs.values_list("product_id", flat=True)
-    surplus_stock_candidate = (
-        stocks_with_state.filter(
-            available_quantity_calc__gt=models.F("warning_upper_quantity_calc"),
+    listed_product_id_set = set(listed_product_ids)
+    surplus_candidates = [
+        stock for stock, state in stock_commitment_rows
+        if (
+            state.get("state_key") == "excess"
+            and stock.product_id not in listed_product_id_set
         )
-        .exclude(product_id__in=listed_product_ids)
-        .order_by("-real_surplus_calc", "-available_quantity_calc")
-        .first()
+    ]
+    surplus_candidates.sort(
+        key=lambda stock: (
+            stock.temporal_sellable_quantity or Decimal("0"),
+            stock.available_quantity_calc or Decimal("0"),
+        ),
+        reverse=True,
     )
+    surplus_stock_candidate = surplus_candidates[0] if surplus_candidates else None
 
     recommended_actions = _build_recommended_actions(
         critical_alerts_count=critical_alerts_count,
         critical_stock_count=critical_stock_count,
-        critical_stock_qs=critical_stock_qs,
+        critical_stock_rows=critical_stock_rows,
         pending_orders_count=pending_orders_count,
         pending_orders_qs=pending_orders_qs,
         surplus_listings_count=surplus_listings_count,
@@ -112,7 +120,7 @@ def build_client_dashboard_context(user):
         "has_active_inventory_products": has_active_inventory_products,
         "priority_alerts": active_alerts_qs.order_by("-created_at")[:3],
         "recommended_actions": recommended_actions,
-        "low_stock_preview": critical_stock_qs[:3],
+        "low_stock_preview": critical_stock_rows[:3],
         "today_operations": _build_today_operations(
             pending_orders_count=pending_orders_count,
             critical_stock_count=critical_stock_count,
@@ -127,7 +135,7 @@ def _build_recommended_actions(
     *,
     critical_alerts_count,
     critical_stock_count,
-    critical_stock_qs,
+    critical_stock_rows,
     pending_orders_count,
     pending_orders_qs,
     surplus_listings_count,
@@ -150,7 +158,7 @@ def _build_recommended_actions(
         )
 
     if critical_stock_count > 0:
-        low_stock = critical_stock_qs.first()
+        low_stock = critical_stock_rows[0] if critical_stock_rows else None
         if low_stock and low_stock.product:
             actions.append(
                 {

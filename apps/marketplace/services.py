@@ -375,21 +375,20 @@ def get_stock_available_quantity(stock):
 
 def get_max_publishable_quantity(stock):
     """
-    Regra v1:
-    excedente publicável = current_quantity - reserved_quantity - safety_stock
+    Excedente publicável calculado pela regra temporal dos compromissos externos.
+    Se não existirem pedidos externos ativos, usa o stock disponível atual.
     """
     if not stock:
         return Decimal("0.000")
 
-    current_quantity = Decimal(str(stock.current_quantity or 0))
-    reserved_quantity = Decimal(str(stock.reserved_quantity or 0))
-    safety_stock = Decimal(str(stock.safety_stock or 0))
+    from apps.inventory.services import calculate_inventory_commitment_state
 
-    publishable = current_quantity - reserved_quantity - safety_stock
-    if publishable < 0:
-        publishable = Decimal("0.000")
-
-    return quantize_qty(publishable)
+    commitment_state = calculate_inventory_commitment_state(
+        stock.producer,
+        stock.product,
+        stock=stock,
+    )
+    return quantize_qty(commitment_state.get("temporal_sellable_quantity") or Decimal("0.000"))
 
 
 def get_publishable_products(producer):

@@ -29,10 +29,9 @@ from apps.alerts.models import (
     AlertType,
 )
 from apps.inventory.models import ProducerProfile, ProductionForecast, Stock
+from apps.inventory.services import calculate_inventory_commitment_state
 from apps.marketplace.models import ListingStatus, MarketplaceListing
 from apps.needs.models import (
-    ExternalCustomerDemand,
-    ExternalCustomerDemandStatus,
     Need,
     NeedResponseStatus,
     NeedSourceSystem,
@@ -866,30 +865,20 @@ def _critical_stock_candidates(producer):
     )
 
     for stock in stocks:
-        available_quantity = _as_decimal(stock.current_quantity) - _as_decimal(stock.reserved_quantity)
-        safety_stock = _as_decimal(stock.safety_stock)
-        if available_quantity >= safety_stock:
+        commitment_state = calculate_inventory_commitment_state(
+            producer,
+            stock.product,
+            stock=stock,
+        )
+        if commitment_state.get("max_deficit", Decimal("0.000")) <= Decimal("0.000"):
             continue
 
         unit = getattr(stock.product, "unit", "") or ""
-        available_label = _quantity_label(available_quantity, unit)
-        safety_label = _quantity_label(safety_stock, unit)
-        deficit_label = _quantity_label(max(safety_stock - available_quantity, Decimal("0.000")), unit)
-        first_external_deadline = (
-            ExternalCustomerDemand.objects
-            .filter(
-                producer=producer,
-                product=stock.product,
-                status__in=[
-                    ExternalCustomerDemandStatus.OPEN,
-                    ExternalCustomerDemandStatus.PARTIALLY_COVERED,
-                    ExternalCustomerDemandStatus.COVERED,
-                ],
-            )
-            .order_by("requested_delivery_date")
-            .values_list("requested_delivery_date", flat=True)
-            .first()
-        )
+        available_label = _quantity_label(commitment_state.get("available_stock_now"), unit)
+        forecast_label = _quantity_label(commitment_state.get("useful_forecast_total"), unit)
+        safety_label = _quantity_label(commitment_state.get("total_external_demand"), unit)
+        deficit_label = _quantity_label(commitment_state.get("max_deficit"), unit)
+        first_external_deadline = commitment_state.get("first_deficit_date")
         deadline_label = (
             formats.date_format(first_external_deadline, "SHORT_DATE_FORMAT")
             if first_external_deadline
@@ -905,17 +894,20 @@ def _critical_stock_candidates(producer):
                 description=(
                     f"Faltam {deficit_label} para cumprir pedidos externos"
                     + (f" até {deadline_label}." if deadline_label else ".")
-                    + f" Disponível: {available_label} · Necessário: {safety_label}."
+                    + f" Disponível: {available_label} · Previsão útil: {forecast_label} · Necessário: {safety_label}."
                 ),
                 payload={
-                    "available_quantity": str(available_quantity),
-                    "safety_stock": str(safety_stock),
+                    "available_quantity": str(commitment_state.get("available_stock_now")),
+                    "useful_forecast_total": str(commitment_state.get("useful_forecast_total")),
+                    "safety_stock": str(commitment_state.get("total_external_demand")),
+                    "max_deficit": str(commitment_state.get("max_deficit")),
+                    "first_deficit_date": str(first_external_deadline or ""),
                     "action_url": f"/inventario/stock/{stock.product_id}/",
                     "action_label": "Ver detalhe do stock",
                     "secondary_action_url": f"/recomendacoes/?product={stock.product_id}",
                     "secondary_action_label": "Abrir recomendações",
                     "impact_label": f"Falta stock para cumprir pedidos externos de {stock.product.name}",
-                    "reason": "O stock disponível ficou abaixo da quantidade necessária para pedidos externos.",
+                    "reason": "O stock atual e a produção prevista útil não chegam a tempo dos pedidos externos.",
                 },
                 requires_action=True,
                 priority=10,
@@ -939,14 +931,17 @@ def _surplus_candidates(producer):
     )
 
     for stock in stocks:
-        available_quantity = _as_decimal(stock.current_quantity) - _as_decimal(stock.reserved_quantity)
-        safety_stock = _as_decimal(stock.safety_stock)
-        if available_quantity <= safety_stock:
+        commitment_state = calculate_inventory_commitment_state(
+            producer,
+            stock.product,
+            stock=stock,
+        )
+        real_surplus = _as_decimal(commitment_state.get("temporal_sellable_quantity"))
+        if real_surplus <= Decimal("0.000"):
             continue
 
-        real_surplus = max(available_quantity - safety_stock, Decimal("0.000"))
-        warning_upper_quantity = safety_stock + (safety_stock * Decimal("0.10"))
-        if safety_stock > 0 and available_quantity <= warning_upper_quantity:
+        total_external_demand = _as_decimal(commitment_state.get("total_external_demand"))
+        if total_external_demand > 0 and real_surplus <= (total_external_demand * Decimal("0.10")):
             continue
 
         unit = getattr(stock.product, "unit", "") or ""
@@ -959,15 +954,17 @@ def _surplus_candidates(producer):
                 product=stock.product,
                 title=f"Excedente disponível: {stock.product.name}",
                 description=(
-                    f"Excedente real acima dos compromissos externos: {surplus_label}."
+                    f"Margem vendável depois de cumprir pedidos externos por data: {surplus_label}."
                 ),
                 payload={
                     "real_surplus": str(real_surplus),
+                    "useful_forecast_total": str(commitment_state.get("useful_forecast_total")),
+                    "total_external_demand": str(total_external_demand),
                     "action_url": (
                         f"/marketplace/publicar/?source=stock&product={stock.product_id}&from=inventory"
                     ),
                     "action_label": "Publicar no marketplace",
-                    "reason": "Existe stock mais de 10% acima dos compromissos externos.",
+                    "reason": "Existe margem temporal acima dos compromissos externos.",
                 },
                 requires_action=False,
                 priority=55,

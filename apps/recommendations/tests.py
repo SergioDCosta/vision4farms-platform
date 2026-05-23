@@ -24,7 +24,26 @@ class RecommendationStockDirectionTests(SimpleTestCase):
             reserved_quantity=Decimal(str(reserved)),
             safety_stock=Decimal(str(safety)),
         )
-        with patch("apps.recommendations.services.Stock") as stock_model:
+        available = Decimal(str(current)) - Decimal(str(reserved))
+        buy_quantity = max(Decimal(str(safety)) - available, Decimal("0"))
+        sell_quantity = max(available - Decimal(str(safety)), Decimal("0"))
+        state_key = "critical" if buy_quantity > 0 else "excess" if sell_quantity > 0 else "normal"
+        with (
+            patch("apps.recommendations.services.Stock") as stock_model,
+            patch(
+                "apps.recommendations.services.calculate_inventory_commitment_state",
+                return_value={
+                    "total_external_demand": Decimal(str(safety)),
+                    "reserved_quantity": Decimal(str(reserved)),
+                    "current_quantity": Decimal(str(current)),
+                    "available_stock_now": available,
+                    "max_deficit": buy_quantity,
+                    "temporal_sellable_quantity": sell_quantity,
+                    "useful_forecast_total": Decimal("0.000"),
+                    "state_key": state_key,
+                },
+            ),
+        ):
             stock_model.objects.filter.return_value.first.return_value = stock
             return calculate_current_deficit(
                 SimpleNamespace(id="producer-1"),
@@ -87,7 +106,49 @@ class RecommendationStockDirectionTests(SimpleTestCase):
             ),
         ]
 
-        with patch("apps.recommendations.services.Stock") as stock_model:
+        commitment_by_product = {
+            "buy-product": {
+                "total_external_demand": Decimal("100.000"),
+                "reserved_quantity": Decimal("0.000"),
+                "current_quantity": Decimal("50.000"),
+                "available_stock_now": Decimal("50.000"),
+                "max_deficit": Decimal("50.000"),
+                "temporal_sellable_quantity": Decimal("0.000"),
+                "useful_forecast_total": Decimal("0.000"),
+                "state_key": "critical",
+            },
+            "sell-product": {
+                "total_external_demand": Decimal("100.000"),
+                "reserved_quantity": Decimal("0.000"),
+                "current_quantity": Decimal("300.000"),
+                "available_stock_now": Decimal("300.000"),
+                "max_deficit": Decimal("0.000"),
+                "temporal_sellable_quantity": Decimal("200.000"),
+                "useful_forecast_total": Decimal("0.000"),
+                "state_key": "excess",
+            },
+            "balanced-product": {
+                "total_external_demand": Decimal("100.000"),
+                "reserved_quantity": Decimal("0.000"),
+                "current_quantity": Decimal("100.000"),
+                "available_stock_now": Decimal("100.000"),
+                "max_deficit": Decimal("0.000"),
+                "temporal_sellable_quantity": Decimal("0.000"),
+                "useful_forecast_total": Decimal("0.000"),
+                "state_key": "normal",
+            },
+        }
+
+        def commitment_side_effect(producer, product, stock=None):
+            return commitment_by_product[str(product.id)]
+
+        with (
+            patch("apps.recommendations.services.Stock") as stock_model,
+            patch(
+                "apps.recommendations.services.calculate_inventory_commitment_state",
+                side_effect=commitment_side_effect,
+            ),
+        ):
             stock_model.objects.filter.return_value.only.return_value = stocks
             rows = build_recommendation_inventory_rows(
                 SimpleNamespace(id="producer-1"),

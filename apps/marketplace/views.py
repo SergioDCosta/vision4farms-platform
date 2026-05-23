@@ -17,7 +17,7 @@ from PIL import Image, ImageOps
 from apps.common.decorators import login_required, client_only_required
 from apps.common.redirects import get_safe_next_url
 from apps.accounts.models import UserRole
-from apps.inventory.models import ProducerProduct, ProductionForecast
+from apps.inventory.models import ProductionForecast
 from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
@@ -590,20 +590,7 @@ def _build_marketplace_detail_context(request, listing, producer):
         if buyer_map_latitude is not None and buyer_map_longitude is not None:
             buyer_map_name = get_producer_display_name(producer)
 
-    producer_product = ProducerProduct.objects.filter(
-        producer_id=listing.producer_id,
-        product_id=listing.product_id,
-    ).first()
-    producer_product_description = (
-        producer_product.producer_description
-        if producer_product
-        else None
-    )
-    detail_description = _first_non_empty_text(
-        listing.notes,
-        producer_product_description,
-        getattr(listing.product, "description", None),
-    ) or "Sem descrição disponível para este anúncio."
+    detail_description = _first_non_empty_text(listing.notes) or "Não foram colocadas observações."
 
     producer_member_since = None
     producer_user = getattr(listing.producer, "user", None)
