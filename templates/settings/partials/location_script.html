@@ -34,7 +34,7 @@
     });
   }
 
-  button.addEventListener("click", async function () {
+  async function requestAutomaticLocation() {
     if (!navigator.geolocation) {
       setStatus("error", "Este navegador não suporta geolocalização.");
       return;
@@ -91,6 +91,25 @@
     } finally {
       button.disabled = false;
     }
-  });
+  }
+
+  button.addEventListener("click", requestAutomaticLocation);
+
+  function shouldAutoRequestLocation() {
+    const params = new URLSearchParams(window.location.search || "");
+    return params.get("auto_location") === "1" && window.location.hash === "#localizacao";
+  }
+
+  if (shouldAutoRequestLocation()) {
+    window.setTimeout(() => {
+      const locationSection = document.getElementById("localizacao");
+      if (locationSection) {
+        locationSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      const cleanUrl = `${window.location.pathname}${window.location.hash || "#localizacao"}`;
+      window.history.replaceState({}, document.title, cleanUrl);
+      requestAutomaticLocation();
+    }, 350);
+  }
 })();
 </script>

@@ -219,7 +219,7 @@ class DashboardWeatherCardContextTests(SimpleTestCase):
         )
 
         self.assertIn("Definir localização", html)
-        self.assertIn("/definicoes/#localizacao", html)
+        self.assertIn("/definicoes/?auto_location=1#localizacao", html)
 
     def test_weather_quick_actions_do_not_include_marketplace_fallback(self):
         actions = build_weather_quick_actions(
