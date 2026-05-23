@@ -82,6 +82,21 @@
 .adm-audit-row.is-open .adm-audit-chevron{
   transform:rotate(90deg);
 }
+.adm-audit-action-pill{
+  display:inline-flex;
+  align-items:center;
+  padding:.18rem .58rem;
+  border-radius:999px;
+  font-size:.74rem;
+  font-weight:800;
+  border:1px solid transparent;
+  white-space:nowrap;
+}
+.adm-audit-action-pill--success{background:#dcfce7;color:#166534;border-color:#bbf7d0;}
+.adm-audit-action-pill--info{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}
+.adm-audit-action-pill--warning{background:#fef3c7;color:#92400e;border-color:#fde68a;}
+.adm-audit-action-pill--danger{background:#fee2e2;color:#991b1b;border-color:#fecaca;}
+.adm-audit-action-pill--neutral{background:#f1f5f9;color:#334155;border-color:#e2e8f0;}
 .adm-table tbody tr.adm-audit-detail-row:hover td,
 .adm-audit-detail-row > td{
   background:#f8fafc;
@@ -91,14 +106,24 @@
 }
 .adm-audit-detail{
   display:grid;
-  grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);
+  grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);
   gap:1rem;
   padding:1rem;
-  align-items:stretch;
+  align-items:start;
+}
+.adm-audit-technical{
+  grid-column:1 / -1;
+  justify-self:stretch;
+}
+.adm-audit-detail-main,
+.adm-audit-detail-side{
+  display:flex;
+  flex-direction:column;
+  gap:.85rem;
 }
 .adm-audit-detail-box{
   border:1px solid #e2e8f0;
-  border-radius:.75rem;
+  border-radius:.9rem;
   background:#fff;
   padding:1rem;
   min-width:0;
@@ -106,6 +131,56 @@
   flex-direction:column;
   gap:.9rem;
   box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+.adm-audit-event-card{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:.85rem;
+  padding:1rem;
+  border:1px solid #e2e8f0;
+  border-radius:.95rem;
+  background:#fff;
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+.adm-audit-event-card--success{border-color:#bbf7d0;background:linear-gradient(135deg,#f0fdf4,#fff);}
+.adm-audit-event-card--info{border-color:#bfdbfe;background:linear-gradient(135deg,#eff6ff,#fff);}
+.adm-audit-event-card--warning{border-color:#fde68a;background:linear-gradient(135deg,#fffbeb,#fff);}
+.adm-audit-event-card--danger{border-color:#fecaca;background:linear-gradient(135deg,#fef2f2,#fff);}
+.adm-audit-event-icon{
+  width:42px;
+  height:42px;
+  border-radius:.85rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:#f1f5f9;
+  color:#334155;
+  font-size:1.05rem;
+}
+.adm-audit-event-card--success .adm-audit-event-icon{background:#dcfce7;color:#15803d;}
+.adm-audit-event-card--info .adm-audit-event-icon{background:#dbeafe;color:#1d4ed8;}
+.adm-audit-event-card--warning .adm-audit-event-icon{background:#fef3c7;color:#b45309;}
+.adm-audit-event-card--danger .adm-audit-event-icon{background:#fee2e2;color:#b91c1c;}
+.adm-audit-event-kicker{
+  color:#64748b;
+  font-size:.72rem;
+  font-weight:850;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  margin-bottom:.2rem;
+}
+.adm-audit-event-body h4{
+  margin:0;
+  color:#0f172a;
+  font-size:1rem;
+  font-weight:850;
+}
+.adm-audit-event-body p{
+  margin:.35rem 0 0;
+  color:#475569;
+  font-size:.86rem;
+  line-height:1.45;
+  overflow-wrap:anywhere;
 }
 .adm-audit-detail-title{
   margin:0;
@@ -120,6 +195,18 @@
   flex-direction:column;
   gap:.55rem;
   min-width:0;
+}
+.adm-audit-section-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:.8rem;
+  flex-wrap:wrap;
+}
+.adm-audit-section-head span{
+  color:#64748b;
+  font-size:.8rem;
+  line-height:1.4;
 }
 .adm-audit-change-list{
   display:flex;
@@ -152,21 +239,111 @@
 .adm-audit-change-value{
   display:inline-flex;
   max-width:100%;
-  padding:.12rem .4rem;
+  padding:.18rem .45rem;
   border-radius:.4rem;
   background:#fff;
   color:#334155;
   border:1px solid #e2e8f0;
   overflow-wrap:anywhere;
 }
+.adm-audit-empty-note{
+  padding:.85rem;
+  border:1px dashed #cbd5e1;
+  border-radius:.75rem;
+  background:#f8fafc;
+  color:#64748b;
+  font-size:.84rem;
+  line-height:1.45;
+}
+.adm-audit-facts{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.65rem;
+}
+.adm-audit-fact{
+  min-width:0;
+  padding:.7rem;
+  border:1px solid #e2e8f0;
+  border-radius:.75rem;
+  background:#f8fafc;
+}
+.adm-audit-fact span,
+.adm-audit-access-item span{
+  display:block;
+  color:#94a3b8;
+  font-size:.7rem;
+  font-weight:850;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  margin-bottom:.18rem;
+}
+.adm-audit-fact strong,
+.adm-audit-access-item strong{
+  display:block;
+  color:#0f172a;
+  font-size:.84rem;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.adm-audit-fact small{
+  display:block;
+  margin-top:.18rem;
+  color:#64748b;
+  font-family:'DM Mono',monospace;
+  font-size:.72rem;
+}
+.adm-audit-access-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.65rem;
+}
+.adm-audit-access-item{
+  display:flex;
+  gap:.65rem;
+  align-items:flex-start;
+  min-width:0;
+  padding:.75rem;
+  border:1px solid #e2e8f0;
+  border-radius:.75rem;
+  background:#f8fafc;
+}
+.adm-audit-access-item i{
+  color:#16a34a;
+  font-size:1rem;
+  margin-top:.1rem;
+}
+.adm-audit-technical{
+  border:1px solid #e2e8f0;
+  border-radius:.9rem;
+  background:#fff;
+  padding:.72rem .82rem;
+  width:100%;
+  box-shadow:0 1px 2px rgba(15,23,42,.035);
+}
+.adm-audit-technical summary{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:.5rem;
+  cursor:pointer;
+  color:#334155;
+  font-size:.82rem;
+  font-weight:850;
+  list-style:none;
+}
+.adm-audit-technical summary::-webkit-details-marker{display:none;}
+.adm-audit-technical[open] summary{margin-bottom:.8rem;}
+.adm-audit-technical .adm-audit-detail-section{
+  gap:.65rem;
+}
 .adm-audit-meta-grid{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:.75rem;
+  gap:.55rem;
 }
 .adm-audit-meta-item{
   min-width:0;
-  padding:.65rem;
+  padding:.55rem .62rem;
   border:1px solid #e2e8f0;
   border-radius:.65rem;
   background:#f8fafc;
@@ -183,7 +360,7 @@
   margin-bottom:.2rem;
 }
 .adm-audit-meta-value{
-  font-size:.82rem;
+  font-size:.78rem;
   color:#334155;
   overflow-wrap:anywhere;
   line-height:1.4;
@@ -202,7 +379,9 @@
   .adm-audit-detail{
     grid-template-columns:1fr;
   }
-  .adm-audit-meta-grid{
+  .adm-audit-meta-grid,
+  .adm-audit-facts,
+  .adm-audit-access-grid{
     grid-template-columns:1fr;
   }
   .adm-audit-change{

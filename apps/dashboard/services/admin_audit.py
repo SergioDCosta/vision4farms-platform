@@ -36,6 +36,46 @@ AUDIT_ACTION_LABELS = {
     "CATEGORY_DELETED": "Categoria removida",
 }
 
+AUDIT_ACTION_META = {
+    "USER_LOGIN": {"category": "Sessão", "icon": "bi-box-arrow-in-right", "tone": "info"},
+    "USER_PROFILE_UPDATED": {"category": "Conta", "icon": "bi-person-check", "tone": "success"},
+    "USER_PRODUCER_PROFILE_UPDATED": {"category": "Perfil", "icon": "bi-person-badge", "tone": "success"},
+    "USER_PREFERENCES_UPDATED": {"category": "Preferências", "icon": "bi-sliders", "tone": "info"},
+    "USER_PROFILE_PHOTO_REMOVED": {"category": "Perfil", "icon": "bi-image", "tone": "warning"},
+    "USER_PASSWORD_CHANGED": {"category": "Segurança", "icon": "bi-shield-lock", "tone": "warning"},
+    "USER_PASSWORD_RESET_COMPLETED": {"category": "Segurança", "icon": "bi-key", "tone": "warning"},
+    "USER_INVITED": {"category": "Admin", "icon": "bi-envelope-plus", "tone": "success"},
+    "USER_EMAIL_CONFIRMED_BY_ADMIN": {"category": "Admin", "icon": "bi-patch-check", "tone": "success"},
+    "USER_STATUS_UPDATED": {"category": "Admin", "icon": "bi-person-gear", "tone": "warning"},
+    "USER_SUSPENDED": {"category": "Admin", "icon": "bi-person-dash", "tone": "danger"},
+    "USER_REACTIVATED": {"category": "Admin", "icon": "bi-person-check", "tone": "success"},
+    "SUPPORT_TICKET_CREATED": {"category": "Suporte", "icon": "bi-life-preserver", "tone": "info"},
+    "SUPPORT_TICKET_UPDATED": {"category": "Suporte", "icon": "bi-pencil-square", "tone": "info"},
+    "SUPPORT_TICKET_CLAIMED": {"category": "Suporte", "icon": "bi-person-check", "tone": "success"},
+    "SUPPORT_TICKET_REPLIED": {"category": "Suporte", "icon": "bi-reply", "tone": "success"},
+    "SUPPORT_TICKET_CLOSED": {"category": "Suporte", "icon": "bi-check-circle", "tone": "success"},
+    "PRODUCT_CREATED": {"category": "Catálogo", "icon": "bi-box-seam", "tone": "success"},
+    "PRODUCT_UPDATED": {"category": "Catálogo", "icon": "bi-pencil-square", "tone": "info"},
+    "PRODUCT_DELETED": {"category": "Catálogo", "icon": "bi-trash", "tone": "danger"},
+    "CATEGORY_CREATED": {"category": "Catálogo", "icon": "bi-tags", "tone": "success"},
+    "CATEGORY_UPDATED": {"category": "Catálogo", "icon": "bi-pencil-square", "tone": "info"},
+    "CATEGORY_DELETED": {"category": "Catálogo", "icon": "bi-trash", "tone": "danger"},
+}
+
+AUDIT_ENTITY_LABELS = {
+    "users": "Utilizador",
+    "producer_profiles": "Perfil de produtor",
+    "user_preferences": "Preferências",
+    "support_tickets": "Ticket de suporte",
+    "products": "Produto",
+    "categories": "Categoria",
+    "marketplace_listings": "Anúncio",
+    "needs": "Necessidade/procura",
+    "orders": "Encomenda",
+    "order_items": "Item de encomenda",
+    "stocks": "Stock",
+}
+
 AUDIT_FIELD_LABELS = {
     "first_name": "Primeiro nome",
     "last_name": "Último nome",
@@ -78,6 +118,66 @@ def _display_audit_value(value):
     return str(value)
 
 
+def _short_identifier(value):
+    if not value:
+        return "—"
+    raw = str(value)
+    return raw if len(raw) <= 12 else f"{raw[:8]}…{raw[-4:]}"
+
+
+def _action_meta(action):
+    if action in AUDIT_ACTION_META:
+        return AUDIT_ACTION_META[action]
+    if action.startswith("USER_"):
+        return {"category": "Utilizador", "icon": "bi-person", "tone": "info"}
+    if action.startswith("SUPPORT_"):
+        return {"category": "Suporte", "icon": "bi-life-preserver", "tone": "info"}
+    if action.startswith(("PRODUCT_", "CATEGORY_")):
+        return {"category": "Catálogo", "icon": "bi-box-seam", "tone": "info"}
+    return {"category": "Sistema", "icon": "bi-activity", "tone": "neutral"}
+
+
+def _entity_label(log):
+    entity_type = getattr(log, "entity_type", None) or ""
+    label = AUDIT_ENTITY_LABELS.get(entity_type, entity_type.replace("_", " ").title() or "Sem entidade")
+    entity_id = getattr(log, "entity_id", None)
+    return {
+        "label": label,
+        "technical_type": entity_type or "—",
+        "id": str(entity_id or ""),
+        "short_id": _short_identifier(entity_id),
+    }
+
+
+def _event_description(log, action_label):
+    notes = (getattr(log, "notes", None) or "").strip()
+    if notes:
+        return notes
+
+    fallback_descriptions = {
+        "USER_LOGIN": "O utilizador iniciou sessão na plataforma.",
+        "USER_PASSWORD_CHANGED": "A palavra-passe foi alterada e a segurança da sessão foi atualizada.",
+        "USER_PASSWORD_RESET_COMPLETED": "O utilizador concluiu a recuperação de palavra-passe.",
+        "USER_PROFILE_UPDATED": "Foram atualizados dados de identidade da conta.",
+        "USER_PRODUCER_PROFILE_UPDATED": "Foram atualizados dados operacionais do perfil de produtor.",
+        "USER_PREFERENCES_UPDATED": "Foram alteradas preferências de utilização ou notificações.",
+        "SUPPORT_TICKET_CREATED": "Foi criado um novo pedido de suporte.",
+        "SUPPORT_TICKET_REPLIED": "Foi enviada uma resposta num pedido de suporte.",
+        "SUPPORT_TICKET_CLOSED": "Um pedido de suporte foi marcado como resolvido.",
+    }
+    return fallback_descriptions.get(log.action, f"Evento registado: {action_label}.")
+
+
+def _change_summary(changes):
+    if not changes:
+        return "Sem alterações de campos registadas."
+    if len(changes) == 1:
+        return f"Foi alterado 1 campo: {changes[0]['label']}."
+    visible_labels = ", ".join(change["label"] for change in changes[:3])
+    suffix = "" if len(changes) <= 3 else f" e mais {len(changes) - 3}"
+    return f"Foram alterados {len(changes)} campos: {visible_labels}{suffix}."
+
+
 def audit_change_rows(log):
     old_values = log.old_values or {}
     new_values = log.new_values or {}
@@ -111,13 +211,21 @@ def build_user_activity_rows(logs):
     rows = []
     for log in logs:
         device = describe_user_agent(log.user_agent)
+        action_label = AUDIT_ACTION_LABELS.get(log.action, log.action)
+        changes = audit_change_rows(log)
+        meta = _action_meta(log.action)
         rows.append(
             {
                 "log": log,
-                "action_label": AUDIT_ACTION_LABELS.get(log.action, log.action),
-                "changes": audit_change_rows(log),
+                "action_label": action_label,
+                "action_meta": meta,
+                "changes": changes,
+                "change_summary": _change_summary(changes),
                 "device_label": device["label"] if log.user_agent else "—",
                 "actor_label": actor_label(log.user),
+                "entity": _entity_label(log),
+                "event_description": _event_description(log, action_label),
+                "ip_label": getattr(log, "ip_address", None) or "Não registado",
             }
         )
     return rows

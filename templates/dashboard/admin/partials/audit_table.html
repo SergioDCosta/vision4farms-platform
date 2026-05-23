@@ -34,11 +34,11 @@
             {{ row.actor_label }}
           </td>
           <td>
-            <span style="display:inline-block;padding:.15rem .6rem;border-radius:.4rem;background:#f1f5f9;color:#374151;font-size:.75rem;font-weight:700;">
+            <span class="adm-audit-action-pill adm-audit-action-pill--{{ row.action_meta.tone }}">
               {{ row.action_label }}
             </span>
           </td>
-          <td style="font-size:.8rem;color:#64748b;">{{ row.log.entity_type|default:"—" }}</td>
+          <td style="font-size:.8rem;color:#64748b;">{{ row.entity.label }}</td>
           <td style="font-size:.8rem;color:#64748b;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.log.notes|default:'' }}">
             {% if row.log.notes %}
               {{ row.log.notes }}
@@ -60,20 +60,25 @@
         <tr id="audit-detail-{{ row.log.id }}" class="adm-audit-detail-row" hidden>
           <td colspan="8">
             <div class="adm-audit-detail">
-              <div class="adm-audit-detail-box">
-                <div class="adm-audit-detail-section">
-                  <h4 class="adm-audit-detail-title">Informação do evento</h4>
-
-                  {% if row.log.notes %}
-                    <div class="adm-audit-note">{{ row.log.notes }}</div>
-                  {% else %}
-                    <div class="adm-audit-note">Sem notas adicionais.</div>
-                  {% endif %}
+              <div class="adm-audit-detail-main">
+                <div class="adm-audit-event-card adm-audit-event-card--{{ row.action_meta.tone }}">
+                  <div class="adm-audit-event-icon">
+                    <i class="bi {{ row.action_meta.icon }}"></i>
+                  </div>
+                  <div class="adm-audit-event-body">
+                    <div class="adm-audit-event-kicker">{{ row.action_meta.category }}</div>
+                    <h4>{{ row.action_label }}</h4>
+                    <p>{{ row.event_description }}</p>
+                  </div>
                 </div>
 
-                {% if row.changes %}
+                <div class="adm-audit-detail-box">
                   <div class="adm-audit-detail-section">
-                    <h4 class="adm-audit-detail-title">Alterações registadas</h4>
+                    <div class="adm-audit-section-head">
+                      <h4 class="adm-audit-detail-title">O que mudou</h4>
+                      <span>{{ row.change_summary }}</span>
+                    </div>
+                    {% if row.changes %}
                     <div class="adm-audit-change-list">
                       {% for change in row.changes %}
                         <div class="adm-audit-change">
@@ -86,44 +91,98 @@
                         </div>
                       {% endfor %}
                     </div>
-                  </div>
-                {% endif %}
-              </div>
-
-              <div class="adm-audit-detail-box">
-                <div class="adm-audit-detail-section">
-                  <h4 class="adm-audit-detail-title">Contexto técnico</h4>
-                  <div class="adm-audit-meta-grid">
-                  <div class="adm-audit-meta-item">
-                    <div class="adm-audit-meta-label">Ação técnica</div>
-                    <div class="adm-audit-meta-value">{{ row.log.action }}</div>
-                  </div>
-                  <div class="adm-audit-meta-item">
-                    <div class="adm-audit-meta-label">Autor</div>
-                    <div class="adm-audit-meta-value">{{ row.actor_label }}</div>
-                  </div>
-                  <div class="adm-audit-meta-item adm-audit-meta-item--wide">
-                    <div class="adm-audit-meta-label">Entidade</div>
-                    <div class="adm-audit-meta-value">
-                      {{ row.log.entity_type|default:"—" }}
-                      {% if row.log.entity_id %}<br>{{ row.log.entity_id }}{% endif %}
-                    </div>
-                  </div>
-                  <div class="adm-audit-meta-item">
-                    <div class="adm-audit-meta-label">IP</div>
-                    <div class="adm-audit-meta-value">{{ row.log.ip_address|default:"—" }}</div>
-                  </div>
-                  <div class="adm-audit-meta-item">
-                    <div class="adm-audit-meta-label">Dispositivo</div>
-                    <div class="adm-audit-meta-value">{{ row.device_label }}</div>
-                  </div>
-                  <div class="adm-audit-meta-item adm-audit-meta-item--wide">
-                    <div class="adm-audit-meta-label">User-Agent</div>
-                    <div class="adm-audit-meta-value">{{ row.log.user_agent|default:"—" }}</div>
-                  </div>
+                    {% else %}
+                      <div class="adm-audit-empty-note">
+                        Este evento não registou alterações de campos. Normalmente isto acontece em início de sessão, consulta ou ações sem edição direta.
+                      </div>
+                    {% endif %}
                   </div>
                 </div>
               </div>
+
+              <div class="adm-audit-detail-side">
+                <div class="adm-audit-detail-box">
+                  <div class="adm-audit-detail-section">
+                    <h4 class="adm-audit-detail-title">Resumo operacional</h4>
+                    <div class="adm-audit-facts">
+                      <div class="adm-audit-fact">
+                        <span>Autor</span>
+                        <strong>{{ row.actor_label }}</strong>
+                      </div>
+                      <div class="adm-audit-fact">
+                        <span>Entidade</span>
+                        <strong>{{ row.entity.label }}</strong>
+                        {% if row.entity.id %}<small>{{ row.entity.short_id }}</small>{% endif %}
+                      </div>
+                      <div class="adm-audit-fact">
+                        <span>Data</span>
+                        <strong>{{ row.log.created_at|date:"d/m/Y H:i" }}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="adm-audit-detail-box">
+                  <div class="adm-audit-detail-section">
+                    <h4 class="adm-audit-detail-title">Acesso e dispositivo</h4>
+                    <div class="adm-audit-access-grid">
+                      <div class="adm-audit-access-item">
+                        <i class="bi bi-hdd-network"></i>
+                        <div>
+                          <span>IP</span>
+                          <strong>{{ row.ip_label }}</strong>
+                        </div>
+                      </div>
+                      <div class="adm-audit-access-item">
+                        <i class="bi bi-phone"></i>
+                        <div>
+                          <span>Dispositivo</span>
+                          <strong>{{ row.device_label }}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <details class="adm-audit-technical">
+                <summary>
+                  <i class="bi bi-code-square"></i>
+                  Referência técnica
+                </summary>
+                <div class="adm-audit-detail-section">
+                  <div class="adm-audit-meta-grid">
+                    <div class="adm-audit-meta-item">
+                      <div class="adm-audit-meta-label">Ação técnica</div>
+                      <div class="adm-audit-meta-value">{{ row.log.action }}</div>
+                    </div>
+                    <div class="adm-audit-meta-item">
+                      <div class="adm-audit-meta-label">Autor</div>
+                      <div class="adm-audit-meta-value">{{ row.actor_label }}</div>
+                    </div>
+                    <div class="adm-audit-meta-item adm-audit-meta-item--wide">
+                      <div class="adm-audit-meta-label">Entidade</div>
+                      <div class="adm-audit-meta-value">
+                        {{ row.entity.technical_type }}
+                        {% if row.log.entity_id %}<br>{{ row.log.entity_id }}{% endif %}
+                      </div>
+                    </div>
+                    <div class="adm-audit-meta-item">
+                      <div class="adm-audit-meta-label">IP</div>
+                      <div class="adm-audit-meta-value">{{ row.log.ip_address|default:"—" }}</div>
+                    </div>
+                    <div class="adm-audit-meta-item">
+                      <div class="adm-audit-meta-label">Dispositivo</div>
+                      <div class="adm-audit-meta-value">{{ row.device_label }}</div>
+                    </div>
+                    <div class="adm-audit-meta-item adm-audit-meta-item--wide">
+                      <div class="adm-audit-meta-label">User-Agent</div>
+                      <div class="adm-audit-meta-value">{{ row.log.user_agent|default:"—" }}</div>
+                    </div>
+                  </div>
+                </div>
+              </details>
             </div>
           </td>
         </tr>
