@@ -30,7 +30,7 @@
    CSS VARIABLES
 ═══════════════════════════════════════════════════════════════════════════ */
 :root {
-  --sidebar-w:          240px;
+  --sidebar-w:          268px;
   --sidebar-w-collapsed: 64px;
   --sidebar-pill-size:  40px;
   --topbar-h:           60px;
@@ -160,7 +160,7 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 .sidebar-brand-logo {
   display: inline-flex;
   align-items: center;
-  width: 164px;
+  width: 190px;
   max-width: calc(var(--sidebar-w) - 2.3rem);
   height: 36px;
   flex: 0 0 auto;
@@ -168,7 +168,7 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 }
 .sidebar-brand-wordmark {
   color: #fff;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 900;
   letter-spacing: -.035em;
   line-height: 1;
@@ -259,11 +259,12 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   display: flex;
   align-items: center;
   gap: .75rem;
-  padding: .65rem .75rem;
+  padding: .7rem .85rem;
   border-radius: .6rem;
   color: var(--sidebar-text);
   text-decoration: none;
-  font-size: .875rem; font-weight: 500;
+  font-size: .925rem; font-weight: 500;
+  letter-spacing: -.01em;
   white-space: nowrap;
   overflow: hidden;
   transition: background .15s, color .15s;
@@ -276,9 +277,9 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   font-weight: 600;
 }
 .sidebar-link-icon {
-  width: 20px; height: 20px;
+  width: 22px; height: 22px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1rem; flex-shrink: 0;
+  font-size: 1.05rem; flex-shrink: 0;
 }
 .sidebar-link-text {
   transition: opacity var(--transition);
@@ -670,7 +671,7 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
 
 /* large desktop (1440+) — comfortable */
 @media (max-width: 1440px) {
-  :root { --sidebar-w: 220px; }
+  :root { --sidebar-w: 248px; }
 }
 
 /* medium desktop (1024–1280) — auto-collapse sidebar */
@@ -711,7 +712,7 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover ~ .shell-main { margin-left: var(--sidebar-w); }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-brand-logo {
     opacity: 1;
-    width: 164px;
+    width: 190px;
     transform: none;
   }
   .shell:not(.sidebar-mobile-open) .app-sidebar:hover .sidebar-brand { justify-content: flex-start; gap: .7rem; padding: 0 1.15rem; }
@@ -760,7 +761,7 @@ body { margin: 0; background: var(--body-bg); font-family: 'DM Sans', system-ui,
   .shell.sidebar-mobile-open .shell-overlay { display: block; }
   /* all links show text on mobile drawer */
   .shell.sidebar-mobile-open .sidebar-brand { justify-content: flex-start !important; gap: .7rem !important; padding: 0 1.15rem !important; }
-  .shell.sidebar-mobile-open .sidebar-brand-logo { opacity: 1 !important; width: 164px !important; transform: none !important; }
+  .shell.sidebar-mobile-open .sidebar-brand-logo { opacity: 1 !important; width: 190px !important; transform: none !important; }
   .shell.sidebar-mobile-open .sidebar-brand-mark { display: none !important; }
   .shell.sidebar-mobile-open .sidebar-brand-text { opacity: 1 !important; width: auto !important; }
   .shell.sidebar-mobile-open .sidebar-link-text  { opacity: 1 !important; width: auto !important; }

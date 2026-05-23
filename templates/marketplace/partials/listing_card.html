@@ -1,7 +1,9 @@
 <article class="mk-card {% if item.status != 'ACTIVE' or item.quantity_available <= 0 %}is-unavailable{% endif %}">
   <div class="mk-card__media">
     {% if item.photo_url %}
-      <img src="{{ item.photo_url }}" alt="{{ item.product.name }}">
+      <img src="{{ item.photo_url }}" alt="{{ item.product.name }}"
+           data-mk-lightbox="{{ item.photo_url }}"
+           data-mk-lightbox-alt="{{ item.product.name }}">
     {% else %}
       <div class="mk-card__media-empty">
         <i class="bi bi-image"></i>
