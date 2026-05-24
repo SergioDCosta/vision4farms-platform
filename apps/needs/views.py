@@ -485,6 +485,7 @@ def build_needs_index_context(
     # Preview de pedidos externos para mostrar no topo da página
     active_demands_preview = []
     has_more_demands = False
+    preview_demand_kpis = {}
     if producer:
         active_demands_qs = (
             ExternalCustomerDemand.objects
@@ -525,6 +526,15 @@ def build_needs_index_context(
             else:
                 demand.urgency = "ok"
             demand.days_remaining = days
+            demand.stock_deficit = max(-demand.stock_diff, Decimal("0"))
+            demand.stock_surplus = max(demand.stock_diff, Decimal("0"))
+
+        preview_demand_kpis = {
+            "total_count": len(active_demands_preview),
+            "deficit_count": sum(1 for d in active_demands_preview if d.stock_diff < Decimal("0")),
+            "covered_count": sum(1 for d in active_demands_preview if d.stock_diff >= Decimal("0")),
+            "overdue_count": sum(1 for d in active_demands_preview if getattr(d, "urgency", "") == "overdue"),
+        }
 
     return {
         "page_title": "Necessidades",
@@ -545,6 +555,7 @@ def build_needs_index_context(
         "external_demands_open_count": external_demands_open_count,
         "active_demands_preview": active_demands_preview,
         "has_more_demands": has_more_demands,
+        "preview_demand_kpis": preview_demand_kpis,
         "generated_needs_count": generated_needs_count,
         "received_proposals_pending_count": received_proposals_pending_count,
         "sent_proposals_pending_count": sent_proposals_pending_count,

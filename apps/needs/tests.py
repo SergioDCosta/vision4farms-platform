@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -13,8 +13,9 @@ from apps.accounts.models import AccountStatus, UserRole
 from apps.marketplace.models import ListingStatus
 from apps.marketplace.services import LISTING_SOURCE_STOCK
 from apps.needs.forms import NeedCreateForm, NeedEditForm, NeedResponseEditForm
-from apps.needs.models import NeedResponseStatus, NeedSourceSystem, NeedStatus
+from apps.needs.models import ExternalCustomerDemandStatus, NeedResponseStatus, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
+    calculate_external_demand_plan,
     calculate_need_coverage,
     create_need,
     DuplicateActiveNeedError,
@@ -77,6 +78,47 @@ class FakeQuerySet(list):
         return self
 
 
+class FakeServiceQuerySet(list):
+    def select_related(self, *args):
+        return self
+
+    def only(self, *args):
+        return self
+
+    def filter(self, *args, **kwargs):
+        items = list(self)
+        for key, value in kwargs.items():
+            if key == "producer":
+                items = [item for item in items if getattr(item, "producer", None) == value]
+            elif key == "product":
+                items = [item for item in items if getattr(item, "product", None) == value]
+            elif key == "status__in":
+                items = [item for item in items if getattr(item, "status", None) in value]
+        return FakeServiceQuerySet(items)
+
+    def order_by(self, *fields):
+        items = list(self)
+        for field in reversed(fields):
+            reverse = field.startswith("-")
+            attr = field[1:] if reverse else field
+            items.sort(key=lambda item: getattr(item, attr, None), reverse=reverse)
+        return FakeServiceQuerySet(items)
+
+    def first(self):
+        return self[0] if self else None
+
+
+class FakeServiceManager:
+    def __init__(self, items):
+        self.items = FakeServiceQuerySet(items)
+
+    def select_related(self, *args):
+        return self.items.select_related(*args)
+
+    def filter(self, *args, **kwargs):
+        return self.items.filter(*args, **kwargs)
+
+
 class NeedsRoutingTests(SimpleTestCase):
     def test_needs_index_url_is_public_needs_path(self):
         self.assertEqual(reverse("needs:index"), "/necessidades/")
@@ -121,6 +163,157 @@ class NeedsRoutingTests(SimpleTestCase):
             reverse("needs:external_demand_cancel", args=[demand_id]),
             f"/necessidades/pedidos-clientes/{demand_id}/cancelar/",
         )
+
+
+class ExternalDemandPlanningTests(SimpleTestCase):
+    def _calculate_plan(self, *, demands, stock, forecasts, producer=None, product=None):
+        producer = producer or SimpleNamespace(id="producer-1")
+        product = product or SimpleNamespace(id="product-1", name="Batata", unit="kg")
+
+        for demand in demands:
+            demand.producer = getattr(demand, "producer", producer)
+            demand.product = getattr(demand, "product", product)
+        if stock is not None:
+            stock.producer = getattr(stock, "producer", producer)
+            stock.product = getattr(stock, "product", product)
+        for forecast in forecasts:
+            forecast.producer = getattr(forecast, "producer", producer)
+            forecast.product = getattr(forecast, "product", product)
+
+        with (
+            patch("apps.needs.services.ExternalCustomerDemand.objects", FakeServiceManager(demands)),
+            patch("apps.needs.services.Stock.objects", FakeServiceManager([stock] if stock else [])),
+            patch("apps.needs.services.ProductionForecast.objects", FakeServiceManager(forecasts)),
+            patch("apps.needs.services._stock_active_listings_quantity", return_value=Decimal("0.000")),
+            patch("apps.needs.services._get_customer_demand_need_for_product", return_value=None),
+        ):
+            return calculate_external_demand_plan(producer=producer, product=product)
+
+    def test_external_demand_plan_accumulates_previous_demands_by_delivery_date(self):
+        demands = [
+            SimpleNamespace(
+                requested_quantity=Decimal("125"),
+                requested_delivery_date=date(2026, 6, 1),
+                status=ExternalCustomerDemandStatus.OPEN,
+                created_at=1,
+            ),
+            SimpleNamespace(
+                requested_quantity=Decimal("200"),
+                requested_delivery_date=date(2026, 6, 30),
+                status=ExternalCustomerDemandStatus.OPEN,
+                created_at=2,
+            ),
+            SimpleNamespace(
+                requested_quantity=Decimal("300"),
+                requested_delivery_date=date(2026, 7, 1),
+                status=ExternalCustomerDemandStatus.COVERED,
+                created_at=3,
+            ),
+            SimpleNamespace(
+                requested_quantity=Decimal("300"),
+                requested_delivery_date=date(2026, 9, 1),
+                status=ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+                created_at=4,
+            ),
+            SimpleNamespace(
+                requested_quantity=Decimal("999"),
+                requested_delivery_date=date(2026, 6, 1),
+                status=ExternalCustomerDemandStatus.CANCELLED,
+                created_at=5,
+            ),
+            SimpleNamespace(
+                requested_quantity=Decimal("999"),
+                requested_delivery_date=date(2026, 6, 1),
+                status=ExternalCustomerDemandStatus.FULFILLED,
+                created_at=6,
+            ),
+        ]
+        stock = SimpleNamespace(current_quantity=Decimal("500"), reserved_quantity=Decimal("0"))
+        forecasts = [
+            SimpleNamespace(
+                forecast_quantity=Decimal("350"),
+                reserved_quantity=Decimal("50"),
+                period_start=date(2026, 8, 14),
+                period_end=date(2026, 8, 31),
+            ),
+            SimpleNamespace(
+                forecast_quantity=Decimal("999"),
+                reserved_quantity=Decimal("0"),
+                period_start=date(2026, 9, 15),
+                period_end=date(2026, 10, 1),
+            ),
+            SimpleNamespace(
+                forecast_quantity=Decimal("999"),
+                reserved_quantity=Decimal("0"),
+                period_start=None,
+                period_end=None,
+            ),
+        ]
+
+        plan = self._calculate_plan(demands=demands, stock=stock, forecasts=forecasts)
+
+        rows = plan["rows"]
+        self.assertEqual(plan["total_external_demand"], Decimal("925.000"))
+        self.assertEqual(plan["available_stock_now"], Decimal("500.000"))
+        self.assertEqual(plan["total_forecast_relevant"], Decimal("300.000"))
+        self.assertEqual(plan["max_deficit"], Decimal("125.000"))
+        self.assertEqual(plan["first_deficit_date"], date(2026, 7, 1))
+
+        expected = [
+            (date(2026, 6, 1), Decimal("125.000"), Decimal("0.000"), Decimal("500.000"), Decimal("375.000"), Decimal("0.000")),
+            (date(2026, 6, 30), Decimal("325.000"), Decimal("0.000"), Decimal("500.000"), Decimal("175.000"), Decimal("0.000")),
+            (date(2026, 7, 1), Decimal("625.000"), Decimal("0.000"), Decimal("500.000"), Decimal("0.000"), Decimal("125.000")),
+            (date(2026, 9, 1), Decimal("925.000"), Decimal("300.000"), Decimal("800.000"), Decimal("0.000"), Decimal("125.000")),
+        ]
+        actual = [
+            (
+                row["delivery_date"],
+                row["demand_until_date"],
+                row["forecast_until_date"],
+                row["capacity_until_date"],
+                row["remaining_capacity_until_date"],
+                row["deficit_until_date"],
+            )
+            for row in rows
+        ]
+        self.assertEqual(actual, expected)
+
+    def test_external_demand_plan_uses_period_start_fallback_and_ignores_invalid_forecasts(self):
+        demand = SimpleNamespace(
+            requested_quantity=Decimal("100"),
+            requested_delivery_date=date(2026, 6, 30),
+            status=ExternalCustomerDemandStatus.OPEN,
+            created_at=1,
+        )
+        stock = SimpleNamespace(current_quantity=Decimal("0"), reserved_quantity=Decimal("0"))
+        forecasts = [
+            SimpleNamespace(
+                forecast_quantity=Decimal("80"),
+                reserved_quantity=Decimal("20"),
+                period_start=date(2026, 6, 30),
+                period_end=None,
+            ),
+            SimpleNamespace(
+                forecast_quantity=Decimal("100"),
+                reserved_quantity=Decimal("0"),
+                period_start=date(2026, 7, 1),
+                period_end=None,
+            ),
+            SimpleNamespace(
+                forecast_quantity=Decimal("100"),
+                reserved_quantity=Decimal("0"),
+                period_start=None,
+                period_end=None,
+            ),
+        ]
+
+        plan = self._calculate_plan(demands=[demand], stock=stock, forecasts=forecasts)
+        row = plan["rows"][0]
+
+        self.assertEqual(row["forecast_until_date"], Decimal("60.000"))
+        self.assertEqual(row["capacity_until_date"], Decimal("60.000"))
+        self.assertEqual(row["remaining_capacity_until_date"], Decimal("0.000"))
+        self.assertEqual(row["deficit_until_date"], Decimal("40.000"))
 
 
 class NeedResponsePublishViewTests(SimpleTestCase):

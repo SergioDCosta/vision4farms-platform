@@ -36,7 +36,7 @@ media/
 .idea/
 *.swp
 *.swo
-.claude
+.claude/
 # -----------------------------
 # OS FILES
 # -----------------------------
@@ -72,3 +72,10 @@ htmlcov/
 *.xlsx
 *.pdf
 *.sql
+
+# -----------------------------
+# MEMORIA LOCAL / PLANOS TEMPORARIOS
+# -----------------------------
+memory/
+PLANO_*.md
+Alterações recentes.txt

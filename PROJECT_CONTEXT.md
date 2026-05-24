@@ -1,6 +1,6 @@
 # VISION4FARMS - Contexto Atual do Projeto
 
-Última revisão: 2026-05-23.
+Última revisão: 2026-05-24.
 
 Este ficheiro serve como mapa funcional e técnico atual da aplicação. O objetivo é ajudar a explicar o projeto em relatório, manter o contexto entre sessões de desenvolvimento e evitar decisões baseadas em informação desatualizada.
 
@@ -90,7 +90,7 @@ Sidebar cliente, por ordem:
 2. Alertas;
 3. Mensagens;
 4. Recomendações;
-5. Necessidades;
+5. Necessidades e Pedidos;
 6. Marketplace;
 7. Encomendas;
 8. Stocks e Compras;
@@ -102,6 +102,7 @@ Comportamento visual:
 - quando não há foto de perfil, o avatar mostra as iniciais do primeiro e último nome;
 - o sino da topbar só mostra ping vermelho quando existem alertas pendentes;
 - o logo compacto da sidebar usa SVG Cloudinary, sem moldura/quadrado, e fica centrado no modo mobile/colapsado.
+- a área de necessidades foi renomeada na navegação para "Necessidades e Pedidos", porque agora inclui procuras entre produtores e pedidos externos de clientes.
 
 ## 5) Accounts
 
@@ -191,7 +192,9 @@ Localização:
 - morada, código postal, cidade, distrito, latitude e longitude;
 - usada por clima, marketplace, logística e contexto de encomendas;
 - botão de geolocalização automática;
-- botão do card de clima aponta para esta área das definições.
+- botão do card de clima abre as definições já focadas na localização e pode iniciar pedido de localização ao browser;
+- card de localização nas definições agrupa morada/código postal e cidade/distrito em linhas mais legíveis;
+- coordenadas ficam num bloco próprio, com leitura mais técnica e menos intrusiva.
 
 Segurança:
 
@@ -233,7 +236,7 @@ Regras de UX:
 Widget de clima:
 
 - mostra localização, estado do tempo, temperatura mínima/máxima e chuva;
-- se não houver localização, mostra CTA "Definir localização";
+- se não houver localização, mostra CTA "Definir localização" que encaminha para o fluxo de geolocalização nas definições;
 - mantém "Tentar novamente" para erros temporários.
 
 ## 9) Dashboard Admin
@@ -353,6 +356,7 @@ Detalhe de stock:
 - card de saúde mostra cobertura temporal dos compromissos externos;
 - mostra stock disponível, compromissos externos, produção prevista útil, défice temporal e margem vendável;
 - progress bars mostram cobertura, reservado, quantidade vendável temporal e défice real;
+- inclui ligação operacional para pedidos de clientes associados ao produto;
 - movimentos recentes mostram histórico vindo de `stock_movements`;
 - produções futuras podem ser assumidas no stock quando chegam ao período definido.
 
@@ -403,6 +407,13 @@ Tab "Meus anúncios":
 - mantém ações de gestão;
 - não usa badge "meu anúncio" no feed público porque anúncios próprios já não aparecem ali.
 
+Tabs adicionais do marketplace:
+
+- "Compras" resume compras/encomendas originadas no marketplace;
+- "Respostas" mostra propostas enviadas pelo produtor para procuras/necessidades;
+- cards usam badges contextuais para estados como proposta pendente, aceite, rejeitada ou encomenda associada;
+- empty states evitam CTAs errados como criar necessidade manual quando o contexto é marketplace.
+
 Tipos de anúncio:
 
 - stock atual (`stock_id`);
@@ -431,6 +442,7 @@ Detalhe de anúncio:
 - card principal e buybox alinhados;
 - buybox tem botões de incremento/decremento e botão `Máx.` para comprar toda a quantidade disponível;
 - CTAs diferem entre anúncio próprio e anúncio de outro produtor.
+- compras a partir de anúncio usam bloqueios transacionais compatíveis com PostgreSQL, evitando `FOR UPDATE` em joins nullable.
 
 ## 13) Needs
 
@@ -461,6 +473,7 @@ Página `/necessidades/`:
 
 - layout master-detail;
 - "As minhas necessidades";
+- destaque para pedidos externos de clientes quando existem compromissos relevantes;
 - detalhe da necessidade selecionada;
 - ofertas ativas;
 - responder a necessidades abertas;
@@ -504,10 +517,13 @@ Pedidos externos de clientes:
 - `requested_quantity` tem de ser superior a zero;
 - CRUD simples disponível em `/necessidades/pedidos-clientes/`;
 - cancelar pedido faz soft cancel com estado `CANCELLED`;
+- a página funciona como painel operacional, não como tabela administrativa pura;
+- mostra totais abertos, produtos com pedidos, maior défice, próxima data crítica e planeamento por produto;
 - cálculo temporal por produto/data:
   - compara pedidos acumulados até cada data com stock disponível atual e produção prevista útil até essa data;
   - forecast conta se `period_end <= requested_delivery_date`; se não houver `period_end`, conta por `period_start`; forecasts sem data válida não contam;
   - mostra maior défice e primeira data crítica;
+- a pré-visualização em `/necessidades/` usa o mesmo cálculo temporal cumulativo, evitando comparar cada pedido isoladamente contra o stock atual;
 - quando existe défice temporal, gera ou atualiza uma `Need` agregada com `source_system=CUSTOMER_DEMAND`;
 - `required_quantity` da need automática é o maior défice temporal;
 - `needed_by_date` da need automática é a primeira data crítica;
@@ -882,6 +898,13 @@ Regras:
 - guardar snapshots `old_values`/`new_values` quando útil;
 - falhas de auditoria não devem quebrar ações principais já concluídas.
 
+UI admin:
+
+- a tabela é expansível por linha;
+- o detalhe mostra resumo operacional, alterações legíveis e referência técnica;
+- a referência técnica ocupa a largura útil do detalhe expandido para evitar layout desequilibrado;
+- dados técnicos continuam disponíveis, mas deixam de ser a primeira leitura visual.
+
 ## 23) Modelo de Dados Atual
 
 Identidade:
@@ -996,3 +1019,24 @@ Cuidados:
 - `DEBUG=release` é inválido;
 - `sqlscript.sql` representa o schema consolidado atual;
 - como os modelos de negócio são `managed=False`, alterações de schema não são aplicadas por migrations Django.
+
+## 26) Organização de Documentação e Memória Local
+
+Documentação oficial do projeto:
+
+- `README.md`: guia geral técnico/funcional, setup, deploy e validação;
+- `PROJECT_CONTEXT.md`: mapa funcional detalhado para relatório e continuidade do desenvolvimento;
+- `sqlscript.sql`: schema consolidado atual;
+- ficheiros SQL/TXT operacionais que sejam necessários para reproduzir alterações de BD.
+
+Memórias locais e planos temporários:
+
+- ficam em `memory/`;
+- estão ignorados pelo Git;
+- não devem ser usados como fonte de verdade para relatório sem validação contra `PROJECT_CONTEXT.md`.
+
+Objetivo:
+
+- manter o repositório limpo;
+- separar documentação estável de notas de trabalho;
+- evitar que planos antigos ou apontamentos temporários entrem em produção ou confundam futuras análises.

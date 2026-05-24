@@ -112,13 +112,12 @@
       <table class="nd-demands-table">
         <thead>
           <tr>
-            <th>Urgência</th>
             <th>Cliente</th>
             <th>Produto</th>
             <th>Qtd. pedida</th>
-            <th>Data entrega</th>
-            <th>Stock disp.</th>
-            <th>Diferença</th>
+            <th>Entrega pretendida</th>
+            <th>Stock disponível</th>
+            <th>Diferença (necessidade)</th>
             <th>Estado</th>
             <th>Ações</th>
           </tr>
@@ -127,36 +126,32 @@
           {% for demand in active_demands_preview %}
           <tr class="nd-demands-table__row nd-demands-table__row--{{ demand.urgency }}">
             <td>
-              {% if demand.urgency == "overdue" %}
-                <span class="nd-urgency nd-urgency--overdue" title="Atrasado"><i class="bi bi-exclamation-circle-fill"></i> Atrasado</span>
-              {% elif demand.urgency == "critical" %}
-                <span class="nd-urgency nd-urgency--critical" title="{{ demand.days_remaining }} dias"><i class="bi bi-exclamation-triangle-fill"></i> {{ demand.days_remaining }}d</span>
-              {% elif demand.urgency == "warning" %}
-                <span class="nd-urgency nd-urgency--warning" title="{{ demand.days_remaining }} dias"><i class="bi bi-clock-fill"></i> {{ demand.days_remaining }}d</span>
-              {% else %}
-                <span class="nd-urgency nd-urgency--ok" title="{{ demand.days_remaining }} dias"><i class="bi bi-check-circle"></i> {{ demand.days_remaining }}d</span>
-              {% endif %}
-            </td>
-            <td>
               <span class="nd-demands-table__client">{{ demand.client_name }}</span>
               {% if demand.client_contact %}<span class="nd-demands-table__contact">{{ demand.client_contact }}</span>{% endif %}
             </td>
             <td>{{ demand.product.name }}</td>
             <td>{{ demand.requested_quantity|floatformat:"-3" }} {{ demand.product.unit }}</td>
-            <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
+            <td>
+              {{ demand.requested_delivery_date|date:"d/m/Y" }}
+              {% if demand.urgency == "overdue" %}
+                <span class="nd-urgency nd-urgency--overdue nd-urgency--inline"><i class="bi bi-exclamation-circle-fill"></i></span>
+              {% elif demand.urgency == "critical" %}
+                <span class="nd-urgency nd-urgency--critical nd-urgency--inline" title="{{ demand.days_remaining }}d"><i class="bi bi-exclamation-triangle-fill"></i></span>
+              {% endif %}
+            </td>
             <td>{{ demand.stock_available|floatformat:"-3" }} {{ demand.product.unit }}</td>
             <td>
               {% if demand.stock_diff < 0 %}
-                <span class="nd-diff nd-diff--deficit"><i class="bi bi-dash-circle-fill"></i> {{ demand.stock_diff|floatformat:"-3" }} {{ demand.product.unit }}</span>
+                <span class="nd-diff nd-diff--deficit"><i class="bi bi-dash-circle-fill"></i> {{ demand.stock_deficit|floatformat:"-3" }} {{ demand.product.unit }}</span>
               {% else %}
-                <span class="nd-diff nd-diff--ok"><i class="bi bi-plus-circle-fill"></i> +{{ demand.stock_diff|floatformat:"-3" }} {{ demand.product.unit }}</span>
+                <span class="nd-diff nd-diff--ok"><i class="bi bi-check-circle-fill"></i> {{ demand.stock_surplus|floatformat:"-3" }} {{ demand.product.unit }}</span>
               {% endif %}
             </td>
             <td>
               {% if demand.status == "OPEN" %}
-                <span class="nd-badge nd-badge--warn">Em aberto</span>
+                <span class="nd-badge nd-badge--warn">Aberto</span>
               {% elif demand.status == "PARTIALLY_COVERED" %}
-                <span class="nd-badge nd-badge--info">Parcialmente coberto</span>
+                <span class="nd-badge nd-badge--info">Parcial</span>
               {% elif demand.status == "COVERED" %}
                 <span class="nd-badge nd-badge--ok">Coberto</span>
               {% endif %}
@@ -168,6 +163,12 @@
                  class="nd-btn nd-btn--ghost nd-btn--xs" title="Editar pedido">
                 <i class="bi bi-pencil"></i>
               </a>
+              <a href="{% url 'needs:external_demands' %}"
+                 hx-get="{% url 'needs:external_demands' %}"
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 class="nd-btn nd-btn--ghost nd-btn--xs" title="Ver análise completa">
+                <i class="bi bi-eye"></i>
+              </a>
             </td>
           </tr>
           {% endfor %}
@@ -175,19 +176,46 @@
       </table>
     </div>
 
+    {% if preview_demand_kpis %}
+    <div class="nd-preview-kpis">
+      <div class="nd-preview-kpi">
+        <i class="bi bi-clipboard2-check"></i>
+        <div>
+          <strong>{{ preview_demand_kpis.total_count }}</strong>
+          <span>Pedido{{ preview_demand_kpis.total_count|pluralize }} em aberto</span>
+        </div>
+      </div>
+      <div class="nd-preview-kpi {% if preview_demand_kpis.deficit_count %}nd-preview-kpi--warn{% else %}nd-preview-kpi--ok{% endif %}">
+        <i class="bi bi-{% if preview_demand_kpis.deficit_count %}exclamation-circle{% else %}check-circle{% endif %}"></i>
+        <div>
+          <strong>{{ preview_demand_kpis.deficit_count }}</strong>
+          <span>Com necessidade</span>
+        </div>
+      </div>
+      <div class="nd-preview-kpi {% if preview_demand_kpis.covered_count == preview_demand_kpis.total_count %}nd-preview-kpi--ok{% endif %}">
+        <i class="bi bi-shield-check"></i>
+        <div>
+          <strong>{{ preview_demand_kpis.covered_count }}</strong>
+          <span>Coberto{{ preview_demand_kpis.covered_count|pluralize }}</span>
+        </div>
+      </div>
+      <div class="nd-preview-kpi {% if preview_demand_kpis.overdue_count %}nd-preview-kpi--danger{% endif %}">
+        <i class="bi bi-clock-history"></i>
+        <div>
+          <strong>{{ preview_demand_kpis.overdue_count }}</strong>
+          <span>Atrasado{{ preview_demand_kpis.overdue_count|pluralize }}</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <div class="nd-demands-preview__footer">
-      <a href="{% url 'needs:external_demands' %}?show_form=1"
-         hx-get="{% url 'needs:external_demands' %}?show_form=1"
-         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-         class="nd-btn nd-btn--ghost nd-btn--sm">
-        <i class="bi bi-clipboard2-plus"></i> Novo pedido de cliente
-      </a>
       <a href="{% url 'needs:external_demands' %}"
          hx-get="{% url 'needs:external_demands' %}"
          hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
          class="nd-btn nd-btn--ghost nd-btn--sm">
         <i class="bi bi-bar-chart-steps"></i> Ver análise de risco completa
       </a>
+      <p class="nd-preview-note">As necessidades são atualizadas automaticamente sempre que os stocks forem alterados ou novos pedidos forem registados.</p>
     </div>
   </section>
   {% endif %}
@@ -250,12 +278,12 @@
     </section>
   {% endif %}
 
-  {# ══ SECÇÃO PRINCIPAL: Procuras geradas ══════════════════════════════════ #}
+  {# ══ SECÇÃO PRINCIPAL: Necessidades geradas ══════════════════════════════ #}
   <section class="nd-section">
     <div class="nd-section-head">
       <div>
-        <h2>Procuras geradas</h2>
-        <p>Pedidos de compra enviados ao mercado com base nos seus compromissos com clientes ou criados manualmente.</p>
+        <h2>Necessidades geradas automaticamente</h2>
+        <p>Necessidades criadas com base na diferença entre os pedidos dos clientes e os stocks disponíveis, ou criadas manualmente.</p>
       </div>
     </div>
 
@@ -1028,6 +1056,38 @@
 
 /* Actions cell */
 .nd-demands-table__actions { white-space: nowrap; }
+
+/* Inline urgency pill inside date cell */
+.nd-urgency--inline {
+  display: inline-flex; align-items: center; padding: .15rem .35rem;
+  font-size: .68rem; margin-left: .3rem; vertical-align: middle;
+}
+
+/* Preview KPI row */
+.nd-preview-kpis {
+  display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .6rem;
+  padding: .6rem 0;
+}
+.nd-preview-kpi {
+  display: flex; align-items: center; gap: .6rem;
+  background: var(--pbg); border: 1px solid var(--br); border-radius: var(--rad);
+  padding: .6rem .8rem;
+}
+.nd-preview-kpi i { font-size: 1.1rem; color: var(--mt); flex-shrink: 0; }
+.nd-preview-kpi div { display: flex; flex-direction: column; gap: .05rem; }
+.nd-preview-kpi strong { font-size: 1.25rem; font-weight: 900; font-family: 'DM Mono', monospace; color: var(--tx); line-height: 1; }
+.nd-preview-kpi span { font-size: .68rem; font-weight: 700; color: var(--mt); text-transform: uppercase; letter-spacing: .03em; }
+.nd-preview-kpi--ok { background: #f0fdf4; border-color: #bbf7d0; }
+.nd-preview-kpi--ok i, .nd-preview-kpi--ok strong { color: #15803d; }
+.nd-preview-kpi--warn { background: #fffbeb; border-color: #fde68a; }
+.nd-preview-kpi--warn i, .nd-preview-kpi--warn strong { color: #b45309; }
+.nd-preview-kpi--danger { background: #fff5f5; border-color: #fecaca; }
+.nd-preview-kpi--danger i, .nd-preview-kpi--danger strong { color: #b91c1c; }
+
+/* Footer note */
+.nd-preview-note {
+  flex: 1; margin: 0; font-size: .74rem; color: var(--mt); font-style: italic;
+}
 
 /* Footer */
 .nd-demands-preview__footer {

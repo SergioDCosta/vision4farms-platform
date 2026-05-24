@@ -67,7 +67,7 @@
       <div>
         <span class="ecd-eyebrow">Análise de capacidade</span>
         <h2>Planeamento por produto</h2>
-        <p>Compara os pedidos dos clientes com o stock disponível e a produção prevista útil até cada data de entrega.</p>
+        <p>Compara pedidos acumulados dos clientes com o stock inicial disponível e a produção prevista útil até cada data de entrega.</p>
       </div>
     </div>
 
@@ -94,11 +94,11 @@
             <strong>{{ plan.total_external_demand|quantity }} {{ plan.product.unit }}</strong>
           </div>
           <div>
-            <span>Stock disponível agora</span>
+            <span>Stock inicial disponível</span>
             <strong>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</strong>
           </div>
           <div>
-            <span>Produção prevista útil</span>
+            <span>Produção prevista útil acumulada</span>
             <strong>{{ plan.total_forecast_relevant|quantity }} {{ plan.product.unit }}</strong>
           </div>
           <div>
@@ -151,13 +151,18 @@
         </div>
 
         <div class="ecd-timeline-wrap">
+          <p class="ecd-timeline-note">
+            <i class="bi bi-info-circle"></i>
+            Cada linha acumula todos os pedidos anteriores. O stock inicial não reinicia em cada data; a capacidade restante já desconta os pedidos acumulados.
+          </p>
           <table class="ecd-timeline">
             <thead>
               <tr>
                 <th>Data de entrega</th>
                 <th>Pedidos acumulados</th>
-                <th>Stock disponível</th>
-                <th>Produção prevista útil</th>
+                <th>Stock inicial</th>
+                <th>Produção prevista útil acumulada</th>
+                <th>Capacidade acumulada</th>
                 <th>Capacidade restante após pedidos</th>
                 <th>Quantidade em falta</th>
               </tr>
@@ -169,6 +174,7 @@
                   <td>{{ row.demand_until_date|quantity }} {{ plan.product.unit }}</td>
                   <td>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</td>
                   <td>{{ row.forecast_until_date|quantity }} {{ plan.product.unit }}</td>
+                  <td>{{ row.capacity_until_date|quantity }} {{ plan.product.unit }}</td>
                   <td><strong>{{ row.remaining_capacity_until_date|quantity }} {{ plan.product.unit }}</strong></td>
                   <td>
                     {% if row.deficit_until_date > 0 %}
@@ -201,7 +207,7 @@
       <div class="ecd-formula__op">−</div>
       <div class="ecd-formula__item ecd-formula__item--green">
         <i class="bi bi-boxes"></i>
-        <span>Stock disponível + produção prevista útil até essa data</span>
+        <span>Stock inicial + produção prevista útil acumulada até essa data</span>
       </div>
       <div class="ecd-formula__op">=</div>
       <div class="ecd-formula__item ecd-formula__item--amber">
@@ -211,7 +217,7 @@
     </div>
     <p class="ecd-formula-card__note">
       <i class="bi bi-info-circle"></i>
-      A produção prevista só conta se estiver disponível <strong>antes ou na data de entrega</strong> do pedido. Previsões futuras não antecipam.
+      A produção prevista só conta se estiver disponível <strong>antes ou na data de entrega</strong> do pedido. Os pedidos anteriores ficam sempre descontados nas datas seguintes.
     </p>
   </div>
 
@@ -656,7 +662,21 @@
   color: #c2410c; padding: .35rem .65rem; font-size: .8rem; font-weight: 800; white-space: nowrap;
 }
 .ecd-timeline-wrap { overflow: auto; }
-.ecd-timeline { width: 100%; border-collapse: separate; border-spacing: 0 .4rem; min-width: 700px; }
+.ecd-timeline-note {
+  display: flex;
+  align-items: flex-start;
+  gap: .45rem;
+  margin: 0 0 .55rem;
+  color: #475569;
+  font-size: .82rem;
+  line-height: 1.45;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: .7rem;
+  padding: .65rem .75rem;
+}
+.ecd-timeline-note i { color: #2563eb; flex-shrink: 0; margin-top: .1rem; }
+.ecd-timeline { width: 100%; border-collapse: separate; border-spacing: 0 .4rem; min-width: 860px; }
 .ecd-timeline th { text-align: left; color: #64748b; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; padding: .15rem .65rem; font-weight: 800; }
 .ecd-timeline td { background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: .7rem .65rem; vertical-align: middle; font-size: .84rem; }
 .ecd-timeline td:first-child { border-left: 1px solid #e2e8f0; border-radius: .6rem 0 0 .6rem; }
