@@ -207,12 +207,34 @@ def _forecast_available_quantity(forecast):
     return _quantize_need_quantity(max(forecast_quantity - reserved_quantity, Decimal("0.000")))
 
 
+def _stock_active_listings_quantity(stock):
+    """Soma quantity_available + quantity_reserved dos listings ACTIVE/RESERVED deste stock.
+    Exclui listings ligados a necessidades (esses já contabilizam outra procura)."""
+    if not stock:
+        return Decimal("0.000")
+    from django.db.models import F
+    result = (
+        MarketplaceListing.objects
+        .filter(
+            stock=stock,
+            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+            need_id__isnull=True,
+        )
+        .aggregate(total=Sum(F("quantity_available") + F("quantity_reserved")))
+    )
+    return _quantize_need_quantity(result["total"] or Decimal("0.000"))
+
+
 def _stock_available_quantity(stock):
     if not stock:
         return Decimal("0.000")
     current_quantity = _quantize_need_quantity(getattr(stock, "current_quantity", 0))
     reserved_quantity = _quantize_need_quantity(getattr(stock, "reserved_quantity", 0))
-    return _quantize_need_quantity(max(current_quantity - reserved_quantity, Decimal("0.000")))
+    # Subtrai também as quantidades já anunciadas em listings ativos no marketplace —
+    # esse stock está comprometido e não pode contar para cumprir pedidos de clientes.
+    marketplace_committed = _stock_active_listings_quantity(stock)
+    net = current_quantity - reserved_quantity - marketplace_committed
+    return _quantize_need_quantity(max(net, Decimal("0.000")))
 
 
 def calculate_external_demand_plan(*, producer, product):

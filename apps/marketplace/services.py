@@ -131,6 +131,8 @@ def _get_open_forecast_published_quantity(forecast, *, exclude_listing_id=None):
     if not forecast:
         return Decimal("0.000")
 
+    from django.db.models import Sum, F
+
     qs = MarketplaceListing.objects.filter(
         forecast=forecast,
         status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
@@ -138,11 +140,8 @@ def _get_open_forecast_published_quantity(forecast, *, exclude_listing_id=None):
     if exclude_listing_id:
         qs = qs.exclude(id=exclude_listing_id)
 
-    total = Decimal("0.000")
-    for listing in qs.only("quantity_available"):
-        total += Decimal(str(listing.quantity_available or 0))
-
-    return quantize_qty(total)
+    result = qs.aggregate(total=Sum(F("quantity_available") + F("quantity_reserved")))
+    return quantize_qty(result["total"] or Decimal("0.000"))
 
 
 def _get_open_stock_published_quantity(stock, *, exclude_listing_id=None):

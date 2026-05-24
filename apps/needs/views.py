@@ -24,6 +24,7 @@ from apps.needs.forms import ExternalCustomerDemandForm, NeedCreateForm, NeedEdi
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import ExternalCustomerDemand, ExternalCustomerDemandStatus, Need, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
+    calculate_external_demand_plan,
     calculate_need_coverage,
     cancel_external_customer_demand,
     DuplicateActiveNeedError,
@@ -495,18 +496,25 @@ def build_needs_index_context(
         has_more_demands = len(demands_sample) > 8
         active_demands_preview = demands_sample[:8]
 
-        stocks_map = {
-            str(s.product_id): s
-            for s in Stock.objects.filter(
-                producer=producer,
-                product_id__in=[d.product_id for d in active_demands_preview],
-            )
-        }
+        plans_rows_by_product = {}
+        for demand in active_demands_preview:
+            pid = str(demand.product_id)
+            if pid not in plans_rows_by_product:
+                plan = calculate_external_demand_plan(producer=producer, product=demand.product)
+                plans_rows_by_product[pid] = {r["delivery_date"]: r for r in plan["rows"]}
+
         today = timezone.now().date()
         for demand in active_demands_preview:
-            stock = stocks_map.get(str(demand.product_id))
-            demand.stock_available = stock.available_quantity if stock else Decimal("0")
-            demand.stock_diff = demand.stock_available - demand.requested_quantity
+            pid = str(demand.product_id)
+            plan_row = plans_rows_by_product.get(pid, {}).get(demand.requested_delivery_date)
+            if plan_row:
+                deficit = plan_row["deficit_until_date"]
+                remaining = plan_row["remaining_capacity_until_date"]
+                demand.stock_available = plan_row["capacity_until_date"]
+                demand.stock_diff = -deficit if deficit > Decimal("0") else remaining
+            else:
+                demand.stock_available = Decimal("0")
+                demand.stock_diff = Decimal("0")
             days = (demand.requested_delivery_date - today).days
             if days < 0:
                 demand.urgency = "overdue"
