@@ -145,6 +145,30 @@ def _get_open_forecast_published_quantity(forecast, *, exclude_listing_id=None):
     return quantize_qty(total)
 
 
+def _get_open_stock_published_quantity(stock, *, exclude_listing_id=None):
+    """
+    Soma quantity_available + quantity_reserved dos listings ACTIVE/RESERVED
+    para o mesmo stock, excluindo o próprio ao editar.
+    """
+    if not stock:
+        return Decimal("0.000")
+
+    from django.db.models import Sum, F
+
+    qs = MarketplaceListing.objects.filter(
+        stock=stock,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        need_id__isnull=True,
+    )
+    if exclude_listing_id:
+        qs = qs.exclude(id=exclude_listing_id)
+
+    result = qs.aggregate(
+        total=Sum(F("quantity_available") + F("quantity_reserved"))
+    )
+    return quantize_qty(result["total"] or Decimal("0.000"))
+
+
 def get_forecast_available_quantity(forecast, *, exclude_listing_id=None):
     forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
     reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
@@ -373,9 +397,10 @@ def get_stock_available_quantity(stock):
     return quantize_qty(current_quantity - reserved_quantity)
 
 
-def get_max_publishable_quantity(stock):
+def get_max_publishable_quantity(stock, *, exclude_listing_id=None):
     """
-    Excedente publicável calculado pela regra temporal dos compromissos externos.
+    Excedente publicável calculado pela regra temporal dos compromissos externos,
+    descontando a quantidade já anunciada em listings ativos do mesmo stock.
     Se não existirem pedidos externos ativos, usa o stock disponível atual.
     """
     if not stock:
@@ -388,7 +413,9 @@ def get_max_publishable_quantity(stock):
         stock.product,
         stock=stock,
     )
-    return quantize_qty(commitment_state.get("temporal_sellable_quantity") or Decimal("0.000"))
+    base_max = quantize_qty(commitment_state.get("temporal_sellable_quantity") or Decimal("0.000"))
+    already_published = _get_open_stock_published_quantity(stock, exclude_listing_id=exclude_listing_id)
+    return quantize_qty(max(base_max - already_published, Decimal("0.000")))
 
 
 def get_publishable_products(producer):
@@ -689,7 +716,7 @@ def update_listing(
         )
 
     if has_stock_source:
-        source_available = get_max_publishable_quantity(listing.stock)
+        source_available = get_max_publishable_quantity(listing.stock, exclude_listing_id=listing.id)
     else:
         if not listing.forecast:
             raise MarketplaceServiceError("A previsão associada ao anúncio não existe.")

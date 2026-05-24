@@ -511,7 +511,7 @@ class MarketplaceEditForm(forms.Form):
                 )
 
             if has_stock_source:
-                source_available = get_max_publishable_quantity(self.listing.stock)
+                source_available = get_max_publishable_quantity(self.listing.stock, exclude_listing_id=self.listing.id)
                 source_unit = self.listing.product.unit
             else:
                 source_available = get_forecast_available_quantity(

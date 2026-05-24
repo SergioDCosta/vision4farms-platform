@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\USER\\\\Desktop\\\\COOPERATIVA\" -Force)",
+      "Bash(Select-Object Name, Mode)",
+      "Bash(grep -E \"\\\\.py$\")"
+    ]
+  }
+}

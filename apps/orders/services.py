@@ -630,7 +630,10 @@ def _lock_listing_for_order(listing):
 
     return (
         MarketplaceListing.objects
-        .select_for_update()
+        # Lock only marketplace_listings. Optional relations such as stock,
+        # forecast and need are LEFT JOINs; PostgreSQL rejects FOR UPDATE on
+        # the nullable side of an outer join.
+        .select_for_update(of=("self",))
         .select_related("product", "producer", "stock", "forecast", "need", "need__producer")
         .get(id=listing.id)
     )
@@ -1275,7 +1278,7 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
 def create_order_from_recommendation(*, buyer_producer, recommendation, acting_user):
     recommendation = (
         recommendation.__class__.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related("product", "producer", "need")
         .get(id=recommendation.id)
     )
@@ -1312,7 +1315,7 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
         listing.id: listing
         for listing in (
             MarketplaceListing.objects
-            .select_for_update()
+            .select_for_update(of=("self",))
             .select_related("product", "producer", "stock", "forecast", "need", "need__producer")
             .filter(id__in=required_by_listing.keys())
         )
