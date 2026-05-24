@@ -10,6 +10,19 @@
         Procura
       </span>
       <span class="mk-badge mk-badge--warn">Em falta</span>
+      {% if row.viewer_response_summary %}
+        <span class="mk-badge {% if row.viewer_response_summary.status == 'ACCEPTED' %}mk-badge--ok{% elif row.viewer_response_summary.status == 'REJECTED' or row.viewer_response_summary.status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--active{% endif %}">
+          <i class="bi bi-send-check"></i>
+          {% if row.viewer_response_summary.status == 'PENDING' %}Proposta pendente
+          {% elif row.viewer_response_summary.status == 'ACCEPTED' %}Proposta aceite
+          {% elif row.viewer_response_summary.status == 'REJECTED' %}Proposta rejeitada
+          {% elif row.viewer_response_summary.status == 'CANCELLED' %}Proposta cancelada
+          {% elif row.viewer_response_summary.status == 'COMPLETED' %}Proposta concluída
+          {% elif row.viewer_response_summary.status == 'WITHDRAWN' %}Proposta retirada
+          {% elif row.viewer_response_summary.status == 'EXPIRED' %}Proposta expirada
+          {% else %}Proposta enviada{% endif %}
+        </span>
+      {% endif %}
     </div>
   </div>
 
@@ -43,16 +56,28 @@
   </div>
 
   <div class="mk-card__footer">
-    {% if row.viewer_response_summary and row.viewer_response_summary.can_edit %}
-      <a href="{{ row.viewer_response_summary.edit_url }}"
-         hx-get="{{ row.viewer_response_summary.edit_url }}"
+    {% if row.viewer_response_summary %}
+      {% if row.viewer_response_summary.can_edit %}
+        <a href="{{ row.viewer_response_summary.edit_url }}"
+           hx-get="{{ row.viewer_response_summary.edit_url }}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="mk-card-action mk-card-action--ghost">
+          <i class="bi bi-pencil-square"></i>
+          Editar proposta
+        </a>
+      {% endif %}
+      <a href="{{ row.viewer_response_summary.detail_url }}"
+         hx-get="{{ row.viewer_response_summary.detail_url }}"
          hx-target="#shellMain"
          hx-select="#shellMain"
          hx-swap="outerHTML"
          hx-push-url="true"
          class="mk-card-action mk-card-action--primary">
-        <i class="bi bi-pencil-square"></i>
-        Editar proposta
+        <i class="bi bi-eye"></i>
+        Ver proposta enviada
       </a>
     {% else %}
       <a href="{{ row.response_url }}"

@@ -1,0 +1,137 @@
+<div class="mk-tab-section">
+
+  {% if my_orders %}
+
+    {# --- Ativas --- #}
+    <div class="mk-tab-group">
+      <h2 class="mk-tab-group__title"><i class="bi bi-clock-history"></i> Encomendas em curso</h2>
+      <div class="mk-orders-list">
+        {% for order in my_orders %}
+          {% if order.status == "PENDING" or order.status == "CONFIRMED" or order.status == "IN_PROGRESS" or order.status == "DELIVERING" %}
+          <div class="mk-order-row">
+            <div class="mk-order-row__num">#{{ order.order_number }}</div>
+            <div class="mk-order-row__meta">
+              <div class="mk-order-row__items">
+                {% for item in order.items.all %}
+                  {{ item.product.name }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+              </div>
+              <div class="mk-order-row__date">{{ order.created_at|date:"d M Y" }}</div>
+            </div>
+            <div>
+              {% if order.status == "PENDING" %}
+                <span class="mk-badge mk-badge--warning">Pendente</span>
+              {% elif order.status == "CONFIRMED" %}
+                <span class="mk-badge mk-badge--info">Confirmada</span>
+              {% elif order.status == "IN_PROGRESS" %}
+                <span class="mk-badge mk-badge--info">Em preparação</span>
+              {% elif order.status == "DELIVERING" %}
+                <span class="mk-badge mk-badge--purple">Em entrega</span>
+              {% endif %}
+            </div>
+            <div class="mk-order-row__right">
+              <span class="mk-order-row__total">{{ order.total_amount }} €</span>
+              <a href="{% url 'orders:detail' order.id %}"
+                 hx-get="{% url 'orders:detail' order.id %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn mk-btn--secondary">Ver detalhe</a>
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    {# --- Histórico --- #}
+    <div class="mk-tab-group mk-tab-group--muted">
+      <h2 class="mk-tab-group__title"><i class="bi bi-archive"></i> Histórico de encomendas</h2>
+      <div class="mk-orders-list">
+        {% for order in my_orders %}
+          {% if order.status == "COMPLETED" or order.status == "CANCELLED" %}
+          <div class="mk-order-row">
+            <div class="mk-order-row__num">#{{ order.order_number }}</div>
+            <div class="mk-order-row__meta">
+              <div class="mk-order-row__items">
+                {% for item in order.items.all %}
+                  {{ item.product.name }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+              </div>
+              <div class="mk-order-row__date">{{ order.created_at|date:"d M Y" }}</div>
+            </div>
+            <div>
+              {% if order.status == "COMPLETED" %}
+                <span class="mk-badge mk-badge--success">Concluída</span>
+              {% elif order.status == "CANCELLED" %}
+                <span class="mk-badge mk-badge--muted">Cancelada</span>
+              {% endif %}
+            </div>
+            <div class="mk-order-row__right">
+              <span class="mk-order-row__total">{{ order.total_amount }} €</span>
+              <a href="{% url 'orders:detail' order.id %}"
+                 hx-get="{% url 'orders:detail' order.id %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn mk-btn--secondary">Ver detalhe</a>
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+  {% else %}
+    <div class="mk-tab-empty">
+      <i class="bi bi-bag-x"></i>
+      <h3>Ainda não fez encomendas</h3>
+      <p>Explore o marketplace e compre excedentes a outros produtores da cooperativa.</p>
+      <a href="{% url 'marketplace:index' %}?tab=todos"
+         hx-get="{% url 'marketplace:index' %}?tab=todos"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-btn mk-btn--primary">
+        <i class="bi bi-shop"></i>
+        Ver marketplace
+      </a>
+    </div>
+  {% endif %}
+
+</div>
+
+<style>
+.mk-tab-section{display:flex;flex-direction:column;gap:1.25rem;}
+.mk-tab-group{background:#fff;border:1px solid #dbe4ee;border-radius:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.05);overflow:hidden;}
+.mk-tab-group--muted .mk-tab-group__title{background:#f8fafc;}
+.mk-tab-group__title{display:flex;align-items:center;gap:.55rem;margin:0;padding:.85rem 1.2rem;font-size:.86rem;font-weight:800;color:#334155;border-bottom:1px solid #edf2f7;}
+.mk-tab-group__title i{color:#64748b;}
+.mk-orders-list{display:flex;flex-direction:column;}
+.mk-order-row{display:grid;grid-template-columns:5rem 1fr auto auto;gap:.6rem 1.1rem;align-items:center;padding:.85rem 1.2rem;border-bottom:1px solid #f1f5f9;}
+.mk-order-row:last-child{border-bottom:0;}
+.mk-order-row__num{font-size:.82rem;font-weight:900;color:#047857;}
+.mk-order-row__meta{display:flex;flex-direction:column;gap:.15rem;}
+.mk-order-row__items{font-size:.86rem;font-weight:600;color:#0f172a;}
+.mk-order-row__date{font-size:.77rem;color:#94a3b8;}
+.mk-order-row__right{display:flex;flex-direction:column;align-items:flex-end;gap:.3rem;}
+.mk-order-row__total{font-size:.88rem;font-weight:800;color:#0f172a;}
+.mk-badge{display:inline-flex;align-items:center;padding:.28rem .65rem;border-radius:999px;font-size:.75rem;font-weight:700;white-space:nowrap;}
+.mk-badge--warning{background:#fef3c7;color:#92400e;}
+.mk-badge--info{background:#dbeafe;color:#1e40af;}
+.mk-badge--purple{background:#ede9fe;color:#6d28d9;}
+.mk-badge--success{background:#dcfce7;color:#166534;}
+.mk-badge--muted{background:#f1f5f9;color:#64748b;}
+.mk-tab-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;padding:3rem 1.5rem;background:#fff;border:1px solid #dbe4ee;border-radius:.9rem;text-align:center;}
+.mk-tab-empty i{font-size:2.2rem;color:#cbd5e1;}
+.mk-tab-empty h3{margin:0;font-size:1.05rem;font-weight:800;color:#0f172a;}
+.mk-tab-empty p{margin:0;font-size:.9rem;color:#64748b;max-width:32rem;}
+.mk-btn{display:inline-flex;align-items:center;gap:.45rem;border-radius:.75rem;font-size:.84rem;font-weight:800;padding:.6rem 1rem;text-decoration:none;border:1px solid transparent;white-space:nowrap;}
+.mk-btn--primary{background:#16a34a;color:#fff;}
+.mk-btn--primary:hover{background:#15803d;color:#fff;}
+.mk-btn--secondary{background:#fff;color:#334155;border-color:#e2e8f0;}
+.mk-btn--secondary:hover{background:#f8fafc;color:#0f172a;}
+</style>

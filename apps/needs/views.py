@@ -18,7 +18,8 @@ from apps.marketplace.services import (
     get_max_publishable_quantity,
     get_stock_for_product,
 )
-from apps.inventory.models import ProductionForecast
+from django.utils import timezone
+from apps.inventory.models import ProductionForecast, Stock
 from apps.needs.forms import ExternalCustomerDemandForm, NeedCreateForm, NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import ExternalCustomerDemand, ExternalCustomerDemandStatus, Need, NeedSourceSystem, NeedStatus
@@ -246,6 +247,25 @@ def build_external_demands_context(
             product_id=product_id,
         )
     )
+    today = timezone.now().date()
+    active_statuses_set = {
+        ExternalCustomerDemandStatus.OPEN,
+        ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+        ExternalCustomerDemandStatus.COVERED,
+    }
+    for demand in demand_rows:
+        days = (demand.requested_delivery_date - today).days
+        demand.days_remaining = days
+        if demand.status not in active_statuses_set:
+            demand.urgency = "inactive"
+        elif days < 0:
+            demand.urgency = "overdue"
+        elif days <= 7:
+            demand.urgency = "critical"
+        elif days <= 14:
+            demand.urgency = "warning"
+        else:
+            demand.urgency = "ok"
     products = list(get_need_candidate_products(producer)) if producer else []
     selected_demand = None
     if edit_id:
@@ -446,18 +466,57 @@ def build_needs_index_context(
     received_proposals_pending_count = len(all_active_received_proposals)
     sent_proposals_pending_count = len(sent_active_need_response_rows)
 
+    active_statuses = [
+        ExternalCustomerDemandStatus.OPEN,
+        ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+        ExternalCustomerDemandStatus.COVERED,
+    ]
+
     external_demands_open_count = (
         ExternalCustomerDemand.objects.filter(
             producer=producer,
-            status__in=[
-                ExternalCustomerDemandStatus.OPEN,
-                ExternalCustomerDemandStatus.PARTIALLY_COVERED,
-                ExternalCustomerDemandStatus.COVERED,
-            ],
+            status__in=active_statuses,
         ).count()
         if producer
         else 0
     )
+
+    # Preview de pedidos externos para mostrar no topo da página
+    active_demands_preview = []
+    has_more_demands = False
+    if producer:
+        active_demands_qs = (
+            ExternalCustomerDemand.objects
+            .filter(producer=producer, status__in=active_statuses)
+            .select_related("product", "product__category")
+            .order_by("requested_delivery_date")
+        )
+        demands_sample = list(active_demands_qs[:9])
+        has_more_demands = len(demands_sample) > 8
+        active_demands_preview = demands_sample[:8]
+
+        stocks_map = {
+            str(s.product_id): s
+            for s in Stock.objects.filter(
+                producer=producer,
+                product_id__in=[d.product_id for d in active_demands_preview],
+            )
+        }
+        today = timezone.now().date()
+        for demand in active_demands_preview:
+            stock = stocks_map.get(str(demand.product_id))
+            demand.stock_available = stock.available_quantity if stock else Decimal("0")
+            demand.stock_diff = demand.stock_available - demand.requested_quantity
+            days = (demand.requested_delivery_date - today).days
+            if days < 0:
+                demand.urgency = "overdue"
+            elif days <= 7:
+                demand.urgency = "critical"
+            elif days <= 14:
+                demand.urgency = "warning"
+            else:
+                demand.urgency = "ok"
+            demand.days_remaining = days
 
     return {
         "page_title": "Necessidades",
@@ -476,6 +535,8 @@ def build_needs_index_context(
         "sent_past_need_response_rows": sent_past_need_response_rows,
         "all_active_received_proposals": all_active_received_proposals,
         "external_demands_open_count": external_demands_open_count,
+        "active_demands_preview": active_demands_preview,
+        "has_more_demands": has_more_demands,
         "generated_needs_count": generated_needs_count,
         "received_proposals_pending_count": received_proposals_pending_count,
         "sent_proposals_pending_count": sent_proposals_pending_count,

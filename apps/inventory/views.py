@@ -19,6 +19,7 @@ from apps.inventory.forms import (
     ProductionForecastForm,
     UpdateStockForm,
 )
+from apps.needs.models import ExternalCustomerDemand, ExternalCustomerDemandStatus
 from apps.orders.services import get_buyer_incoming_forecast_projection
 
 
@@ -150,6 +151,21 @@ def _build_stock_detail_context(
         else "new" if normalized_forecast_mode == "new" else "list"
     )
 
+    product_demands = (
+        ExternalCustomerDemand.objects
+        .filter(
+            producer=producer,
+            product=stock.product,
+            status__in=[
+                ExternalCustomerDemandStatus.OPEN,
+                ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+                ExternalCustomerDemandStatus.COVERED,
+            ],
+        )
+        .select_related("product")
+        .order_by("requested_delivery_date")
+    )
+
     context = {
         "stock": stock,
         "stock_state": stock_state,
@@ -169,6 +185,8 @@ def _build_stock_detail_context(
         "incoming_forecast_period_start": incoming_forecast_period_start,
         "incoming_forecast_period_end": incoming_forecast_period_end,
         "incoming_forecast_items": incoming_forecast_items,
+        "product_demands": product_demands,
+        "product_demands_count": product_demands.count(),
         "page_title": f"Stock — {stock.product.name}",
     }
     return context

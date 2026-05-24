@@ -22,6 +22,7 @@ from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     get_need_for_producer,
+    get_need_response_summaries_for_responder,
     list_marketplace_public_needs,
 )
 from apps.needs.navigation import build_needs_index_url
@@ -53,6 +54,7 @@ from apps.marketplace.services import (
     retire_listing,
     update_listing,
 )
+from apps.orders.models import OrderItem, Order, OrderStatus
 from apps.settings_app.models import UserPreference
 
 
@@ -146,6 +148,27 @@ def _attach_listing_photo_urls(listings):
             listing.source_period = None
         attached.append(listing)
     return attached
+
+
+def _attach_viewer_order_info(producer, listings):
+    """Anota cada listing com o estado da order mais recente do utilizador atual."""
+    listing_ids = [listing.id for listing in listings]
+    order_items = (
+        OrderItem.objects
+        .filter(order__buyer_producer=producer, listing_id__in=listing_ids)
+        .select_related("order")
+        .order_by("-created_at")
+    )
+    order_map = {}
+    for oi in order_items:
+        key = str(oi.listing_id)
+        if key not in order_map:
+            order_map[key] = {
+                "item_status": oi.item_status,
+                "order_id": str(oi.order_id),
+            }
+    for listing in listings:
+        listing.viewer_order_info = order_map.get(str(listing.id))
 
 
 def _first_non_empty_text(*values):
@@ -329,7 +352,7 @@ def _activate_forecast_for_marketplace_if_possible(*, producer, product_id, fore
 def _get_index_filters(request):
     source = request.POST if request.method == "POST" else request.GET
     active_tab = (source.get("tab") or "todos").strip()
-    if active_tab not in {"todos", "meus", "necessidades"}:
+    if active_tab not in {"todos", "meus", "necessidades", "compras", "respostas"}:
         active_tab = "todos"
     q = (source.get("q") or "").strip()
     category_id = (source.get("category") or "").strip()
@@ -443,7 +466,65 @@ def _build_marketplace_index_context(
 
     public_listings = _attach_listing_photo_urls(public_listings)
     my_listings = _attach_listing_photo_urls(my_listings)
+
+    # Anotar listings públicos com info de order do utilizador atual (badges)
+    if producer and public_listings:
+        _attach_viewer_order_info(producer, public_listings)
+
     public_marketplace_count = len(public_listings) + len(marketplace_need_rows)
+
+    # Contagens para badges dos novos tabs (sempre calculadas se houver produtor)
+    my_active_orders_count = 0
+    my_pending_responses_count = 0
+    if producer:
+        my_active_orders_count = Order.objects.filter(
+            buyer_producer=producer,
+            status__in=[
+                OrderStatus.PENDING,
+                OrderStatus.CONFIRMED,
+                OrderStatus.IN_PROGRESS,
+                OrderStatus.DELIVERING,
+            ],
+        ).count()
+        my_pending_responses_count = MarketplaceListing.objects.filter(
+            producer=producer,
+            need_id__isnull=False,
+            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        ).count()
+
+    # Dados completos para os novos tabs (só carregados quando necessário)
+    my_orders = []
+    my_need_responses = []
+    if active_tab == "compras" and producer:
+        my_orders = list(
+            Order.objects
+            .filter(buyer_producer=producer)
+            .prefetch_related("items", "items__product", "items__seller_producer")
+            .order_by("-created_at")
+        )
+    elif active_tab == "respostas" and producer:
+        response_listings = list(
+            MarketplaceListing.objects
+            .filter(producer=producer, need_id__isnull=False)
+            .select_related(
+                "need", "need__producer", "need__product",
+                "need__product__category", "product",
+            )
+            .order_by("-created_at")
+        )
+        if response_listings:
+            need_ids = list({str(listing.need_id) for listing in response_listings})
+            summaries = get_need_response_summaries_for_responder(
+                responder_producer=producer,
+                need_ids=need_ids,
+            )
+            seen_needs = set()
+            for listing in response_listings:
+                need_key = str(listing.need_id)
+                if need_key not in seen_needs:
+                    seen_needs.add(need_key)
+                    listing.response_summary = summaries.get(need_key)
+                    my_need_responses.append(listing)
 
     return {
         "page_title": "Marketplace",
@@ -461,6 +542,10 @@ def _build_marketplace_index_context(
         "public_offers_count": len(public_listings),
         "public_needs_count": len(marketplace_need_rows),
         "my_listings_count": len(my_listings),
+        "my_active_orders_count": my_active_orders_count,
+        "my_pending_responses_count": my_pending_responses_count,
+        "my_orders": my_orders,
+        "my_need_responses": my_need_responses,
         "selected_need_id": selected_need_id,
         "selected_need_row": None,
         "need_prefill_product_id": need_prefill_product_id,

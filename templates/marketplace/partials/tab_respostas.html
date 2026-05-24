@@ -1,0 +1,132 @@
+<div class="mk-tab-section">
+
+  {% if my_need_responses %}
+    <div class="mk-tab-group">
+      <h2 class="mk-tab-group__title"><i class="bi bi-reply-all"></i> As minhas propostas a necessidades</h2>
+      <div class="mk-responses-list">
+        {% for listing in my_need_responses %}
+        <div class="mk-resp-row">
+          <div class="mk-resp-row__product">
+            <span class="mk-resp-row__name">{{ listing.product.name }}</span>
+            {% if listing.need %}
+              <span class="mk-resp-row__requester">
+                <i class="bi bi-person"></i>
+                {{ listing.need.producer.display_name|default:listing.need.producer.company_name }}
+              </span>
+            {% endif %}
+          </div>
+          <div class="mk-resp-row__offer">
+            <span class="mk-resp-row__qty">{{ listing.quantity_available }} kg</span>
+            <span class="mk-resp-row__price">{{ listing.unit_price }} €/kg</span>
+          </div>
+          <div class="mk-resp-row__status">
+            {% if listing.response_summary %}
+              <span class="mk-badge mk-badge--{{ listing.response_summary.badge_class }}">
+                {{ listing.response_summary.status_label }}
+              </span>
+            {% else %}
+              <span class="mk-badge mk-badge--warning">Pendente</span>
+            {% endif %}
+          </div>
+          <div class="mk-resp-row__actions">
+            {% if listing.response_summary %}
+              <a href="{{ listing.response_summary.detail_url }}"
+                 hx-get="{{ listing.response_summary.detail_url }}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn mk-btn--secondary">
+                <i class="bi bi-eye"></i>
+                Ver proposta
+              </a>
+              {% if listing.response_summary.can_edit %}
+                <a href="{{ listing.response_summary.edit_url }}"
+                   hx-get="{{ listing.response_summary.edit_url }}"
+                   hx-target="#shellMain"
+                   hx-select="#shellMain"
+                   hx-swap="outerHTML"
+                   hx-push-url="true"
+                   class="mk-btn mk-btn--secondary">
+                  <i class="bi bi-pencil"></i>
+                  Editar
+                </a>
+              {% endif %}
+            {% else %}
+              <a href="{% url 'needs:response_detail' listing.id %}"
+                 hx-get="{% url 'needs:response_detail' listing.id %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn mk-btn--secondary">
+                <i class="bi bi-eye"></i>
+                Ver proposta
+              </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="mk-tab-hint">
+      <i class="bi bi-info-circle"></i>
+      As propostas ficam visíveis até o produtor aceitar ou a necessidade ser coberta. Pode fazer nova proposta se a anterior foi rejeitada ou cancelada.
+    </div>
+
+  {% else %}
+    <div class="mk-tab-empty">
+      <i class="bi bi-reply"></i>
+      <h3>Ainda não respondeu a nenhuma necessidade</h3>
+      <p>Explore as procuras abertas de outros produtores e ofereça os seus excedentes como resposta.</p>
+      <a href="{% url 'marketplace:index' %}?tab=todos&kind=needs"
+         hx-get="{% url 'marketplace:index' %}?tab=todos&kind=needs"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-btn mk-btn--primary">
+        <i class="bi bi-search"></i>
+        Ver procuras abertas
+      </a>
+    </div>
+  {% endif %}
+
+</div>
+
+<style>
+.mk-tab-section{display:flex;flex-direction:column;gap:1.25rem;}
+.mk-tab-group{background:#fff;border:1px solid #dbe4ee;border-radius:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.05);overflow:hidden;}
+.mk-tab-group__title{display:flex;align-items:center;gap:.55rem;margin:0;padding:.85rem 1.2rem;font-size:.86rem;font-weight:800;color:#334155;border-bottom:1px solid #edf2f7;}
+.mk-tab-group__title i{color:#64748b;}
+.mk-responses-list{display:flex;flex-direction:column;}
+.mk-resp-row{display:grid;grid-template-columns:1fr auto auto auto;gap:.6rem 1.1rem;align-items:center;padding:.85rem 1.2rem;border-bottom:1px solid #f1f5f9;}
+.mk-resp-row:last-child{border-bottom:0;}
+.mk-resp-row__product{display:flex;flex-direction:column;gap:.15rem;}
+.mk-resp-row__name{font-size:.88rem;font-weight:700;color:#0f172a;}
+.mk-resp-row__requester{font-size:.78rem;color:#64748b;display:flex;align-items:center;gap:.3rem;}
+.mk-resp-row__offer{display:flex;flex-direction:column;align-items:flex-end;gap:.15rem;}
+.mk-resp-row__qty{font-size:.86rem;font-weight:700;color:#0f172a;}
+.mk-resp-row__price{font-size:.78rem;color:#64748b;}
+.mk-resp-row__status{display:flex;align-items:center;}
+.mk-resp-row__actions{display:flex;gap:.5rem;align-items:center;}
+.mk-tab-hint{display:flex;align-items:flex-start;gap:.55rem;padding:.8rem 1rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:.75rem;font-size:.82rem;color:#0369a1;}
+.mk-tab-hint i{flex-shrink:0;margin-top:.1rem;}
+.mk-badge{display:inline-flex;align-items:center;padding:.28rem .65rem;border-radius:999px;font-size:.75rem;font-weight:700;white-space:nowrap;}
+.mk-badge--warning{background:#fef3c7;color:#92400e;}
+.mk-badge--success,.mk-badge--green{background:#dcfce7;color:#166534;}
+.mk-badge--danger,.mk-badge--red{background:#fee2e2;color:#991b1b;}
+.mk-badge--muted,.mk-badge--gray{background:#f1f5f9;color:#64748b;}
+.mk-badge--info,.mk-badge--blue{background:#dbeafe;color:#1e40af;}
+.mk-badge--purple{background:#ede9fe;color:#6d28d9;}
+.mk-tab-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;padding:3rem 1.5rem;background:#fff;border:1px solid #dbe4ee;border-radius:.9rem;text-align:center;}
+.mk-tab-empty i{font-size:2.2rem;color:#cbd5e1;}
+.mk-tab-empty h3{margin:0;font-size:1.05rem;font-weight:800;color:#0f172a;}
+.mk-tab-empty p{margin:0;font-size:.9rem;color:#64748b;max-width:32rem;}
+.mk-btn{display:inline-flex;align-items:center;gap:.45rem;border-radius:.75rem;font-size:.84rem;font-weight:800;padding:.6rem 1rem;text-decoration:none;border:1px solid transparent;white-space:nowrap;}
+.mk-btn--primary{background:#16a34a;color:#fff;}
+.mk-btn--primary:hover{background:#15803d;color:#fff;}
+.mk-btn--secondary{background:#fff;color:#334155;border-color:#e2e8f0;}
+.mk-btn--secondary:hover{background:#f8fafc;color:#0f172a;}
+</style>

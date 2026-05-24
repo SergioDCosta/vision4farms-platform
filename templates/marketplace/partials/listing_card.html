@@ -17,6 +17,17 @@
       <span class="mk-badge {% if item.status == 'ACTIVE' %}mk-badge--active{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'EXPIRED' %}mk-badge--warn{% else %}mk-badge--closed{% endif %}">
         {{ item.get_status_display }}
       </span>
+      {% if item.viewer_order_info %}
+        <span class="mk-badge {% if item.viewer_order_info.item_status == 'COMPLETED' %}mk-badge--ok{% elif item.viewer_order_info.item_status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--active{% endif %}">
+          <i class="bi bi-bag-check"></i>
+          {% if item.viewer_order_info.item_status == 'PENDING' %}Pedido pendente
+          {% elif item.viewer_order_info.item_status == 'CONFIRMED' %}Encomenda confirmada
+          {% elif item.viewer_order_info.item_status == 'IN_DELIVERY' %}Em entrega
+          {% elif item.viewer_order_info.item_status == 'COMPLETED' %}Concluído
+          {% elif item.viewer_order_info.item_status == 'CANCELLED' %}Cancelado
+          {% else %}Pedido feito{% endif %}
+        </span>
+      {% endif %}
     </div>
   </div>
 
@@ -128,16 +139,29 @@
         <i class="bi bi-eye"></i>
         Ver detalhes
       </a>
-      <a href="{% url 'messaging:start_listing_contact' item.id %}"
-         hx-get="{% url 'messaging:start_listing_contact' item.id %}"
-         hx-target="#shellMain"
-         hx-select="#shellMain"
-         hx-swap="outerHTML"
-         hx-push-url="true"
-         class="mk-card-action mk-card-action--primary">
-        <i class="bi bi-chat-dots"></i>
-        Contactar
-      </a>
+      {% if item.viewer_order_info %}
+        <a href="{% url 'orders:detail' item.viewer_order_info.order_id %}"
+           hx-get="{% url 'orders:detail' item.viewer_order_info.order_id %}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="mk-card-action mk-card-action--primary">
+          <i class="bi bi-bag-check"></i>
+          Ver encomenda
+        </a>
+      {% else %}
+        <a href="{% url 'messaging:start_listing_contact' item.id %}"
+           hx-get="{% url 'messaging:start_listing_contact' item.id %}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="mk-card-action mk-card-action--primary">
+          <i class="bi bi-chat-dots"></i>
+          Contactar
+        </a>
+      {% endif %}
     </div>
   {% endif %}
 </article>

@@ -91,6 +91,107 @@
     </label>
   </form>
 
+  {# ── Pedidos dos meus clientes ────────────────────────────────────────── #}
+  {% if active_demands_preview %}
+  <section class="nd-section nd-section--demands-preview">
+    <div class="nd-section-head">
+      <div>
+        <h2><i class="bi bi-clipboard2-check"></i> Pedidos dos meus clientes</h2>
+        <p>Pedidos externos ativos ordenados por urgência de entrega.</p>
+      </div>
+      <a href="{% url 'needs:external_demands' %}"
+         hx-get="{% url 'needs:external_demands' %}"
+         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+         class="nd-btn nd-btn--ghost nd-btn--sm">
+        {% if has_more_demands %}Ver todos <i class="bi bi-arrow-right"></i>
+        {% else %}Ver planeamento completo <i class="bi bi-arrow-right"></i>{% endif %}
+      </a>
+    </div>
+
+    <div class="nd-demands-table-wrap">
+      <table class="nd-demands-table">
+        <thead>
+          <tr>
+            <th>Urgência</th>
+            <th>Cliente</th>
+            <th>Produto</th>
+            <th>Qtd. pedida</th>
+            <th>Data entrega</th>
+            <th>Stock disp.</th>
+            <th>Diferença</th>
+            <th>Estado</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for demand in active_demands_preview %}
+          <tr class="nd-demands-table__row nd-demands-table__row--{{ demand.urgency }}">
+            <td>
+              {% if demand.urgency == "overdue" %}
+                <span class="nd-urgency nd-urgency--overdue" title="Atrasado"><i class="bi bi-exclamation-circle-fill"></i> Atrasado</span>
+              {% elif demand.urgency == "critical" %}
+                <span class="nd-urgency nd-urgency--critical" title="{{ demand.days_remaining }} dias"><i class="bi bi-exclamation-triangle-fill"></i> {{ demand.days_remaining }}d</span>
+              {% elif demand.urgency == "warning" %}
+                <span class="nd-urgency nd-urgency--warning" title="{{ demand.days_remaining }} dias"><i class="bi bi-clock-fill"></i> {{ demand.days_remaining }}d</span>
+              {% else %}
+                <span class="nd-urgency nd-urgency--ok" title="{{ demand.days_remaining }} dias"><i class="bi bi-check-circle"></i> {{ demand.days_remaining }}d</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="nd-demands-table__client">{{ demand.client_name }}</span>
+              {% if demand.client_contact %}<span class="nd-demands-table__contact">{{ demand.client_contact }}</span>{% endif %}
+            </td>
+            <td>{{ demand.product.name }}</td>
+            <td>{{ demand.requested_quantity|floatformat:"-3" }} {{ demand.product.unit }}</td>
+            <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
+            <td>{{ demand.stock_available|floatformat:"-3" }} {{ demand.product.unit }}</td>
+            <td>
+              {% if demand.stock_diff < 0 %}
+                <span class="nd-diff nd-diff--deficit"><i class="bi bi-dash-circle-fill"></i> {{ demand.stock_diff|floatformat:"-3" }} {{ demand.product.unit }}</span>
+              {% else %}
+                <span class="nd-diff nd-diff--ok"><i class="bi bi-plus-circle-fill"></i> +{{ demand.stock_diff|floatformat:"-3" }} {{ demand.product.unit }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if demand.status == "OPEN" %}
+                <span class="nd-badge nd-badge--warn">Em aberto</span>
+              {% elif demand.status == "PARTIALLY_COVERED" %}
+                <span class="nd-badge nd-badge--info">Parcialmente coberto</span>
+              {% elif demand.status == "COVERED" %}
+                <span class="nd-badge nd-badge--ok">Coberto</span>
+              {% endif %}
+            </td>
+            <td class="nd-demands-table__actions">
+              <a href="{% url 'needs:external_demands' %}?edit={{ demand.id }}"
+                 hx-get="{% url 'needs:external_demands' %}?edit={{ demand.id }}"
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 class="nd-btn nd-btn--ghost nd-btn--xs" title="Editar pedido">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="nd-demands-preview__footer">
+      <a href="{% url 'needs:external_demands' %}?show_form=1"
+         hx-get="{% url 'needs:external_demands' %}?show_form=1"
+         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+         class="nd-btn nd-btn--ghost nd-btn--sm">
+        <i class="bi bi-clipboard2-plus"></i> Novo pedido de cliente
+      </a>
+      <a href="{% url 'needs:external_demands' %}"
+         hx-get="{% url 'needs:external_demands' %}"
+         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+         class="nd-btn nd-btn--ghost nd-btn--sm">
+        <i class="bi bi-bar-chart-steps"></i> Ver análise de risco completa
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
   {# ── Painel: Criar procura manual ──────────────────────────────────────── #}
   {% if show_need_form %}
     <section class="nd-panel nd-panel--form">
@@ -837,6 +938,104 @@
 .nd-section-head h2 { margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--tx); }
 .nd-section-head p { margin: .2rem 0 0; color: var(--mt); font-size: .84rem; }
 .nd-kicker { color: var(--g); font-size: .68rem; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+.nd-btn--xs { min-height: 1.7rem; padding: .25rem .5rem; font-size: .74rem; border-radius: .5rem; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   PEDIDOS DOS CLIENTES — SECÇÃO DE DESTAQUE
+═══════════════════════════════════════════════════════════════════ */
+.nd-section--demands-preview {
+  background: var(--cbg);
+  border: 1px solid var(--br);
+  border-top: 3px solid var(--a);
+  border-radius: var(--rad-lg);
+  padding: 1rem 1.1rem;
+  box-shadow: var(--shd);
+  gap: .85rem;
+}
+.nd-section--demands-preview .nd-section-head h2 {
+  font-size: 1rem;
+  display: flex; align-items: center; gap: .45rem;
+}
+.nd-section--demands-preview .nd-section-head h2 i {
+  color: var(--a);
+}
+.nd-demands-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--br);
+  border-radius: var(--rad);
+}
+.nd-demands-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+  font-size: .84rem;
+}
+.nd-demands-table thead tr {
+  background: var(--pbg);
+  border-bottom: 2px solid var(--br);
+}
+.nd-demands-table th {
+  text-align: left;
+  padding: .6rem .85rem;
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--mt);
+  white-space: nowrap;
+}
+.nd-demands-table td {
+  padding: .7rem .85rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--br);
+  color: var(--tx);
+}
+.nd-demands-table tbody tr:last-child td { border-bottom: 0; }
+.nd-demands-table tbody tr { transition: background .1s; }
+.nd-demands-table tbody tr:hover { background: var(--pbg); }
+
+/* Row urgency backgrounds */
+.nd-demands-table__row--overdue td  { background: #fff5f5; }
+.nd-demands-table__row--overdue:hover td { background: #fee2e2; }
+.nd-demands-table__row--critical td { background: #fffaf5; }
+.nd-demands-table__row--critical:hover td { background: #fff7ed; }
+.nd-demands-table__row--warning td  { background: #fffef0; }
+.nd-demands-table__row--warning:hover td { background: #fefce8; }
+
+/* Urgency badges */
+.nd-urgency {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .25rem .6rem; border-radius: 999px;
+  font-size: .72rem; font-weight: 800; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.nd-urgency--overdue  { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+.nd-urgency--critical { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+.nd-urgency--warning  { background: #fefce8; color: #854d0e; border-color: #fde68a; }
+.nd-urgency--ok       { background: var(--gs); color: #15803d; border-color: #bbf7d0; }
+
+/* Client cell */
+.nd-demands-table__client { display: block; font-weight: 700; color: var(--tx); }
+.nd-demands-table__contact { display: block; font-size: .75rem; color: var(--mt); margin-top: .1rem; }
+
+/* Diff cell */
+.nd-diff {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-weight: 700; font-size: .82rem; white-space: nowrap;
+}
+.nd-diff--deficit { color: #b91c1c; }
+.nd-diff--ok      { color: #15803d; }
+
+/* Actions cell */
+.nd-demands-table__actions { white-space: nowrap; }
+
+/* Footer */
+.nd-demands-preview__footer {
+  display: flex; align-items: center; gap: .6rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--br);
+  flex-wrap: wrap;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    CARDS DE PROCURAS

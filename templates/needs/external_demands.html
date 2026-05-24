@@ -60,6 +60,133 @@
     </article>
   </section>
 
+  {# ── Análise de risco por produto (destaque) ─────────────────────────────── #}
+  {% if demand_plans %}
+  <section class="ecd-planning">
+    <div class="ecd-section-title">
+      <div>
+        <span class="ecd-eyebrow">Análise de capacidade</span>
+        <h2>Planeamento por produto</h2>
+        <p>Compara os pedidos dos clientes com o stock disponível e a produção prevista útil até cada data de entrega.</p>
+      </div>
+    </div>
+
+    {% for plan in demand_plans %}
+      <article class="ecd-plan-card {% if plan.has_deficit %}ecd-plan-card--deficit{% else %}ecd-plan-card--covered{% endif %}">
+        <div class="ecd-plan-head">
+          <div>
+            <span class="ecd-eyebrow">{{ plan.product.category.name|default:"Produto" }}</span>
+            <h3>{{ plan.product.name }}</h3>
+            {% if plan.has_deficit %}
+              <p>Faltam <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>{% if plan.first_deficit_date %} — data crítica: <strong>{{ plan.first_deficit_date|date:"d/m/Y" }}</strong>{% endif %}</p>
+            {% else %}
+              <p>Stock e produção prevista suficientes para cumprir todos os pedidos nos prazos previstos.</p>
+            {% endif %}
+          </div>
+          <span class="ecd-plan-badge {% if plan.has_deficit %}is-deficit{% else %}is-covered{% endif %}">
+            {% if plan.has_deficit %}<i class="bi bi-exclamation-triangle"></i> Em défice{% else %}<i class="bi bi-check-circle"></i> Coberto{% endif %}
+          </span>
+        </div>
+
+        <div class="ecd-plan-metrics">
+          <div>
+            <span>Total de pedidos</span>
+            <strong>{{ plan.total_external_demand|quantity }} {{ plan.product.unit }}</strong>
+          </div>
+          <div>
+            <span>Stock disponível agora</span>
+            <strong>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</strong>
+          </div>
+          <div>
+            <span>Produção prevista útil</span>
+            <strong>{{ plan.total_forecast_relevant|quantity }} {{ plan.product.unit }}</strong>
+          </div>
+          <div>
+            <span>Quantidade em falta</span>
+            <strong class="{% if plan.has_deficit %}ecd-deficit{% else %}ecd-covered{% endif %}">{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>
+          </div>
+        </div>
+
+        <div class="ecd-need-box {% if plan.has_deficit %}is-deficit{% else %}is-covered{% endif %}">
+          {% if plan.has_deficit %}
+            <div>
+              <span>{% if plan.generated_need %}Procura gerada automaticamente{% else %}Procura prevista{% endif %}</span>
+              <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }} em falta</strong>
+              <p>A procura é criada automaticamente no marketplace para que outros produtores possam responder. A produção prevista só conta se estiver disponível antes da data de entrega.</p>
+            </div>
+            <div class="ecd-need-actions">
+              <span class="ecd-critical-date"><i class="bi bi-calendar-event"></i> {{ plan.first_deficit_date|date:"d/m/Y" }}</span>
+              {% if plan.generated_need %}
+                <a href="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
+                   hx-get="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
+                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                   class="ecd-btn ecd-btn--ghost">
+                  <i class="bi bi-megaphone"></i> Ver procura gerada
+                </a>
+                {% if plan.generated_need.status == "OPEN" or plan.generated_need.status == "PARTIALLY_COVERED" %}
+                  <a href="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
+                     hx-get="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
+                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                     class="ecd-btn ecd-btn--primary">
+                    <i class="bi bi-shop"></i> Ver no marketplace
+                  </a>
+                {% endif %}
+              {% endif %}
+            </div>
+          {% else %}
+            <div>
+              <span>{% if plan.generated_need %}Procura coberta{% else %}Sem procura necessária{% endif %}</span>
+              <strong>Todos os pedidos estão cobertos</strong>
+              <p>O stock disponível e a produção prevista útil são suficientes para cumprir todos os pedidos nos prazos acordados.</p>
+            </div>
+            {% if plan.generated_need %}
+              <a href="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
+                 hx-get="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 class="ecd-btn ecd-btn--ghost">
+                <i class="bi bi-megaphone"></i> Ver procura coberta
+              </a>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        <div class="ecd-timeline-wrap">
+          <table class="ecd-timeline">
+            <thead>
+              <tr>
+                <th>Data de entrega</th>
+                <th>Pedidos acumulados</th>
+                <th>Stock disponível</th>
+                <th>Produção prevista útil</th>
+                <th>Capacidade restante após pedidos</th>
+                <th>Quantidade em falta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in plan.rows %}
+                <tr class="{% if row.deficit_until_date > 0 %}has-deficit{% endif %}">
+                  <td>{{ row.delivery_date|date:"d/m/Y" }}</td>
+                  <td>{{ row.demand_until_date|quantity }} {{ plan.product.unit }}</td>
+                  <td>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</td>
+                  <td>{{ row.forecast_until_date|quantity }} {{ plan.product.unit }}</td>
+                  <td><strong>{{ row.remaining_capacity_until_date|quantity }} {{ plan.product.unit }}</strong></td>
+                  <td>
+                    {% if row.deficit_until_date > 0 %}
+                      <strong class="ecd-deficit">{{ row.deficit_until_date|quantity }} {{ plan.product.unit }}</strong>
+                    {% else %}
+                      <span class="ecd-covered">0 {{ plan.product.unit }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {# ── Card explicativo da fórmula ────────────────────────────────────────── #}
   <div class="ecd-formula-card">
     <div class="ecd-formula-card__head">
@@ -215,6 +342,7 @@
       <table class="ecd-table">
         <thead>
           <tr>
+            <th>Urgência</th>
             <th>Cliente</th>
             <th>Produto</th>
             <th>Quantidade</th>
@@ -225,7 +353,20 @@
         </thead>
         <tbody>
           {% for demand in demand_rows %}
-            <tr>
+            <tr class="{% if demand.urgency == 'overdue' %}ecd-row--overdue{% elif demand.urgency == 'critical' %}ecd-row--critical{% elif demand.urgency == 'warning' %}ecd-row--warning{% endif %}">
+              <td>
+                {% if demand.urgency == "overdue" %}
+                  <span class="ecd-urgency ecd-urgency--overdue"><i class="bi bi-exclamation-circle-fill"></i> Atrasado</span>
+                {% elif demand.urgency == "critical" %}
+                  <span class="ecd-urgency ecd-urgency--critical"><i class="bi bi-exclamation-triangle-fill"></i> Crítico</span>
+                {% elif demand.urgency == "warning" %}
+                  <span class="ecd-urgency ecd-urgency--warning"><i class="bi bi-clock"></i> Atenção</span>
+                {% elif demand.urgency == "ok" %}
+                  <span class="ecd-urgency ecd-urgency--ok"><i class="bi bi-check-circle"></i> OK</span>
+                {% else %}
+                  <span class="ecd-urgency ecd-urgency--inactive">—</span>
+                {% endif %}
+              </td>
               <td>
                 <strong>{{ demand.client_name }}</strong>
                 {% if demand.client_contact %}<small>{{ demand.client_contact }}</small>{% endif %}
@@ -233,7 +374,14 @@
               </td>
               <td>{{ demand.product.name }}</td>
               <td><strong>{{ demand.requested_quantity|quantity }} {{ demand.product.unit }}</strong></td>
-              <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
+              <td>
+                {{ demand.requested_delivery_date|date:"d/m/Y" }}
+                {% if demand.urgency == "overdue" %}
+                  <small class="ecd-days ecd-days--overdue">{{ demand.days_remaining|add:"0" }}d</small>
+                {% elif demand.urgency == "critical" or demand.urgency == "warning" %}
+                  <small class="ecd-days">em {{ demand.days_remaining }}d</small>
+                {% endif %}
+              </td>
               <td><span class="ecd-status ecd-status--{{ demand.status|lower }}">{{ demand.get_status_display }}</span></td>
               <td>
                 {% if demand.status in active_statuses %}
@@ -265,7 +413,7 @@
             </tr>
           {% empty %}
             <tr>
-              <td colspan="6">
+              <td colspan="7">
                 <div class="ecd-empty">
                   <i class="bi bi-clipboard2"></i>
                   <strong>Ainda não existem pedidos registados</strong>
@@ -285,132 +433,6 @@
     </div>
   </section>
 
-  {# ── Planeamento por produto ────────────────────────────────────────────── #}
-  {% if demand_plans %}
-  <section class="ecd-planning">
-    <div class="ecd-section-title">
-      <div>
-        <span class="ecd-eyebrow">Análise de capacidade</span>
-        <h2>Planeamento por produto</h2>
-        <p>Compara os pedidos dos clientes com o stock disponível e a produção prevista útil até cada data de entrega.</p>
-      </div>
-    </div>
-
-    {% for plan in demand_plans %}
-      <article class="ecd-plan-card {% if plan.has_deficit %}ecd-plan-card--deficit{% else %}ecd-plan-card--covered{% endif %}">
-        <div class="ecd-plan-head">
-          <div>
-            <span class="ecd-eyebrow">{{ plan.product.category.name|default:"Produto" }}</span>
-            <h3>{{ plan.product.name }}</h3>
-            {% if plan.has_deficit %}
-              <p>Faltam <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>{% if plan.first_deficit_date %} — data crítica: <strong>{{ plan.first_deficit_date|date:"d/m/Y" }}</strong>{% endif %}</p>
-            {% else %}
-              <p>Stock e produção prevista suficientes para cumprir todos os pedidos nos prazos previstos.</p>
-            {% endif %}
-          </div>
-          <span class="ecd-plan-badge {% if plan.has_deficit %}is-deficit{% else %}is-covered{% endif %}">
-            {% if plan.has_deficit %}<i class="bi bi-exclamation-triangle"></i> Em défice{% else %}<i class="bi bi-check-circle"></i> Coberto{% endif %}
-          </span>
-        </div>
-
-        <div class="ecd-plan-metrics">
-          <div>
-            <span>Total de pedidos</span>
-            <strong>{{ plan.total_external_demand|quantity }} {{ plan.product.unit }}</strong>
-          </div>
-          <div>
-            <span>Stock disponível agora</span>
-            <strong>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</strong>
-          </div>
-          <div>
-            <span>Produção prevista útil</span>
-            <strong>{{ plan.total_forecast_relevant|quantity }} {{ plan.product.unit }}</strong>
-          </div>
-          <div>
-            <span>Quantidade em falta</span>
-            <strong class="{% if plan.has_deficit %}ecd-deficit{% else %}ecd-covered{% endif %}">{{ plan.max_deficit|quantity }} {{ plan.product.unit }}</strong>
-          </div>
-        </div>
-
-        <div class="ecd-need-box {% if plan.has_deficit %}is-deficit{% else %}is-covered{% endif %}">
-          {% if plan.has_deficit %}
-            <div>
-              <span>{% if plan.generated_need %}Procura gerada automaticamente{% else %}Procura prevista{% endif %}</span>
-              <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }} em falta</strong>
-              <p>A procura é criada automaticamente no marketplace para que outros produtores possam responder. A produção prevista só conta se estiver disponível antes da data de entrega.</p>
-            </div>
-            <div class="ecd-need-actions">
-              <span class="ecd-critical-date"><i class="bi bi-calendar-event"></i> {{ plan.first_deficit_date|date:"d/m/Y" }}</span>
-              {% if plan.generated_need %}
-                <a href="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
-                   hx-get="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
-                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                   class="ecd-btn ecd-btn--ghost">
-                  <i class="bi bi-megaphone"></i> Ver procura gerada
-                </a>
-                {% if plan.generated_need.status == "OPEN" or plan.generated_need.status == "PARTIALLY_COVERED" %}
-                  <a href="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
-                     hx-get="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
-                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                     class="ecd-btn ecd-btn--primary">
-                    <i class="bi bi-shop"></i> Ver no marketplace
-                  </a>
-                {% endif %}
-              {% endif %}
-            </div>
-          {% else %}
-            <div>
-              <span>{% if plan.generated_need %}Procura coberta{% else %}Sem procura necessária{% endif %}</span>
-              <strong>Todos os pedidos estão cobertos</strong>
-              <p>O stock disponível e a produção prevista útil são suficientes para cumprir todos os pedidos nos prazos acordados.</p>
-            </div>
-            {% if plan.generated_need %}
-              <a href="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
-                 hx-get="{% url 'needs:index' %}?need={{ plan.generated_need.id }}"
-                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                 class="ecd-btn ecd-btn--ghost">
-                <i class="bi bi-megaphone"></i> Ver procura coberta
-              </a>
-            {% endif %}
-          {% endif %}
-        </div>
-
-        <div class="ecd-timeline-wrap">
-          <table class="ecd-timeline">
-            <thead>
-              <tr>
-                <th>Data de entrega</th>
-                <th>Pedidos acumulados</th>
-                <th>Stock disponível</th>
-                <th>Produção prevista útil</th>
-                <th>Capacidade restante após pedidos</th>
-                <th>Quantidade em falta</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in plan.rows %}
-                <tr class="{% if row.deficit_until_date > 0 %}has-deficit{% endif %}">
-                  <td>{{ row.delivery_date|date:"d/m/Y" }}</td>
-                  <td>{{ row.demand_until_date|quantity }} {{ plan.product.unit }}</td>
-                  <td>{{ plan.available_stock_now|quantity }} {{ plan.product.unit }}</td>
-                  <td>{{ row.forecast_until_date|quantity }} {{ plan.product.unit }}</td>
-                  <td><strong>{{ row.remaining_capacity_until_date|quantity }} {{ plan.product.unit }}</strong></td>
-                  <td>
-                    {% if row.deficit_until_date > 0 %}
-                      <strong class="ecd-deficit">{{ row.deficit_until_date|quantity }} {{ plan.product.unit }}</strong>
-                    {% else %}
-                      <span class="ecd-covered">0 {{ plan.product.unit }}</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </article>
-    {% endfor %}
-  </section>
-  {% endif %}
 
 </div>
 
@@ -584,6 +606,17 @@
 .ecd-mini-btn--danger { color: #dc2626; }
 .ecd-mini-btn--danger:hover { background: #fef2f2; }
 .ecd-muted { color: #94a3b8; font-size: .82rem; }
+.ecd-urgency { display:inline-flex;align-items:center;gap:.3rem;border-radius:999px;padding:.25rem .6rem;font-size:.72rem;font-weight:800;white-space:nowrap; }
+.ecd-urgency--overdue  { background:#fee2e2;color:#b91c1c; }
+.ecd-urgency--critical { background:#fff7ed;color:#c2410c; }
+.ecd-urgency--warning  { background:#fef3c7;color:#92400e; }
+.ecd-urgency--ok       { background:#dcfce7;color:#15803d; }
+.ecd-urgency--inactive { color:#94a3b8; }
+.ecd-row--overdue  td { background:#fff5f5!important;border-color:#fecaca!important; }
+.ecd-row--critical td { background:#fff8f4!important;border-color:#fed7aa!important; }
+.ecd-row--warning  td { background:#fffbeb!important;border-color:#fde68a!important; }
+.ecd-days { display:block;font-size:.7rem;color:#64748b;margin-top:.1rem; }
+.ecd-days--overdue { color:#b91c1c;font-weight:700; }
 
 /* ═══════════════════════════════════════════════════════════════════
    PLANEAMENTO POR PRODUTO

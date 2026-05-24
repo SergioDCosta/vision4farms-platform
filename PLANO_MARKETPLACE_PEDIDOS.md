@@ -9,14 +9,14 @@
 
 | # | Tarefa | Tipo | Prioridade |
 |---|--------|------|------------|
-| 1 | Corrigir erro `FOR UPDATE` ao aceitar recomendação | Bug crítico | 🔴 Crítica |
-| 2 | Bloquear anúncios duplicados acima da margem de stock | Bug crítico | 🔴 Crítica |
-| 3 | `/necessidades/` mostrar pedidos dos clientes em destaque | UX + lógica | 🟠 Alta |
-| 4 | Badges contextuais nos cards do marketplace | UX + lógica | 🟠 Alta |
-| 5 | Detalhe de stock ligar pedidos externos | UX + lógica | 🟠 Alta |
-| 6 | Marketplace: 2 novos tabs (Compras & Respostas) | Feature | 🟡 Média |
-| 7 | Pedidos: linha temporal por urgência + risco em destaque | UX | 🟡 Média |
-| 8 | Empty state do marketplace: remover CTA errado | UX | 🟢 Baixa |
+| 1 | ~~Corrigir erro `FOR UPDATE` ao aceitar recomendação~~ | Bug crítico | ✅ Resolvido |
+| 2 | ~~Bloquear anúncios duplicados acima da margem de stock~~ | Bug crítico | ✅ Resolvido |
+| 3 | ~~`/necessidades/` mostrar pedidos dos clientes em destaque~~ | UX + lógica | ✅ Resolvido |
+| 4 | ~~Badges contextuais nos cards do marketplace~~ | UX + lógica | ✅ Resolvido |
+| 5 | ~~Detalhe de stock ligar pedidos externos~~ | UX + lógica | ✅ Resolvido |
+| 6 | ~~Marketplace: 2 novos tabs (Compras & Respostas)~~ | Feature | ✅ Resolvido |
+| 7 | ~~Pedidos: linha temporal por urgência + risco em destaque~~ | UX | ✅ Resolvido |
+| 8 | ~~Empty state do marketplace: remover CTA errado~~ | UX | ✅ Resolvido |
 
 ---
 

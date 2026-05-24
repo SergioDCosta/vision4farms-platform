@@ -473,6 +473,81 @@
     </div>
   {% endif %}
 
+  {# ── Pedidos de clientes deste produto ──────────────────────────────── #}
+  <div class="inv-card" style="margin-bottom:1.5rem;">
+    <div class="inv-card-head">
+      <div>
+        <h3 class="inv-card-title"><i class="bi bi-clipboard2-check"></i> Pedidos de clientes deste produto</h3>
+        <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
+          Encomendas externas ativas que incluem {{ stock.product.name }}.
+        </p>
+      </div>
+      <a href="{% url 'needs:external_demands' %}?product={{ stock.product.id }}"
+         hx-get="{% url 'needs:external_demands' %}?product={{ stock.product.id }}"
+         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+         class="inv-btn inv-btn--ghost inv-btn--sm">
+        Ver todos os pedidos deste produto <i class="bi bi-arrow-right"></i>
+      </a>
+    </div>
+
+    {% if product_demands %}
+      <div class="inv-table-wrap">
+        <table class="inv-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Quantidade</th>
+              <th>Data de entrega</th>
+              <th>Estado</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for demand in product_demands %}
+            <tr>
+              <td>
+                <strong>{{ demand.client_name }}</strong>
+                {% if demand.client_contact %}<br><small style="color:#64748b;">{{ demand.client_contact }}</small>{% endif %}
+              </td>
+              <td>{{ demand.requested_quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
+              <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
+              <td>
+                {% if demand.status == "OPEN" %}
+                  <span class="inv-badge inv-badge--warn">Em aberto</span>
+                {% elif demand.status == "PARTIALLY_COVERED" %}
+                  <span class="inv-badge inv-badge--info">Parcialmente coberto</span>
+                {% elif demand.status == "COVERED" %}
+                  <span class="inv-badge inv-badge--ok">Coberto</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'needs:external_demands' %}?edit={{ demand.id }}"
+                   hx-get="{% url 'needs:external_demands' %}?edit={{ demand.id }}"
+                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                   class="inv-btn inv-btn--ghost inv-btn--xs" title="Editar pedido">
+                  <i class="bi bi-pencil"></i> Editar
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="inv-empty" style="padding:1.25rem .9rem;">
+        <i class="bi bi-clipboard2"></i>
+        <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem pedidos externos ativos</p>
+        <p style="margin:0;">
+          <a href="{% url 'needs:external_demands' %}?show_form=1"
+             hx-get="{% url 'needs:external_demands' %}?show_form=1"
+             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true">
+            Registar pedido de cliente
+          </a>
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
   <div class="inv-section-grid">
     <div class="inv-card">
       <div class="inv-card-head">

@@ -47,10 +47,33 @@
             Meus anúncios
             <span>{{ my_listings_count }}</span>
           </a>
+          <a href="{% url 'marketplace:index' %}?tab=compras"
+             hx-get="{% url 'marketplace:index' %}?tab=compras"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mk-tab {% if active_tab == 'compras' %}is-active{% endif %}">
+            <i class="bi bi-bag-check"></i>
+            Compras
+            <span>{{ my_active_orders_count }}</span>
+          </a>
+          <a href="{% url 'marketplace:index' %}?tab=respostas"
+             hx-get="{% url 'marketplace:index' %}?tab=respostas"
+             hx-target="#shellMain"
+             hx-select="#shellMain"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             class="mk-tab {% if active_tab == 'respostas' %}is-active{% endif %}">
+            <i class="bi bi-reply-all"></i>
+            Respostas
+            <span>{{ my_pending_responses_count }}</span>
+          </a>
         {% endif %}
       </nav>
     </div>
 
+    {% if active_tab == "todos" or active_tab == "meus" %}
     <form method="get"
           class="mk-filterbar"
           hx-get="{% url 'marketplace:index' %}"
@@ -100,8 +123,10 @@
         </label>
       {% endif %}
     </form>
+    {% endif %}
   </section>
 
+  {% if active_tab == "todos" or active_tab == "meus" %}
   <p class="mk-results">
     {% if active_tab == "meus" %}
       A mostrar <strong>{{ my_listings_count }}</strong> anúncio{{ my_listings_count|pluralize:"s" }} próprio{{ my_listings_count|pluralize:"s" }}.
@@ -112,8 +137,14 @@
       {% endif %}
     {% endif %}
   </p>
+  {% endif %}
 
   <div id="mk-listings-region">
+    {% if active_tab == "compras" %}
+      {% include "marketplace/partials/tab_compras.html" %}
+    {% elif active_tab == "respostas" %}
+      {% include "marketplace/partials/tab_respostas.html" %}
+    {% else %}
     <section class="mk-grid">
       {% if active_tab == "meus" %}
         {% for item in my_listings %}
@@ -138,19 +169,11 @@
             <i class="bi bi-search"></i>
             <h3>Sem resultados disponíveis</h3>
             <p>{% if q or selected_category_id or selected_origin or selected_kind != "all" %}Não encontrámos ofertas ou procuras com os filtros aplicados.{% else %}Não existem ofertas nem procuras ativas no marketplace neste momento.{% endif %}</p>
-            <a href="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}"
-               hx-get="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}"
-               hx-target="#shellMain"
-               hx-select="#shellMain"
-               hx-swap="outerHTML"
-               hx-push-url="true"
-               class="mk-card-action mk-card-action--primary">
-              Anunciar necessidade
-            </a>
           </article>
         {% endif %}
       {% endif %}
     </section>
+    {% endif %}
   </div>
 </div>
 

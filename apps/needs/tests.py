@@ -1282,7 +1282,9 @@ class NeedsServiceTests(SimpleTestCase):
             patch("apps.needs.views.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
             patch("apps.needs.views.list_need_responses_for_responder", return_value=[active_response, past_response]) as sent_responses,
             patch("apps.needs.views.ExternalCustomerDemand.objects.filter") as demand_filter,
+            patch("apps.needs.views.Stock.objects.filter", return_value=[]),
         ):
+            demand_filter.return_value.select_related.return_value.order_by.return_value.__getitem__ = lambda self, s: iter([])
             demand_filter.return_value.count.return_value = 0
             context = build_needs_index_context(
                 SimpleNamespace(id="owner-1"),
