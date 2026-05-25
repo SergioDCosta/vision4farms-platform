@@ -494,6 +494,15 @@ def _build_marketplace_index_context(
 
     # Dados completos para os novos tabs (só carregados quando necessário)
     my_orders = []
+    my_active_orders = []
+    my_past_orders = []
+    purchase_summary = {
+        "active_count": 0,
+        "active_total": Decimal("0.00"),
+        "completed_count": 0,
+        "completed_total": Decimal("0.00"),
+        "cancelled_count": 0,
+    }
     my_need_responses = []
     if active_tab == "compras" and producer:
         my_orders = list(
@@ -502,6 +511,25 @@ def _build_marketplace_index_context(
             .prefetch_related("items", "items__product", "items__seller_producer")
             .order_by("-created_at")
         )
+        in_progress_statuses = {
+            OrderStatus.PENDING,
+            OrderStatus.CONFIRMED,
+            OrderStatus.IN_PROGRESS,
+            OrderStatus.DELIVERING,
+        }
+        for order in my_orders:
+            amount = Decimal(str(order.total_amount or 0))
+            if order.status in in_progress_statuses:
+                my_active_orders.append(order)
+                purchase_summary["active_count"] += 1
+                purchase_summary["active_total"] += amount
+            elif order.status == OrderStatus.COMPLETED:
+                my_past_orders.append(order)
+                purchase_summary["completed_count"] += 1
+                purchase_summary["completed_total"] += amount
+            elif order.status == OrderStatus.CANCELLED:
+                my_past_orders.append(order)
+                purchase_summary["cancelled_count"] += 1
     elif active_tab == "respostas" and producer:
         response_listings = list(
             MarketplaceListing.objects
@@ -545,6 +573,9 @@ def _build_marketplace_index_context(
         "my_active_orders_count": my_active_orders_count,
         "my_pending_responses_count": my_pending_responses_count,
         "my_orders": my_orders,
+        "my_active_orders": my_active_orders,
+        "my_past_orders": my_past_orders,
+        "purchase_summary": purchase_summary,
         "my_need_responses": my_need_responses,
         "selected_need_id": selected_need_id,
         "selected_need_row": None,

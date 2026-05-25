@@ -37,6 +37,45 @@ Funcionalidades principais:
 - Fonte estrutural da BD: `sqlscript.sql`.
 - A maioria dos modelos de negócio usa `managed = False`; alterações de schema são aplicadas manualmente na BD e refletidas nos models.
 
+Arquitetura em produção:
+
+- aplicação alojada no Railway, executada como serviço web Django/ASGI com Daphne;
+- PostgreSQL de produção alojado no Railway e acedido apenas por variáveis de ambiente;
+- Redis alimenta Django Channels para realtime e cache de integrações como o clima;
+- Cloudinary guarda imagens, anexos e SVGs de branding sem depender de disco persistente do container;
+- Resend fornece envio transacional por API HTTP para confirmação de conta, recuperação de password, alertas e suporte;
+- WhiteNoise serve assets estáticos compilados do deploy; assets de marca dinâmicos usam URLs Cloudinary.
+
+Decisão arquitetural sobre API REST:
+
+- a aplicação integra serviços externos por API, nomeadamente Resend para email e Cloudinary para media, mas não expõe uma API REST própria nesta versão;
+- a interface entregue é uma aplicação web server-rendered com Django Templates e HTMX, adequada aos fluxos atuais de produtor e gestor sem necessidade de um frontend separado;
+- não existia requisito de aplicação móvel, integração ERP, portal de clientes ou consumo externo que justificasse endpoints REST, autenticação de API, versionamento, documentação e testes adicionais;
+- esta opção reduziu superfície de ataque e complexidade operacional numa aplicação já em produção, mantendo permissões, validações e auditoria concentradas nos fluxos Django existentes;
+- a evolução futura está preparada: `external_customer_demands.source_system` e `external_id` permitem importar pedidos de sistemas externos, caso seja posteriormente necessário criar uma API com Django REST Framework;
+- `djangorestframework` encontra-se declarado/instalado, mas não existem endpoints DRF funcionais na versão atual; pode ser removido se não for planeada uma integração futura.
+
+Dependências e tecnologias relevantes para o relatório:
+
+- `Django`: framework backend, autenticação, formulários, templates, views e regras de negócio;
+- `psycopg` + PostgreSQL: persistência relacional em produção no Railway;
+- `Daphne`, `channels`, `channels_redis` e `redis`: execução ASGI, comunicação realtime das mensagens e cache;
+- `django-htmx`: navegação e atualização parcial da UI sem SPA/React/Vue;
+- `django-anymail[resend]`: envio transacional por Resend via HTTP, sem dependência de SMTP em produção;
+- `django-cloudinary-storage` e `cloudinary`: armazenamento de fotografias, anexos e logos;
+- `whitenoise`: distribuição segura de ficheiros estáticos do deploy;
+- `django-ratelimit`: proteção de operações sensíveis, como autenticação e submissões de suporte;
+- `Pillow`: validação/processamento de imagens submetidas no marketplace;
+- `python-decouple`: configuração por variáveis de ambiente;
+- `requests`: consumo de serviços HTTP, incluindo dados meteorológicos;
+- `Chart.js`: gráficos dos painéis de compras, vendas, produção e gestão, carregado no frontend.
+
+Notas sobre o `requirements.txt`:
+
+- várias bibliotecas listadas são dependências transitivas necessárias para Django, Channels/Daphne, TLS, Cloudinary ou o extra Resend de Anymail;
+- o pacote `resend` não é importado diretamente pela aplicação: o provider é utilizado através de `django-anymail[resend]`;
+- `djangorestframework` está instalado mas sem uso funcional atual, de acordo com a decisão de não expor API REST nesta entrega.
+
 Branding atual:
 
 - logos/favicons usam SVGs alojados no Cloudinary;
@@ -90,7 +129,7 @@ Sidebar cliente, por ordem:
 2. Alertas;
 3. Mensagens;
 4. Recomendações;
-5. Necessidades e Pedidos;
+5. Pedidos e Necessidades;
 6. Marketplace;
 7. Encomendas;
 8. Stocks e Compras;
@@ -102,7 +141,7 @@ Comportamento visual:
 - quando não há foto de perfil, o avatar mostra as iniciais do primeiro e último nome;
 - o sino da topbar só mostra ping vermelho quando existem alertas pendentes;
 - o logo compacto da sidebar usa SVG Cloudinary, sem moldura/quadrado, e fica centrado no modo mobile/colapsado.
-- a área de necessidades foi renomeada na navegação para "Necessidades e Pedidos", porque agora inclui procuras entre produtores e pedidos externos de clientes.
+- a área de necessidades foi renomeada na navegação para "Pedidos e Necessidades", porque agora inclui pedidos externos de clientes e procuras entre produtores.
 
 ## 5) Accounts
 
@@ -255,15 +294,16 @@ Páginas admin:
 Dashboard gestor:
 
 - KPIs operacionais de utilizadores, suporte, encomendas e atividade;
-- gráfico "Compras vs vendas por semana";
+- gráfico de atividade comercial semanal;
 - card "Suporte e utilizadores" com totais de utilizadores, suspensos, online/offline e suporte ativo;
 - informação relevante para administração da cooperativa.
 
-Gráfico "Compras vs vendas por semana":
+Gráfico de atividade comercial semanal:
 
 - cobre as últimas 12 semanas;
-- compras = encomendas criadas por semana com origem `MARKETPLACE` ou `RECOMMENDATION`;
-- vendas concluídas = itens de encomenda `COMPLETED` por semana nas mesmas origens;
+- série "Pedidos criados" = encomendas criadas por semana com origem `MARKETPLACE` ou `RECOMMENDATION`;
+- série "Itens vendidos e concluídos" = itens de encomenda `COMPLETED` por semana nas mesmas origens;
+- a distinção evita sugerir que comprar e vender são operações independentes: a primeira série mede intenção/pedido criado e a segunda realização concluída;
 - mostra estado vazio quando não existem dados no período.
 
 Gestão de utilizadores:
@@ -338,7 +378,9 @@ Stock:
 - `current_quantity`: quantidade real em stock;
 - `reserved_quantity`: quantidade reservada em encomendas/listings;
 - `available = current_quantity - reserved_quantity`;
+- no planeamento de pedidos externos, o stock imediatamente utilizável também desconta quantidades anunciadas em listings públicas `ACTIVE`/`RESERVED` ainda não ligadas a necessidades, evitando comprometer o mesmo stock duas vezes;
 - `safety_stock`: campo técnico mantido por compatibilidade, atualmente sincronizado com a soma dos pedidos externos em aberto do produtor/produto;
+- a BD de produção ainda contém `stocks.max_quantity` como coluna residual de uma iteração anterior; o modelo Django e a lógica funcional atual não utilizam esse campo;
 - na UI este valor aparece como "Compromissos externos" ou "Reservado para clientes externos";
 - quantidade vendável/publicável é calculada por margem temporal quando existem pedidos externos, não apenas por `available - safety_stock`.
 
@@ -523,6 +565,7 @@ Pedidos externos de clientes:
   - compara pedidos acumulados até cada data com stock disponível atual e produção prevista útil até essa data;
   - forecast conta se `period_end <= requested_delivery_date`; se não houver `period_end`, conta por `period_start`; forecasts sem data válida não contam;
   - mostra maior défice e primeira data crítica;
+- a tabela de planeamento apresenta "Stock inicial", "Produção prevista útil acumulada", "Capacidade acumulada" e "Capacidade restante após pedidos", deixando explícito que o stock não reinicia em cada data;
 - a pré-visualização em `/necessidades/` usa o mesmo cálculo temporal cumulativo, evitando comparar cada pedido isoladamente contra o stock atual;
 - quando existe défice temporal, gera ou atualiza uma `Need` agregada com `source_system=CUSTOMER_DEMAND`;
 - `required_quantity` da need automática é o maior défice temporal;
@@ -771,7 +814,7 @@ Realtime:
 
 - WebSocket por conversa;
 - origem dos WebSockets validada contra `ALLOWED_HOSTS`;
-- indicador `Online/Offline` mostra estado da ligação WebSocket do utilizador atual à conversa, não presença real do outro utilizador.
+- indicador "Ligação ativa"/"Sem ligação" mostra estado da ligação WebSocket do utilizador atual à conversa, não presença real do outro utilizador.
 
 Anexos:
 
@@ -1018,6 +1061,8 @@ Cuidados:
 - `DEBUG` tem de ser booleano (`true`/`false`);
 - `DEBUG=release` é inválido;
 - `sqlscript.sql` representa o schema consolidado atual;
+- `sqlscript.sql` é atualizado através de exportação apenas de schema da base PostgreSQL de produção, sem conteúdo de utilizadores ou segredos;
+- o snapshot de produção de 2026-05-24 confirma a presença residual de `stocks.max_quantity`; a remoção física exige SQL explícito numa iteração controlada;
 - como os modelos de negócio são `managed=False`, alterações de schema não são aplicadas por migrations Django.
 
 ## 26) Organização de Documentação e Memória Local

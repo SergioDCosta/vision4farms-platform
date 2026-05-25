@@ -5,24 +5,26 @@
       <span>Procura ativa</span>
     </div>
     <div class="mk-card__badge-row">
-      <span class="mk-badge mk-badge--need">
-        <i class="bi bi-search"></i>
-        Procura
-      </span>
-      <span class="mk-badge mk-badge--warn">Em falta</span>
-      {% if row.viewer_response_summary %}
-        <span class="mk-badge {% if row.viewer_response_summary.status == 'ACCEPTED' %}mk-badge--ok{% elif row.viewer_response_summary.status == 'REJECTED' or row.viewer_response_summary.status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--active{% endif %}">
-          <i class="bi bi-send-check"></i>
-          {% if row.viewer_response_summary.status == 'PENDING' %}Proposta pendente
-          {% elif row.viewer_response_summary.status == 'ACCEPTED' %}Proposta aceite
-          {% elif row.viewer_response_summary.status == 'REJECTED' %}Proposta rejeitada
-          {% elif row.viewer_response_summary.status == 'CANCELLED' %}Proposta cancelada
-          {% elif row.viewer_response_summary.status == 'COMPLETED' %}Proposta concluída
-          {% elif row.viewer_response_summary.status == 'WITHDRAWN' %}Proposta retirada
-          {% elif row.viewer_response_summary.status == 'EXPIRED' %}Proposta expirada
-          {% else %}Proposta enviada{% endif %}
+      <div class="mk-card__badge-stack">
+        <span class="mk-badge mk-badge--need">
+          <i class="bi bi-search"></i>
+          Procura
         </span>
-      {% endif %}
+        {% if row.viewer_response_summary %}
+          <span class="mk-badge {% if row.viewer_response_summary.status == 'ACCEPTED' %}mk-badge--ok{% elif row.viewer_response_summary.status == 'REJECTED' or row.viewer_response_summary.status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--info{% endif %}">
+            <i class="bi bi-send-check"></i>
+            {% if row.viewer_response_summary.status == 'PENDING' %}Proposta pendente
+            {% elif row.viewer_response_summary.status == 'ACCEPTED' %}Proposta aceite
+            {% elif row.viewer_response_summary.status == 'REJECTED' %}Proposta rejeitada
+            {% elif row.viewer_response_summary.status == 'CANCELLED' %}Proposta cancelada
+            {% elif row.viewer_response_summary.status == 'COMPLETED' %}Proposta concluída
+            {% elif row.viewer_response_summary.status == 'WITHDRAWN' %}Proposta retirada
+            {% elif row.viewer_response_summary.status == 'EXPIRED' %}Proposta expirada
+            {% else %}Proposta enviada{% endif %}
+          </span>
+        {% endif %}
+      </div>
+      <span class="mk-badge mk-badge--warn">Em falta</span>
     </div>
   </div>
 

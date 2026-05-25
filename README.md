@@ -29,6 +29,19 @@ A aplicação usa Django Templates e HTMX, sem frontend SPA. A base de dados é 
 - Gráficos: Chart.js
 - Configuração: `python-decouple`
 
+## Arquitetura em Produção
+
+A aplicação está publicada no Railway:
+
+- o serviço web executa Django sobre ASGI/Daphne;
+- PostgreSQL armazena os dados operacionais;
+- Redis suporta Channels/realtime e cache de integrações;
+- Cloudinary guarda imagens, anexos e logos usados na interface;
+- Resend envia emails transacionais através de API HTTP;
+- WhiteNoise serve ficheiros estáticos do build.
+
+Esta arquitetura evita depender do disco efémero do container para uploads e permite que email, ficheiros e atualizações realtime funcionem em produção.
+
 ## Apps Principais
 
 ### `accounts`
@@ -90,6 +103,7 @@ Conceitos principais:
 - `current_quantity`: stock físico atual;
 - `reserved_quantity`: quantidade reservada em anúncios/encomendas;
 - `available = current_quantity - reserved_quantity`;
+- no planeamento de compromissos externos, quantidades já anunciadas em ofertas públicas ativas/reservadas também são descontadas para não prometer o mesmo stock duas vezes;
 - `safety_stock`: campo técnico reaproveitado como compromissos externos derivados de pedidos de clientes;
 - `production_forecasts`: produção futura que só conta para cobertura quando está disponível até à data de entrega do pedido externo;
 - `stock_movements`: histórico de alterações ao stock.
@@ -319,7 +333,7 @@ O schema é gerido manualmente por SQL.
 
 Ficheiros relevantes:
 
-- `sqlscript.sql`: schema consolidado atual;
+- `sqlscript.sql`: exportação consolidada do schema atual de produção, sem dados;
 - `EXTERNAL_CUSTOMER_DEMANDS_SQL.txt`: SQL específico da tabela de pedidos externos;
 - outros ficheiros SQL/TXT pontuais documentam alterações aplicadas ao longo do desenvolvimento.
 

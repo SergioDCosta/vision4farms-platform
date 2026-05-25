@@ -72,6 +72,7 @@ htmlcov/
 *.xlsx
 *.pdf
 *.sql
+!sqlscript.sql
 
 # -----------------------------
 # MEMORIA LOCAL / PLANOS TEMPORARIOS

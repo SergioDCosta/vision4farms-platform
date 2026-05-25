@@ -10,24 +10,26 @@
       </div>
     {% endif %}
     <div class="mk-card__badge-row">
-      <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">
-        {% if item.source_key == "forecast" %}<i class="bi bi-calendar2-week"></i>{% else %}<i class="bi bi-dot"></i>{% endif %}
-        {{ item.source_label|default:"Stock atual" }}
-      </span>
+      <div class="mk-card__badge-stack">
+        <span class="mk-badge {{ item.source_badge_class|default:'mk-badge--stock' }}">
+          {% if item.source_key == "forecast" %}<i class="bi bi-calendar2-week"></i>{% else %}<i class="bi bi-box-seam"></i>{% endif %}
+          {{ item.source_label|default:"Stock atual" }}
+        </span>
+        {% if item.viewer_order_info %}
+          <span class="mk-badge {% if item.viewer_order_info.item_status == 'COMPLETED' %}mk-badge--ok{% elif item.viewer_order_info.item_status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--info{% endif %}">
+            <i class="bi bi-bag-check"></i>
+            {% if item.viewer_order_info.item_status == 'PENDING' %}Pedido pendente
+            {% elif item.viewer_order_info.item_status == 'CONFIRMED' %}Encomenda confirmada
+            {% elif item.viewer_order_info.item_status == 'IN_DELIVERY' %}Em entrega
+            {% elif item.viewer_order_info.item_status == 'COMPLETED' %}Concluído
+            {% elif item.viewer_order_info.item_status == 'CANCELLED' %}Cancelado
+            {% else %}Pedido feito{% endif %}
+          </span>
+        {% endif %}
+      </div>
       <span class="mk-badge {% if item.status == 'ACTIVE' %}mk-badge--active{% elif item.status == 'RESERVED' %}mk-badge--reserved{% elif item.status == 'EXPIRED' %}mk-badge--warn{% else %}mk-badge--closed{% endif %}">
         {{ item.get_status_display }}
       </span>
-      {% if item.viewer_order_info %}
-        <span class="mk-badge {% if item.viewer_order_info.item_status == 'COMPLETED' %}mk-badge--ok{% elif item.viewer_order_info.item_status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--active{% endif %}">
-          <i class="bi bi-bag-check"></i>
-          {% if item.viewer_order_info.item_status == 'PENDING' %}Pedido pendente
-          {% elif item.viewer_order_info.item_status == 'CONFIRMED' %}Encomenda confirmada
-          {% elif item.viewer_order_info.item_status == 'IN_DELIVERY' %}Em entrega
-          {% elif item.viewer_order_info.item_status == 'COMPLETED' %}Concluído
-          {% elif item.viewer_order_info.item_status == 'CANCELLED' %}Cancelado
-          {% else %}Pedido feito{% endif %}
-        </span>
-      {% endif %}
     </div>
   </div>
 

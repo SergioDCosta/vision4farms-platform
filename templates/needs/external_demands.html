@@ -230,8 +230,11 @@
         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true">
     {% if show_form %}<input type="hidden" name="show_form" value="1">{% endif %}
     <label class="ecd-search">
-      <i class="bi bi-search"></i>
-      <input type="text" name="q" value="{{ q }}" maxlength="120" placeholder="Pesquisar cliente, produto, referência...">
+      Pesquisar
+      <div class="ecd-search__wrap">
+        <i class="bi bi-search"></i>
+        <input type="text" name="q" value="{{ q }}" maxlength="120" placeholder="Pesquisar cliente, produto, referência...">
+      </div>
     </label>
     <label>
       Estado
@@ -513,13 +516,14 @@
 }
 .ecd-formula-card__head i { color: #475569; font-size: 1rem; }
 .ecd-formula {
-  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  display: flex; align-items: center; gap: .5rem; flex-wrap: nowrap;
 }
 .ecd-formula__item {
   display: inline-flex; align-items: center; gap: .4rem;
   border-radius: .6rem; padding: .45rem .7rem;
-  font-size: .8rem; font-weight: 700; flex: 1 1 auto; min-width: 0;
+  font-size: .8rem; font-weight: 700; flex: 1 1 0; min-width: 0;
 }
+.ecd-formula__item span { overflow: hidden; text-overflow: ellipsis; }
 .ecd-formula__item i { font-size: .9rem; flex-shrink: 0; }
 .ecd-formula__item--blue  { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
 .ecd-formula__item--green { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
@@ -537,12 +541,12 @@
    FILTROS
 ═══════════════════════════════════════════════════════════════════ */
 .ecd-filters {
-  display: grid; grid-template-columns: minmax(16rem,1fr) minmax(11rem,.32fr) minmax(11rem,.4fr);
+  display: grid; grid-template-columns: repeat(3, minmax(0,1fr));
   gap: .65rem; background: #fff; border: 1px solid #dbe5ef; border-radius: .85rem; padding: .85rem;
 }
 .ecd-filters label { display: grid; gap: .3rem; color: #334155; font-size: .8rem; font-weight: 800; }
-.ecd-search { position: relative; }
-.ecd-search i { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+.ecd-search__wrap { position: relative; }
+.ecd-search i { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
 .ecd-search input { padding-left: 2.25rem !important; }
 .ecd-filters input, .ecd-filters select { width: 100%; border: 1px solid #cbd5e1; border-radius: .6rem; padding: .6rem .75rem; background: #fff; color: #0f172a; font-size: .875rem; }
 .ecd-filters input:focus, .ecd-filters select:focus { border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,.12); outline: 0; }
@@ -713,8 +717,6 @@
   .ecd-form__actions { justify-content: stretch; flex-direction: column-reverse; }
   .ecd-form__actions .ecd-btn { width: 100%; justify-content: center; }
   .ecd-plan-head, .ecd-need-box { flex-direction: column; align-items: stretch; }
-  .ecd-formula { flex-direction: column; align-items: stretch; }
-  .ecd-formula__op { text-align: center; }
 }
 @media (max-width: 580px) {
   .ecd-kpis { grid-template-columns: 1fr 1fr; }
