@@ -198,6 +198,11 @@
             <div class="pnl-qa-txt"><b>Ver encomendas</b><span>Acompanhar estados</span></div>
             <i class="bi bi-chevron-right pnl-qa-arr"></i>
           </a>
+          <a href="/necessidades/" class="pnl-qa pnl-qa--slate">
+            <div class="pnl-qa-ico"><i class="bi bi-megaphone"></i></div>
+            <div class="pnl-qa-txt"><b>Necessidades</b><span>Procuras em aberto</span></div>
+            <i class="bi bi-chevron-right pnl-qa-arr"></i>
+          </a>
         </div>
       </div>
 
@@ -971,17 +976,43 @@
 
 <script>
 (function(){
-  const h = new Date().getHours();
-  const s = h < 12 ? 'Bom dia' : h < 19 ? 'Boa tarde' : 'Boa noite';
-  document.getElementById('pnl-saudacao').textContent = s;
+  // Spencer (1971) solar algorithm — accurate to ±10 min for Portugal (39.5°N, 8°W)
+  function getSolarTimes(lat, lng) {
+    const now = new Date();
+    const doy = Math.round((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+    const B = (2 * Math.PI / 365) * (doy - 1);
+    const eqTime = 229.18 * (0.000075 + 0.001868*Math.cos(B) - 0.032077*Math.sin(B)
+                            - 0.014615*Math.cos(2*B) - 0.04089*Math.sin(2*B));
+    const decl = 0.006918 - 0.399912*Math.cos(B) + 0.070257*Math.sin(B)
+               - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
+               - 0.002697*Math.cos(3*B) + 0.00148*Math.sin(3*B);
+    const latR = lat * Math.PI / 180;
+    const cosHA = (Math.cos(90.833 * Math.PI / 180) - Math.sin(latR) * Math.sin(decl))
+                / (Math.cos(latR) * Math.cos(decl));
+    if (cosHA < -1) return { rise: 0, noon: 720, set: 1440 };
+    if (cosHA > 1)  return { rise: 720, noon: 720, set: 720 };
+    const HA = Math.acos(cosHA) * 180 / Math.PI;
+    const tzOff = -now.getTimezoneOffset();
+    const noonUTC = 720 - (eqTime + 4 * lng);
+    return {
+      rise: Math.round(noonUTC - 4 * HA) + tzOff,
+      noon: Math.round(noonUTC) + tzOff,
+      set:  Math.round(noonUTC + 4 * HA) + tzOff
+    };
+  }
+
+  const now  = new Date();
+  const m    = now.getHours() * 60 + now.getMinutes();
+  const sol  = getSolarTimes(39.5, -8.0);
+  const saud = m < sol.rise ? 'Boa noite' : m < sol.noon ? 'Bom dia' : m < sol.set ? 'Boa tarde' : 'Boa noite';
+  document.getElementById('pnl-saudacao').textContent = saud;
 
   const dias   = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
   const meses  = ['jan.','fev.','mar.','abr.','mai.','jun.','jul.','ago.','set.','out.','nov.','dez.'];
-  const n      = new Date();
   const dateLine = document.getElementById('pnl-date-line');
   if (dateLine) {
     dateLine.innerHTML = '<span class="pnl-pulse"></span>' +
-      dias[n.getDay()] + ', ' + n.getDate() + ' ' + meses[n.getMonth()] + ' ' + n.getFullYear();
+      dias[now.getDay()] + ', ' + now.getDate() + ' ' + meses[now.getMonth()] + ' ' + now.getFullYear();
   }
 })();
 </script>

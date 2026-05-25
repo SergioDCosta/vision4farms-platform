@@ -77,9 +77,9 @@
     <form method="get"
           class="mk-filterbar"
           hx-get="{% url 'marketplace:index' %}"
-          hx-trigger="keyup changed delay:350ms from:input[name='q'], change from:select, change from:input[name='available'], submit"
-          hx-target="#shellMain"
-          hx-select="#shellMain"
+          hx-trigger="keyup changed delay:300ms from:input[name='q'], change from:select, change from:input[name='available'], submit"
+          hx-target="#mk-content-region"
+          hx-select="#mk-content-region"
           hx-swap="outerHTML"
           hx-push-url="true">
       <input type="hidden" name="tab" value="{{ active_tab }}">
@@ -87,7 +87,7 @@
       {% if show_need_form %}<input type="hidden" name="show_need_form" value="1">{% endif %}
       <label class="mk-search">
         <i class="bi bi-search"></i>
-        <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar por batata, sementes, produtor, localidade...">
+        <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar por batata, sementes, produtor, localidade..." autocomplete="off">
       </label>
       <select name="category" aria-label="Categoria">
         <option value="">Todas as categorias</option>
@@ -126,6 +126,7 @@
     {% endif %}
   </section>
 
+  <div id="mk-content-region">
   {% if active_tab == "todos" or active_tab == "meus" %}
   <p class="mk-results">
     {% if active_tab == "meus" %}
@@ -175,6 +176,7 @@
     </section>
     {% endif %}
   </div>
+  </div>{# /mk-content-region #}
 </div>
 
 <style>

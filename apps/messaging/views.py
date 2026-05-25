@@ -5,6 +5,7 @@ from django.urls import reverse
 
 from apps.common.decorators import client_only_required
 from apps.marketplace.models import MarketplaceListing
+from apps.messaging.models import ConversationParticipant, Message, MessageType
 from apps.orders.models import Order
 from apps.messaging.services import (
     MessagingServiceError,
@@ -87,6 +88,7 @@ def messages_index_view(request):
     active_entry = None
     message_history_has_more = False
     next_message_limit = message_limit
+    other_participant_has_read = False
     if active_conversation:
         mark_conversation_as_read(user=request.current_user, conversation=active_conversation)
         active_messages = get_conversation_messages(conversation=active_conversation, limit=message_limit)
@@ -103,6 +105,23 @@ def messages_index_view(request):
             tab_unread_total += entry["unread_count"]
         unread_totals = get_unread_totals_for_user(request.current_user)
 
+        other_participant = (
+            ConversationParticipant.objects
+            .filter(conversation=active_conversation)
+            .exclude(user=request.current_user)
+            .first()
+        )
+        if other_participant and other_participant.last_read_at:
+            my_last_sent = (
+                Message.objects
+                .filter(conversation=active_conversation, sender_user=request.current_user)
+                .order_by("-created_at")
+                .values_list("created_at", flat=True)
+                .first()
+            )
+            if my_last_sent and other_participant.last_read_at >= my_last_sent:
+                other_participant_has_read = True
+
     context = {
         "page_title": "Mensagens",
         "selected_tab": selected_tab,
@@ -116,6 +135,7 @@ def messages_index_view(request):
         "total_unread": tab_unread_total,
         "active_unread_total": unread_totals["active_unread_total"],
         "archived_unread_total": unread_totals["archived_unread_total"],
+        "other_participant_has_read": other_participant_has_read,
     }
     return render(request, "messaging/index.html", context)
 
@@ -273,6 +293,34 @@ def archive_conversation_view(request, conversation_id):
         return response
 
     return redirect(target_url)
+
+
+@client_only_required
+def search_conversation_messages_view(request, conversation_id):
+    q = (request.GET.get("q") or "").strip()
+    if not q or len(q) < 2:
+        return JsonResponse({"ok": True, "results": [], "count": 0})
+
+    conversation = get_conversation_for_user(
+        user=request.current_user,
+        conversation_id=str(conversation_id),
+        archived=None,
+    )
+    if not conversation:
+        return JsonResponse({"ok": False, "error": "Sem acesso."}, status=403)
+
+    results_qs = (
+        Message.objects
+        .filter(
+            conversation=conversation,
+            message_type=MessageType.TEXT,
+            content__icontains=q,
+        )
+        .select_related("sender_user")
+        .order_by("-created_at")[:25]
+    )
+    results = [serialize_message_payload(message=m) for m in results_qs]
+    return JsonResponse({"ok": True, "results": results, "count": len(results)})
 
 
 @client_only_required

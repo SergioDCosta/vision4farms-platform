@@ -40,6 +40,57 @@ class SupportSidebarConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps(
                 {
                     "type": "support.badge.changed",
+                    "count": int(event.get("count") or 0),
                 }
             )
         )
+
+
+class SupportTicketConsumer(AsyncWebsocketConsumer):
+    @database_sync_to_async
+    def _resolve_current_user(self):
+        return resolve_active_session_user(self.scope.get("session"))
+
+    async def connect(self):
+        self.ticket_id = str(self.scope["url_route"]["kwargs"]["ticket_id"])
+        self.group_name = f"support_ticket_{self.ticket_id}"
+        self.current_user = await self._resolve_current_user()
+
+        if not self.current_user:
+            await self.close(code=4401)
+            return
+
+        has_access = await self._check_ticket_access()
+        if not has_access:
+            await self.close(code=4403)
+            return
+
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def receive(self, text_data=None, bytes_data=None):
+        return
+
+    async def ticket_message_created(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "ticket.message.created",
+                    "message": event.get("message", {}),
+                }
+            )
+        )
+
+    @database_sync_to_async
+    def _check_ticket_access(self):
+        from apps.support.models import SupportTicket
+        if getattr(self.current_user, "role", None) == UserRole.ADMIN:
+            return SupportTicket.objects.filter(id=self.ticket_id).exists()
+        return SupportTicket.objects.filter(
+            id=self.ticket_id,
+            requester_user=self.current_user,
+        ).exists()

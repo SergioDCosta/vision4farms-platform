@@ -21,10 +21,13 @@
           <h2>Conversa</h2>
           <p>Acompanhe todas as mensagens até o pedido ficar resolvido.</p>
         </div>
-        <span class="sup-ticket-status">{{ ticket.get_status_display }}</span>
+        <div style="display:flex;align-items:center;gap:.6rem;">
+          <span class="sup-ws-status" id="supWsStatus"></span>
+          <span class="sup-ticket-status">{{ ticket.get_status_display }}</span>
+        </div>
       </div>
 
-      <div class="sup-thread">
+      <div class="sup-thread" id="supThread">
         {% for item in thread_items %}
           {% if item.legacy %}
             <article class="sup-message {% if item.sender_role == 'REQUESTER' %}is-requester{% else %}is-admin{% endif %}">
@@ -166,6 +169,89 @@
   .sup-actions{justify-content:stretch;}
   .sup-btn-primary,.sup-btn-ghost{width:100%;}
 }
+.sup-ws-status{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;font-weight:800;padding:.2rem .5rem;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;white-space:nowrap;}
+.sup-ws-status.is-online{background:#f0fdf4;border-color:#bbf7d0;color:#166534;}
+.sup-ws-status.is-offline{background:#fef2f2;border-color:#fecaca;color:#991b1b;}
 </style>
+
+<script>
+(function(){
+  {% if ticket.status != "CLOSED" %}
+  const thread = document.getElementById("supThread");
+  const wsStatus = document.getElementById("supWsStatus");
+  const ticketId = "{{ ticket.id }}";
+  const currentUserId = "{{ request.current_user.id }}";
+  const isAdmin = {% if request.current_user.role == "ADMIN" %}true{% else %}false{% endif %};
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+
+  function setWsStatus(label, state) {
+    if (!wsStatus) return;
+    wsStatus.textContent = label;
+    wsStatus.classList.toggle("is-online", state === "online");
+    wsStatus.classList.toggle("is-offline", state === "offline");
+  }
+
+  function buildMessageEl(msg) {
+    const isRequester = msg.sender_role === "REQUESTER";
+    const isMe = isRequester ? !isAdmin : isAdmin;
+    const article = document.createElement("article");
+    article.className = `sup-message ${isRequester ? "is-requester" : "is-admin"}`;
+    article.dataset.messageId = msg.id;
+    const head = document.createElement("div");
+    head.className = "sup-message-head";
+    head.innerHTML = `<strong>${isMe ? "Você" : (msg.sender_name || (isRequester ? "Utilizador" : "Suporte"))}</strong><span>${msg.created_at_label || ""}</span>`;
+    const body = document.createElement("div");
+    body.className = "sup-message-body";
+    body.textContent = msg.body || "";
+    article.appendChild(head);
+    article.appendChild(body);
+    if (msg.attachments && msg.attachments.length) {
+      const attWrap = document.createElement("div");
+      attWrap.className = "sup-attachments";
+      msg.attachments.forEach(att => {
+        const a = document.createElement("a");
+        a.href = att.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.className = "sup-attachment";
+        a.innerHTML = `<img src="${att.url}" alt="${att.name}"><span>${att.name}</span>`;
+        attWrap.appendChild(a);
+      });
+      article.appendChild(attWrap);
+    }
+    return article;
+  }
+
+  const socket = new WebSocket(
+    `${protocol}://${window.location.host}/ws/suporte/ticket/${ticketId}/`
+  );
+  setWsStatus("A ligar...", "");
+
+  socket.addEventListener("open", () => setWsStatus("Ligação ativa", "online"));
+  socket.addEventListener("close", () => setWsStatus("Sem ligação", "offline"));
+  socket.addEventListener("error", () => setWsStatus("Sem ligação", "offline"));
+
+  socket.addEventListener("message", (event) => {
+    try {
+      const payload = JSON.parse(event.data || "{}");
+      if (payload.type !== "ticket.message.created" || !payload.message) return;
+      const msg = payload.message;
+      if (thread && thread.querySelector(`[data-message-id="${msg.id}"]`)) return;
+      if (thread) {
+        const el = buildMessageEl(msg);
+        el.style.opacity = "0";
+        el.style.transform = "translateY(6px)";
+        thread.appendChild(el);
+        requestAnimationFrame(() => {
+          el.style.transition = "opacity .2s ease, transform .2s ease";
+          el.style.opacity = "1";
+          el.style.transform = "translateY(0)";
+        });
+      }
+    } catch(_) {}
+  });
+  {% endif %}
+})();
+</script>
 
 {% endblock %}

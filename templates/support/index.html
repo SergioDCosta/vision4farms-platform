@@ -122,59 +122,169 @@
             <p>Respostas rápidas para dúvidas comuns.</p>
           </div>
         </div>
-        <div class="sup-faq-list">
-          <details>
-            <summary>Como recupero o acesso à conta?</summary>
-            <p>Use a recuperação de palavra-passe no ecrã de login. Se a conta estiver pendente ou não receber o email, contacte o suporte e indique o email usado no registo.</p>
-          </details>
-          <details>
-            <summary>Como reporto um problema numa encomenda?</summary>
-            <p>Abra um pedido com o número da encomenda, produto, produtor envolvido, estado atual e imagens se ajudarem a comprovar o problema.</p>
-          </details>
-          <details>
-            <summary>Como pedir ajuda sobre marketplace ou necessidades?</summary>
-            <p>Indique o produto, quantidade, se estava a publicar excedente, responder a uma necessidade ou comprar uma oferta, e descreva o que esperava que acontecesse.</p>
-          </details>
-          <details>
-            <summary>Quando devo criar uma necessidade?</summary>
-            <p>Crie uma necessidade quando precisa de produto que ainda não está coberto por stock próprio ou por encomendas concluídas. Outros produtores podem enviar propostas privadas.</p>
-          </details>
-          <details>
-            <summary>Quando devo publicar excedente?</summary>
-            <p>Publique excedente quando tem stock disponível acima dos compromissos externos. Nas recomendações, a plataforma sugere a quantidade a vender mantendo a quantidade necessária para pedidos externos.</p>
-          </details>
-          <details>
-            <summary>Porque a quantidade disponível pode mudar?</summary>
-            <p>Reservas, encomendas pendentes, cancelamentos e receções atualizam automaticamente o stock disponível. Consulte os movimentos recentes no detalhe do stock.</p>
-          </details>
-          <details>
-            <summary>O que significam Stock atual, Reservado e Disponível?</summary>
-            <p>Stock atual é a quantidade física registada no inventário. Reservado é a quantidade já comprometida em anúncios ou encomendas. Disponível é o que ainda está livre para vender ou oferecer: stock atual menos reservado.</p>
-          </details>
-          <details>
-            <summary>O que são os compromissos externos?</summary>
-            <p>São os pedidos externos dos seus clientes ainda em aberto. A plataforma usa esta quantidade para evitar vender produto que precisa de reservar para esses clientes.</p>
-          </details>
-          <details>
-            <summary>O que significa Máximo publicável?</summary>
-            <p>É a quantidade que pode publicar a partir do stock atual sem descer abaixo dos compromissos externos. A regra usada é: disponível menos compromissos externos, nunca abaixo de zero.</p>
-          </details>
-          <details>
-            <summary>O que é Produção futura e Pré-venda livre?</summary>
-            <p>Produção futura é a quantidade prevista que ainda não foi reservada. Pré-venda livre é a parte dessa previsão que está ativa para pré-venda e ainda não foi publicada ou reservada noutros anúncios.</p>
-          </details>
-          <details>
-            <summary>O que significam os alertas?</summary>
-            <p>Alertas exigem atenção operacional, como stock crítico, necessidade por cobrir ou encomenda por confirmar. Notificações recentes são apenas informativas.</p>
-          </details>
-          <details>
-            <summary>Como anexar imagens ao suporte?</summary>
-            <p>No formulário de suporte pode selecionar uma ou várias imagens. Use fotos claras de erros, produtos, documentos ou ecrãs que ajudem a equipa a perceber o caso.</p>
-          </details>
-          <details>
-            <summary>Quanto tempo demora a resposta?</summary>
-            <p>O tempo de resposta será definido pela empresa. Por agora, acompanhe o estado nesta página.</p>
-          </details>
+
+        <div class="faq-search">
+          <i class="bi bi-search"></i>
+          <input type="text" id="faq-search-input" placeholder="Pesquisar nas FAQs..." autocomplete="off">
+        </div>
+
+        <div class="faq-cats" role="group" aria-label="Filtrar por categoria">
+          <button class="faq-cat is-active" data-cat="all" type="button">Todas</button>
+          <button class="faq-cat" data-cat="conta" type="button"><i class="bi bi-person"></i> Conta</button>
+          <button class="faq-cat" data-cat="marketplace" type="button"><i class="bi bi-shop"></i> Mercado</button>
+          <button class="faq-cat" data-cat="stock" type="button"><i class="bi bi-box-seam"></i> Stock</button>
+          <button class="faq-cat" data-cat="ajuda" type="button"><i class="bi bi-headset"></i> Ajuda</button>
+        </div>
+
+        <div class="faq-list" id="faq-list">
+
+          <div class="faq-item" data-cat="conta">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--purple"><i class="bi bi-person-lock"></i></span>
+              <span class="faq-q__text">Como recupero o acesso à conta?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Use a recuperação de palavra-passe no ecrã de login. Se a conta estiver pendente ou não receber o email, contacte o suporte e indique o email usado no registo.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="marketplace">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--blue"><i class="bi bi-bag-check"></i></span>
+              <span class="faq-q__text">Como reporto um problema numa encomenda?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Abra um pedido com o número da encomenda, produto, produtor envolvido, estado atual e imagens se ajudarem a comprovar o problema.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="marketplace">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--blue"><i class="bi bi-shop"></i></span>
+              <span class="faq-q__text">Como pedir ajuda sobre marketplace ou necessidades?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Indique o produto, quantidade, se estava a publicar excedente, responder a uma necessidade ou comprar uma oferta, e descreva o que esperava que acontecesse.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="marketplace">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--blue"><i class="bi bi-megaphone"></i></span>
+              <span class="faq-q__text">Quando devo criar uma necessidade?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Crie uma necessidade quando precisa de produto que ainda não está coberto por stock próprio ou por encomendas concluídas. Outros produtores podem enviar propostas privadas.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="marketplace">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--green"><i class="bi bi-graph-up-arrow"></i></span>
+              <span class="faq-q__text">Quando devo publicar excedente?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Publique excedente quando tem stock disponível acima dos compromissos externos. A plataforma sugere a quantidade a vender mantendo o necessário para pedidos externos.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="stock">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--amber"><i class="bi bi-arrow-repeat"></i></span>
+              <span class="faq-q__text">Porque a quantidade disponível pode mudar?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Reservas, encomendas pendentes, cancelamentos e receções atualizam automaticamente o stock disponível. Consulte os movimentos recentes no detalhe do stock.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="stock">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--amber"><i class="bi bi-box-seam"></i></span>
+              <span class="faq-q__text">O que significam Stock atual, Reservado e Disponível?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Stock atual é a quantidade física no inventário. Reservado é o comprometido em anúncios ou encomendas. Disponível é o que está livre: stock atual menos reservado.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="stock">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--amber"><i class="bi bi-clipboard2-check"></i></span>
+              <span class="faq-q__text">O que são os compromissos externos?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>São os pedidos externos dos seus clientes ainda em aberto. A plataforma usa esta quantidade para evitar vender produto reservado para esses clientes.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="stock">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--amber"><i class="bi bi-calculator"></i></span>
+              <span class="faq-q__text">O que significa Máximo publicável?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>É a quantidade que pode publicar sem descer abaixo dos compromissos externos. A regra: disponível menos compromissos externos, nunca abaixo de zero.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="stock">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--green"><i class="bi bi-calendar2-check"></i></span>
+              <span class="faq-q__text">O que é Produção futura e Pré-venda livre?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Produção futura é a quantidade prevista ainda não reservada. Pré-venda livre é a parte ativa para pré-venda ainda não publicada ou reservada noutros anúncios.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="ajuda">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--slate"><i class="bi bi-bell"></i></span>
+              <span class="faq-q__text">O que significam os alertas?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>Alertas exigem atenção operacional: stock crítico, necessidade por cobrir ou encomenda por confirmar. Notificações são apenas informativas.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="ajuda">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--slate"><i class="bi bi-image"></i></span>
+              <span class="faq-q__text">Como anexar imagens ao suporte?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>No formulário pode selecionar uma ou várias imagens (JPG, PNG, WEBP, GIF até 10 MB). Use fotos de erros, ecrãs ou documentos que ajudem a equipa a perceber o caso.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-item" data-cat="ajuda">
+            <button class="faq-q" type="button" aria-expanded="false">
+              <span class="faq-q__icon faq-q__icon--slate"><i class="bi bi-clock"></i></span>
+              <span class="faq-q__text">Quanto tempo demora a resposta?</span>
+              <i class="bi bi-chevron-down faq-q__chevron"></i>
+            </button>
+            <div class="faq-a"><div class="faq-a__inner">
+              <p>O tempo de resposta será definido pela empresa. Por agora, acompanhe o estado nesta página.</p>
+            </div></div>
+          </div>
+
+          <div class="faq-empty" id="faq-empty" hidden>
+            <i class="bi bi-search"></i>
+            <span>Nenhuma pergunta encontrada.</span>
+          </div>
         </div>
       </section>
 
@@ -241,10 +351,36 @@
 .sup-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.4rem;padding:1.5rem;border:1px dashed #cbd5e1;border-radius:.8rem;background:#f8fafc;color:#64748b;}
 .sup-empty i{font-size:1.55rem;color:#16a34a;}
 .sup-empty strong{color:#0f172a;}
-.sup-faq-list{display:grid;gap:.55rem;}
-.sup-faq-list details{border:1px solid #e2e8f0;border-radius:.7rem;background:#f8fafc;padding:.7rem .8rem;}
-.sup-faq-list summary{cursor:pointer;font-size:.84rem;font-weight:850;color:#0f172a;}
-.sup-faq-list p{margin:.55rem 0 0;color:#475569;font-size:.8rem;line-height:1.45;}
+/* ── FAQ redesign ─────────────────────────────────────── */
+.faq-search{position:relative;margin-bottom:.6rem;}
+.faq-search i{position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;font-size:.85rem;}
+.faq-search input{width:100%;padding:.5rem .75rem .5rem 2.1rem;border:1px solid #e2e8f0;border-radius:.65rem;background:#f8fafc;font-size:.82rem;color:#0f172a;outline:0;transition:border-color .15s,box-shadow .15s;}
+.faq-search input:focus{border-color:#16a34a;background:#fff;box-shadow:0 0 0 3px rgba(22,163,74,.1);}
+.faq-cats{display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.7rem;}
+.faq-cat{display:inline-flex;align-items:center;gap:.3rem;padding:.26rem .6rem;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;font-size:.73rem;font-weight:800;color:#475569;cursor:pointer;transition:all .12s;white-space:nowrap;}
+.faq-cat:hover{border-color:#94a3b8;color:#0f172a;}
+.faq-cat.is-active{background:#16a34a;border-color:#16a34a;color:#fff;}
+.faq-list{display:grid;gap:.4rem;}
+.faq-item{border:1px solid #e2e8f0;border-radius:.72rem;background:#fff;overflow:hidden;transition:border-color .15s,box-shadow .15s;}
+.faq-item:hover{border-color:#cbd5e1;}
+.faq-item.is-open{border-color:#bfdbfe;box-shadow:0 2px 8px rgba(15,23,42,.05);}
+.faq-q{display:flex;align-items:center;gap:.5rem;padding:.6rem .7rem;width:100%;background:none;border:none;cursor:pointer;text-align:left;}
+.faq-q:focus-visible{outline:2px solid #16a34a;outline-offset:-2px;border-radius:.65rem;}
+.faq-q__icon{flex-shrink:0;width:26px;height:26px;border-radius:.45rem;display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;}
+.faq-q__icon--green{background:#dcfce7;color:#15803d;}
+.faq-q__icon--blue{background:#dbeafe;color:#1d4ed8;}
+.faq-q__icon--amber{background:#fef3c7;color:#92400e;}
+.faq-q__icon--slate{background:#f1f5f9;color:#475569;}
+.faq-q__icon--purple{background:#ede9fe;color:#6d28d9;}
+.faq-q__text{flex:1;font-size:.81rem;font-weight:800;color:#0f172a;line-height:1.35;text-align:left;}
+.faq-q__chevron{flex-shrink:0;color:#94a3b8;font-size:.72rem;transition:transform .2s ease;}
+.faq-item.is-open .faq-q__chevron{transform:rotate(180deg);}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .22s ease;}
+.faq-item.is-open .faq-a{max-height:500px;}
+.faq-a__inner p{margin:0;padding:.1rem .7rem .7rem calc(.7rem + 26px + .5rem);font-size:.79rem;color:#475569;line-height:1.5;}
+.faq-empty{display:none;flex-direction:column;align-items:center;gap:.35rem;padding:1.25rem .75rem;color:#94a3b8;font-size:.8rem;text-align:center;}
+.faq-empty.is-visible{display:flex;}
+.faq-empty i{font-size:1.2rem;}
 .sup-contact-box{display:flex;flex-direction:column;gap:.25rem;padding:.75rem;border:1px solid #e2e8f0;border-radius:.72rem;background:#f8fafc;}
 .sup-contact-box span{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:850;}
 .sup-contact-box a,.sup-contact-box strong{font-size:.86rem;font-weight:850;color:#0f172a;overflow-wrap:anywhere;}
@@ -261,5 +397,53 @@
   .sup-btn-primary,.sup-btn-ghost{width:100%;}
 }
 </style>
+
+<script>
+(function(){
+  var searchInput = document.getElementById('faq-search-input');
+  var catBtns = document.querySelectorAll('.faq-cat');
+  var items = document.querySelectorAll('.faq-item');
+  var emptyEl = document.getElementById('faq-empty');
+  var activeCat = 'all';
+
+  items.forEach(function(item){
+    var btn = item.querySelector('.faq-q');
+    btn.addEventListener('click', function(){
+      var isOpen = item.classList.contains('is-open');
+      items.forEach(function(i){
+        i.classList.remove('is-open');
+        i.querySelector('.faq-q').setAttribute('aria-expanded','false');
+      });
+      if(!isOpen){
+        item.classList.add('is-open');
+        btn.setAttribute('aria-expanded','true');
+      }
+    });
+  });
+
+  catBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      catBtns.forEach(function(b){ b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+      activeCat = btn.dataset.cat;
+      filterFAQs();
+    });
+  });
+
+  if(searchInput) searchInput.addEventListener('input', filterFAQs);
+
+  function filterFAQs(){
+    var q = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    var visible = 0;
+    items.forEach(function(item){
+      var catMatch = activeCat === 'all' || item.dataset.cat === activeCat;
+      var textMatch = !q || item.textContent.toLowerCase().indexOf(q) !== -1;
+      item.hidden = !(catMatch && textMatch);
+      if(catMatch && textMatch) visible++;
+    });
+    if(emptyEl) emptyEl.classList.toggle('is-visible', visible === 0);
+  }
+})();
+</script>
 
 {% endblock %}

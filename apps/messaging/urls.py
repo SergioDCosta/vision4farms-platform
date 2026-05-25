@@ -18,6 +18,11 @@ urlpatterns = [
         name="unarchive_conversation",
     ),
     path(
+        "mensagens/conversa/<uuid:conversation_id>/pesquisar/",
+        views.search_conversation_messages_view,
+        name="search_conversation",
+    ),
+    path(
         "mensagens/listing/<uuid:listing_id>/iniciar/",
         views.start_listing_contact_view,
         name="start_listing_contact",

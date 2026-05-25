@@ -42,7 +42,9 @@ class ConversationConsumer(_BaseMessagingConsumer):
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
-        await self._mark_conversation_as_read()
+        was_unread = await self._mark_conversation_as_read()
+        if was_unread:
+            await self._broadcast_read_update()
 
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
@@ -57,44 +59,97 @@ class ConversationConsumer(_BaseMessagingConsumer):
         except json.JSONDecodeError:
             return
 
-        if payload.get("type") != "message.send":
-            return
+        msg_type = payload.get("type")
 
-        content = str(payload.get("content") or "").strip()
-        if not content:
-            return
-
-        try:
-            message_result = await self._create_text_message(content)
-        except Exception:
-            await self._send_json(
-                {
+        if msg_type == "message.send":
+            content = str(payload.get("content") or "").strip()
+            if not content:
+                return
+            try:
+                message_result = await self._create_text_message(content)
+            except Exception:
+                await self._send_json({
                     "type": "message.error",
                     "error": "Não foi possível enviar a mensagem.",
-                }
-            )
-            return
-
-        if not message_result.get("realtime_dispatched"):
-            await self._send_json(
-                {
+                })
+                return
+            if not message_result.get("realtime_dispatched"):
+                await self._send_json({
                     "type": "message.created",
                     "message": message_result.get("message", {}),
-                }
-            )
+                })
+
+        elif msg_type == "typing.start":
+            await self._broadcast_typing(True)
+
+        elif msg_type == "typing.stop":
+            await self._broadcast_typing(False)
+
+        elif msg_type == "conversation.sync":
+            last_message_id = str(payload.get("last_message_id") or "").strip()
+            if last_message_id:
+                missed = await self._get_missed_messages(last_message_id)
+                if missed:
+                    await self._send_json({
+                        "type": "messages.catchup",
+                        "messages": missed,
+                    })
 
     async def message_created(self, event):
         message_payload = event.get("message", {})
-        await self._send_json(
-            {
-                "type": "message.created",
-                "message": message_payload,
-            }
-        )
+        await self._send_json({
+            "type": "message.created",
+            "message": message_payload,
+        })
 
         if str(message_payload.get("sender_id")) != str(self.current_user.id):
-            await self._mark_conversation_as_read()
+            was_unread = await self._mark_conversation_as_read()
             await self._broadcast_current_user_unread_totals()
+            if was_unread:
+                await self._broadcast_read_update()
+
+    async def typing_update(self, event):
+        if str(event.get("user_id")) == str(self.current_user.id):
+            return
+        await self._send_json({
+            "type": "typing.update",
+            "user_id": event["user_id"],
+            "user_name": event["user_name"],
+            "is_typing": event["is_typing"],
+        })
+
+    async def read_update(self, event):
+        if str(event.get("reader_id")) == str(self.current_user.id):
+            return
+        await self._send_json({
+            "type": "read.update",
+            "reader_id": event["reader_id"],
+        })
+
+    async def _broadcast_typing(self, is_typing):
+        user_name = (
+            getattr(self.current_user, "full_name", None)
+            or getattr(self.current_user, "email", "")
+            or "Utilizador"
+        )
+        await self.channel_layer.group_send(
+            self.group_name,
+            {
+                "type": "typing_update",
+                "user_id": str(self.current_user.id),
+                "user_name": str(user_name),
+                "is_typing": is_typing,
+            },
+        )
+
+    async def _broadcast_read_update(self):
+        await self.channel_layer.group_send(
+            self.group_name,
+            {
+                "type": "read_update",
+                "reader_id": str(self.current_user.id),
+            },
+        )
 
     @database_sync_to_async
     def _is_conversation_participant(self):
@@ -123,7 +178,6 @@ class ConversationConsumer(_BaseMessagingConsumer):
     @database_sync_to_async
     def _create_text_message(self, content):
         conversation = Conversation.objects.get(id=self.conversation_id, is_active=True)
-
         message = create_text_message(
             conversation=conversation,
             sender_user=self.current_user,
@@ -134,6 +188,29 @@ class ConversationConsumer(_BaseMessagingConsumer):
             "message": serialize_message_payload(message=message),
             "realtime_dispatched": bool(getattr(message, "realtime_dispatched", False)),
         }
+
+    @database_sync_to_async
+    def _get_missed_messages(self, last_message_id):
+        from apps.messaging.models import Message
+        try:
+            last_msg = Message.objects.filter(
+                conversation_id=self.conversation_id,
+                id=last_message_id,
+            ).first()
+            if not last_msg:
+                return []
+            missed = (
+                Message.objects
+                .filter(
+                    conversation_id=self.conversation_id,
+                    created_at__gt=last_msg.created_at,
+                )
+                .select_related("sender_user")
+                .order_by("created_at")[:50]
+            )
+            return [serialize_message_payload(message=m) for m in missed]
+        except Exception:
+            return []
 
 
 class UnreadCounterConsumer(_BaseMessagingConsumer):

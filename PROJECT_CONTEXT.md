@@ -1,6 +1,6 @@
 # VISION4FARMS - Contexto Atual do Projeto
 
-Última revisão: 2026-05-24.
+Última revisão: 2026-05-25.
 
 Este ficheiro serve como mapa funcional e técnico atual da aplicação. O objetivo é ajudar a explicar o projeto em relatório, manter o contexto entre sessões de desenvolvimento e evitar decisões baseadas em informação desatualizada.
 
@@ -253,11 +253,19 @@ Página principal:
 
 O painel do produtor mostra:
 
-- resumo operacional do produtor;
-- ações úteis consoante o estado do inventário;
+- saudação contextual com data (ver detalhe abaixo);
+- KPIs: alertas ativos, stock crítico, encomendas pendentes, excedentes/anúncios;
+- card de alertas prioritários e ações recomendadas (quando há situações urgentes);
 - card de clima simplificado;
-- card operacional "Hoje na exploração";
-- indicadores de encomendas, necessidades, anúncios e stock.
+- card operacional "Hoje na exploração" (encomendas, stock, necessidades, anúncios);
+- ações rápidas com acesso direto a recomendações, marketplace, stock, encomendas e necessidades.
+
+Saudação (Bom dia / Boa tarde / Boa noite):
+
+- calculada no browser com o algoritmo solar de Spencer (1971), sem chamada de API;
+- usa coordenadas centrais de Portugal Continental (39.5°N, 8.0°W), com erro máximo de ≈10 min;
+- lógica: antes do nascer do sol → "Boa noite"; nascer do sol ao meio-dia solar → "Bom dia"; meio-dia solar ao pôr do sol → "Boa tarde"; após pôr do sol → "Boa noite";
+- substitui o anterior cutoff fixo por hora (`h < 12`, `h < 19`) que dizia "Bom dia" às 2h da manhã.
 
 Inventário no painel:
 
@@ -266,10 +274,22 @@ Inventário no painel:
 - produtos com pedidos externos cobertos por stock atual + previsão disponível a tempo não contam como críticos;
 - o painel usa a mesma fonte central do inventário: `calculate_inventory_commitment_state`.
 
+Ações recomendadas (`_build_recommended_actions`):
+
+- alertas críticos → "Resolver alertas críticos";
+- stock crítico → "Reforçar stock de X";
+- encomendas pendentes → "Acompanhar encomendas pendentes";
+- necessidades abertas → "Necessidades à espera de cobertura" (adicionado);
+- excedente não anunciado → "Publicar um possível excedente";
+- sem urgências → "Tudo controlado".
+
+Contexto servido por `build_client_dashboard_context` inclui agora `active_needs_count` exposto diretamente (além de alimentar `today_operations`).
+
 Regras de UX:
 
 - botões "Recomendações" e "Publicar excedente" só aparecem quando o produtor tem produtos ativos no inventário;
 - "Atualizar stock"/inventário continua visível para permitir adicionar produtos;
+- ações rápidas incluem "Necessidades" em ambos os layouts (alertas e ok);
 - se não houver tarefas urgentes, o card lateral mostra estado simples.
 
 Widget de clima:
@@ -296,7 +316,8 @@ Dashboard gestor:
 - KPIs operacionais de utilizadores, suporte, encomendas e atividade;
 - gráfico de atividade comercial semanal;
 - card "Suporte e utilizadores" com totais de utilizadores, suspensos, online/offline e suporte ativo;
-- informação relevante para administração da cooperativa.
+- informação relevante para administração e monitorização diária da cooperativa;
+- acesso a catálogo, utilizadores, suporte e auditoria sem misturar as regras de negócio dos módulos operacionais.
 
 Gráfico de atividade comercial semanal:
 
@@ -316,10 +337,24 @@ Gestão de utilizadores:
 
 Auditoria:
 
-- pesquisa por ação, label, utilizador, email, IP, User-Agent e JSON;
-- linhas clicáveis/expansíveis;
+- pesquisa livre por ação, label, utilizador, email, IP, User-Agent e snapshots JSON;
+- filtros estruturados por módulo, ação, utilizador, entidade e intervalo de datas;
+- filtros de ação e utilizador com seleção pesquisável, evitando dropdowns extensos;
+- badges visuais para Stock, Produção, Marketplace, Pedidos, Necessidades, Encomendas, Reservas, Suporte, Utilizadores e Catálogo;
+- linhas clicáveis/expansíveis, com vista inicial focada no evento, entidade afetada, autor e momento;
+- detalhe expandido com comparação de alterações, metadados de acesso/dispositivo e referência técnica;
+- links read-only para abrir anúncios, encomendas, stocks, necessidades, pedidos externos, previsões e movimentos associados ao evento;
+- exportação CSV real, respeitando os filtros ativos;
 - paginação 10/25/50;
 - texto de paginação dentro de `.adm-pagination`.
+
+Arquitetura do backoffice:
+
+- a interface de gestão vive atualmente sobretudo em `dashboard`, enquanto `support` mantém as ações admin próprias do domínio de suporte;
+- as regras de negócio continuam nas apps responsáveis (`inventory`, `marketplace`, `needs`, `orders`, `support`), e o backoffice apenas consulta ou aciona serviços públicos desses domínios;
+- esta separação evita duplicar validações críticas no painel administrativo;
+- evolução futura possível: extrair rotas/templates de `/gestor/` para uma app `admin_panel` e extrair `AuditLog`, consulta/exportação e convenções de eventos para uma app `audit`;
+- essa refatoração estrutural não é necessária para a entrega atual e foi evitada para reduzir risco de regressões em produção.
 
 ## 10) Catalog
 
@@ -845,6 +880,18 @@ Regras de segurança/abuso:
 - notificações recentes de mensagens são deduplicadas por conversa e marcadas como lidas quando a conversa é aberta.
 - pós-envio de mensagem passa por helper único: atualiza conversa, marca remetente como lido, cria/atualiza notificação e emite WebSocket.
 
+Funcionalidades adicionais implementadas (2026-05-25):
+
+- **Indicador de "a escrever"**: ao escrever no composer, o cliente envia `typing.start`/`typing.stop` via WebSocket; o servidor broadcast `typing.update` ao grupo (excluindo o remetente); a UI mostra animação de três pontos com o nome do utilizador; o indicador desaparece automaticamente após 3,5 s ou quando chega uma mensagem.
+
+- **Recuperação de mensagens após reconexão**: ao reconectar o WebSocket, o cliente envia `conversation.sync` com o `last_message_id` da última mensagem renderizada; o servidor devolve `messages.catchup` com as mensagens perdidas desde esse id (máximo 50).
+
+- **Read receipts**: quando um participante lê mensagens, o servidor faz broadcast de `read.update` ao grupo; o cliente que enviou as mensagens mostra "Lido" sob a última mensagem sua; o estado inicial de leitura é calculado no carregamento da página a partir de `ConversationParticipant.last_read_at`.
+
+- **Pesquisa dentro da conversa**: botão de lupa no cabeçalho da thread abre painel de pesquisa; endpoint `GET /mensagens/conversa/<uuid>/pesquisar/?q=` devolve JSON com até 25 mensagens de texto que contenham o termo; resultados clicáveis fazem scroll e highlight da mensagem na thread.
+
+- **Agrupamento visual**: mensagens consecutivas do mesmo remetente recebem classe `.is-grouped` que reduz o espaçamento e ajusta os border-radius dos balões, criando um aspeto de "bloco" semelhante a apps de chat modernas.
+
 ## 20) Support
 
 Páginas cliente:
@@ -893,13 +940,25 @@ Anexos:
 - limite 10MB por imagem;
 - usa Cloudinary em produção via `default_storage`.
 
-FAQ atual:
+Realtime no detalhe do ticket (implementado 2026-05-25):
 
-- explica recuperação de conta;
-- problemas em encomendas;
-- ajuda sobre marketplace;
-- ajuda sobre necessidades;
-- interpretação de stock atual, reservado, disponível, compromissos externos, produção futura e máximo publicável.
+- novo WebSocket consumer `SupportTicketConsumer` na rota `ws/suporte/ticket/<uuid>/`;
+- aceita ligações do requester do ticket OU de qualquer admin;
+- quando admin responde (`reply_support_ticket`) ou cliente responde (`reply_support_ticket_as_requester`), o serviço serializa a mensagem e faz broadcast via `transaction.on_commit` ao grupo `support_ticket_<id>`;
+- a view de detalhe do ticket do cliente (`/suporte/<uuid>/`) liga ao WebSocket e adiciona novas mensagens ao DOM sem recarregar a página;
+- indicador de estado "Ligação ativa"/"Sem ligação" visível no cabeçalho da conversa;
+- quando admin responde, é criada notificação in-app (`NotificationType.SYSTEM`) para o requester com link para o ticket.
+
+Badge de suporte:
+
+- o evento `support.badge.changed` emitido ao grupo `support_admin_badge` inclui agora o campo `count` com o número de tickets que precisam de atenção admin;
+- conta tickets `OPEN` + tickets `CLAIMED` com última mensagem do requester.
+
+FAQ:
+
+- redesenhada com categorias (Conta, Mercado, Stock, Ajuda), pesquisa de texto e accordion animado;
+- 13 perguntas frequentes cobrindo conta, marketplace, necessidades, stock e suporte;
+- interatividade completamente em JavaScript vanilla (sem dependências externas).
 
 ## 21) Notifications, Badges e Realtime
 
@@ -921,32 +980,97 @@ Tabela:
 
 - `audit_log`.
 
-Eventos relevantes:
+Infraestrutura:
 
-- login;
-- alterações de conta;
-- alterações de perfil de produtor;
-- preferências;
-- foto;
-- password;
-- reset de password;
-- ações admin;
-- suporte;
-- alterações de catálogo.
+- helper transversal: `apps.common.audit.log_audit_event(...)`;
+- o log guarda utilizador/ator quando existe, ação, entidade, `entity_id`, `old_values`, `new_values`, notas, IP, User-Agent e data/hora;
+- ações automáticas podem ser registadas com ator vazio e notas que explicam a origem de sistema;
+- quando um evento é emitido dentro de uma transação de negócio, a escrita da auditoria fica isolada por savepoint; uma falha de auditoria não inutiliza a transação principal;
+- fora de transações, o helper também captura falhas e não impede a operação funcional.
+
+Eventos de conta, administração e suporte já registados:
+
+- início de sessão e alterações relevantes de conta/perfil/preferências/password;
+- convites, confirmação de email por admin e alteração/suspensão/reativação de utilizadores;
+- criação, atualização, claim, resposta do admin, resposta do utilizador e fecho de tickets de suporte;
+- criação, atualização e remoção de produtos/categorias do catálogo.
+
+Auditoria operacional crítica implementada:
+
+- pedidos externos:
+  - `EXTERNAL_DEMAND_CREATED`;
+  - `EXTERNAL_DEMAND_UPDATED`;
+  - `EXTERNAL_DEMAND_CANCELLED`;
+- necessidades e propostas:
+  - `CUSTOMER_DEMAND_NEED_CREATED`;
+  - `CUSTOMER_DEMAND_NEED_UPDATED`;
+  - `CUSTOMER_DEMAND_NEED_COVERED`;
+  - `NEED_RESPONSE_CREATED`;
+  - `NEED_RESPONSE_UPDATED`;
+  - `NEED_RESPONSE_REJECTED`;
+  - `NEED_COVERAGE_CHANGED`;
+- stock e produção futura:
+  - `STOCK_CREATED`;
+  - `STOCK_UPDATED`;
+  - `STOCK_MOVEMENT_CREATED`;
+  - `FORECAST_CREATED`;
+  - `FORECAST_UPDATED`;
+  - `FORECAST_DELETED`;
+  - `FORECAST_ASSIMILATED`;
+- marketplace:
+  - `LISTING_CREATED`;
+  - `LISTING_UPDATED`;
+  - `LISTING_STATUS_CHANGED`;
+  - `LISTING_RETIRED`;
+  - `LISTING_EXPIRED`;
+  - `LISTING_INVALID_ATTEMPT`;
+- encomendas e reservas:
+  - `ORDER_CREATED`;
+  - `ORDER_STATUS_CHANGED`;
+  - `ORDER_RECEIPT_CONFIRMED`;
+  - `ORDER_CANCELLED`;
+  - `STOCK_RESERVATION_CHANGED`;
+  - `FORECAST_RESERVATION_CHANGED`.
+
+Snapshots operacionais:
+
+- pedidos/needs guardam produtor, produto, nome do produto, quantidade, data pretendida, estado e ligação à procura agregada quando aplicável;
+- stock/forecast guardam produto, quantidades atuais/reservadas/comprometidas, períodos da previsão e origem da operação;
+- anúncios/propostas guardam origem (`stock`, `forecast` ou `need_response`), quantidades, preço, entrega, estado e `need_id` quando privado;
+- encomendas/reservas guardam encomenda, listing, produto, comprador/vendedor, quantidade, mudança de estado e alterações de reserva;
+- não são guardadas passwords, tokens, conteúdo privado de mensagens ou contactos completos desnecessários dos clientes externos.
 
 Regras:
 
 - não guardar segredos;
 - guardar IP, user-agent e descrição de dispositivo;
 - guardar snapshots `old_values`/`new_values` quando útil;
+- manter snapshots pequenos e orientados a investigação;
 - falhas de auditoria não devem quebrar ações principais já concluídas.
 
 UI admin:
 
+- a tabela permite pesquisa e filtros por módulo, ação, utilizador, entidade e datas;
+- seletores de ação e utilizador são pesquisáveis para funcionar com muitos eventos/utilizadores;
+- cada linha prioriza o evento, a referência afetada, o autor e o momento, mantendo IP/dispositivo no detalhe;
 - a tabela é expansível por linha;
 - o detalhe mostra resumo operacional, alterações legíveis e referência técnica;
 - a referência técnica ocupa a largura útil do detalhe expandido para evitar layout desequilibrado;
-- dados técnicos continuam disponíveis, mas deixam de ser a primeira leitura visual.
+- dados técnicos continuam disponíveis, mas deixam de ser a primeira leitura visual;
+- links read-only permitem investigar entidades relacionadas sem entrar em fluxos operacionais do produtor;
+- export CSV permite análise externa dos eventos filtrados.
+
+Monitorização operacional:
+
+- o dashboard admin resume atividade comercial, utilizadores, suporte e operações relevantes;
+- badges de suporte e alertas ajudam a identificar trabalho pendente;
+- auditoria complementa métricas agregadas com rastreabilidade individual: quem fez a ação, sobre que entidade, em que momento e com que alteração;
+- alertas e notificações são mecanismos operacionais para o produtor; `audit_log` é o mecanismo de investigação administrativa e não substitui esses fluxos.
+
+Trabalho posterior não incluído nesta versão:
+
+- auditar eventos secundários como login falhado, logout, anexos de suporte/mensagens, falhas de email e falhas de entrega de alertas;
+- eventual extração para apps dedicadas `admin_panel` e `audit`, mantendo sempre as regras de negócio nas apps de domínio.
 
 ## 23) Modelo de Dados Atual
 

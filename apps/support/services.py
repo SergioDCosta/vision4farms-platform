@@ -27,6 +27,38 @@ from apps.support.models import (
 
 logger = logging.getLogger(__name__)
 SUPPORT_ADMIN_LAST_SEEN_SESSION_KEY = "support_admin_last_seen_at"
+
+
+def _broadcast_support_ticket_ws(*, ticket_id, payload):
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            return False
+        async_to_sync(channel_layer.group_send)(
+            f"support_ticket_{ticket_id}",
+            {"type": "ticket_message_created", "message": payload},
+        )
+        return True
+    except Exception:
+        logger.warning("Falha ao emitir mensagem de ticket de suporte por WebSocket.", exc_info=True)
+        return False
+
+
+def _notify_requester_support_reply(*, user, ticket_number, ticket_id, body):
+    try:
+        from apps.notifications_app.services import create_notification
+        from apps.notifications_app.models import NotificationType
+        create_notification(
+            user=user,
+            notification_type=NotificationType.SYSTEM,
+            title=f"Resposta de suporte — Ticket #{ticket_number}",
+            body=str(body)[:200] if body else None,
+            action_url=reverse("support:ticket_detail", kwargs={"ticket_id": ticket_id}),
+        )
+    except Exception:
+        logger.warning("Falha ao criar notificação de resposta de suporte.", exc_info=True)
 SUPPORT_IMAGE_MAX_SIZE = 10 * 1024 * 1024
 SUPPORT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 SUPPORT_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -477,7 +509,7 @@ def reply_support_ticket(*, ticket_id, admin_user, reply_message, uploaded_files
             "updated_at",
         ]
     )
-    _create_ticket_message(
+    message = _create_ticket_message(
         ticket=ticket,
         sender_user=admin_user,
         sender_role=SupportMessageRole.ADMIN,
@@ -485,6 +517,33 @@ def reply_support_ticket(*, ticket_id, admin_user, reply_message, uploaded_files
         uploaded_files=uploaded_files,
         created_at=now,
     )
+
+    now_local = timezone.localtime(now)
+    ws_payload = {
+        "id": str(message.id),
+        "body": message.body,
+        "sender_role": SupportMessageRole.ADMIN,
+        "sender_name": "Suporte",
+        "created_at_label": now_local.strftime("%d/%m/%Y %H:%M"),
+        "attachments": [
+            {"url": _resolve_storage_url(a.storage_path), "name": a.file_name}
+            for a in SupportTicketAttachment.objects.filter(message=message)
+        ],
+    }
+    ticket_id_str = str(ticket.id)
+    requester = ticket.requester_user
+    ticket_number = ticket.ticket_number
+
+    def _post_commit():
+        _broadcast_support_ticket_ws(ticket_id=ticket_id_str, payload=ws_payload)
+        _notify_requester_support_reply(
+            user=requester,
+            ticket_number=ticket_number,
+            ticket_id=ticket_id_str,
+            body=reply_message,
+        )
+
+    transaction.on_commit(_post_commit)
     return ticket
 
 
@@ -502,13 +561,32 @@ def reply_support_ticket_as_requester(*, ticket_id, requester_user, reply_messag
         raise SupportServiceError("Este ticket já está fechado.")
 
     now = timezone.now()
-    _create_ticket_message(
+    message = _create_ticket_message(
         ticket=ticket,
         sender_user=requester_user,
         sender_role=SupportMessageRole.REQUESTER,
         body=reply_message,
         uploaded_files=uploaded_files,
         created_at=now,
+    )
+
+    now_local = timezone.localtime(now)
+    sender_name = requester_user.full_name or requester_user.email or "Utilizador"
+    ws_payload = {
+        "id": str(message.id),
+        "body": message.body,
+        "sender_role": SupportMessageRole.REQUESTER,
+        "sender_name": str(sender_name),
+        "created_at_label": now_local.strftime("%d/%m/%Y %H:%M"),
+        "attachments": [
+            {"url": _resolve_storage_url(a.storage_path), "name": a.file_name}
+            for a in SupportTicketAttachment.objects.filter(message=message)
+        ],
+    }
+    ticket_id_str = str(ticket.id)
+
+    transaction.on_commit(
+        lambda: _broadcast_support_ticket_ws(ticket_id=ticket_id_str, payload=ws_payload)
     )
     return ticket
 

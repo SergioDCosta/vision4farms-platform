@@ -107,6 +107,7 @@ def build_client_dashboard_context(user):
         pending_orders_qs=pending_orders_qs,
         surplus_listings_count=surplus_listings_count,
         surplus_stock_candidate=surplus_stock_candidate,
+        active_needs_count=active_needs_count,
     )
 
     return {
@@ -117,6 +118,7 @@ def build_client_dashboard_context(user):
         "near_stock_count": near_stock_count,
         "pending_orders_count": pending_orders_count,
         "surplus_listings_count": surplus_listings_count,
+        "active_needs_count": active_needs_count,
         "has_active_inventory_products": has_active_inventory_products,
         "priority_alerts": active_alerts_qs.order_by("-created_at")[:3],
         "recommended_actions": recommended_actions,
@@ -140,6 +142,7 @@ def _build_recommended_actions(
     pending_orders_qs,
     surplus_listings_count,
     surplus_stock_candidate,
+    active_needs_count=0,
 ):
     actions = []
 
@@ -189,6 +192,20 @@ def _build_recommended_actions(
                 ),
                 "url": "/encomendas/",
                 "button_label": "Ver encomendas",
+            }
+        )
+
+    if active_needs_count > 0:
+        actions.append(
+            {
+                "variant": "primary",
+                "icon": "megaphone",
+                "title": f"Necessidades à espera de cobertura",
+                "description": (
+                    f"Tem {active_needs_count} necessidade(s) em aberto no mercado da cooperativa."
+                ),
+                "url": "/necessidades/",
+                "button_label": "Ver necessidades",
             }
         )
 

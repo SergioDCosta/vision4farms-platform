@@ -76,14 +76,38 @@ def _redirect_to_settings(request):
     return _redirect_to_support(request)
 
 
+def _get_support_badge_count():
+    from apps.support.models import SupportTicket, SupportTicketStatus, SupportMessageRole
+    from django.db import models as db_models
+    try:
+        if support_conversation_schema_available():
+            return int(
+                SupportTicket.objects.filter(
+                    db_models.Q(status=SupportTicketStatus.OPEN)
+                    | db_models.Q(
+                        status=SupportTicketStatus.CLAIMED,
+                        last_message_by_role=SupportMessageRole.REQUESTER,
+                    )
+                ).count()
+            )
+        return int(
+            SupportTicket.objects.filter(
+                status__in=[SupportTicketStatus.OPEN, SupportTicketStatus.CLAIMED]
+            ).count()
+        )
+    except Exception:
+        return 0
+
+
 def _broadcast_support_badge_changed():
     try:
         channel_layer = get_channel_layer()
         if not channel_layer:
             return
+        count = _get_support_badge_count()
         async_to_sync(channel_layer.group_send)(
             SUPPORT_ADMIN_BADGE_GROUP,
-            {"type": "support_badge_changed"},
+            {"type": "support_badge_changed", "count": count},
         )
     except Exception:
         logger.exception("Falha ao emitir atualização realtime do badge de suporte.")

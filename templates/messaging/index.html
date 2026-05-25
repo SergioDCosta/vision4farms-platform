@@ -175,6 +175,9 @@
           {% endif %}
 
           <div class="msg-thread__actions">
+            <button type="button" id="msgSearchToggle" class="msg-search-toggle" title="Pesquisar na conversa">
+              <i class="bi bi-search"></i>
+            </button>
             <span class="msg-connection-status" id="msgConnectionStatus">A ligar...</span>
             <form method="post"
                   action="{% if selected_tab == 'archived' %}{% url 'messaging:unarchive_conversation' active_conversation.id %}{% else %}{% url 'messaging:archive_conversation' active_conversation.id %}{% endif %}"
@@ -250,6 +253,26 @@
           {% endfor %}
         </div>
 
+        <!-- SEARCH PANEL -->
+        <div class="msg-search-panel" id="msgSearchPanel" hidden>
+          <div class="msg-search-panel__bar">
+            <i class="bi bi-search"></i>
+            <input type="text" id="msgSearchPanelInput" placeholder="Pesquisar nesta conversa..." autocomplete="off" maxlength="100">
+            <button type="button" id="msgSearchPanelClose" class="msg-search-panel__close" aria-label="Fechar pesquisa">
+              <i class="bi bi-x"></i>
+            </button>
+          </div>
+          <div class="msg-search-results" id="msgSearchResults" hidden></div>
+        </div>
+
+        <!-- TYPING INDICATOR -->
+        <div class="msg-typing-wrap" id="msgTypingWrap" hidden>
+          <span class="msg-typing-dot"></span>
+          <span class="msg-typing-dot"></span>
+          <span class="msg-typing-dot"></span>
+          <span id="msgTypingText" class="msg-typing-text"></span>
+        </div>
+
         <!-- COMPOSER -->
         <div class="msg-composer-wrap">
           <!-- File preview area (hidden by default) -->
@@ -278,7 +301,9 @@
         <div id="msgThreadData"
              data-conversation-id="{{ active_conversation.id }}"
              data-current-user-id="{{ request.current_user.id }}"
-             data-selected-tab="{{ selected_tab }}">
+             data-selected-tab="{{ selected_tab }}"
+             data-other-read="{{ other_participant_has_read|yesno:'true,false' }}"
+             data-search-url="{% url 'messaging:search_conversation' active_conversation.id %}">
         </div>
 
       {% else %}
@@ -1188,6 +1213,177 @@
   background: #166534;
 }
 
+/* ─── SEARCH TOGGLE BUTTON ─────────────────────────────────── */
+.msg-search-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: .6rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: .82rem;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.msg-search-toggle:hover,
+.msg-search-toggle.is-active {
+  background: #f0faf4;
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+
+/* ─── SEARCH PANEL ─────────────────────────────────────────── */
+.msg-search-panel {
+  border-bottom: 1px solid #edf0f5;
+  background: #fff;
+}
+.msg-search-panel__bar {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .6rem 1rem;
+}
+.msg-search-panel__bar i.bi-search {
+  color: #94a3b8;
+  font-size: .82rem;
+  flex-shrink: 0;
+}
+.msg-search-panel__bar input {
+  flex: 1;
+  min-height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: .65rem;
+  padding: .4rem .8rem;
+  font-size: .82rem;
+  background: #f8fafc;
+  color: #0f172a;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.msg-search-panel__bar input:focus {
+  border-color: #16a34a;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(22,163,74,.1);
+}
+.msg-search-panel__close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: .5rem;
+  font-size: .9rem;
+  flex-shrink: 0;
+}
+.msg-search-panel__close:hover { background: #f1f5f9; color: #0f172a; }
+.msg-search-results {
+  max-height: 240px;
+  overflow-y: auto;
+  border-top: 1px solid #f1f5f9;
+}
+.msg-search-result-item {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  padding: .6rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background .1s;
+}
+.msg-search-result-item:last-child { border-bottom: none; }
+.msg-search-result-item:hover { background: #f8fafc; }
+.msg-search-result-item__meta {
+  font-size: .68rem;
+  color: #94a3b8;
+  display: flex;
+  gap: .5rem;
+}
+.msg-search-result-item__text {
+  font-size: .8rem;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msg-search-result-item__text mark {
+  background: #fef9c3;
+  color: #92400e;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.msg-search-empty {
+  padding: .85rem 1rem;
+  color: #94a3b8;
+  font-size: .8rem;
+  text-align: center;
+}
+
+/* ─── TYPING INDICATOR ─────────────────────────────────────── */
+.msg-typing-wrap {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .35rem 1.25rem;
+  background: #fff;
+  border-top: 1px solid #f1f5f9;
+  min-height: 30px;
+}
+.msg-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+  animation: msg-typing-bounce 1.2s infinite ease-in-out;
+}
+.msg-typing-dot:nth-child(2) { animation-delay: .2s; }
+.msg-typing-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes msg-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.msg-typing-text {
+  font-size: .72rem;
+  color: #64748b;
+  margin-left: .2rem;
+}
+
+/* ─── READ RECEIPT ─────────────────────────────────────────── */
+.msg-read-receipt {
+  font-size: .62rem;
+  color: rgba(255,255,255,.7);
+  text-align: right;
+  margin-top: .15rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .2rem;
+}
+.msg-read-receipt::before {
+  content: "\F26A";
+  font-family: "bootstrap-icons";
+  font-size: .7rem;
+}
+
+/* ─── VISUAL GROUPING ──────────────────────────────────────── */
+.msg-bubble-wrap.is-grouped {
+  margin-top: .05rem !important;
+}
+.msg-bubble-wrap.is-grouped.is-me .msg-bubble {
+  border-bottom-right-radius: .3rem;
+  border-top-right-radius: .3rem;
+}
+.msg-bubble-wrap.is-grouped.is-other .msg-bubble {
+  border-bottom-left-radius: .3rem;
+  border-top-left-radius: .3rem;
+}
+
 /* ─── SCROLLBAR ────────────────────────────────────────────── */
 .msg-conversation-list::-webkit-scrollbar,
 .msg-thread__messages::-webkit-scrollbar { width: 4px; }
@@ -1338,6 +1534,13 @@
   const searchEmpty = document.getElementById("msgSearchEmpty");
   const connectionStatus = document.getElementById("msgConnectionStatus");
   const toast = document.getElementById("msgToast");
+  const typingWrap = document.getElementById("msgTypingWrap");
+  const typingText = document.getElementById("msgTypingText");
+  const searchToggle = document.getElementById("msgSearchToggle");
+  const searchPanel = document.getElementById("msgSearchPanel");
+  const searchPanelInput = document.getElementById("msgSearchPanelInput");
+  const searchPanelClose = document.getElementById("msgSearchPanelClose");
+  const searchResults = document.getElementById("msgSearchResults");
   const uploadEndpoint = "{% url 'messaging:upload_attachment' %}";
   const currentUserId = pageData ? pageData.dataset.currentUserId : null;
   const selectedTab = String(
@@ -1441,12 +1644,24 @@
   window.__msgThreadSocket = socket;
   setConnectionStatus("A ligar...", "connecting");
 
+  // Track last known message id for reconnect sync
+  const getLastMessageId = () => {
+    const wraps = messagesBox ? messagesBox.querySelectorAll("[data-message-id]") : [];
+    return wraps.length ? wraps[wraps.length - 1].dataset.messageId : null;
+  };
+
   socket.addEventListener("open", () => {
     setConnectionStatus("Ligação ativa", "online");
+    // Recover missed messages after reconnect
+    const lastId = getLastMessageId();
+    if (lastId) {
+      socket.send(JSON.stringify({ type: "conversation.sync", last_message_id: lastId }));
+    }
   });
 
   socket.addEventListener("close", () => {
     setConnectionStatus("Sem ligação", "offline");
+    stopTyping();
   });
 
   socket.addEventListener("error", () => {
@@ -1462,12 +1677,177 @@
 
   const csrfToken = getCookie("csrftoken");
 
+  // ── Typing indicator ──────────────────────────────────────
+  let typingActive = false;
+  let typingHideTimer = null;
+  let typingStopTimer = null;
+
+  function handleTypingUpdate(userId, userName, isTypingFlag) {
+    if (isTypingFlag) {
+      if (typingText) typingText.textContent = `${userName || "Utilizador"} está a escrever...`;
+      if (typingWrap) typingWrap.hidden = false;
+      clearTimeout(typingHideTimer);
+      typingHideTimer = setTimeout(hideTypingIndicator, 3500);
+    } else {
+      hideTypingIndicator();
+    }
+  }
+
+  function hideTypingIndicator() {
+    if (typingWrap) typingWrap.hidden = true;
+    clearTimeout(typingHideTimer);
+  }
+
+  function sendTypingStart() {
+    if (!typingActive && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "typing.start" }));
+      typingActive = true;
+    }
+    clearTimeout(typingStopTimer);
+    typingStopTimer = setTimeout(stopTyping, 2200);
+  }
+
+  function stopTyping() {
+    clearTimeout(typingStopTimer);
+    if (typingActive && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "typing.stop" }));
+    }
+    typingActive = false;
+  }
+
+  // ── Read receipts ──────────────────────────────────────────
+  function showReadReceipt() {
+    if (!messagesBox) return;
+    messagesBox.querySelectorAll(".msg-read-receipt").forEach((el) => el.remove());
+    const myWraps = messagesBox.querySelectorAll(".msg-bubble-wrap.is-me");
+    if (!myWraps.length) return;
+    const lastWrap = myWraps[myWraps.length - 1];
+    const receipt = document.createElement("div");
+    receipt.className = "msg-read-receipt";
+    receipt.textContent = "Lido";
+    lastWrap.appendChild(receipt);
+  }
+
+  // Show on page load if already read
+  if (threadData && threadData.dataset.otherRead === "true") {
+    showReadReceipt();
+  }
+
+  // ── Visual grouping ────────────────────────────────────────
+  function applyMessageGrouping() {
+    if (!messagesBox) return;
+    const wraps = Array.from(messagesBox.querySelectorAll(".msg-bubble-wrap[data-message-id]"));
+    for (let i = 1; i < wraps.length; i++) {
+      const prev = wraps[i - 1];
+      const curr = wraps[i];
+      const prevIsMe = prev.classList.contains("is-me");
+      const currIsMe = curr.classList.contains("is-me");
+      if (prevIsMe === currIsMe) {
+        curr.classList.add("is-grouped");
+      } else {
+        curr.classList.remove("is-grouped");
+      }
+    }
+  }
+  applyMessageGrouping();
+
+  // ── Search panel ───────────────────────────────────────────
+  const searchUrl = threadData ? threadData.dataset.searchUrl : null;
+  let searchDebounceTimer = null;
+
+  if (searchToggle && searchPanel) {
+    searchToggle.addEventListener("click", () => {
+      const isOpen = !searchPanel.hidden;
+      searchPanel.hidden = isOpen;
+      searchToggle.classList.toggle("is-active", !isOpen);
+      if (!isOpen && searchPanelInput) {
+        searchPanelInput.value = "";
+        if (searchResults) { searchResults.innerHTML = ""; searchResults.hidden = true; }
+        searchPanelInput.focus();
+      }
+    });
+  }
+
+  if (searchPanelClose && searchPanel) {
+    searchPanelClose.addEventListener("click", () => {
+      searchPanel.hidden = true;
+      if (searchToggle) searchToggle.classList.remove("is-active");
+      if (searchPanelInput) searchPanelInput.value = "";
+      if (searchResults) { searchResults.innerHTML = ""; searchResults.hidden = true; }
+    });
+  }
+
+  if (searchPanelInput) {
+    searchPanelInput.addEventListener("input", () => {
+      clearTimeout(searchDebounceTimer);
+      const q = (searchPanelInput.value || "").trim();
+      if (q.length < 2) {
+        if (searchResults) { searchResults.innerHTML = ""; searchResults.hidden = true; }
+        return;
+      }
+      searchDebounceTimer = setTimeout(() => runSearch(q), 350);
+    });
+  }
+
+  async function runSearch(q) {
+    if (!searchUrl || !searchResults) return;
+    try {
+      const url = `${searchUrl}?q=${encodeURIComponent(q)}`;
+      const response = await fetch(url, { credentials: "same-origin" });
+      const data = await response.json();
+      renderSearchResults(data.results || [], q);
+    } catch (_) {
+      renderSearchResults([], q);
+    }
+  }
+
+  function renderSearchResults(results, q) {
+    if (!searchResults) return;
+    searchResults.innerHTML = "";
+    if (!results.length) {
+      searchResults.innerHTML = `<div class="msg-search-empty">Sem resultados para "${q}"</div>`;
+      searchResults.hidden = false;
+      return;
+    }
+    const highlight = (text) => {
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return text.replace(new RegExp(`(${escaped})`, "gi"), "<mark>$1</mark>");
+    };
+    results.forEach((msg) => {
+      const item = document.createElement("div");
+      item.className = "msg-search-result-item";
+      const isMe = String(msg.sender_id) === String(currentUserId);
+      item.innerHTML = `
+        <div class="msg-search-result-item__meta">
+          <span>${isMe ? "Você" : (msg.sender_name || "Utilizador")}</span>
+          <span>${msg.created_at_label || ""}</span>
+        </div>
+        <div class="msg-search-result-item__text">${highlight(msg.content || "")}</div>
+      `;
+      item.addEventListener("click", () => {
+        const target = messagesBox.querySelector(`[data-message-id="${msg.id}"]`);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+          target.style.transition = "background .2s";
+          target.style.background = "rgba(22,163,74,.12)";
+          setTimeout(() => { target.style.background = ""; }, 1600);
+        }
+      });
+      searchResults.appendChild(item);
+    });
+    searchResults.hidden = false;
+  }
+
+  // ── Autosize ───────────────────────────────────────────────
   const autosizeInput = () => {
     if (!input || input.tagName !== "TEXTAREA") return;
     input.style.height = "auto";
     input.style.height = `${Math.min(input.scrollHeight, 128)}px`;
   };
-  input.addEventListener("input", autosizeInput);
+  input.addEventListener("input", (e) => {
+    autosizeInput();
+    sendTypingStart();
+  });
   autosizeInput();
 
   const scrollToBottom = (smooth = false) => {
@@ -1585,6 +1965,11 @@
     });
 
     scrollToBottom(true);
+
+    // After appending own message, remove old read receipt (the new message hasn't been read yet)
+    if (isMe) {
+      messagesBox.querySelectorAll(".msg-read-receipt").forEach((el) => el.remove());
+    }
   };
 
   socket.addEventListener("message", (event) => {
@@ -1592,6 +1977,20 @@
       const payload = JSON.parse(event.data || "{}");
       if (payload.type === "message.created" && payload.message) {
         appendMessage(payload.message);
+        applyMessageGrouping();
+        // Clear typing indicator when a real message arrives
+        if (String(payload.message.sender_id) !== String(currentUserId)) {
+          hideTypingIndicator();
+        }
+      } else if (payload.type === "messages.catchup" && Array.isArray(payload.messages)) {
+        payload.messages.forEach((msg) => appendMessage(msg));
+        applyMessageGrouping();
+      } else if (payload.type === "typing.update") {
+        handleTypingUpdate(payload.user_id, payload.user_name, payload.is_typing);
+      } else if (payload.type === "read.update") {
+        if (String(payload.reader_id) !== String(currentUserId)) {
+          showReadReceipt();
+        }
       }
     } catch (_) {}
   });
@@ -1715,6 +2114,7 @@
         showToast("A ligação de mensagens está offline. Atualize a página para voltar a enviar texto.");
         return;
       }
+      stopTyping();
       socket.send(JSON.stringify({ type: "message.send", content: value }));
       input.value = "";
       autosizeInput();
