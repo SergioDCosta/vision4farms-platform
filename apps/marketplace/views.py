@@ -15,6 +15,7 @@ from django.urls import reverse
 from PIL import Image, ImageOps
 
 from apps.common.decorators import login_required, client_only_required
+from apps.common.audit import log_audit_event
 from apps.common.redirects import get_safe_next_url
 from apps.accounts.models import UserRole
 from apps.inventory.models import ProductionForecast
@@ -64,6 +65,22 @@ def _sync_alerts_after_marketplace_change(producer, acting_user):
         sync_alerts_for_producer(producer, acting_user=acting_user)
     except Exception:
         return
+
+
+def _audit_listing_context(listing):
+    return {
+        "listing_id": str(getattr(listing, "id", "")) or None,
+        "product_id": str(getattr(listing, "product_id", "")) or None,
+        "product_name": getattr(getattr(listing, "product", None), "name", None),
+        "origin": (
+            "need_response"
+            if getattr(listing, "need_id", None)
+            else LISTING_SOURCE_FORECAST
+            if getattr(listing, "forecast_id", None)
+            else LISTING_SOURCE_STOCK
+        ),
+        "need_id": str(listing.need_id) if getattr(listing, "need_id", None) else None,
+    }
 
 
 def _listing_photo_url(photo_path):
@@ -1163,9 +1180,22 @@ def marketplace_publish_view(request):
                 listing_source=listing_source,
                 forecast=selected_forecast,
                 need=None,
+                acting_user=request.current_user,
             )
         except MarketplaceServiceError as exc:
             _delete_uploaded_file(photo_path)
+            log_audit_event(
+                request=request,
+                action="LISTING_INVALID_ATTEMPT",
+                entity_type="marketplace_listings",
+                notes=f"Publicação recusada pelas regras do marketplace: {exc}",
+                new_values={
+                    "product_id": str(form.cleaned_data["product"].id),
+                    "product_name": form.cleaned_data["product"].name,
+                    "quantity_total": str(form.cleaned_data["quantity"]),
+                    "origin": listing_source,
+                },
+            )
             form.add_error(None, str(exc))
         except Exception:
             _delete_uploaded_file(photo_path)
@@ -1268,9 +1298,18 @@ def marketplace_edit_view(request, listing_id):
                 status=form.cleaned_data["status"],
                 expires_at=form.cleaned_data.get("expires_at_final"),
                 photo_path=new_photo_path if uploaded_photo else listing.photo_path,
+                acting_user=request.current_user,
             )
         except MarketplaceServiceError as exc:
             _delete_uploaded_file(new_photo_path)
+            log_audit_event(
+                request=request,
+                action="LISTING_INVALID_ATTEMPT",
+                entity_type="marketplace_listings",
+                entity_id=listing.id,
+                notes=f"Edição recusada pelas regras do marketplace: {exc}",
+                old_values=_audit_listing_context(listing) | {"status": listing.status},
+            )
             form.add_error(None, str(exc))
         except Exception:
             _delete_uploaded_file(new_photo_path)
@@ -1371,6 +1410,7 @@ def marketplace_delete_view(request, listing_id):
         return redirect("marketplace:edit", listing_id=listing.id)
 
     photo_path = listing.photo_path
+    listing._audit_actor = request.current_user
     retire_listing(listing=listing)
     _delete_uploaded_file(photo_path)
 
@@ -1422,6 +1462,7 @@ def marketplace_toggle_status_view(request, listing_id):
         return redirect("needs:response_detail", listing_id=listing.id)
 
     now = timezone.now()
+    previous_status = listing.status
     feedback = None
     blocked_message = None
 
@@ -1489,6 +1530,15 @@ def marketplace_toggle_status_view(request, listing_id):
 
     listing.updated_at = now
     listing.save(update_fields=["status", "expires_at", "updated_at"])
+    log_audit_event(
+        request=request,
+        action="LISTING_STATUS_CHANGED",
+        entity_type="marketplace_listings",
+        entity_id=listing.id,
+        notes="Estado do anúncio alterado pelo produtor.",
+        old_values=_audit_listing_context(listing) | {"status": previous_status},
+        new_values=_audit_listing_context(listing) | {"status": listing.status},
+    )
     messages.success(request, feedback)
     _sync_alerts_after_marketplace_change(producer, request.current_user)
 

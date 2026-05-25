@@ -1,0 +1,87 @@
+{% extends "dashboard/admin/base_admin.html" %}
+{% block admin_content %}
+<div class="adm-entity-head">
+  <a class="adm-btn-ghost" href="{% url 'dashboard:gestor_auditoria' %}">
+    <i class="bi bi-arrow-left"></i> Voltar à auditoria
+  </a>
+  <div>
+    <div class="adm-entity-kicker">{{ entity_label }}</div>
+    <h2>{% if entity %}{{ entity.title }}{% else %}Registo já não disponível{% endif %}</h2>
+    <p>
+      {% if entity %}{{ entity.subtitle }}{% else %}A entidade foi removida ou já não pode ser consultada; o histórico permanece disponível.{% endif %}
+      <span class="adm-entity-id">{{ entity_id }}</span>
+    </p>
+  </div>
+  {% if entity %}<span class="adm-pill adm-pill--green">{{ entity.status }}</span>{% endif %}
+</div>
+
+{% if entity %}
+<section class="adm-card adm-entity-summary">
+  <h3>Estado atual</h3>
+  <div class="adm-entity-facts">
+    {% for label, value in entity.facts %}
+      <div>
+        <span>{{ label }}</span>
+        <strong>{{ value|default:"—" }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="adm-card">
+  <div class="adm-card-head adm-entity-history-head">
+    <div>
+      <h3>Histórico desta entidade</h3>
+      <p>Últimos eventos registados, ordenados do mais recente para o mais antigo.</p>
+    </div>
+  </div>
+  <div class="adm-entity-timeline">
+    {% for row in audit_rows %}
+      <article class="adm-entity-event">
+        <span class="adm-audit-action-pill adm-audit-action-pill--{{ row.action_meta.tone }}">{{ row.action_meta.category }}</span>
+        <div class="adm-entity-event-copy">
+          <strong>{{ row.action_label }}</strong>
+          <p>{{ row.event_description }}</p>
+        </div>
+        <div class="adm-entity-event-meta">
+          <span>{{ row.actor_label }}</span>
+          <time>{{ row.log.created_at|date:"d/m/Y H:i" }}</time>
+        </div>
+      </article>
+    {% empty %}
+      <div class="adm-empty"><i class="bi bi-journal-x"></i><p>Sem eventos adicionais para esta entidade.</p></div>
+    {% endfor %}
+  </div>
+</section>
+
+<style>
+.adm-entity-head{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;}
+.adm-entity-head > div:nth-child(2){flex:1;min-width:15rem;}
+.adm-entity-kicker{text-transform:uppercase;font-size:.7rem;font-weight:850;color:#16a34a;letter-spacing:.05em;}
+.adm-entity-head h2{margin:.25rem 0;color:#0f172a;font-size:1.35rem;}
+.adm-entity-head p{margin:0;color:#64748b;font-size:.84rem;}
+.adm-entity-id{display:inline-block;margin-left:.45rem;font:500 .75rem 'DM Mono',monospace;color:#94a3b8;}
+.adm-entity-summary{padding:1.1rem 1.25rem;}
+.adm-entity-summary h3,.adm-entity-history-head h3{margin:0 0 .3rem;font-size:1rem;color:#0f172a;}
+.adm-entity-facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.65rem;margin-top:.9rem;}
+.adm-entity-facts div{padding:.75rem;border:1px solid #e2e8f0;border-radius:.65rem;background:#f8fafc;min-width:0;}
+.adm-entity-facts span{display:block;text-transform:uppercase;font-size:.68rem;font-weight:800;color:#94a3b8;margin-bottom:.2rem;}
+.adm-entity-facts strong{font-size:.86rem;color:#0f172a;overflow-wrap:anywhere;}
+.adm-entity-history-head p{margin:0;color:#64748b;font-size:.82rem;}
+.adm-entity-timeline{display:flex;flex-direction:column;padding:.35rem 1.25rem 1rem;}
+.adm-entity-event{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:.8rem;padding:.85rem 0;border-bottom:1px solid #f1f5f9;}
+.adm-entity-event:last-child{border-bottom:0;}
+.adm-entity-event-copy strong{font-size:.88rem;color:#0f172a;}
+.adm-entity-event-copy p{font-size:.8rem;color:#64748b;margin:.2rem 0 0;}
+.adm-entity-event-meta{text-align:right;color:#64748b;font-size:.78rem;display:flex;flex-direction:column;gap:.15rem;white-space:nowrap;}
+.adm-audit-action-pill{display:inline-flex;align-items:center;padding:.18rem .58rem;border-radius:999px;font-size:.72rem;font-weight:800;border:1px solid transparent;white-space:nowrap;}
+.adm-audit-action-pill--success{background:#dcfce7;color:#166534;border-color:#bbf7d0;}
+.adm-audit-action-pill--info{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}
+.adm-audit-action-pill--warning{background:#fef3c7;color:#92400e;border-color:#fde68a;}
+.adm-audit-action-pill--danger{background:#fee2e2;color:#991b1b;border-color:#fecaca;}
+.adm-audit-action-pill--neutral{background:#f1f5f9;color:#334155;border-color:#e2e8f0;}
+@media(max-width:900px){.adm-entity-facts{grid-template-columns:repeat(2,minmax(0,1fr));}.adm-entity-event{grid-template-columns:1fr;}.adm-entity-event-meta{text-align:left;flex-direction:row;gap:.8rem;}}
+@media(max-width:560px){.adm-entity-facts{grid-template-columns:1fr;}}
+</style>
+{% endblock %}

@@ -1,11 +1,16 @@
 import re
 import unicodedata
+from urllib.parse import urlencode
+from uuid import UUID
 
 from django.core.paginator import Paginator
 from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Cast
+from django.urls import reverse
+from django.utils.dateparse import parse_date
 
+from apps.accounts.models import User
 from apps.common.audit import describe_user_agent
 from apps.dashboard.models import AuditLog
 
@@ -27,6 +32,7 @@ AUDIT_ACTION_LABELS = {
     "SUPPORT_TICKET_UPDATED": "Pedido de suporte atualizado",
     "SUPPORT_TICKET_CLAIMED": "Pedido de suporte assumido",
     "SUPPORT_TICKET_REPLIED": "Resposta ao suporte",
+    "SUPPORT_TICKET_REQUESTER_REPLIED": "Resposta do utilizador ao suporte",
     "SUPPORT_TICKET_CLOSED": "Pedido de suporte fechado",
     "PRODUCT_CREATED": "Produto criado",
     "PRODUCT_UPDATED": "Produto atualizado",
@@ -34,6 +40,35 @@ AUDIT_ACTION_LABELS = {
     "CATEGORY_CREATED": "Categoria criada",
     "CATEGORY_UPDATED": "Categoria atualizada",
     "CATEGORY_DELETED": "Categoria removida",
+    "EXTERNAL_DEMAND_CREATED": "Pedido de cliente criado",
+    "EXTERNAL_DEMAND_UPDATED": "Pedido de cliente atualizado",
+    "EXTERNAL_DEMAND_CANCELLED": "Pedido de cliente cancelado",
+    "CUSTOMER_DEMAND_NEED_CREATED": "Procura automática criada",
+    "CUSTOMER_DEMAND_NEED_UPDATED": "Procura automática atualizada",
+    "CUSTOMER_DEMAND_NEED_COVERED": "Procura automática coberta",
+    "NEED_RESPONSE_CREATED": "Proposta à procura criada",
+    "NEED_RESPONSE_UPDATED": "Proposta à procura atualizada",
+    "NEED_RESPONSE_REJECTED": "Proposta à procura rejeitada",
+    "STOCK_CREATED": "Stock criado",
+    "STOCK_UPDATED": "Stock atualizado",
+    "STOCK_MOVEMENT_CREATED": "Movimento de stock registado",
+    "FORECAST_CREATED": "Previsão criada",
+    "FORECAST_UPDATED": "Previsão atualizada",
+    "FORECAST_DELETED": "Previsão removida",
+    "FORECAST_ASSIMILATED": "Produção futura assumida",
+    "LISTING_CREATED": "Anúncio criado",
+    "LISTING_UPDATED": "Anúncio atualizado",
+    "LISTING_STATUS_CHANGED": "Estado do anúncio alterado",
+    "LISTING_RETIRED": "Anúncio retirado",
+    "LISTING_EXPIRED": "Anúncio expirado",
+    "LISTING_INVALID_ATTEMPT": "Tentativa inválida de anúncio",
+    "ORDER_CREATED": "Encomenda criada",
+    "ORDER_STATUS_CHANGED": "Estado da encomenda alterado",
+    "ORDER_RECEIPT_CONFIRMED": "Receção confirmada",
+    "ORDER_CANCELLED": "Encomenda cancelada",
+    "STOCK_RESERVATION_CHANGED": "Reserva de stock alterada",
+    "FORECAST_RESERVATION_CHANGED": "Reserva de previsão alterada",
+    "NEED_COVERAGE_CHANGED": "Cobertura da procura atualizada",
 }
 
 AUDIT_ACTION_META = {
@@ -53,6 +88,7 @@ AUDIT_ACTION_META = {
     "SUPPORT_TICKET_UPDATED": {"category": "Suporte", "icon": "bi-pencil-square", "tone": "info"},
     "SUPPORT_TICKET_CLAIMED": {"category": "Suporte", "icon": "bi-person-check", "tone": "success"},
     "SUPPORT_TICKET_REPLIED": {"category": "Suporte", "icon": "bi-reply", "tone": "success"},
+    "SUPPORT_TICKET_REQUESTER_REPLIED": {"category": "Suporte", "icon": "bi-reply", "tone": "info"},
     "SUPPORT_TICKET_CLOSED": {"category": "Suporte", "icon": "bi-check-circle", "tone": "success"},
     "PRODUCT_CREATED": {"category": "Catálogo", "icon": "bi-box-seam", "tone": "success"},
     "PRODUCT_UPDATED": {"category": "Catálogo", "icon": "bi-pencil-square", "tone": "info"},
@@ -60,6 +96,35 @@ AUDIT_ACTION_META = {
     "CATEGORY_CREATED": {"category": "Catálogo", "icon": "bi-tags", "tone": "success"},
     "CATEGORY_UPDATED": {"category": "Catálogo", "icon": "bi-pencil-square", "tone": "info"},
     "CATEGORY_DELETED": {"category": "Catálogo", "icon": "bi-trash", "tone": "danger"},
+    "EXTERNAL_DEMAND_CREATED": {"category": "Pedidos", "icon": "bi-journal-plus", "tone": "success"},
+    "EXTERNAL_DEMAND_UPDATED": {"category": "Pedidos", "icon": "bi-pencil-square", "tone": "info"},
+    "EXTERNAL_DEMAND_CANCELLED": {"category": "Pedidos", "icon": "bi-x-circle", "tone": "danger"},
+    "CUSTOMER_DEMAND_NEED_CREATED": {"category": "Necessidades", "icon": "bi-megaphone", "tone": "warning"},
+    "CUSTOMER_DEMAND_NEED_UPDATED": {"category": "Necessidades", "icon": "bi-arrow-repeat", "tone": "warning"},
+    "CUSTOMER_DEMAND_NEED_COVERED": {"category": "Necessidades", "icon": "bi-check-circle", "tone": "success"},
+    "NEED_RESPONSE_CREATED": {"category": "Necessidades", "icon": "bi-send", "tone": "info"},
+    "NEED_RESPONSE_UPDATED": {"category": "Necessidades", "icon": "bi-pencil-square", "tone": "info"},
+    "NEED_RESPONSE_REJECTED": {"category": "Necessidades", "icon": "bi-x-circle", "tone": "danger"},
+    "STOCK_CREATED": {"category": "Stock", "icon": "bi-box-seam", "tone": "success"},
+    "STOCK_UPDATED": {"category": "Stock", "icon": "bi-box-seam", "tone": "info"},
+    "STOCK_MOVEMENT_CREATED": {"category": "Stock", "icon": "bi-arrow-left-right", "tone": "info"},
+    "FORECAST_CREATED": {"category": "Produção", "icon": "bi-calendar-plus", "tone": "success"},
+    "FORECAST_UPDATED": {"category": "Produção", "icon": "bi-calendar-event", "tone": "info"},
+    "FORECAST_DELETED": {"category": "Produção", "icon": "bi-trash", "tone": "danger"},
+    "FORECAST_ASSIMILATED": {"category": "Produção", "icon": "bi-box-arrow-in-down", "tone": "success"},
+    "LISTING_CREATED": {"category": "Marketplace", "icon": "bi-shop", "tone": "success"},
+    "LISTING_UPDATED": {"category": "Marketplace", "icon": "bi-pencil-square", "tone": "info"},
+    "LISTING_STATUS_CHANGED": {"category": "Marketplace", "icon": "bi-toggle-on", "tone": "warning"},
+    "LISTING_RETIRED": {"category": "Marketplace", "icon": "bi-archive", "tone": "danger"},
+    "LISTING_EXPIRED": {"category": "Marketplace", "icon": "bi-clock-history", "tone": "warning"},
+    "LISTING_INVALID_ATTEMPT": {"category": "Marketplace", "icon": "bi-exclamation-triangle", "tone": "danger"},
+    "ORDER_CREATED": {"category": "Encomendas", "icon": "bi-truck", "tone": "success"},
+    "ORDER_STATUS_CHANGED": {"category": "Encomendas", "icon": "bi-arrow-repeat", "tone": "info"},
+    "ORDER_RECEIPT_CONFIRMED": {"category": "Encomendas", "icon": "bi-check-circle", "tone": "success"},
+    "ORDER_CANCELLED": {"category": "Encomendas", "icon": "bi-x-circle", "tone": "danger"},
+    "STOCK_RESERVATION_CHANGED": {"category": "Reservas", "icon": "bi-lock", "tone": "warning"},
+    "FORECAST_RESERVATION_CHANGED": {"category": "Reservas", "icon": "bi-calendar-check", "tone": "warning"},
+    "NEED_COVERAGE_CHANGED": {"category": "Necessidades", "icon": "bi-pie-chart", "tone": "info"},
 }
 
 AUDIT_ENTITY_LABELS = {
@@ -74,6 +139,9 @@ AUDIT_ENTITY_LABELS = {
     "orders": "Encomenda",
     "order_items": "Item de encomenda",
     "stocks": "Stock",
+    "stock_movements": "Movimento de stock",
+    "production_forecasts": "Previsão de produção",
+    "external_customer_demands": "Pedido externo de cliente",
 }
 
 AUDIT_FIELD_LABELS = {
@@ -103,6 +171,105 @@ AUDIT_FIELD_LABELS = {
     "password_changed": "Palavra-passe",
     "password_reset_completed": "Recuperação de palavra-passe",
     "sessions_invalidated": "Sessões terminadas",
+    "product_id": "Produto",
+    "producer_id": "Produtor",
+    "need_id": "Procura",
+    "listing_id": "Anúncio",
+    "order_id": "Encomenda",
+    "requested_quantity": "Quantidade pedida",
+    "requested_delivery_date": "Data pretendida",
+    "required_quantity": "Quantidade necessária",
+    "needed_by_date": "Data limite",
+    "planned_quantity": "Cobertura planeada",
+    "completed_quantity": "Cobertura concluída",
+    "status": "Estado",
+    "source_system": "Origem",
+    "current_quantity": "Quantidade atual",
+    "reserved_quantity": "Quantidade reservada",
+    "safety_stock": "Compromissos externos",
+    "quantity_delta": "Movimento",
+    "movement_type": "Tipo de movimento",
+    "forecast_quantity": "Produção prevista",
+    "period_start": "Início do período",
+    "period_end": "Fim do período",
+    "quantity_total": "Quantidade anunciada",
+    "quantity_available": "Quantidade disponível",
+    "quantity_reserved": "Quantidade reservada",
+    "unit_price": "Preço unitário",
+    "delivery_mode": "Entrega",
+    "total_amount": "Valor total",
+}
+
+AUDIT_MODULES = {
+    "stock": {
+        "label": "Stock e produção",
+        "actions": {
+            "STOCK_CREATED",
+            "STOCK_UPDATED",
+            "STOCK_MOVEMENT_CREATED",
+            "FORECAST_CREATED",
+            "FORECAST_UPDATED",
+            "FORECAST_DELETED",
+            "FORECAST_ASSIMILATED",
+            "STOCK_RESERVATION_CHANGED",
+            "FORECAST_RESERVATION_CHANGED",
+        },
+    },
+    "marketplace": {
+        "label": "Marketplace",
+        "actions": {
+            "LISTING_CREATED",
+            "LISTING_UPDATED",
+            "LISTING_STATUS_CHANGED",
+            "LISTING_RETIRED",
+            "LISTING_EXPIRED",
+            "LISTING_INVALID_ATTEMPT",
+        },
+    },
+    "pedidos": {
+        "label": "Pedidos de clientes",
+        "actions": {
+            "EXTERNAL_DEMAND_CREATED",
+            "EXTERNAL_DEMAND_UPDATED",
+            "EXTERNAL_DEMAND_CANCELLED",
+        },
+    },
+    "needs": {
+        "label": "Necessidades",
+        "actions": {
+            "CUSTOMER_DEMAND_NEED_CREATED",
+            "CUSTOMER_DEMAND_NEED_UPDATED",
+            "CUSTOMER_DEMAND_NEED_COVERED",
+            "NEED_RESPONSE_CREATED",
+            "NEED_RESPONSE_UPDATED",
+            "NEED_RESPONSE_REJECTED",
+            "NEED_COVERAGE_CHANGED",
+        },
+    },
+    "orders": {
+        "label": "Encomendas",
+        "actions": {
+            "ORDER_CREATED",
+            "ORDER_STATUS_CHANGED",
+            "ORDER_RECEIPT_CONFIRMED",
+            "ORDER_CANCELLED",
+        },
+    },
+    "support": {
+        "label": "Suporte",
+        "actions": {action for action in AUDIT_ACTION_LABELS if action.startswith("SUPPORT_")},
+    },
+    "users": {
+        "label": "Utilizadores",
+        "actions": {action for action in AUDIT_ACTION_LABELS if action.startswith("USER_")},
+    },
+    "catalog": {
+        "label": "Catálogo",
+        "actions": {
+            action for action in AUDIT_ACTION_LABELS
+            if action.startswith("PRODUCT_") or action.startswith("CATEGORY_")
+        },
+    },
 }
 
 
@@ -147,6 +314,33 @@ def _entity_label(log):
         "id": str(entity_id or ""),
         "short_id": _short_identifier(entity_id),
     }
+
+
+def _entity_detail_url(log):
+    entity_type = getattr(log, "entity_type", None) or ""
+    entity_id = getattr(log, "entity_id", None)
+    if not entity_id:
+        return ""
+    if entity_type == "users":
+        return reverse("dashboard:gestor_utilizador_detalhe", kwargs={"user_id": entity_id})
+    if entity_type == "products":
+        return reverse("dashboard:gestor_produto_detalhe", kwargs={"product_id": entity_id})
+    if entity_type == "support_tickets":
+        return reverse("support:admin_ticket_detail", kwargs={"ticket_id": entity_id})
+    if entity_type in {
+        "marketplace_listings",
+        "orders",
+        "stocks",
+        "needs",
+        "external_customer_demands",
+        "production_forecasts",
+        "stock_movements",
+    }:
+        return reverse(
+            "dashboard:gestor_auditoria_entidade",
+            kwargs={"entity_type": entity_type, "entity_id": entity_id},
+        )
+    return ""
 
 
 def _event_description(log, action_label):
@@ -224,6 +418,7 @@ def build_user_activity_rows(logs):
                 "device_label": device["label"] if log.user_agent else "—",
                 "actor_label": actor_label(log.user),
                 "entity": _entity_label(log),
+                "entity_url": _entity_detail_url(log),
                 "event_description": _event_description(log, action_label),
                 "ip_label": getattr(log, "ip_address", None) or "Não registado",
             }
@@ -292,10 +487,36 @@ def audit_per_page(value):
     return per_page if per_page in {10, 25, 50} else 25
 
 
-def build_admin_audit_context(*, q="", per_page_value=None, page_number=None):
-    q = (q or "").strip()
-    per_page = audit_per_page(per_page_value)
+def _safe_uuid(value):
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
+
+def _audit_filter_values(*, q="", module="", action="", user_id="", date_from="", date_to="", entity_type=""):
+    return {
+        "q": (q or "").strip()[:180],
+        "module": module if module in AUDIT_MODULES else "",
+        "action": action if action in AUDIT_ACTION_LABELS else "",
+        "user_id": str(_safe_uuid(user_id) or ""),
+        "date_from": str(parse_date(date_from) or ""),
+        "date_to": str(parse_date(date_to) or ""),
+        "entity_type": entity_type if entity_type in AUDIT_ENTITY_LABELS else "",
+    }
+
+
+def get_filtered_admin_audit_queryset(*, q="", module="", action="", user_id="", date_from="", date_to="", entity_type=""):
+    filters = _audit_filter_values(
+        q=q,
+        module=module,
+        action=action,
+        user_id=user_id,
+        date_from=date_from,
+        date_to=date_to,
+        entity_type=entity_type,
+    )
+    q = (q or "").strip()
     logs = (
         AuditLog.objects.select_related("user")
         .annotate(
@@ -305,7 +526,8 @@ def build_admin_audit_context(*, q="", per_page_value=None, page_number=None):
         .order_by("-created_at")
     )
 
-    if q:
+    if filters["q"]:
+        q = filters["q"]
         search_filter = (
             Q(action__icontains=q)
             | Q(entity_type__icontains=q)
@@ -333,6 +555,44 @@ def build_admin_audit_context(*, q="", per_page_value=None, page_number=None):
 
         logs = logs.filter(search_filter)
 
+    if filters["module"]:
+        logs = logs.filter(action__in=AUDIT_MODULES[filters["module"]]["actions"])
+    if filters["action"]:
+        logs = logs.filter(action=filters["action"])
+    if filters["user_id"]:
+        logs = logs.filter(user_id=filters["user_id"])
+    if filters["entity_type"]:
+        logs = logs.filter(entity_type=filters["entity_type"])
+    if filters["date_from"]:
+        logs = logs.filter(created_at__date__gte=filters["date_from"])
+    if filters["date_to"]:
+        logs = logs.filter(created_at__date__lte=filters["date_to"])
+
+    return logs, filters
+
+
+def build_admin_audit_context(
+    *,
+    q="",
+    module="",
+    action="",
+    user_id="",
+    date_from="",
+    date_to="",
+    entity_type="",
+    per_page_value=None,
+    page_number=None,
+):
+    per_page = audit_per_page(per_page_value)
+    logs, filters = get_filtered_admin_audit_queryset(
+        q=q,
+        module=module,
+        action=action,
+        user_id=user_id,
+        date_from=date_from,
+        date_to=date_to,
+        entity_type=entity_type,
+    )
     paginator = Paginator(logs, per_page)
     page_obj = paginator.get_page(page_number)
     page_range = [
@@ -344,6 +604,18 @@ def build_admin_audit_context(*, q="", per_page_value=None, page_number=None):
         )
     ]
 
+    filter_query = urlencode(
+        {
+            **{key: value for key, value in filters.items() if value},
+            "per_page": per_page,
+        }
+    )
+    actor_ids = (
+        AuditLog.objects
+        .exclude(user_id__isnull=True)
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
     return {
         "admin_tab": "auditoria",
         "logs": page_obj.object_list,
@@ -352,5 +624,181 @@ def build_admin_audit_context(*, q="", per_page_value=None, page_number=None):
         "page_range": page_range,
         "per_page": per_page,
         "per_page_options": [10, 25, 50],
-        "q": q,
+        **filters,
+        "filter_query": filter_query,
+        "module_options": [
+            {"value": key, "label": data["label"]}
+            for key, data in AUDIT_MODULES.items()
+        ],
+        "action_options": sorted(
+            [{"value": key, "label": label} for key, label in AUDIT_ACTION_LABELS.items()],
+            key=lambda option: option["label"].lower(),
+        ),
+        "entity_options": sorted(
+            [{"value": key, "label": label} for key, label in AUDIT_ENTITY_LABELS.items()],
+            key=lambda option: option["label"].lower(),
+        ),
+        "actor_options": User.objects.filter(id__in=actor_ids).order_by("first_name", "last_name", "email"),
+    }
+
+
+def get_admin_audit_export_rows(**filters):
+    logs, _ = get_filtered_admin_audit_queryset(**filters)
+    return build_user_activity_rows(logs)
+
+
+def build_admin_audit_entity_context(*, entity_type, entity_id):
+    loaders = {
+        "marketplace_listings": _audit_listing_entity,
+        "orders": _audit_order_entity,
+        "stocks": _audit_stock_entity,
+        "needs": _audit_need_entity,
+        "external_customer_demands": _audit_external_demand_entity,
+        "production_forecasts": _audit_forecast_entity,
+        "stock_movements": _audit_stock_movement_entity,
+    }
+    loader = loaders.get(entity_type)
+    if not loader:
+        return None
+    entity = loader(entity_id)
+    logs = AuditLog.objects.filter(entity_type=entity_type, entity_id=entity_id).select_related("user").order_by("-created_at")[:25]
+    return {
+        "admin_tab": "auditoria",
+        "entity_type": entity_type,
+        "entity_label": AUDIT_ENTITY_LABELS.get(entity_type, entity_type),
+        "entity_id": entity_id,
+        "entity": entity,
+        "audit_rows": build_user_activity_rows(logs),
+    }
+
+
+def _audit_listing_entity(entity_id):
+    from apps.marketplace.models import MarketplaceListing
+    listing = MarketplaceListing.objects.filter(id=entity_id).select_related("product", "producer", "producer__user").first()
+    if not listing:
+        return None
+    return {
+        "title": listing.product.name,
+        "subtitle": "Anúncio / proposta privada",
+        "status": listing.get_status_display(),
+        "facts": [
+            ("Produtor", actor_label(listing.producer.user)),
+            ("Quantidade total", listing.quantity_total),
+            ("Disponível", listing.quantity_available),
+            ("Reservado", listing.quantity_reserved),
+            ("Preço unitário", f"{listing.unit_price} EUR"),
+            ("Necessidade associada", listing.need_id or "Não"),
+        ],
+    }
+
+
+def _audit_order_entity(entity_id):
+    from apps.orders.models import Order
+    order = Order.objects.filter(id=entity_id).select_related("buyer_producer", "buyer_producer__user").first()
+    if not order:
+        return None
+    return {
+        "title": f"Encomenda #{order.order_number}",
+        "subtitle": "Transação comercial",
+        "status": order.get_status_display(),
+        "facts": [
+            ("Comprador", actor_label(order.buyer_producer.user)),
+            ("Origem", order.get_source_type_display()),
+            ("Valor total", f"{order.total_amount} EUR"),
+            ("Método de entrega", order.get_delivery_method_display() if order.delivery_method else "Não indicado"),
+            ("Criada em", order.created_at),
+        ],
+    }
+
+
+def _audit_stock_entity(entity_id):
+    from apps.inventory.models import Stock
+    stock = Stock.objects.filter(id=entity_id).select_related("product", "producer", "producer__user").first()
+    if not stock:
+        return None
+    return {
+        "title": stock.product.name,
+        "subtitle": "Stock do produtor",
+        "status": "Ativo",
+        "facts": [
+            ("Produtor", actor_label(stock.producer.user)),
+            ("Quantidade atual", stock.current_quantity),
+            ("Reservado", stock.reserved_quantity),
+            ("Disponível", stock.available_quantity),
+            ("Compromissos externos", stock.safety_stock),
+        ],
+    }
+
+
+def _audit_need_entity(entity_id):
+    from apps.needs.models import Need
+    need = Need.objects.filter(id=entity_id).select_related("product", "producer", "producer__user").first()
+    if not need:
+        return None
+    return {
+        "title": need.product.name,
+        "subtitle": "Procura agregada",
+        "status": need.get_status_display(),
+        "facts": [
+            ("Produtor", actor_label(need.producer.user)),
+            ("Quantidade necessária", need.required_quantity),
+            ("Data limite", need.needed_by_date),
+            ("Origem", need.get_source_system_display()),
+        ],
+    }
+
+
+def _audit_external_demand_entity(entity_id):
+    from apps.needs.models import ExternalCustomerDemand
+    demand = ExternalCustomerDemand.objects.filter(id=entity_id).select_related("product", "producer", "producer__user").first()
+    if not demand:
+        return None
+    return {
+        "title": demand.client_name,
+        "subtitle": f"Pedido externo - {demand.product.name}",
+        "status": demand.get_status_display(),
+        "facts": [
+            ("Produtor", actor_label(demand.producer.user)),
+            ("Produto", demand.product.name),
+            ("Quantidade pedida", demand.requested_quantity),
+            ("Entrega pretendida", demand.requested_delivery_date),
+            ("Procura gerada", demand.generated_need_id or "Sem procura"),
+        ],
+    }
+
+
+def _audit_forecast_entity(entity_id):
+    from apps.inventory.models import ProductionForecast
+    forecast = ProductionForecast.objects.filter(id=entity_id).select_related("product", "producer", "producer__user").first()
+    if not forecast:
+        return None
+    return {
+        "title": forecast.product.name,
+        "subtitle": "Produção futura",
+        "status": "Publicável" if forecast.is_marketplace_enabled else "Interna",
+        "facts": [
+            ("Produtor", actor_label(forecast.producer.user)),
+            ("Quantidade prevista", forecast.forecast_quantity),
+            ("Reservada", forecast.reserved_quantity),
+            ("Início", forecast.period_start),
+            ("Fim", forecast.period_end),
+        ],
+    }
+
+
+def _audit_stock_movement_entity(entity_id):
+    from apps.inventory.models import StockMovement
+    movement = StockMovement.objects.filter(id=entity_id).select_related("stock", "stock__product", "stock__producer", "stock__producer__user").first()
+    if not movement:
+        return None
+    return {
+        "title": movement.stock.product.name,
+        "subtitle": "Movimento de stock",
+        "status": movement.get_movement_type_display(),
+        "facts": [
+            ("Produtor", actor_label(movement.stock.producer.user)),
+            ("Impacto", movement.quantity_delta),
+            ("Referência", movement.reference_type or "Sem referência"),
+            ("Notas", movement.notes or "Sem notas"),
+        ],
     }

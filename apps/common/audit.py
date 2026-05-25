@@ -1,5 +1,7 @@
 import logging
 
+from django.db import transaction
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,7 +90,7 @@ def log_audit_event(
     if audit_user is None:
         audit_user = user
 
-    try:
+    def create_log():
         return AuditLog.objects.create(
             user=audit_user,
             action=action,
@@ -100,6 +102,14 @@ def log_audit_event(
             user_agent=request.META.get("HTTP_USER_AGENT") if request else None,
             notes=notes,
         )
+
+    try:
+        # In an enclosing business transaction, isolate an audit insert failure
+        # behind a savepoint so stock/order writes can still commit.
+        if transaction.get_connection().in_atomic_block:
+            with transaction.atomic():
+                return create_log()
+        return create_log()
     except Exception:
         logger.exception("Nao foi possivel registar evento de auditoria %s.", action)
         return None

@@ -571,6 +571,7 @@ def remover_previsao(request, product_id, forecast_id):
             producer=producer,
             product=stock.product,
             forecast_id=forecast_id,
+            user=request.current_user,
         )
     except ValidationError as exc:
         messages.error(request, str(exc))
@@ -708,4 +709,3 @@ def compras_export_pdf(request):
         "generated_at": timezone.now(),
     }
     return render(request, "inventory/compras_export.html", context)
-

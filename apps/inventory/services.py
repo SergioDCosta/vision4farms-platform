@@ -8,6 +8,7 @@ from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
 
 from apps.catalog.models import Product
+from apps.common.audit import log_audit_event
 from apps.catalog.services import (
     CatalogValidationError,
     get_or_create_product_for_inventory,
@@ -69,6 +70,55 @@ MONTH_SHORT_LABELS_PT = [
     "Nov",
     "Dez",
 ]
+
+
+def _audit_qty(value):
+    return str(Decimal(str(value or 0)).quantize(Decimal("0.001")))
+
+
+def _stock_audit_values(stock):
+    return {
+        "stock_id": str(stock.id),
+        "producer_id": str(stock.producer_id),
+        "product_id": str(stock.product_id),
+        "product_name": getattr(getattr(stock, "product", None), "name", None),
+        "current_quantity": _audit_qty(stock.current_quantity),
+        "reserved_quantity": _audit_qty(stock.reserved_quantity),
+        "safety_stock": _audit_qty(stock.safety_stock),
+    }
+
+
+def _forecast_audit_values(forecast):
+    return {
+        "forecast_id": str(forecast.id),
+        "producer_id": str(forecast.producer_id),
+        "product_id": str(forecast.product_id),
+        "product_name": getattr(getattr(forecast, "product", None), "name", None),
+        "forecast_quantity": _audit_qty(forecast.forecast_quantity),
+        "reserved_quantity": _audit_qty(forecast.reserved_quantity),
+        "period_start": str(forecast.period_start) if forecast.period_start else None,
+        "period_end": str(forecast.period_end) if forecast.period_end else None,
+        "is_marketplace_enabled": bool(forecast.is_marketplace_enabled),
+    }
+
+
+def _log_stock_movement(movement, *, actor=None):
+    log_audit_event(
+        actor=actor,
+        action="STOCK_MOVEMENT_CREATED",
+        entity_type="stock_movements",
+        entity_id=movement.id,
+        notes=movement.notes or "Movimento de stock registado.",
+        new_values={
+            "stock_id": str(movement.stock_id),
+            "product_id": str(movement.stock.product_id),
+            "product_name": getattr(getattr(movement.stock, "product", None), "name", None),
+            "movement_type": movement.movement_type,
+            "quantity_delta": _audit_qty(movement.quantity_delta),
+            "reference_type": movement.reference_type,
+            "reference_id": str(movement.reference_id) if movement.reference_id else None,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -500,8 +550,16 @@ def _ensure_stock_for_product(
     )
 
     if stock_created:
+        log_audit_event(
+            actor=user,
+            action="STOCK_CREATED",
+            entity_type="stocks",
+            entity_id=stock.id,
+            notes="Stock criado ao associar produto ao inventário.",
+            new_values=_stock_audit_values(stock),
+        )
         if initial_quantity > ZERO:
-            StockMovement.objects.create(
+            movement = StockMovement.objects.create(
                 stock=stock,
                 movement_type=StockMovementType.IMPORT,
                 quantity_delta=initial_quantity,
@@ -509,8 +567,10 @@ def _ensure_stock_for_product(
                 notes="Stock inicial definido ao adicionar produto.",
                 performed_by=user,
             )
+            _log_stock_movement(movement, actor=user)
         return stock
 
+    previous_values = _stock_audit_values(stock)
     changed_fields = []
 
     if stock.safety_stock != safety_stock:
@@ -521,7 +581,7 @@ def _ensure_stock_for_product(
         stock.current_quantity = initial_quantity
         changed_fields.append("current_quantity")
 
-        StockMovement.objects.create(
+        movement = StockMovement.objects.create(
             stock=stock,
             movement_type=StockMovementType.IMPORT,
             quantity_delta=initial_quantity,
@@ -529,12 +589,22 @@ def _ensure_stock_for_product(
             notes="Stock inicial definido ao associar produto existente.",
             performed_by=user,
         )
+        _log_stock_movement(movement, actor=user)
 
     if changed_fields:
         stock.updated_by = user
         stock.last_updated_at = timezone.now()
         changed_fields.extend(["updated_by", "last_updated_at", "updated_at"])
         stock.save(update_fields=changed_fields)
+        log_audit_event(
+            actor=user,
+            action="STOCK_UPDATED",
+            entity_type="stocks",
+            entity_id=stock.id,
+            notes="Stock atualizado ao associar produto existente.",
+            old_values=previous_values,
+            new_values=_stock_audit_values(stock),
+        )
 
     return stock
 
@@ -1059,6 +1129,7 @@ def save_product_forecast(
         )
         if not forecast:
             raise ValidationError("Previsão não encontrada para este produto.")
+        old_values = _forecast_audit_values(forecast)
     else:
         forecast = ProductionForecast(
             producer=producer,
@@ -1067,6 +1138,7 @@ def save_product_forecast(
             source_system=ForecastSourceSystem.MANUAL,
         )
         created = True
+        old_values = None
 
     other_forecasts = [
         row for row in existing_forecasts
@@ -1140,11 +1212,20 @@ def save_product_forecast(
         ]
         forecast.save(update_fields=update_fields)
 
+    log_audit_event(
+        actor=user,
+        action="FORECAST_CREATED" if created else "FORECAST_UPDATED",
+        entity_type="production_forecasts",
+        entity_id=forecast.id,
+        notes="Produção futura registada." if created else "Produção futura atualizada.",
+        old_values=old_values,
+        new_values=_forecast_audit_values(forecast),
+    )
     return forecast, created
 
 
 @transaction.atomic
-def delete_product_forecast(*, producer, product, forecast_id):
+def delete_product_forecast(*, producer, product, forecast_id, user=None):
     forecast = (
         ProductionForecast.objects
         .select_for_update()
@@ -1173,7 +1254,16 @@ def delete_product_forecast(*, producer, product, forecast_id):
             "Esta previsão não pode ser eliminada enquanto tiver anúncios ativos/reservados associados."
         )
 
+    previous_values = _forecast_audit_values(forecast)
     forecast.delete()
+    log_audit_event(
+        actor=user,
+        action="FORECAST_DELETED",
+        entity_type="production_forecasts",
+        entity_id=forecast_id,
+        notes="Produção futura removida.",
+        old_values=previous_values,
+    )
     return True
 
 
@@ -1226,6 +1316,7 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
 
     now = timezone.now()
     for listing in open_listings:
+        previous_status = listing.status
         listing.quantity_available = Decimal("0.000")
         if Decimal(str(listing.quantity_reserved or 0)) > ZERO:
             listing.status = ListingStatus.RESERVED
@@ -1233,6 +1324,16 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
             listing.status = ListingStatus.CLOSED
         listing.updated_at = now
         listing.save(update_fields=["quantity_available", "status", "updated_at"])
+        if previous_status != listing.status:
+            log_audit_event(
+                actor=user,
+                action="LISTING_STATUS_CHANGED",
+                entity_type="marketplace_listings",
+                entity_id=listing.id,
+                notes="Anúncio de pré-venda encerrado ao assumir a produção no stock atual.",
+                old_values={"status": previous_status},
+                new_values={"status": listing.status, "quantity_available": "0.000"},
+            )
 
     stock = (
         Stock.objects
@@ -1243,11 +1344,22 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
     if not stock:
         raise ValidationError("Stock não encontrado para este produto.")
 
+    stock_old_values = _stock_audit_values(stock)
+    forecast_old_values = _forecast_audit_values(forecast)
     stock.current_quantity = Decimal(str(stock.current_quantity or 0)) + quantity_to_assimilate
     stock.updated_by = user
     stock.last_updated_at = now
     stock.updated_at = now
     stock.save(update_fields=["current_quantity", "updated_by", "last_updated_at", "updated_at"])
+    log_audit_event(
+        actor=user,
+        action="STOCK_UPDATED",
+        entity_type="stocks",
+        entity_id=stock.id,
+        notes="Stock acrescido pela assimilação de produção futura.",
+        old_values=stock_old_values,
+        new_values=_stock_audit_values(stock),
+    )
 
     period_label_start = period_start_local.strftime("%d/%m/%Y")
     period_end_local = (
@@ -1257,7 +1369,7 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
     )
     period_label_end = period_end_local.strftime("%d/%m/%Y") if period_end_local else "—"
 
-    StockMovement.objects.create(
+    movement = StockMovement.objects.create(
         stock=stock,
         movement_type=StockMovementType.IMPORT,
         quantity_delta=quantity_to_assimilate,
@@ -1269,12 +1381,25 @@ def assimilate_product_forecast_to_stock(*, producer, product, forecast_id, user
         ),
         performed_by=user,
     )
+    _log_stock_movement(movement, actor=user)
 
     forecast.forecast_quantity = Decimal(str(max(forecast_quantity - quantity_to_assimilate, ZERO))).quantize(Decimal("0.001"))
     if forecast.forecast_quantity <= ZERO:
         forecast.is_marketplace_enabled = False
     forecast.updated_at = now
     forecast.save(update_fields=["forecast_quantity", "is_marketplace_enabled", "updated_at"])
+    log_audit_event(
+        actor=user,
+        action="FORECAST_ASSIMILATED",
+        entity_type="production_forecasts",
+        entity_id=forecast.id,
+        notes="Produção futura assumida como entrada no stock atual.",
+        old_values=forecast_old_values,
+        new_values=_forecast_audit_values(forecast) | {
+            "quantity_delta": _audit_qty(quantity_to_assimilate),
+            "stock_id": str(stock.id),
+        },
+    )
     return quantity_to_assimilate
 
 
@@ -1487,6 +1612,7 @@ def update_stock(
     if quantity_delta == ZERO and not threshold_changed:
         raise ValidationError("Não foi detetada nenhuma alteração no stock.")
 
+    previous_values = _stock_audit_values(stock)
     stock.current_quantity = new_quantity
     stock.safety_stock = safety_stock
     stock.updated_by = user
@@ -1499,6 +1625,15 @@ def update_stock(
         "updated_at",
     ]
     stock.save(update_fields=update_fields)
+    log_audit_event(
+        actor=user,
+        action="STOCK_UPDATED",
+        entity_type="stocks",
+        entity_id=stock.id,
+        notes="Quantidade de stock atualizada manualmente.",
+        old_values=previous_values,
+        new_values=_stock_audit_values(stock),
+    )
 
     movement = None
     if quantity_delta != ZERO:
@@ -1509,6 +1644,7 @@ def update_stock(
             notes=notes or None,
             performed_by=user,
         )
+        _log_stock_movement(movement, actor=user)
 
     return movement
 

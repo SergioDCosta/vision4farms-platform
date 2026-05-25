@@ -6,7 +6,7 @@
       method="get"
       class="adm-audit-filter-form"
       hx-get="{% url 'dashboard:gestor_auditoria' %}"
-      hx-trigger="keyup changed delay:300ms from:input[name='q'], change from:select[name='per_page'], submit"
+      hx-trigger="keyup changed delay:300ms from:input[name='q'], change from:select, change from:input[type='date'], submit"
       hx-target="#audit-table"
       hx-swap="outerHTML"
       hx-push-url="true"
@@ -14,6 +14,92 @@
       <div class="adm-search adm-audit-search">
         <i class="bi bi-search"></i>
         <input type="text" name="q" value="{{ q }}" placeholder="Pesquisar por ação, utilizador, IP, dispositivo ou alteração..." autocomplete="off">
+      </div>
+
+      <div class="adm-audit-controls">
+        <label class="adm-audit-field">
+          <span>Módulo</span>
+          <select name="module">
+            <option value="">Todos</option>
+            {% for option in module_options %}
+              <option value="{{ option.value }}" {% if option.value == module %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="adm-audit-field adm-audit-field--picker" data-audit-picker>
+          <span>Ação</span>
+          <details class="adm-audit-picker">
+            <summary>
+              <span data-picker-label>Todas</span>
+              <i class="bi bi-chevron-down"></i>
+            </summary>
+            <div class="adm-audit-picker-menu">
+              <div class="adm-audit-picker-search">
+                <i class="bi bi-search"></i>
+                <input type="search" placeholder="Procurar ação..." data-picker-search autocomplete="off">
+              </div>
+              <button type="button" data-picker-value="" data-picker-text="Todas">Todas as ações</button>
+              {% for option in action_options %}
+                <button type="button" data-picker-value="{{ option.value }}" data-picker-text="{{ option.label }}">{{ option.label }}</button>
+              {% endfor %}
+              <p class="adm-audit-picker-empty" data-picker-empty hidden>Sem resultados.</p>
+            </div>
+          </details>
+          <select name="action" class="adm-audit-native" tabindex="-1" aria-hidden="true">
+            <option value="">Todas</option>
+            {% for option in action_options %}
+              <option value="{{ option.value }}" {% if option.value == action %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="adm-audit-field adm-audit-field--picker" data-audit-picker>
+          <span>Utilizador</span>
+          <details class="adm-audit-picker">
+            <summary>
+              <span data-picker-label>Todos</span>
+              <i class="bi bi-chevron-down"></i>
+            </summary>
+            <div class="adm-audit-picker-menu">
+              <div class="adm-audit-picker-search">
+                <i class="bi bi-search"></i>
+                <input type="search" placeholder="Procurar utilizador..." data-picker-search autocomplete="off">
+              </div>
+              <button type="button" data-picker-value="" data-picker-text="Todos">Todos os utilizadores</button>
+              {% for actor in actor_options %}
+                <button type="button" data-picker-value="{{ actor.id }}" data-picker-text="{% if actor.first_name or actor.last_name %}{{ actor.first_name }} {{ actor.last_name }}{% else %}{{ actor.email }}{% endif %}">
+                  <strong>{% if actor.first_name or actor.last_name %}{{ actor.first_name }} {{ actor.last_name }}{% else %}{{ actor.email }}{% endif %}</strong>
+                  {% if actor.first_name or actor.last_name %}<small>{{ actor.email }}</small>{% endif %}
+                </button>
+              {% endfor %}
+              <p class="adm-audit-picker-empty" data-picker-empty hidden>Sem resultados.</p>
+            </div>
+          </details>
+          <select name="user_id" class="adm-audit-native" tabindex="-1" aria-hidden="true">
+            <option value="">Todos</option>
+            {% for actor in actor_options %}
+              <option value="{{ actor.id }}" {% if actor.id|stringformat:"s" == user_id %}selected{% endif %}>
+                {% if actor.first_name or actor.last_name %}{{ actor.first_name }} {{ actor.last_name }}{% else %}{{ actor.email }}{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <label class="adm-audit-field">
+          <span>Entidade</span>
+          <select name="entity_type">
+            <option value="">Todas</option>
+            {% for option in entity_options %}
+              <option value="{{ option.value }}" {% if option.value == entity_type %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="adm-audit-field adm-audit-field--date">
+          <span>Desde</span>
+          <input type="date" name="date_from" value="{{ date_from }}">
+        </label>
+        <label class="adm-audit-field adm-audit-field--date">
+          <span>Até</span>
+          <input type="date" name="date_to" value="{{ date_to }}">
+        </label>
       </div>
 
       <label class="adm-audit-page-size">
@@ -26,10 +112,13 @@
       </label>
 
       <button class="adm-btn-ghost" type="submit"><i class="bi bi-funnel"></i> Filtrar</button>
+      <a class="adm-btn-ghost" href="{% url 'dashboard:gestor_auditoria' %}"><i class="bi bi-x-circle"></i> Limpar</a>
     </form>
 
     <div style="display:flex;gap:.5rem;">
-      <button class="adm-btn-ghost" type="button"><i class="bi bi-download"></i> Exportar</button>
+      <a class="adm-btn-primary" href="{% url 'dashboard:gestor_auditoria_exportar' %}?{{ filter_query }}">
+        <i class="bi bi-download"></i> Exportar CSV
+      </a>
     </div>
   </div>
 
@@ -46,9 +135,135 @@
   flex-wrap:wrap;
 }
 .adm-audit-search{
-  flex:1 1 28rem;
+  flex:1 1 100%;
   min-width:18rem;
 }
+.adm-audit-controls{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(8.8rem,1fr));
+  gap:.65rem;
+  width:100%;
+}
+.adm-audit-field{
+  display:flex;
+  flex-direction:column;
+  gap:.28rem;
+  min-width:0;
+  font-size:.7rem;
+  font-weight:800;
+  text-transform:uppercase;
+  color:#64748b;
+}
+.adm-audit-field select,
+.adm-audit-field input{
+  width:100%;
+  min-height:2.45rem;
+  border:1px solid #dbe3ef;
+  border-radius:.6rem;
+  padding:0 .65rem;
+  background:#fff;
+  font:600 .8rem 'DM Sans',system-ui,sans-serif;
+  color:#0f172a;
+}
+.adm-audit-field--picker{position:relative;}
+.adm-audit-native{
+  position:absolute !important;
+  width:1px !important;
+  height:1px !important;
+  padding:0 !important;
+  border:0 !important;
+  overflow:hidden;
+  opacity:0;
+  pointer-events:none;
+}
+.adm-audit-picker{position:relative;min-width:0;}
+.adm-audit-picker summary{
+  min-height:2.45rem;
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.55rem;
+  border:1px solid #dbe3ef;
+  border-radius:.6rem;
+  padding:0 .65rem;
+  background:#fff;
+  color:#0f172a;
+  font:600 .8rem 'DM Sans',system-ui,sans-serif;
+  text-transform:none;
+  cursor:pointer;
+  list-style:none;
+}
+.adm-audit-picker summary::-webkit-details-marker{display:none;}
+.adm-audit-picker summary span{
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.adm-audit-picker summary i{color:#64748b;transition:transform .16s ease;}
+.adm-audit-picker[open] summary{border-color:#16a34a;box-shadow:0 0 0 2px #dcfce7;}
+.adm-audit-picker[open] summary i{transform:rotate(180deg);}
+.adm-audit-picker-menu{
+  position:absolute;
+  z-index:12;
+  top:calc(100% + .35rem);
+  left:0;
+  width:max(100%,18rem);
+  max-height:18rem;
+  display:flex;
+  flex-direction:column;
+  gap:.15rem;
+  padding:.45rem;
+  overflow-y:auto;
+  background:#fff;
+  border:1px solid #dbe3ef;
+  border-radius:.7rem;
+  box-shadow:0 16px 30px rgba(15,23,42,.14);
+}
+.adm-audit-picker-search{
+  position:sticky;
+  top:-.45rem;
+  z-index:1;
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+  margin:-.45rem -.45rem .25rem;
+  padding:.45rem;
+  background:#fff;
+  border-bottom:1px solid #f1f5f9;
+}
+.adm-audit-picker-search i{font-size:.8rem;color:#94a3b8;}
+.adm-audit-picker-search input{
+  min-height:2rem;
+  padding:0 .45rem;
+  font-size:.78rem;
+}
+.adm-audit-picker-menu button{
+  display:flex;
+  flex-direction:column;
+  gap:.08rem;
+  width:100%;
+  border:0;
+  border-radius:.48rem;
+  padding:.5rem .55rem;
+  background:#fff;
+  color:#334155;
+  font:600 .8rem 'DM Sans',system-ui,sans-serif;
+  text-align:left;
+  cursor:pointer;
+}
+.adm-audit-picker-menu button:hover,
+.adm-audit-picker-menu button.is-selected{background:#f0fdf4;color:#166534;}
+.adm-audit-picker-menu button strong{font:inherit;font-weight:700;}
+.adm-audit-picker-menu button small{font-size:.72rem;color:#64748b;}
+.adm-audit-picker-empty{
+  margin:.45rem;
+  color:#64748b;
+  font-size:.78rem;
+  text-transform:none;
+}
+.adm-audit-field select:focus,
+.adm-audit-field input:focus{outline:2px solid #bbf7d0;border-color:#16a34a;}
 .adm-audit-page-size{
   display:flex;
   align-items:center;
@@ -97,6 +312,45 @@
 .adm-audit-action-pill--warning{background:#fef3c7;color:#92400e;border-color:#fde68a;}
 .adm-audit-action-pill--danger{background:#fee2e2;color:#991b1b;border-color:#fecaca;}
 .adm-audit-action-pill--neutral{background:#f1f5f9;color:#334155;border-color:#e2e8f0;}
+.adm-audit-module-pill{
+  display:inline-flex;
+  align-items:center;
+  margin-right:.38rem;
+  padding:.17rem .45rem;
+  border-radius:999px;
+  font-size:.69rem;
+  font-weight:800;
+  color:#475569;
+  background:#f1f5f9;
+  border:1px solid #e2e8f0;
+}
+.adm-audit-table .adm-audit-row td{padding-top:.72rem;padding-bottom:.72rem;}
+.adm-audit-event-cell{display:flex;flex-direction:column;gap:.38rem;min-width:15rem;}
+.adm-audit-event-tags{display:flex;align-items:center;gap:.28rem;flex-wrap:wrap;}
+.adm-audit-event-summary{
+  max-width:34rem;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:.78rem;
+  color:#64748b;
+}
+.adm-audit-reference{display:flex;flex-direction:column;gap:.18rem;min-width:10rem;}
+.adm-audit-reference strong{font-size:.83rem;color:#334155;}
+.adm-audit-reference small{font-size:.7rem;color:#94a3b8;font-family:'DM Mono',monospace;}
+.adm-audit-author{font-size:.83rem;font-weight:650;color:#334155;white-space:nowrap;}
+.adm-audit-time{font-size:.78rem;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;}
+.adm-audit-entity-link{
+  display:inline-flex;
+  gap:.35rem;
+  align-items:center;
+  margin-top:.65rem;
+  font-size:.82rem;
+  font-weight:750;
+  color:#15803d;
+  text-decoration:none;
+}
+.adm-audit-entity-link:hover{color:#166534;text-decoration:underline;}
 .adm-table tbody tr.adm-audit-detail-row:hover td,
 .adm-audit-detail-row > td{
   background:#f8fafc;
@@ -376,6 +630,7 @@
   background:#f8fafc;
 }
 @media (max-width: 900px){
+  .adm-audit-controls{grid-template-columns:repeat(2,minmax(0,1fr));}
   .adm-audit-detail{
     grid-template-columns:1fr;
   }
@@ -402,6 +657,8 @@
   .adm-audit-page-size select{
     flex:1;
   }
+  .adm-audit-controls{grid-template-columns:1fr;}
+  .adm-audit-picker-menu{width:100%;max-height:50vh;}
 }
 </style>
 
@@ -423,5 +680,60 @@
       window.toggleAuditRow(row);
     }
   };
+
+  document.querySelectorAll("[data-audit-picker]").forEach(function(picker) {
+    const details = picker.querySelector(".adm-audit-picker");
+    const nativeSelect = picker.querySelector("select");
+    const label = picker.querySelector("[data-picker-label]");
+    const search = picker.querySelector("[data-picker-search]");
+    const options = Array.from(picker.querySelectorAll("[data-picker-value]"));
+    const empty = picker.querySelector("[data-picker-empty]");
+    if (!details || !nativeSelect || !label || !search) return;
+
+    function syncLabel() {
+      const current = options.find(function(option) {
+        return option.dataset.pickerValue === nativeSelect.value;
+      });
+      label.textContent = current ? current.dataset.pickerText : nativeSelect.options[0].textContent;
+      options.forEach(function(option) {
+        option.classList.toggle("is-selected", option.dataset.pickerValue === nativeSelect.value);
+      });
+    }
+
+    function filterOptions() {
+      const term = search.value.trim().toLocaleLowerCase();
+      let found = false;
+      options.forEach(function(option) {
+        const visible = !term || option.textContent.toLocaleLowerCase().includes(term);
+        option.hidden = !visible;
+        if (visible) found = true;
+      });
+      empty.hidden = found;
+    }
+
+    options.forEach(function(option) {
+      option.addEventListener("click", function() {
+        nativeSelect.value = option.dataset.pickerValue;
+        syncLabel();
+        details.removeAttribute("open");
+        search.value = "";
+        filterOptions();
+        nativeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+    search.addEventListener("input", filterOptions);
+    details.addEventListener("toggle", function() {
+      if (details.open) {
+        search.focus();
+      }
+    });
+    syncLabel();
+  });
+
+  document.addEventListener("click", function(event) {
+    document.querySelectorAll("[data-audit-picker] details[open]").forEach(function(details) {
+      if (!details.parentElement.contains(event.target)) details.removeAttribute("open");
+    });
+  });
 </script>
 {% endblock %}

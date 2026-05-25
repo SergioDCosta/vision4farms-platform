@@ -31,4 +31,10 @@ urlpatterns = [
     path("gestor/utilizadores/<uuid:user_id>/estado/", views.admin_user_toggle_status_view, name="gestor_utilizador_estado"),
 
     path("gestor/auditoria/", views.admin_audit_view, name="gestor_auditoria"),
+    path("gestor/auditoria/exportar/", views.admin_audit_export_view, name="gestor_auditoria_exportar"),
+    path(
+        "gestor/auditoria/entidade/<str:entity_type>/<uuid:entity_id>/",
+        views.admin_audit_entity_view,
+        name="gestor_auditoria_entidade",
+    ),
 ]

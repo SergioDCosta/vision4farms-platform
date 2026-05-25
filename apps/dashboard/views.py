@@ -1,6 +1,10 @@
+import csv
+import json
+
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError, RestrictedError
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -22,7 +26,11 @@ from apps.common.decorators import admin_required, client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.common.redirects import get_safe_next_url
 from apps.dashboard.forms import AdminUserCreateForm
-from apps.dashboard.services.admin_audit import build_admin_audit_context
+from apps.dashboard.services.admin_audit import (
+    build_admin_audit_context,
+    build_admin_audit_entity_context,
+    get_admin_audit_export_rows,
+)
 from apps.dashboard.services.admin_catalog import (
     get_admin_categories_queryset,
     get_admin_products_queryset,
@@ -569,6 +577,12 @@ def admin_user_toggle_status_view(request, user_id):
 def admin_audit_view(request):
     context = build_admin_audit_context(
         q=request.GET.get("q", ""),
+        module=request.GET.get("module", ""),
+        action=request.GET.get("action", ""),
+        user_id=request.GET.get("user_id", ""),
+        date_from=request.GET.get("date_from", ""),
+        date_to=request.GET.get("date_to", ""),
+        entity_type=request.GET.get("entity_type", ""),
         per_page_value=request.GET.get("per_page"),
         page_number=request.GET.get("page"),
     )
@@ -577,3 +591,57 @@ def admin_audit_view(request):
         return render(request, "dashboard/admin/partials/audit_table.html", context)
 
     return render(request, "dashboard/admin/audit.html", context)
+
+
+@admin_required
+def admin_audit_export_view(request):
+    rows = get_admin_audit_export_rows(
+        q=request.GET.get("q", ""),
+        module=request.GET.get("module", ""),
+        action=request.GET.get("action", ""),
+        user_id=request.GET.get("user_id", ""),
+        date_from=request.GET.get("date_from", ""),
+        date_to=request.GET.get("date_to", ""),
+        entity_type=request.GET.get("entity_type", ""),
+    )
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="auditoria.csv"'
+    response.write("\ufeff")
+    writer = csv.writer(response, delimiter=";")
+    writer.writerow([
+        "Data/hora",
+        "Utilizador",
+        "Acao",
+        "Modulo",
+        "Entidade",
+        "ID entidade",
+        "Detalhes",
+        "IP",
+        "Dispositivo",
+        "Valores anteriores",
+        "Valores novos",
+    ])
+    for row in rows:
+        log = row["log"]
+        writer.writerow([
+            log.created_at.strftime("%d/%m/%Y %H:%M:%S") if log.created_at else "",
+            row["actor_label"],
+            row["action_label"],
+            row["action_meta"]["category"],
+            row["entity"]["label"],
+            str(log.entity_id or ""),
+            row["event_description"],
+            log.ip_address or "",
+            row["device_label"],
+            json.dumps(log.old_values or {}, ensure_ascii=False),
+            json.dumps(log.new_values or {}, ensure_ascii=False),
+        ])
+    return response
+
+
+@admin_required
+def admin_audit_entity_view(request, entity_type, entity_id):
+    context = build_admin_audit_entity_context(entity_type=entity_type, entity_id=entity_id)
+    if context is None:
+        raise Http404("Tipo de entidade não suportado para consulta.")
+    return render(request, "dashboard/admin/audit_entity_detail.html", context)

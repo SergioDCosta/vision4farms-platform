@@ -7,6 +7,7 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
+from apps.common.audit import log_audit_event
 from apps.common.decorators import client_only_required
 from apps.marketplace.models import ListingStatus
 from apps.marketplace.services import (
@@ -869,8 +870,16 @@ def need_response_publish_view(request):
                     delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
                     delivery_fee=form.cleaned_data.get("delivery_fee"),
                     notes=form.cleaned_data.get("notes"),
+                    acting_user=request.current_user,
                 )
             except ValidationError as exc:
+                log_audit_event(
+                    request=request,
+                    action="LISTING_INVALID_ATTEMPT",
+                    entity_type="marketplace_listings",
+                    entity_id=existing_response.id,
+                    notes=f"Edição de proposta privada recusada: {exc}",
+                )
                 form.add_error(None, str(exc))
             else:
                 sync_alerts_after_need_change(producer, request.current_user)
@@ -929,8 +938,20 @@ def need_response_publish_view(request):
                 listing_source=form.cleaned_data["listing_source"],
                 forecast=form.cleaned_data.get("forecast"),
                 need=need,
+                acting_user=request.current_user,
             )
         except MarketplaceServiceError as exc:
+            log_audit_event(
+                request=request,
+                action="LISTING_INVALID_ATTEMPT",
+                entity_type="marketplace_listings",
+                notes=f"Criação de proposta privada recusada: {exc}",
+                new_values={
+                    "need_id": str(need.id),
+                    "product_id": str(need.product_id),
+                    "quantity_total": str(form.cleaned_data["quantity"]),
+                },
+            )
             form.add_error(None, str(exc))
         else:
             sync_alerts_after_need_change(producer, request.current_user)
@@ -1220,8 +1241,16 @@ def need_response_edit_view(request, listing_id):
                 delivery_radius_km=form.cleaned_data.get("delivery_radius_km"),
                 delivery_fee=form.cleaned_data.get("delivery_fee"),
                 notes=form.cleaned_data.get("notes"),
+                acting_user=request.current_user,
             )
         except ValidationError as exc:
+            log_audit_event(
+                request=request,
+                action="LISTING_INVALID_ATTEMPT",
+                entity_type="marketplace_listings",
+                entity_id=listing.id,
+                notes=f"Edição de proposta privada recusada: {exc}",
+            )
             form.add_error(None, str(exc))
         else:
             sync_alerts_after_need_change(producer, request.current_user)
@@ -1305,7 +1334,11 @@ def need_response_reject_view(request, listing_id):
     next_url = (request.POST.get("next") or "").strip()
 
     try:
-        changed = reject_need_response(listing=listing, owner_producer=producer)
+        changed = reject_need_response(
+            listing=listing,
+            owner_producer=producer,
+            acting_user=request.current_user,
+        )
     except ValidationError as exc:
         messages.error(request, str(exc))
     else:

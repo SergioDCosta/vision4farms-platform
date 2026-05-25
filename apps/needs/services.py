@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.catalog.models import Product
+from apps.common.audit import log_audit_event
 from apps.inventory.models import ProductionForecast, Stock
 from apps.marketplace.models import ListingStatus, MarketplaceListing
 from apps.needs.models import (
@@ -58,6 +59,42 @@ CUSTOMER_DEMAND_NEED_NOTES = (
     "A quantidade reflete o maior défice temporal entre pedidos acumulados e "
     "stock/previsão disponível até às datas de entrega."
 )
+
+
+def _audit_quantity(value):
+    return str(_quantize_need_quantity(value))
+
+
+def _external_demand_audit_values(demand):
+    return {
+        "producer_id": str(demand.producer_id),
+        "product_id": str(demand.product_id),
+        "product_name": getattr(getattr(demand, "product", None), "name", None),
+        "requested_quantity": _audit_quantity(demand.requested_quantity),
+        "requested_delivery_date": str(demand.requested_delivery_date),
+        "status": demand.status,
+        "source_system": demand.source_system,
+        "client_name": demand.client_name,
+        "generated_need_id": str(demand.generated_need_id) if demand.generated_need_id else None,
+    }
+
+
+def _need_audit_values(need, *, plan=None):
+    values = {
+        "producer_id": str(need.producer_id),
+        "product_id": str(need.product_id),
+        "product_name": getattr(getattr(need, "product", None), "name", None),
+        "required_quantity": _audit_quantity(need.required_quantity),
+        "needed_by_date": str(need.needed_by_date) if need.needed_by_date else None,
+        "status": need.status,
+        "source_system": need.source_system,
+    }
+    if plan is not None:
+        values["max_deficit"] = _audit_quantity(plan.get("max_deficit"))
+        values["first_deficit_date"] = (
+            str(plan.get("first_deficit_date")) if plan.get("first_deficit_date") else None
+        )
+    return values
 
 
 class DuplicateActiveNeedError(ValidationError):
@@ -431,11 +468,27 @@ def sync_safety_stock_from_external_demands(*, producer, product, acting_user=No
     )
 
     if created:
+        log_audit_event(
+            actor=acting_user,
+            action="STOCK_CREATED",
+            entity_type="stocks",
+            entity_id=stock.id,
+            notes="Stock criado automaticamente para refletir compromissos externos.",
+            new_values={
+                "producer_id": str(producer.id),
+                "product_id": str(product.id),
+                "product_name": product.name,
+                "current_quantity": _audit_quantity(stock.current_quantity),
+                "reserved_quantity": _audit_quantity(stock.reserved_quantity),
+                "safety_stock": _audit_quantity(stock.safety_stock),
+            },
+        )
         return stock
 
     if _quantize_need_quantity(stock.safety_stock) == total:
         return stock
 
+    previous_total = _audit_quantity(stock.safety_stock)
     stock.safety_stock = total
     update_fields = ["safety_stock"]
     if hasattr(stock, "updated_by"):
@@ -448,6 +501,20 @@ def sync_safety_stock_from_external_demands(*, producer, product, acting_user=No
         stock.updated_at = now
         update_fields.append("updated_at")
     stock.save(update_fields=list(dict.fromkeys(update_fields)))
+    log_audit_event(
+        actor=acting_user,
+        action="STOCK_UPDATED",
+        entity_type="stocks",
+        entity_id=stock.id,
+        notes="Compromissos externos sincronizados a partir dos pedidos de clientes.",
+        old_values={"safety_stock": previous_total},
+        new_values={
+            "producer_id": str(producer.id),
+            "product_id": str(product.id),
+            "product_name": product.name,
+            "safety_stock": _audit_quantity(stock.safety_stock),
+        },
+    )
     return stock
 
 
@@ -461,6 +528,7 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
     first_deficit_date = plan.get("first_deficit_date")
     existing_need = _lock_need_for_customer_demand_sync(producer=producer, product=product)
     changed = False
+    previous_need_values = _need_audit_values(existing_need, plan=plan) if existing_need else None
 
     if max_deficit > Decimal("0.000"):
         needed_by_date = _normalize_needed_by_date(first_deficit_date)
@@ -506,8 +574,26 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
                 status=NeedStatus.OPEN,
             )
             changed = True
+            log_audit_event(
+                actor=acting_user,
+                action="CUSTOMER_DEMAND_NEED_CREATED",
+                entity_type="needs",
+                entity_id=need.id,
+                notes="Procura agregada criada automaticamente por défice em pedidos externos.",
+                new_values=_need_audit_values(need, plan=plan),
+            )
 
         need, _, status_changed = recalculate_need_status(need, acting_user=acting_user)
+        if existing_need and changed:
+            log_audit_event(
+                actor=acting_user,
+                action="CUSTOMER_DEMAND_NEED_UPDATED",
+                entity_type="needs",
+                entity_id=need.id,
+                notes="Procura agregada recalculada a partir dos pedidos externos.",
+                old_values=previous_need_values,
+                new_values=_need_audit_values(need, plan=plan),
+            )
         _set_external_demands_generated_need(producer=producer, product=product, need=need)
         return need, plan, bool(changed or status_changed)
 
@@ -532,6 +618,21 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
                 update_fields.append("updated_at")
             existing_need.save(update_fields=list(dict.fromkeys(update_fields)))
             changed = True
+        if changed:
+            action = (
+                "CUSTOMER_DEMAND_NEED_COVERED"
+                if previous_need_values and previous_need_values["status"] != NeedStatus.COVERED
+                else "CUSTOMER_DEMAND_NEED_UPDATED"
+            )
+            log_audit_event(
+                actor=acting_user,
+                action=action,
+                entity_type="needs",
+                entity_id=existing_need.id,
+                notes="Procura automática coberta após recalcular stock e previsão disponíveis.",
+                old_values=previous_need_values,
+                new_values=_need_audit_values(existing_need, plan=plan),
+            )
         _set_external_demands_generated_need(producer=producer, product=product, need=existing_need)
         return existing_need, plan, changed
 
@@ -685,6 +786,14 @@ def create_external_customer_demand(
         created_by=created_by,
         updated_by=created_by,
     )
+    log_audit_event(
+        actor=created_by,
+        action="EXTERNAL_DEMAND_CREATED",
+        entity_type="external_customer_demands",
+        entity_id=demand.id,
+        notes="Pedido externo de cliente registado.",
+        new_values=_external_demand_audit_values(demand),
+    )
     sync_external_customer_demand_state_for_product(
         producer=producer,
         product=product,
@@ -721,6 +830,7 @@ def update_external_customer_demand(
     if locked_demand.status not in EXTERNAL_DEMAND_EDITABLE_STATUSES:
         raise ValidationError("Este pedido externo já não pode ser editado.")
 
+    previous_values = _external_demand_audit_values(locked_demand)
     quantity = _validate_external_customer_demand_payload(
         product=product,
         client_name=client_name,
@@ -750,6 +860,15 @@ def update_external_customer_demand(
             "updated_by",
             "updated_at",
         ]
+    )
+    log_audit_event(
+        actor=updated_by,
+        action="EXTERNAL_DEMAND_UPDATED",
+        entity_type="external_customer_demands",
+        entity_id=locked_demand.id,
+        notes="Pedido externo de cliente atualizado.",
+        old_values=previous_values,
+        new_values=_external_demand_audit_values(locked_demand),
     )
     sync_external_customer_demand_state_for_product(
         producer=producer,
@@ -782,12 +901,22 @@ def cancel_external_customer_demand(*, demand, producer, updated_by=None):
     if locked_demand.status == ExternalCustomerDemandStatus.FULFILLED:
         raise ValidationError("Este pedido externo já está cumprido e não pode ser cancelado.")
 
+    previous_values = _external_demand_audit_values(locked_demand)
     now = timezone.now()
     locked_demand.status = ExternalCustomerDemandStatus.CANCELLED
     locked_demand.cancelled_at = now
     locked_demand.updated_by = updated_by
     locked_demand.updated_at = now
     locked_demand.save(update_fields=["status", "cancelled_at", "updated_by", "updated_at"])
+    log_audit_event(
+        actor=updated_by,
+        action="EXTERNAL_DEMAND_CANCELLED",
+        entity_type="external_customer_demands",
+        entity_id=locked_demand.id,
+        notes="Pedido externo de cliente cancelado.",
+        old_values=previous_values,
+        new_values=_external_demand_audit_values(locked_demand),
+    )
     sync_external_customer_demand_state_for_product(
         producer=producer,
         product=locked_demand.product,
@@ -1041,6 +1170,20 @@ def recalculate_needs_for_order(order, *, acting_user=None):
             "coverage": coverage,
             "changed": changed,
         })
+        log_audit_event(
+            actor=acting_user,
+            action="NEED_COVERAGE_CHANGED",
+            entity_type="needs",
+            entity_id=need.id,
+            notes=f"Cobertura recalculada após alteração da encomenda #{getattr(order, 'order_number', order.id)}.",
+            new_values={
+                "order_id": str(order.id),
+                "status": need.status,
+                "required_quantity": _audit_quantity(coverage["required_quantity"]),
+                "planned_quantity": _audit_quantity(coverage["planned_qty"]),
+                "completed_quantity": _audit_quantity(coverage["completed_qty"]),
+            },
+        )
 
     return results
 
@@ -1908,6 +2051,7 @@ def update_need_response(
     delivery_radius_km=None,
     delivery_fee=None,
     notes=None,
+    acting_user=None,
 ):
     from apps.marketplace.services import MarketplaceServiceError, update_listing
 
@@ -1944,6 +2088,7 @@ def update_need_response(
             status=ListingStatus.ACTIVE,
             expires_at=None,
             photo_path=listing.photo_path,
+            acting_user=acting_user,
         )
     except MarketplaceServiceError as exc:
         raise ValidationError(str(exc)) from exc
@@ -1955,7 +2100,7 @@ def update_need_response(
 
 
 @transaction.atomic
-def reject_need_response(*, listing, owner_producer):
+def reject_need_response(*, listing, owner_producer, acting_user=None):
     listing = _get_need_response_listing_for_update(listing.id)
 
     if not owner_producer or not listing.need or listing.need.producer_id != owner_producer.id:
@@ -1967,10 +2112,30 @@ def reject_need_response(*, listing, owner_producer):
     if listing.need_response_status == NeedResponseStatus.REJECTED and listing.status == ListingStatus.CANCELLED:
         return False
 
+    previous_values = {
+        "status": listing.status,
+        "need_response_status": listing.need_response_status,
+    }
     listing.need_response_status = NeedResponseStatus.REJECTED
     listing.status = ListingStatus.CANCELLED
     listing.updated_at = timezone.now()
     listing.save(update_fields=["need_response_status", "status", "updated_at"])
+    log_audit_event(
+        actor=acting_user,
+        action="NEED_RESPONSE_REJECTED",
+        entity_type="marketplace_listings",
+        entity_id=listing.id,
+        notes="Proposta privada rejeitada pelo produtor que publicou a procura.",
+        old_values=previous_values,
+        new_values={
+            "status": listing.status,
+            "need_response_status": listing.need_response_status,
+            "need_id": str(listing.need_id),
+            "product_id": str(listing.product_id),
+            "product_name": getattr(getattr(listing, "product", None), "name", None),
+            "producer_id": str(listing.producer_id),
+        },
+    )
     try:
         from apps.alerts.models import AlertSeverity, AlertType
         from apps.alerts.services import create_need_response_event_alert

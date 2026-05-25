@@ -6,6 +6,7 @@ from django.db.models import Max, Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
+from apps.common.audit import log_audit_event
 from apps.common.formatting import format_quantity
 from apps.inventory.models import (
     ProductionForecast,
@@ -55,6 +56,68 @@ def quantize_qty(value):
 
 def quantize_money(value):
     return Decimal(str(value)).quantize(MONEY_DECIMAL, rounding=ROUND_HALF_UP)
+
+
+def _audit_qty(value):
+    return str(quantize_qty(value or 0))
+
+
+def _order_audit_values(order):
+    return {
+        "order_id": str(order.id),
+        "buyer_producer_id": str(order.buyer_producer_id),
+        "status": order.status,
+        "total_amount": str(quantize_money(order.total_amount or 0)),
+        "source_type": order.source_type,
+        "order_number": order.order_number,
+    }
+
+
+def _log_order_status_change(order, *, previous_status, acting_user, notes, cancelled=False):
+    if previous_status == order.status:
+        return
+    values_before = {"status": previous_status}
+    values_after = _order_audit_values(order)
+    log_audit_event(
+        actor=acting_user,
+        action="ORDER_STATUS_CHANGED",
+        entity_type="orders",
+        entity_id=order.id,
+        notes=notes,
+        old_values=values_before,
+        new_values=values_after,
+    )
+    if cancelled:
+        log_audit_event(
+            actor=acting_user,
+            action="ORDER_CANCELLED",
+            entity_type="orders",
+            entity_id=order.id,
+            notes=notes,
+            old_values=values_before,
+            new_values=values_after,
+        )
+
+
+def _log_listing_status_if_changed(listing, *, previous_status, acting_user, notes):
+    if previous_status == listing.status:
+        return
+    log_audit_event(
+        actor=acting_user,
+        action="LISTING_STATUS_CHANGED",
+        entity_type="marketplace_listings",
+        entity_id=listing.id,
+        notes=notes,
+        old_values={"status": previous_status},
+        new_values={
+            "listing_id": str(listing.id),
+            "product_id": str(listing.product_id),
+            "need_id": str(listing.need_id) if listing.need_id else None,
+            "status": listing.status,
+            "quantity_available": _audit_qty(listing.quantity_available),
+            "quantity_reserved": _audit_qty(listing.quantity_reserved),
+        },
+    )
 
 
 def _quantity_label(value, unit=""):
@@ -678,6 +741,7 @@ def _update_stock_reserved(stock, quantity, acting_user):
         return
 
     quantity = quantize_qty(quantity)
+    previous_reserved = quantize_qty(Decimal(str(stock.reserved_quantity or 0)))
     stock.reserved_quantity = quantize_qty(Decimal(str(stock.reserved_quantity or 0)) + quantity)
 
     update_fields = ["reserved_quantity"]
@@ -695,18 +759,47 @@ def _update_stock_reserved(stock, quantity, acting_user):
         update_fields.append("updated_at")
 
     stock.save(update_fields=update_fields)
+    log_audit_event(
+        actor=acting_user,
+        action="STOCK_RESERVATION_CHANGED",
+        entity_type="stocks",
+        entity_id=stock.id,
+        notes="Quantidade reservada para uma encomenda.",
+        old_values={"reserved_quantity": str(previous_reserved)},
+        new_values={
+            "stock_id": str(stock.id),
+            "product_id": str(stock.product_id),
+            "reserved_quantity": _audit_qty(stock.reserved_quantity),
+            "quantity_delta": _audit_qty(quantity),
+        },
+    )
 
 
-def _update_forecast_reserved(forecast, quantity):
+def _update_forecast_reserved(forecast, quantity, acting_user=None):
     if not forecast:
         return
 
     quantity = quantize_qty(quantity)
+    previous_reserved = quantize_qty(Decimal(str(forecast.reserved_quantity or 0)))
     forecast.reserved_quantity = quantize_qty(
         Decimal(str(forecast.reserved_quantity or 0)) + quantity
     )
     forecast.updated_at = timezone.now()
     forecast.save(update_fields=["reserved_quantity", "updated_at"])
+    log_audit_event(
+        actor=acting_user,
+        action="FORECAST_RESERVATION_CHANGED",
+        entity_type="production_forecasts",
+        entity_id=forecast.id,
+        notes="Quantidade de produção prevista reservada para uma encomenda.",
+        old_values={"reserved_quantity": str(previous_reserved)},
+        new_values={
+            "forecast_id": str(forecast.id),
+            "product_id": str(forecast.product_id),
+            "reserved_quantity": _audit_qty(forecast.reserved_quantity),
+            "quantity_delta": _audit_qty(quantity),
+        },
+    )
 
 
 def _consume_stock_reservation(stock, quantity, acting_user, *, order=None):
@@ -736,9 +829,23 @@ def _consume_stock_reservation(stock, quantity, acting_user, *, order=None):
         update_fields.append("updated_at")
 
     stock.save(update_fields=update_fields)
+    log_audit_event(
+        actor=acting_user,
+        action="STOCK_RESERVATION_CHANGED",
+        entity_type="stocks",
+        entity_id=stock.id,
+        notes="Reserva consumida após conclusão da encomenda.",
+        old_values={"current_quantity": _audit_qty(current_quantity), "reserved_quantity": _audit_qty(reserved_quantity)},
+        new_values={
+            "stock_id": str(stock.id),
+            "product_id": str(stock.product_id),
+            "current_quantity": _audit_qty(stock.current_quantity),
+            "reserved_quantity": _audit_qty(stock.reserved_quantity),
+        },
+    )
 
     if order is not None:
-        StockMovement.objects.create(
+        movement = StockMovement.objects.create(
             stock=stock,
             movement_type=StockMovementType.ORDER_OUT,
             quantity_delta=-quantity,
@@ -747,9 +854,23 @@ def _consume_stock_reservation(stock, quantity, acting_user, *, order=None):
             notes=f"Saída por conclusão da encomenda #{order.order_number}.",
             performed_by=acting_user,
         )
+        log_audit_event(
+            actor=acting_user,
+            action="STOCK_MOVEMENT_CREATED",
+            entity_type="stock_movements",
+            entity_id=movement.id,
+            notes=movement.notes,
+            new_values={
+                "stock_id": str(stock.id),
+                "product_id": str(stock.product_id),
+                "movement_type": movement.movement_type,
+                "quantity_delta": _audit_qty(movement.quantity_delta),
+                "order_id": str(order.id),
+            },
+        )
 
 
-def _consume_forecast_reservation(forecast, quantity):
+def _consume_forecast_reservation(forecast, quantity, acting_user=None):
     if not forecast:
         return
 
@@ -758,6 +879,19 @@ def _consume_forecast_reservation(forecast, quantity):
     forecast.reserved_quantity = quantize_qty(max(reserved_quantity - quantity, Decimal("0.000")))
     forecast.updated_at = timezone.now()
     forecast.save(update_fields=["reserved_quantity", "updated_at"])
+    log_audit_event(
+        actor=acting_user,
+        action="FORECAST_RESERVATION_CHANGED",
+        entity_type="production_forecasts",
+        entity_id=forecast.id,
+        notes="Reserva de previsão consumida após conclusão da encomenda.",
+        old_values={"reserved_quantity": _audit_qty(reserved_quantity)},
+        new_values={
+            "forecast_id": str(forecast.id),
+            "product_id": str(forecast.product_id),
+            "reserved_quantity": _audit_qty(forecast.reserved_quantity),
+        },
+    )
 
 
 def _release_stock_reservation(stock, quantity, acting_user):
@@ -783,6 +917,19 @@ def _release_stock_reservation(stock, quantity, acting_user):
         update_fields.append("updated_at")
 
     stock.save(update_fields=update_fields)
+    log_audit_event(
+        actor=acting_user,
+        action="STOCK_RESERVATION_CHANGED",
+        entity_type="stocks",
+        entity_id=stock.id,
+        notes="Reserva libertada após cancelamento ou reconciliação da encomenda.",
+        old_values={"reserved_quantity": _audit_qty(reserved_quantity)},
+        new_values={
+            "stock_id": str(stock.id),
+            "product_id": str(stock.product_id),
+            "reserved_quantity": _audit_qty(stock.reserved_quantity),
+        },
+    )
 
 
 def _expected_reserved_quantity_for_listing(listing_id):
@@ -806,6 +953,7 @@ def _reconcile_listing_reservation(listing_id, acting_user, *, strict=True):
         .get(id=listing_id)
     )
     has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
+    previous_status = listing.status
 
     expected_reserved = _expected_reserved_quantity_for_listing(listing.id)
     current_reserved = quantize_qty(Decimal(str(listing.quantity_reserved or 0)))
@@ -858,6 +1006,12 @@ def _reconcile_listing_reservation(listing_id, acting_user, *, strict=True):
 
     listing.updated_at = timezone.now()
     listing.save(update_fields=list(dict.fromkeys(update_fields)))
+    _log_listing_status_if_changed(
+        listing,
+        previous_status=previous_status,
+        acting_user=acting_user,
+        notes="Estado do anúncio alterado ao reconciliar reservas de encomendas.",
+    )
 
     if source_delta > 0:
         if has_stock_source:
@@ -876,7 +1030,7 @@ def _reconcile_listing_reservation(listing_id, acting_user, *, strict=True):
                         f"({forecast_saleable} {listing.product.unit})."
                     )
                 )
-            _update_forecast_reserved(forecast, source_delta)
+            _update_forecast_reserved(forecast, source_delta, acting_user)
     elif source_delta < 0:
         source_release = quantize_qty(abs(source_delta))
         if has_stock_source:
@@ -884,7 +1038,7 @@ def _reconcile_listing_reservation(listing_id, acting_user, *, strict=True):
             _release_stock_reservation(stock, source_release, acting_user)
         elif has_forecast_source:
             forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
-            _release_forecast_reservation(forecast, source_release)
+            _release_forecast_reservation(forecast, source_release, acting_user)
 
     return listing
 
@@ -896,6 +1050,7 @@ def _reserve_listing_quantity(listing_id, quantity, acting_user):
         .get(id=listing_id)
     )
     has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
+    previous_status = listing.status
 
     if listing.status != ListingStatus.ACTIVE:
         raise OrderServiceError("O anúncio já não está ativo.")
@@ -927,6 +1082,12 @@ def _reserve_listing_quantity(listing_id, quantity, acting_user):
 
     listing.updated_at = timezone.now()
     listing.save(update_fields=update_fields)
+    _log_listing_status_if_changed(
+        listing,
+        previous_status=previous_status,
+        acting_user=acting_user,
+        notes="Estado do anúncio alterado após reservar quantidade para encomenda.",
+    )
 
     if has_stock_source:
         stock = Stock.objects.select_for_update().get(id=listing.stock_id)
@@ -944,7 +1105,7 @@ def _reserve_listing_quantity(listing_id, quantity, acting_user):
                     f"({forecast_saleable} {listing.product.unit})."
                 )
             )
-        _update_forecast_reserved(forecast, quantity)
+        _update_forecast_reserved(forecast, quantity, acting_user)
 
     return listing
 
@@ -956,6 +1117,7 @@ def _release_listing_reservation(listing_id, quantity, acting_user):
         .get(id=listing_id)
     )
     has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
+    previous_status = listing.status
 
     quantity = quantize_qty(quantity)
     reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
@@ -969,13 +1131,19 @@ def _release_listing_reservation(listing_id, quantity, acting_user):
 
     listing.updated_at = timezone.now()
     listing.save(update_fields=["quantity_reserved", "quantity_available", "status", "updated_at"])
+    _log_listing_status_if_changed(
+        listing,
+        previous_status=previous_status,
+        acting_user=acting_user,
+        notes="Estado do anúncio alterado após libertar reserva de encomenda.",
+    )
 
     if has_stock_source:
         stock = Stock.objects.select_for_update().get(id=listing.stock_id)
         _release_stock_reservation(stock, quantity, acting_user)
     elif has_forecast_source:
         forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
-        _release_forecast_reservation(forecast, quantity)
+        _release_forecast_reservation(forecast, quantity, acting_user)
 
     return listing
 
@@ -987,6 +1155,7 @@ def _consume_listing_reservation(listing_id, quantity, acting_user, *, order=Non
         .get(id=listing_id)
     )
     has_stock_source, has_forecast_source = _validate_listing_source_xor(listing)
+    previous_status = listing.status
 
     quantity = quantize_qty(quantity)
     reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
@@ -1002,13 +1171,19 @@ def _consume_listing_reservation(listing_id, quantity, acting_user, *, order=Non
 
     listing.updated_at = timezone.now()
     listing.save(update_fields=["quantity_reserved", "status", "updated_at"])
+    _log_listing_status_if_changed(
+        listing,
+        previous_status=previous_status,
+        acting_user=acting_user,
+        notes="Estado do anúncio alterado após conclusão da encomenda.",
+    )
 
     if has_stock_source:
         stock = Stock.objects.select_for_update().get(id=listing.stock_id)
         _consume_stock_reservation(stock, quantity, acting_user, order=order)
     elif has_forecast_source:
         forecast = ProductionForecast.objects.select_for_update().get(id=listing.forecast_id)
-        _consume_forecast_reservation(forecast, quantity)
+        _consume_forecast_reservation(forecast, quantity, acting_user)
 
     return listing
 
@@ -1040,7 +1215,7 @@ def _ensure_buyer_stock(buyer_producer, product, acting_user):
     if hasattr(Stock, "updated_by"):
         defaults["updated_by"] = acting_user
 
-    stock, _ = (
+    stock, created = (
         Stock.objects
         .select_for_update()
         .get_or_create(
@@ -1049,6 +1224,20 @@ def _ensure_buyer_stock(buyer_producer, product, acting_user):
             defaults=defaults,
         )
     )
+    if created:
+        log_audit_event(
+            actor=acting_user,
+            action="STOCK_CREATED",
+            entity_type="stocks",
+            entity_id=stock.id,
+            notes="Stock criado automaticamente ao receber uma encomenda.",
+            new_values={
+                "producer_id": str(stock.producer_id),
+                "product_id": str(stock.product_id),
+                "current_quantity": _audit_qty(stock.current_quantity),
+                "reserved_quantity": _audit_qty(stock.reserved_quantity),
+            },
+        )
 
     changed_fields = []
     if stock.current_quantity is None:
@@ -1078,6 +1267,7 @@ def _register_buyer_order_inbound(*, buyer_producer, order, product, quantity, a
     stock = _ensure_buyer_stock(buyer_producer, product, acting_user)
 
     qty = quantize_qty(quantity)
+    previous_quantity = quantize_qty(Decimal(str(stock.current_quantity or 0)))
     stock.current_quantity = quantize_qty(Decimal(str(stock.current_quantity or 0)) + qty)
 
     update_fields = ["current_quantity"]
@@ -1091,8 +1281,21 @@ def _register_buyer_order_inbound(*, buyer_producer, order, product, quantity, a
         stock.updated_at = timezone.now()
         update_fields.append("updated_at")
     stock.save(update_fields=update_fields)
+    log_audit_event(
+        actor=acting_user,
+        action="STOCK_UPDATED",
+        entity_type="stocks",
+        entity_id=stock.id,
+        notes=f"Entrada de stock pela receção da encomenda #{order.order_number}.",
+        old_values={"current_quantity": str(previous_quantity)},
+        new_values={
+            "stock_id": str(stock.id),
+            "product_id": str(stock.product_id),
+            "current_quantity": _audit_qty(stock.current_quantity),
+        },
+    )
 
-    StockMovement.objects.create(
+    movement = StockMovement.objects.create(
         stock=stock,
         movement_type=StockMovementType.ORDER_IN,
         quantity_delta=qty,
@@ -1101,9 +1304,23 @@ def _register_buyer_order_inbound(*, buyer_producer, order, product, quantity, a
         notes=f"Entrada por receção da encomenda #{order.order_number}.",
         performed_by=acting_user,
     )
+    log_audit_event(
+        actor=acting_user,
+        action="STOCK_MOVEMENT_CREATED",
+        entity_type="stock_movements",
+        entity_id=movement.id,
+        notes=movement.notes,
+        new_values={
+            "stock_id": str(stock.id),
+            "product_id": str(stock.product_id),
+            "movement_type": movement.movement_type,
+            "quantity_delta": _audit_qty(movement.quantity_delta),
+            "order_id": str(order.id),
+        },
+    )
 
 
-def _release_forecast_reservation(forecast, quantity):
+def _release_forecast_reservation(forecast, quantity, acting_user=None):
     if not forecast:
         return
 
@@ -1112,6 +1329,19 @@ def _release_forecast_reservation(forecast, quantity):
     forecast.reserved_quantity = quantize_qty(max(reserved_quantity - quantity, Decimal("0.000")))
     forecast.updated_at = timezone.now()
     forecast.save(update_fields=["reserved_quantity", "updated_at"])
+    log_audit_event(
+        actor=acting_user,
+        action="FORECAST_RESERVATION_CHANGED",
+        entity_type="production_forecasts",
+        entity_id=forecast.id,
+        notes="Reserva de produção futura libertada.",
+        old_values={"reserved_quantity": _audit_qty(reserved_quantity)},
+        new_values={
+            "forecast_id": str(forecast.id),
+            "product_id": str(forecast.product_id),
+            "reserved_quantity": _audit_qty(forecast.reserved_quantity),
+        },
+    )
 
 
 def _set_order_status(order, status):
@@ -1261,6 +1491,25 @@ def create_order_from_listing(*, buyer_producer, listing, quantity, acting_user,
             else "Pedido criado a partir de um anúncio do marketplace."
         ),
     )
+    log_audit_event(
+        actor=acting_user,
+        action="ORDER_CREATED",
+        entity_type="orders",
+        entity_id=order.id,
+        notes=(
+            "Encomenda criada ao aceitar uma proposta privada para uma procura."
+            if need or listing.need_id
+            else "Encomenda criada a partir de anúncio do marketplace."
+        ),
+        new_values=_order_audit_values(order) | {
+            "listing_id": str(listing.id),
+            "need_id": str(listing.need_id) if listing.need_id else None,
+            "seller_producer_id": str(listing.producer_id),
+            "product_id": str(listing.product_id),
+            "product_name": getattr(listing.product, "name", None),
+            "quantity": _audit_qty(quantity),
+        },
+    )
     _notify_order_purchase_created(
         order=order,
         buyer_producer=buyer_producer,
@@ -1408,6 +1657,20 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
             changed_by=acting_user,
             notes="Pedido criado a partir de uma recomendação aceite.",
         )
+        log_audit_event(
+            actor=acting_user,
+            action="ORDER_CREATED",
+            entity_type="orders",
+            entity_id=order.id,
+            notes="Encomenda criada a partir de uma recomendação aceite.",
+            new_values=_order_audit_values(order) | {
+                "recommendation_id": str(recommendation.id),
+                "need_id": str(recommendation.need_id) if recommendation.need_id else None,
+                "seller_producer_id": str(bucket_items[0].seller_producer_id) if bucket_items else None,
+                "product_ids": sorted({str(item.product_id) for item in bucket_items}),
+                "listing_ids": sorted({str(item.listing_id) for item in bucket_items if item.listing_id}),
+            },
+        )
         seller_for_order = bucket_items[0].seller_producer if bucket_items else None
         if seller_for_order:
             _notify_order_purchase_created(
@@ -1432,6 +1695,7 @@ def create_order_from_recommendation(*, buyer_producer, recommendation, acting_u
 @transaction.atomic
 def confirm_order_receipt(*, order, acting_user):
     order = Order.objects.select_for_update().get(id=order.id)
+    previous_status = order.status
 
     if order.status in {OrderStatus.COMPLETED, OrderStatus.CANCELLED}:
         raise OrderServiceError("Esta encomenda já não pode ser concluída.")
@@ -1485,6 +1749,21 @@ def confirm_order_receipt(*, order, acting_user):
         status=OrderStatus.COMPLETED,
         changed_by=acting_user,
         notes="Receção confirmada pelo comprador.",
+    )
+    _log_order_status_change(
+        order,
+        previous_status=previous_status,
+        acting_user=acting_user,
+        notes="Receção confirmada pelo comprador.",
+    )
+    log_audit_event(
+        actor=acting_user,
+        action="ORDER_RECEIPT_CONFIRMED",
+        entity_type="orders",
+        entity_id=order.id,
+        notes="Receção da encomenda confirmada pelo comprador.",
+        old_values={"status": previous_status},
+        new_values=_order_audit_values(order),
     )
 
     seller_producers = []
@@ -1792,6 +2071,7 @@ def get_order_detail_for_seller(*, seller_producer, order_id):
 @transaction.atomic
 def seller_update_order_status(*, order, seller_producer, new_status, acting_user, notes=None):
     order = Order.objects.select_for_update().get(id=order.id)
+    previous_status = order.status
 
     if new_status not in {
         OrderStatus.CONFIRMED,
@@ -1848,6 +2128,12 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
+        _log_order_status_change(
+            order,
+            previous_status=previous_status,
+            acting_user=acting_user,
+            notes=notes or "Pedido aceite pelo vendedor.",
+        )
         return order
 
     if new_status == OrderStatus.IN_PROGRESS:
@@ -1884,6 +2170,12 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
+        _log_order_status_change(
+            order,
+            previous_status=previous_status,
+            acting_user=acting_user,
+            notes=notes or "Pedido marcado em preparação.",
+        )
         return order
 
     if new_status == OrderStatus.DELIVERING:
@@ -1933,6 +2225,12 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
+        _log_order_status_change(
+            order,
+            previous_status=previous_status,
+            acting_user=acting_user,
+            notes=notes or "Pedido marcado em entrega.",
+        )
         return order
 
     if new_status == OrderStatus.CANCELLED:
@@ -1969,6 +2267,13 @@ def seller_update_order_status(*, order, seller_producer, new_status, acting_use
         )
         recalculate_needs_for_order(order, acting_user=acting_user)
         _sync_alerts_for_producers(order.buyer_producer, seller_producer, acting_user=acting_user)
+        _log_order_status_change(
+            order,
+            previous_status=previous_status,
+            acting_user=acting_user,
+            notes=notes or "Pedido cancelado pelo vendedor.",
+            cancelled=True,
+        )
         return order
 
     return order

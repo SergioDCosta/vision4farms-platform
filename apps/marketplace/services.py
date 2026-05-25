@@ -4,6 +4,7 @@ from django.db.models import Q, Min, Max, Count, Case, When, Value, CharField
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductCategory
+from apps.common.audit import log_audit_event
 from apps.inventory.models import ProducerProfile, ProducerProduct, ProductionForecast, Stock
 from apps.marketplace.models import MarketplaceListing, ListingStatus, DeliveryMode
 from apps.needs.models import NeedResponseStatus, NeedStatus
@@ -25,6 +26,31 @@ MARKETPLACE_FINAL_STATUSES = {
 
 class MarketplaceServiceError(Exception):
     pass
+
+
+def _listing_audit_values(listing):
+    if getattr(listing, "need_id", None):
+        origin = "need_response"
+    elif getattr(listing, "forecast_id", None):
+        origin = LISTING_SOURCE_FORECAST
+    else:
+        origin = LISTING_SOURCE_STOCK
+    return {
+        "listing_id": str(getattr(listing, "id", "")) or None,
+        "producer_id": str(getattr(listing, "producer_id", "")) or None,
+        "product_id": str(getattr(listing, "product_id", "")) or None,
+        "product_name": getattr(getattr(listing, "product", None), "name", None),
+        "origin": origin,
+        "stock_id": str(getattr(listing, "stock_id", "")) or None,
+        "forecast_id": str(getattr(listing, "forecast_id", "")) or None,
+        "need_id": str(getattr(listing, "need_id", "")) or None,
+        "quantity_total": str(quantize_qty(getattr(listing, "quantity_total", 0) or 0)),
+        "quantity_available": str(quantize_qty(getattr(listing, "quantity_available", 0) or 0)),
+        "quantity_reserved": str(quantize_qty(getattr(listing, "quantity_reserved", 0) or 0)),
+        "unit_price": str(getattr(listing, "unit_price", "")) or None,
+        "delivery_mode": getattr(listing, "delivery_mode", None),
+        "status": getattr(listing, "status", None),
+    }
 
 
 def quantize_qty(value):
@@ -220,25 +246,39 @@ def is_listing_retirable_in_marketplace(listing):
 
 def expire_due_active_listings():
     now = timezone.now()
-    need_responses_expired = MarketplaceListing.objects.filter(
+    need_response_qs = MarketplaceListing.objects.filter(
         status=ListingStatus.ACTIVE,
         expires_at__isnull=False,
         expires_at__lte=now,
         need_id__isnull=False,
-    ).update(
-        status=ListingStatus.EXPIRED,
-        need_response_status=NeedResponseStatus.EXPIRED,
-        updated_at=now,
     )
-    listings_expired = MarketplaceListing.objects.filter(
+    listing_qs = MarketplaceListing.objects.filter(
         status=ListingStatus.ACTIVE,
         expires_at__isnull=False,
         expires_at__lte=now,
         need_id__isnull=True,
-    ).update(
+    )
+    expiring = list(need_response_qs) + list(listing_qs)
+    need_responses_expired = need_response_qs.update(
+        status=ListingStatus.EXPIRED,
+        need_response_status=NeedResponseStatus.EXPIRED,
+        updated_at=now,
+    )
+    listings_expired = listing_qs.update(
         status=ListingStatus.EXPIRED,
         updated_at=now,
     )
+    for listing in expiring:
+        old_values = _listing_audit_values(listing)
+        listing.status = ListingStatus.EXPIRED
+        log_audit_event(
+            action="LISTING_EXPIRED",
+            entity_type="marketplace_listings",
+            entity_id=listing.id,
+            notes="Anúncio ou proposta expirou automaticamente após atingir a data limite.",
+            old_values=old_values,
+            new_values=_listing_audit_values(listing),
+        )
     return need_responses_expired + listings_expired
 
 
@@ -300,13 +340,23 @@ def get_public_listings(*, producer=None, q="", category_id="", origin="", sort=
     return _apply_listing_sort(qs, sort=sort)
 
 
-def retire_listing(*, listing):
+def retire_listing(*, listing, acting_user=None):
+    old_values = _listing_audit_values(listing)
     now = timezone.now()
     listing.status = ListingStatus.CANCELLED
     listing.quantity_available = Decimal("0.000")
     listing.photo_path = None
     listing.updated_at = now
     listing.save(update_fields=["status", "quantity_available", "photo_path", "updated_at"])
+    log_audit_event(
+        actor=acting_user or getattr(listing, "_audit_actor", None),
+        action="LISTING_RETIRED",
+        entity_type="marketplace_listings",
+        entity_id=getattr(listing, "id", None),
+        notes="Anúncio retirado do marketplace pelo produtor.",
+        old_values=old_values,
+        new_values=_listing_audit_values(listing),
+    )
     return listing
 
 
@@ -598,6 +648,7 @@ def create_listing(
     listing_source=LISTING_SOURCE_STOCK,
     forecast=None,
     need=None,
+    acting_user=None,
 ):
     stock = None
     selected_forecast = None
@@ -661,7 +712,7 @@ def create_listing(
     if status == ListingStatus.EXPIRED and not expires_at:
         expires_at = now
 
-    return MarketplaceListing.objects.create(
+    listing = MarketplaceListing.objects.create(
         producer=producer,
         product=product,
         stock=stock,
@@ -681,6 +732,21 @@ def create_listing(
         expires_at=expires_at,
         published_at=now,
     )
+    action = "NEED_RESPONSE_CREATED" if need else "LISTING_CREATED"
+    notes = (
+        "Proposta privada criada em resposta a uma procura."
+        if need
+        else "Anúncio publicado no marketplace."
+    )
+    log_audit_event(
+        actor=acting_user,
+        action=action,
+        entity_type="marketplace_listings",
+        entity_id=listing.id,
+        notes=notes,
+        new_values=_listing_audit_values(listing),
+    )
+    return listing
 
 
 def update_listing(
@@ -696,6 +762,7 @@ def update_listing(
     status=ListingStatus.ACTIVE,
     expires_at=None,
     photo_path=None,
+    acting_user=None,
 ):
     quantity_total = Decimal(str(quantity_total))
     unit_price = Decimal(str(unit_price))
@@ -707,6 +774,7 @@ def update_listing(
             "Este anúncio já está reservado ou fechado e não pode ser editado."
         )
 
+    old_values = _listing_audit_values(listing)
     has_stock_source = bool(listing.stock_id)
     has_forecast_source = bool(listing.forecast_id)
     if has_stock_source == has_forecast_source:
@@ -787,6 +855,19 @@ def update_listing(
             "photo_path",
             "updated_at",
         ]
+    )
+    log_audit_event(
+        actor=acting_user,
+        action="NEED_RESPONSE_UPDATED" if listing.need_id else "LISTING_UPDATED",
+        entity_type="marketplace_listings",
+        entity_id=listing.id,
+        notes=(
+            "Condições da proposta privada atualizadas."
+            if listing.need_id
+            else "Condições do anúncio atualizadas."
+        ),
+        old_values=old_values,
+        new_values=_listing_audit_values(listing),
     )
     return listing
 
