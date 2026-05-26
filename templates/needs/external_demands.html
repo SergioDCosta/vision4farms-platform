@@ -354,121 +354,45 @@
     </section>
   {% endif %}
 
-  {# ── Tabela de pedidos ─────────────────────────────────────────────────── #}
+  {# ── Pedidos em aberto ──────────────────────────────────────────────────── #}
   <section id="pedidos-clientes" class="ecd-card">
     <div class="ecd-card__head">
       <div>
         <span class="ecd-eyebrow">Registo de pedidos</span>
-        <h2>Pedidos dos meus clientes</h2>
-        <p>Compromissos externos em aberto e histórico recente.</p>
+        <h2>Pedidos em aberto</h2>
+        <p>Compromissos externos que ainda precisam de ser entregues ao cliente.</p>
       </div>
     </div>
-    <div class="ecd-table-wrap">
-      <table class="ecd-table">
-        <thead>
-          <tr>
-            <th>Urgência</th>
-            <th>Cliente</th>
-            <th>Produto</th>
-            <th>Quantidade</th>
-            <th>Data de entrega</th>
-            <th>Estado</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for demand in demand_rows %}
-            <tr class="{% if demand.urgency == 'overdue' %}ecd-row--overdue{% elif demand.urgency == 'critical' %}ecd-row--critical{% elif demand.urgency == 'warning' %}ecd-row--warning{% endif %}">
-              <td>
-                {% if demand.urgency == "overdue" %}
-                  <span class="ecd-urgency ecd-urgency--overdue"><i class="bi bi-exclamation-circle-fill"></i> Atrasado</span>
-                {% elif demand.urgency == "critical" %}
-                  <span class="ecd-urgency ecd-urgency--critical"><i class="bi bi-exclamation-triangle-fill"></i> Crítico</span>
-                {% elif demand.urgency == "warning" %}
-                  <span class="ecd-urgency ecd-urgency--warning"><i class="bi bi-clock"></i> Atenção</span>
-                {% elif demand.urgency == "ok" %}
-                  <span class="ecd-urgency ecd-urgency--ok"><i class="bi bi-check-circle"></i> OK</span>
-                {% else %}
-                  <span class="ecd-urgency ecd-urgency--inactive">—</span>
-                {% endif %}
-              </td>
-              <td>
-                <strong>{{ demand.client_name }}</strong>
-                {% if demand.client_contact %}<small>{{ demand.client_contact }}</small>{% endif %}
-                {% if demand.client_reference %}<small>Ref. {{ demand.client_reference }}</small>{% endif %}
-              </td>
-              <td>{{ demand.product.name }}</td>
-              <td><strong>{{ demand.requested_quantity|quantity }} {{ demand.product.unit }}</strong></td>
-              <td>
-                {{ demand.requested_delivery_date|date:"d/m/Y" }}
-                {% if demand.urgency == "overdue" %}
-                  <small class="ecd-days ecd-days--overdue">{{ demand.days_remaining|add:"0" }}d</small>
-                {% elif demand.urgency == "critical" or demand.urgency == "warning" %}
-                  <small class="ecd-days">em {{ demand.days_remaining }}d</small>
-                {% endif %}
-              </td>
-              <td><span class="ecd-status ecd-status--{{ demand.status|lower }}">{{ demand.get_status_display }}</span></td>
-              <td>
-                {% if demand.status in active_statuses %}
-                  <div class="ecd-actions">
-                    <a href="{% url 'needs:external_demands' %}?edit={{ demand.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
-                       hx-get="{% url 'needs:external_demands' %}?edit={{ demand.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
-                       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                       class="ecd-mini-btn">
-                      <i class="bi bi-pencil"></i> Editar
-                    </a>
-                    <form method="post"
-                          action="{% url 'needs:external_demand_fulfill' demand.id %}"
-                          hx-post="{% url 'needs:external_demand_fulfill' demand.id %}"
-                          hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
-                          onsubmit="return confirm('Confirmar que este pedido do cliente foi cumprido? Deixará de contar como compromisso externo.');">
-                      {% csrf_token %}
-                      <input type="hidden" name="q" value="{{ q }}">
-                      <input type="hidden" name="status" value="{{ selected_status }}">
-                      <input type="hidden" name="product" value="{{ selected_product_id }}">
-                      <button type="submit" class="ecd-mini-btn">
-                        <i class="bi bi-check2-circle"></i> Cumprido
-                      </button>
-                    </form>
-                    <form method="post"
-                          action="{% url 'needs:external_demand_cancel' demand.id %}"
-                          hx-post="{% url 'needs:external_demand_cancel' demand.id %}"
-                          hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
-                          onsubmit="return confirm('Cancelar este pedido?');">
-                      {% csrf_token %}
-                      <input type="hidden" name="q" value="{{ q }}">
-                      <input type="hidden" name="status" value="{{ selected_status }}">
-                      <input type="hidden" name="product" value="{{ selected_product_id }}">
-                      <button type="submit" class="ecd-mini-btn ecd-mini-btn--danger">
-                        <i class="bi bi-x-lg"></i> Cancelar
-                      </button>
-                    </form>
-                  </div>
-                {% else %}
-                  <span class="ecd-muted">—</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="7">
-                <div class="ecd-empty">
-                  <i class="bi bi-clipboard2"></i>
-                  <strong>Ainda não existem pedidos registados</strong>
-                  <span>Registe o primeiro pedido de um cliente para começar a planear por produto e data de entrega.</span>
-                  <a href="{% url 'needs:external_demands' %}?show_form=1"
-                     hx-get="{% url 'needs:external_demands' %}?show_form=1"
-                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                     class="ecd-btn ecd-btn--primary">
-                    <i class="bi bi-plus-lg"></i> Registar primeiro pedido
-                  </a>
-                </div>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    {% if active_demand_rows %}
+      {% include "needs/partials/external_demand_table.html" with rows=active_demand_rows is_history=False %}
+    {% else %}
+      <div class="ecd-empty">
+        <i class="bi bi-clipboard2"></i>
+        <strong>Sem pedidos em aberto</strong>
+        <span>Registe um pedido de cliente para planear stock e datas de entrega.</span>
+        <a href="{% url 'needs:external_demands' %}?show_form=1"
+           hx-get="{% url 'needs:external_demands' %}?show_form=1"
+           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+           class="ecd-btn ecd-btn--primary">
+          <i class="bi bi-plus-lg"></i> Registar pedido
+        </a>
+      </div>
+    {% endif %}
+  </section>
+
+  <section id="historico-pedidos-clientes" class="ecd-card">
+    <div class="ecd-card__head">
+      <div>
+        <span class="ecd-eyebrow">Histórico</span>
+        <h2>Histórico de pedidos enviados/cancelados</h2>
+        <p>Entregas concluídas ao cliente e pedidos cancelados, preservados para consulta.</p>
+      </div>
     </div>
+    {% if past_demand_rows %}
+      {% include "needs/partials/external_demand_table.html" with rows=past_demand_rows is_history=True %}
+    {% else %}
+      <p class="ecd-muted">Ainda não existem pedidos concluídos ou cancelados.</p>
+    {% endif %}
   </section>
 
 
@@ -673,6 +597,10 @@
 .ecd-urgency--warning  { background:#fef3c7;color:#92400e; }
 .ecd-urgency--ok       { background:#dcfce7;color:#15803d; }
 .ecd-urgency--inactive { color:#94a3b8; }
+.ecd-coverage { display:inline-flex;align-items:center;gap:.3rem;border-radius:999px;padding:.25rem .6rem;font-size:.72rem;font-weight:800;white-space:nowrap; }
+.ecd-coverage--covered { background:#dcfce7;color:#15803d; }
+.ecd-coverage--tight { background:#fef3c7;color:#92400e; }
+.ecd-coverage--deficit { background:#fee2e2;color:#b91c1c; }
 .ecd-row--overdue  td { background:#fff5f5!important;border-color:#fecaca!important; }
 .ecd-row--critical td { background:#fff8f4!important;border-color:#fed7aa!important; }
 .ecd-row--warning  td { background:#fffbeb!important;border-color:#fde68a!important; }

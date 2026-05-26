@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from django.test import RequestFactory, SimpleTestCase
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django.urls import reverse
 from django.utils import timezone
@@ -19,6 +20,7 @@ from apps.needs.services import (
     calculate_need_coverage,
     create_need,
     DuplicateActiveNeedError,
+    evaluate_external_demand_conflict_with_listings,
     get_critical_stock_product_ids,
     get_need_response_summaries_for_responder,
     get_active_need_response_for_responder,
@@ -36,7 +38,7 @@ from apps.needs.services import (
     update_need_response,
     withdraw_need_from_marketplace,
 )
-from apps.needs.views import build_needs_index_context
+from apps.needs.views import build_external_demands_context, build_needs_index_context
 from apps.orders.models import OrderItemStatus, OrderStatus
 
 
@@ -201,6 +203,7 @@ class ExternalDemandPlanningTests(SimpleTestCase):
             patch("apps.needs.services.Stock.objects", FakeServiceManager([stock] if stock else [])),
             patch("apps.needs.services.ProductionForecast.objects", FakeServiceManager(forecasts)),
             patch("apps.needs.services._stock_active_listings_quantity", return_value=Decimal("0.000")),
+            patch("apps.needs.services._forecast_active_listings_quantity", return_value=Decimal("0.000")),
             patch("apps.needs.services._get_customer_demand_need_for_product", return_value=None),
         ):
             return calculate_external_demand_plan(producer=producer, product=product)
@@ -356,9 +359,9 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         self.assertEqual(filter_kwargs["product"].id, "product-1")
         self.assertEqual(filter_kwargs["source_system"], NeedSourceSystem.CUSTOMER_DEMAND)
 
-    def test_mark_external_demand_fulfilled_recalculates_customer_demand_state(self):
+    def _fulfillable_demand(self, *, status=ExternalCustomerDemandStatus.OPEN):
         producer = SimpleNamespace(id="producer-1")
-        product = SimpleNamespace(id="product-1", name="Batata")
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
         demand = SimpleNamespace(id="demand-1")
         locked = SimpleNamespace(
             id="demand-1",
@@ -367,7 +370,7 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
             product=product,
             requested_quantity=Decimal("20"),
             requested_delivery_date=date(2026, 6, 1),
-            status=ExternalCustomerDemandStatus.OPEN,
+            status=status,
             source_system="MANUAL",
             client_name="Cliente",
             generated_need_id=None,
@@ -376,12 +379,111 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
             updated_at=None,
             save=MagicMock(),
         )
+        return producer, product, demand, locked
+
+    def test_mark_external_demand_fulfilled_reduces_stock_creates_movement_and_recalculates(self):
+        producer, product, demand, locked = self._fulfillable_demand()
+        stock = SimpleNamespace(
+            id="stock-1",
+            current_quantity=Decimal("50.000"),
+            reserved_quantity=Decimal("10.000"),
+            updated_by=None,
+            last_updated_at=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        movement = SimpleNamespace(id="movement-1", notes="Saída externa")
         manager = MagicMock()
         manager.select_for_update.return_value.select_related.return_value.get.return_value = locked
+        stock_manager = MagicMock()
+        stock_manager.select_for_update.return_value.filter.return_value.first.return_value = stock
+        movement_manager = MagicMock()
+        movement_manager.filter.return_value.first.return_value = None
+        movement_manager.create.return_value = movement
         fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
 
         with (
             patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.services.Stock.objects", stock_manager),
+            patch("apps.needs.services.StockMovement.objects", movement_manager),
+            patch("apps.needs.services.log_audit_event"),
+            patch("apps.needs.services.sync_external_customer_demand_state_for_product") as sync,
+            patch("apps.inventory.services.get_listings_blocking_stock_decrease", return_value={"deficit": Decimal("0.000")}),
+        ):
+            result, changed = fulfill(demand=demand, producer=producer, updated_by=None)
+
+        self.assertTrue(changed)
+        self.assertIs(result, locked)
+        self.assertEqual(stock.current_quantity, Decimal("30.000"))
+        movement_manager.create.assert_called_once()
+        create_values = movement_manager.create.call_args.kwargs
+        self.assertEqual(create_values["movement_type"], "ORDER_OUT")
+        self.assertEqual(create_values["reference_type"], "EXTERNAL_DEMAND")
+        self.assertEqual(create_values["reference_id"], "demand-1")
+        self.assertEqual(locked.status, ExternalCustomerDemandStatus.FULFILLED)
+        self.assertIsNotNone(locked.fulfilled_at)
+        sync.assert_called_once_with(producer=producer, product=product, acting_user=None)
+
+    def test_mark_external_demand_fulfilled_fails_without_available_stock(self):
+        producer, _, demand, locked = self._fulfillable_demand()
+        stock = SimpleNamespace(
+            current_quantity=Decimal("20.000"),
+            reserved_quantity=Decimal("5.000"),
+        )
+        manager = MagicMock()
+        manager.select_for_update.return_value.select_related.return_value.get.return_value = locked
+        stock_manager = MagicMock()
+        stock_manager.select_for_update.return_value.filter.return_value.first.return_value = stock
+        movement_manager = MagicMock()
+        movement_manager.filter.return_value.first.return_value = None
+        fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
+
+        with (
+            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.services.Stock.objects", stock_manager),
+            patch("apps.needs.services.StockMovement.objects", movement_manager),
+            patch("apps.needs.services.sync_external_customer_demand_state_for_product") as sync,
+        ):
+            with self.assertRaisesMessage(ValidationError, "Não existe stock atual suficiente"):
+                fulfill(demand=demand, producer=producer, updated_by=None)
+
+        self.assertEqual(locked.status, ExternalCustomerDemandStatus.OPEN)
+        locked.save.assert_not_called()
+        movement_manager.create.assert_not_called()
+        sync.assert_not_called()
+
+    def test_mark_external_demand_fulfilled_is_noop_when_already_fulfilled(self):
+        producer, _, demand, locked = self._fulfillable_demand(status=ExternalCustomerDemandStatus.FULFILLED)
+        manager = MagicMock()
+        manager.select_for_update.return_value.select_related.return_value.get.return_value = locked
+        movement_manager = MagicMock()
+        fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
+
+        with (
+            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.services.StockMovement.objects", movement_manager),
+        ):
+            result, changed = fulfill(demand=demand, producer=producer, updated_by=None)
+
+        self.assertIs(result, locked)
+        self.assertFalse(changed)
+        movement_manager.filter.assert_not_called()
+        movement_manager.create.assert_not_called()
+        locked.save.assert_not_called()
+
+    def test_mark_external_demand_fulfilled_does_not_duplicate_existing_external_movement(self):
+        producer, product, demand, locked = self._fulfillable_demand()
+        manager = MagicMock()
+        manager.select_for_update.return_value.select_related.return_value.get.return_value = locked
+        movement_manager = MagicMock()
+        movement_manager.filter.return_value.first.return_value = SimpleNamespace(id="existing-movement")
+        stock_manager = MagicMock()
+        fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
+
+        with (
+            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.services.Stock.objects", stock_manager),
+            patch("apps.needs.services.StockMovement.objects", movement_manager),
             patch("apps.needs.services.log_audit_event"),
             patch("apps.needs.services.sync_external_customer_demand_state_for_product") as sync,
         ):
@@ -389,9 +491,55 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
 
         self.assertTrue(changed)
         self.assertIs(result, locked)
+        stock_manager.select_for_update.assert_not_called()
+        movement_manager.create.assert_not_called()
         self.assertEqual(locked.status, ExternalCustomerDemandStatus.FULFILLED)
-        self.assertIsNotNone(locked.fulfilled_at)
         sync.assert_called_once_with(producer=producer, product=product, acting_user=None)
+
+    def test_external_demands_context_separates_near_deadline_from_coverage_and_history(self):
+        producer = SimpleNamespace(id="producer-1")
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        active = SimpleNamespace(
+            id="demand-active",
+            product_id="product-1",
+            product=product,
+            requested_delivery_date=timezone.now().date() + timedelta(days=3),
+            status=ExternalCustomerDemandStatus.OPEN,
+        )
+        fulfilled = SimpleNamespace(
+            id="demand-fulfilled",
+            product_id="product-1",
+            product=product,
+            requested_delivery_date=timezone.now().date() - timedelta(days=2),
+            status=ExternalCustomerDemandStatus.FULFILLED,
+        )
+        plan = {
+            "product": product,
+            "rows": [
+                {
+                    "delivery_date": active.requested_delivery_date,
+                    "deficit_until_date": Decimal("0.000"),
+                    "remaining_capacity_until_date": Decimal("0.000"),
+                }
+            ],
+        }
+
+        with (
+            patch("apps.needs.views.list_external_customer_demands", return_value=[active, fulfilled]),
+            patch("apps.needs.views.get_need_candidate_products", return_value=[product]),
+            patch("apps.needs.views.build_external_demand_plans", return_value=[plan]),
+            patch("apps.needs.views.get_external_customer_demand_summary", return_value={}),
+        ):
+            context = build_external_demands_context(
+                producer,
+                create_form=MagicMock(),
+            )
+
+        self.assertEqual(context["active_demand_rows"], [active])
+        self.assertEqual(context["past_demand_rows"], [fulfilled])
+        self.assertEqual(active.urgency, "soon")
+        self.assertEqual(active.coverage_key, "no_margin")
+        self.assertEqual(active.stock_diff, Decimal("0.000"))
 
     def test_recalculation_withdraws_a_published_automatic_need_when_deficit_changes(self):
         producer = SimpleNamespace(id="producer-1")
@@ -1689,3 +1837,67 @@ class NeedsServiceTests(SimpleTestCase):
             category_id="",
         )
         sent_responses.assert_called_once()
+
+
+class ExternalDemandConflictTests(SimpleTestCase):
+    def _commitment(self, max_deficit, temporal_sellable=Decimal("0.000"), first_deficit_date=None):
+        return {
+            "max_deficit": max_deficit,
+            "temporal_sellable_quantity": temporal_sellable,
+            "first_deficit_date": first_deficit_date,
+            "has_external_demands": True,
+        }
+
+    @patch("apps.marketplace.models.MarketplaceListing")
+    @patch("apps.inventory.services.calculate_inventory_commitment_state")
+    def test_returns_none_when_no_deficit(self, commit_mock, listing_mock):
+        commit_mock.return_value = self._commitment(
+            max_deficit=Decimal("0.000"),
+            temporal_sellable=Decimal("50.000"),
+        )
+        listing_mock.objects.filter.return_value.aggregate.return_value = {
+            "total": Decimal("0.000"),
+            "count": 0,
+        }
+        result = evaluate_external_demand_conflict_with_listings(
+            producer=SimpleNamespace(id="p1"),
+            product=SimpleNamespace(id="prod1", unit="kg"),
+        )
+        self.assertIsNone(result)
+
+    @patch("apps.marketplace.models.MarketplaceListing")
+    @patch("apps.inventory.services.calculate_inventory_commitment_state")
+    def test_returns_conflict_when_listings_exceed_capacity(self, commit_mock, listing_mock):
+        commit_mock.return_value = self._commitment(
+            max_deficit=Decimal("30.000"),
+            temporal_sellable=Decimal("-10.000"),
+            first_deficit_date=date(2026, 7, 1),
+        )
+        listing_mock.objects.filter.return_value.aggregate.return_value = {
+            "total": Decimal("50.000"),
+            "count": 2,
+        }
+        result = evaluate_external_demand_conflict_with_listings(
+            producer=SimpleNamespace(id="p1"),
+            product=SimpleNamespace(id="prod1", unit="kg"),
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["max_deficit"], Decimal("30.000"))
+        self.assertEqual(result["published_quantity"], Decimal("50.000"))
+        self.assertEqual(result["affected_listings_count"], 2)
+
+    @patch("apps.marketplace.models.MarketplaceListing")
+    @patch("apps.inventory.services.calculate_inventory_commitment_state")
+    def test_returns_none_when_no_published_listings(self, commit_mock, listing_mock):
+        commit_mock.return_value = self._commitment(
+            max_deficit=Decimal("30.000"),
+        )
+        listing_mock.objects.filter.return_value.aggregate.return_value = {
+            "total": Decimal("0.000"),
+            "count": 0,
+        }
+        result = evaluate_external_demand_conflict_with_listings(
+            producer=SimpleNamespace(id="p1"),
+            product=SimpleNamespace(id="prod1", unit="kg"),
+        )
+        self.assertIsNone(result)

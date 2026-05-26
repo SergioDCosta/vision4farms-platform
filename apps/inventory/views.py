@@ -4,6 +4,7 @@ from datetime import datetime, time
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -658,19 +659,36 @@ def atualizar_stock(request, product_id):
         messages.warning(request, "Este produto está desativado. Reative-o para atualizar o stock.")
         return redirect("inventory:stock_detalhe", product_id=product_id)
 
+    listing_conflict = None
+
     if request.method == "POST":
         form = UpdateStockForm(request.POST)
         if form.is_valid():
             try:
                 new_quantity = Decimal(str(form.cleaned_data["new_quantity"]))
-                services.update_stock(
-                    stock=stock,
-                    new_quantity=new_quantity,
-                    safety_stock=Decimal(str(stock.safety_stock or 0)),
-                    movement_type=form.cleaned_data["movement_type"],
-                    user=request.current_user,
-                    notes=form.cleaned_data.get("notes", ""),
-                )
+                confirm_reconciliation = request.POST.get("confirm_reconciliation") == "1"
+                reconciliation_mode = request.POST.get("reconciliation_mode") or ""
+                listing_ids_to_cancel = request.POST.getlist("listing_ids_to_cancel")
+
+                with transaction.atomic():
+                    if confirm_reconciliation and reconciliation_mode in {"proportional", "cancel_selected"}:
+                        services.reduce_listings_to_fit_stock(
+                            stock=stock,
+                            new_quantity=new_quantity,
+                            mode=reconciliation_mode,
+                            listing_ids_to_cancel=listing_ids_to_cancel,
+                            acting_user=request.current_user,
+                        )
+                        stock.refresh_from_db()
+                    services.update_stock(
+                        stock=stock,
+                        new_quantity=new_quantity,
+                        safety_stock=Decimal(str(stock.safety_stock or 0)),
+                        movement_type=form.cleaned_data["movement_type"],
+                        user=request.current_user,
+                        notes=form.cleaned_data.get("notes", ""),
+                        allow_listing_reconciliation=confirm_reconciliation,
+                    )
                 messages.success(request, "Stock atualizado com sucesso.")
                 _sync_external_customer_demands_after_inventory_change(
                     producer,
@@ -679,6 +697,14 @@ def atualizar_stock(request, product_id):
                 )
                 _sync_alerts_after_inventory_change(producer, request.current_user)
                 return redirect("inventory:stock_detalhe", product_id=product_id)
+
+            except services.ListingsBlockStockReductionError as exc:
+                listing_conflict = {
+                    **exc.blocking,
+                    "new_quantity": new_quantity,
+                    "movement_type": form.cleaned_data["movement_type"],
+                    "notes": form.cleaned_data.get("notes", ""),
+                }
 
             except ValidationError as exc:
                 form.add_error(None, str(exc))
@@ -693,6 +719,7 @@ def atualizar_stock(request, product_id):
     context = {
         "form": form,
         "stock": stock,
+        "listing_conflict": listing_conflict,
         "page_title": f"Atualizar Stock — {stock.product.name}",
     }
     return render(request, "inventory/atualizar_stock.html", context)

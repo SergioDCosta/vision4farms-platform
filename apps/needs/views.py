@@ -32,6 +32,7 @@ from apps.needs.services import (
     DuplicateActiveNeedError,
     create_external_customer_demand,
     create_need,
+    evaluate_external_demand_conflict_with_listings,
     build_need_response_for_listing,
     get_need_edit_help_text,
     get_need_minimum_edit_quantity,
@@ -74,6 +75,29 @@ def sync_alerts_after_need_change(producer, acting_user):
 
 def _is_htmx(request):
     return request.headers.get("HX-Request") == "true"
+
+
+def _warn_listing_conflict_for_external_demand(request, producer, product):
+    conflict = evaluate_external_demand_conflict_with_listings(
+        producer=producer,
+        product=product,
+    )
+    if not conflict:
+        return None
+    deficit = conflict.get("max_deficit") or Decimal("0.000")
+    deficit_date = conflict.get("first_deficit_date")
+    published = conflict.get("published_quantity") or Decimal("0.000")
+    count = conflict.get("affected_listings_count") or 0
+    date_phrase = f" antes de {deficit_date:%d/%m/%Y}" if deficit_date else ""
+    message = (
+        f"Atenção: tem {published:.3f} {product.unit} publicados em "
+        f"{count} anúncio{'s' if count != 1 else ''} ativo{'s' if count != 1 else ''} "
+        f"que podem comprometer este pedido (défice de "
+        f"{deficit:.3f} {product.unit}{date_phrase}). "
+        "Reveja os seus anúncios em \"Meus anúncios\" no Marketplace."
+    )
+    messages.warning(request, message)
+    return message
 
 
 def build_selected_need_row(need):
@@ -259,19 +283,6 @@ def build_external_demands_context(
         ExternalCustomerDemandStatus.PARTIALLY_COVERED,
         ExternalCustomerDemandStatus.COVERED,
     }
-    for demand in demand_rows:
-        days = (demand.requested_delivery_date - today).days
-        demand.days_remaining = days
-        if demand.status not in active_statuses_set:
-            demand.urgency = "inactive"
-        elif days < 0:
-            demand.urgency = "overdue"
-        elif days <= 7:
-            demand.urgency = "critical"
-        elif days <= 14:
-            demand.urgency = "warning"
-        else:
-            demand.urgency = "ok"
     products = list(get_need_candidate_products(producer)) if producer else []
     selected_demand = None
     if edit_id:
@@ -293,6 +304,42 @@ def build_external_demands_context(
         producer=producer,
         product_id=product_id,
     )
+    plan_rows_by_product = {
+        str(plan["product"].id): {
+            row["delivery_date"]: row
+            for row in plan.get("rows", [])
+        }
+        for plan in demand_plans
+    }
+    for demand in demand_rows:
+        days = (demand.requested_delivery_date - today).days
+        demand.days_remaining = days
+        if demand.status not in active_statuses_set:
+            demand.urgency = "inactive"
+            demand.coverage_key = "inactive"
+        else:
+            if days < 0:
+                demand.urgency = "overdue"
+            elif days <= 7:
+                demand.urgency = "soon"
+            elif days <= 14:
+                demand.urgency = "warning"
+            else:
+                demand.urgency = "ok"
+            plan_row = plan_rows_by_product.get(str(demand.product_id), {}).get(
+                demand.requested_delivery_date
+            )
+            deficit = plan_row["deficit_until_date"] if plan_row else Decimal("0.000")
+            remaining = plan_row["remaining_capacity_until_date"] if plan_row else Decimal("0.000")
+            demand.stock_diff = -deficit if deficit > Decimal("0.000") else remaining
+            demand.stock_deficit = max(-demand.stock_diff, Decimal("0.000"))
+            demand.stock_surplus = max(demand.stock_diff, Decimal("0.000"))
+            if demand.stock_diff < Decimal("0.000"):
+                demand.coverage_key = "deficit"
+            elif demand.stock_diff == Decimal("0.000"):
+                demand.coverage_key = "no_margin"
+            else:
+                demand.coverage_key = "covered"
     summary = get_external_customer_demand_summary(
         producer=producer,
         demand_plans=demand_plans,
@@ -305,6 +352,12 @@ def build_external_demands_context(
         "selected_product_id": product_id,
         "show_form": show_form,
         "demand_rows": demand_rows,
+        "active_demand_rows": [
+            demand for demand in demand_rows if demand.status in active_statuses_set
+        ],
+        "past_demand_rows": [
+            demand for demand in demand_rows if demand.status not in active_statuses_set
+        ],
         "products": products,
         "status_choices": ExternalCustomerDemandStatus.choices,
         "active_statuses": {
@@ -503,6 +556,7 @@ def build_needs_index_context(
 
     # Preview de pedidos externos para mostrar no topo da página
     active_demands_preview = []
+    past_demands_preview = []
     has_more_demands = False
     preview_demand_kpis = {}
     if producer:
@@ -539,7 +593,7 @@ def build_needs_index_context(
             if days < 0:
                 demand.urgency = "overdue"
             elif days <= 7:
-                demand.urgency = "critical"
+                demand.urgency = "soon"
             elif days <= 14:
                 demand.urgency = "warning"
             else:
@@ -547,6 +601,12 @@ def build_needs_index_context(
             demand.days_remaining = days
             demand.stock_deficit = max(-demand.stock_diff, Decimal("0"))
             demand.stock_surplus = max(demand.stock_diff, Decimal("0"))
+            if demand.stock_diff < Decimal("0"):
+                demand.coverage_key = "deficit"
+            elif demand.stock_diff == Decimal("0"):
+                demand.coverage_key = "no_margin"
+            else:
+                demand.coverage_key = "covered"
 
         preview_demand_kpis = {
             "total_count": len(active_demands_preview),
@@ -554,6 +614,26 @@ def build_needs_index_context(
             "covered_count": sum(1 for d in active_demands_preview if d.stock_diff >= Decimal("0")),
             "overdue_count": sum(1 for d in active_demands_preview if getattr(d, "urgency", "") == "overdue"),
         }
+        past_demands_preview = [
+            demand for demand in list(
+                list_external_customer_demands(
+                    producer=producer,
+                    q=q,
+                    category_id=category_id,
+                )
+            )
+            if demand.status in {
+                ExternalCustomerDemandStatus.FULFILLED,
+                ExternalCustomerDemandStatus.CANCELLED,
+            }
+        ]
+        past_demands_preview.sort(
+            key=lambda demand: getattr(demand, "updated_at", None) or timezone.now(),
+            reverse=True,
+        )
+        past_demands_preview = past_demands_preview[:5]
+        for demand in past_demands_preview:
+            demand.result_at = demand.fulfilled_at or demand.cancelled_at or demand.updated_at
 
     return {
         "page_title": "Necessidades",
@@ -573,6 +653,7 @@ def build_needs_index_context(
         "all_active_received_proposals": all_active_received_proposals,
         "external_demands_open_count": external_demands_open_count,
         "active_demands_preview": active_demands_preview,
+        "past_demands_preview": past_demands_preview,
         "has_more_demands": has_more_demands,
         "preview_demand_kpis": preview_demand_kpis,
         "generated_needs_count": generated_needs_count,
@@ -692,6 +773,9 @@ def external_customer_demand_create_view(request):
                     "A procura associada foi retirada do marketplace porque os termos mudaram. "
                     "Pode republicá-la em Necessidades se quiser voltar a receber propostas.",
                 )
+            listing_conflict_message = _warn_listing_conflict_for_external_demand(
+                request, producer, new_product
+            )
             sync_alerts_after_need_change(producer, request.current_user)
             next_url = build_external_demands_url(q=q, status=status, product_id=product_id)
             if _is_htmx(request):
@@ -702,7 +786,9 @@ def external_customer_demand_create_view(request):
                     product_id=product_id,
                 )
                 response = render(request, "needs/external_demands.html", context)
-                if auto_unpublished:
+                if listing_conflict_message:
+                    with_htmx_toast(response, "warning", listing_conflict_message)
+                elif auto_unpublished:
                     with_htmx_toast(
                         response,
                         "warning",
@@ -786,6 +872,9 @@ def external_customer_demand_edit_view(request, demand_id):
                     "A procura associada foi retirada do marketplace porque os termos mudaram. "
                     "Pode republicá-la em Necessidades se quiser voltar a receber propostas.",
                 )
+            listing_conflict_message = _warn_listing_conflict_for_external_demand(
+                request, producer, new_product
+            )
             sync_alerts_after_need_change(producer, request.current_user)
             next_url = build_external_demands_url(q=q, status=status, product_id=product_id)
             if _is_htmx(request):
@@ -796,7 +885,9 @@ def external_customer_demand_edit_view(request, demand_id):
                     product_id=product_id,
                 )
                 response = render(request, "needs/external_demands.html", context)
-                if auto_unpublished:
+                if listing_conflict_message:
+                    with_htmx_toast(response, "warning", listing_conflict_message)
+                elif auto_unpublished:
                     with_htmx_toast(
                         response,
                         "warning",
@@ -891,7 +982,10 @@ def external_customer_demand_fulfill_view(request, demand_id):
         messages.error(request, str(exc))
     else:
         if changed:
-            messages.success(request, "Pedido marcado como cumprido. Os compromissos externos foram recalculados.")
+            messages.success(
+                request,
+                "Pedido marcado como cumprido. A saída foi registada no stock e os compromissos foram recalculados.",
+            )
             sync_alerts_after_need_change(producer, request.current_user)
         else:
             messages.info(request, "O pedido externo já estava marcado como cumprido.")

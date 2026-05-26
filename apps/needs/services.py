@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from apps.catalog.models import Product
 from apps.common.audit import log_audit_event
-from apps.inventory.models import ProductionForecast, Stock
+from apps.inventory.models import ProductionForecast, Stock, StockMovement, StockMovementType
 from apps.marketplace.models import ListingStatus, MarketplaceListing
 from apps.needs.models import (
     ExternalCustomerDemand,
@@ -272,43 +272,63 @@ def _forecast_available_date(forecast):
     return _as_local_date(getattr(forecast, "period_start", None))
 
 
-def _forecast_available_quantity(forecast):
+def _forecast_active_listings_quantity(forecast, *, exclude_listing_id=None):
+    if not forecast:
+        return Decimal("0.000")
+    from django.db.models import F
+    qs = MarketplaceListing.objects.filter(
+        forecast=forecast,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        need_id__isnull=True,
+    )
+    if exclude_listing_id:
+        qs = qs.exclude(id=exclude_listing_id)
+    result = qs.aggregate(total=Sum(F("quantity_available") + F("quantity_reserved")))
+    return _quantize_need_quantity(result["total"] or Decimal("0.000"))
+
+
+def _forecast_available_quantity(forecast, *, exclude_listing_id=None):
     forecast_quantity = _quantize_need_quantity(getattr(forecast, "forecast_quantity", 0))
     reserved_quantity = _quantize_need_quantity(getattr(forecast, "reserved_quantity", 0))
-    return _quantize_need_quantity(max(forecast_quantity - reserved_quantity, Decimal("0.000")))
+    marketplace_committed = _forecast_active_listings_quantity(
+        forecast,
+        exclude_listing_id=exclude_listing_id,
+    )
+    return _quantize_need_quantity(
+        max(forecast_quantity - reserved_quantity - marketplace_committed, Decimal("0.000"))
+    )
 
 
-def _stock_active_listings_quantity(stock):
+def _stock_active_listings_quantity(stock, *, exclude_listing_id=None):
     """Soma quantity_available + quantity_reserved dos listings ACTIVE/RESERVED deste stock.
     Exclui listings ligados a necessidades (esses já contabilizam outra procura)."""
     if not stock:
         return Decimal("0.000")
     from django.db.models import F
-    result = (
-        MarketplaceListing.objects
-        .filter(
-            stock=stock,
-            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
-            need_id__isnull=True,
-        )
-        .aggregate(total=Sum(F("quantity_available") + F("quantity_reserved")))
+    qs = MarketplaceListing.objects.filter(
+        stock=stock,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        need_id__isnull=True,
     )
+    if exclude_listing_id:
+        qs = qs.exclude(id=exclude_listing_id)
+    result = qs.aggregate(total=Sum(F("quantity_available") + F("quantity_reserved")))
     return _quantize_need_quantity(result["total"] or Decimal("0.000"))
 
 
-def _stock_available_quantity(stock):
+def _stock_available_quantity(stock, *, exclude_listing_id=None):
     if not stock:
         return Decimal("0.000")
     current_quantity = _quantize_need_quantity(getattr(stock, "current_quantity", 0))
     reserved_quantity = _quantize_need_quantity(getattr(stock, "reserved_quantity", 0))
     # Subtrai também as quantidades já anunciadas em listings ativos no marketplace —
     # esse stock está comprometido e não pode contar para cumprir pedidos de clientes.
-    marketplace_committed = _stock_active_listings_quantity(stock)
+    marketplace_committed = _stock_active_listings_quantity(stock, exclude_listing_id=exclude_listing_id)
     net = current_quantity - reserved_quantity - marketplace_committed
     return _quantize_need_quantity(max(net, Decimal("0.000")))
 
 
-def calculate_external_demand_plan(*, producer, product):
+def calculate_external_demand_plan(*, producer, product, exclude_listing_id=None):
     active_demands = list(
         ExternalCustomerDemand.objects
         .select_related("product")
@@ -320,7 +340,7 @@ def calculate_external_demand_plan(*, producer, product):
         .order_by("requested_delivery_date", "created_at")
     )
     stock = Stock.objects.filter(producer=producer, product=product).first()
-    available_stock_now = _stock_available_quantity(stock)
+    available_stock_now = _stock_available_quantity(stock, exclude_listing_id=exclude_listing_id)
 
     forecasts = []
     for forecast in (
@@ -329,7 +349,10 @@ def calculate_external_demand_plan(*, producer, product):
         .only("id", "forecast_quantity", "reserved_quantity", "period_start", "period_end")
     ):
         available_date = _forecast_available_date(forecast)
-        available_quantity = _forecast_available_quantity(forecast)
+        available_quantity = _forecast_available_quantity(
+            forecast,
+            exclude_listing_id=exclude_listing_id,
+        )
         if available_date and available_quantity > Decimal("0.000"):
             forecasts.append({
                 "available_date": available_date,
@@ -700,6 +723,53 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
 
 
 @transaction.atomic
+def evaluate_external_demand_conflict_with_listings(*, producer, product):
+    """
+    Avalia se um pedido externo recém-criado/atualizado deixa anúncios
+    ativos do mesmo produto sem cobertura temporal.
+
+    Devolve None quando não há conflito; caso contrário um dict com:
+      - max_deficit, first_deficit_date, temporal_sellable_quantity
+      - published_quantity (Σ quantity_available + quantity_reserved dos
+        listings ACTIVE/RESERVED para este produto e produtor)
+      - affected_listings_count
+    """
+    from apps.inventory.services import calculate_inventory_commitment_state
+    from apps.marketplace.models import MarketplaceListing, ListingStatus
+    from django.db.models import F, Sum
+
+    commitment = calculate_inventory_commitment_state(producer, product)
+    max_deficit = commitment.get("max_deficit") or Decimal("0.000")
+    temporal_sellable = commitment.get("temporal_sellable_quantity") or Decimal("0.000")
+
+    if max_deficit <= Decimal("0.000") and temporal_sellable >= Decimal("0.000"):
+        return None
+
+    listings_qs = MarketplaceListing.objects.filter(
+        producer=producer,
+        product=product,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        need_id__isnull=True,
+    )
+    aggregated = listings_qs.aggregate(
+        total=Sum(F("quantity_available") + F("quantity_reserved")),
+        count=Count("id"),
+    )
+    published_quantity = aggregated.get("total") or Decimal("0.000")
+    affected_count = aggregated.get("count") or 0
+
+    if published_quantity <= Decimal("0.000") or affected_count == 0:
+        return None
+
+    return {
+        "max_deficit": max_deficit,
+        "first_deficit_date": commitment.get("first_deficit_date"),
+        "temporal_sellable_quantity": temporal_sellable,
+        "published_quantity": published_quantity,
+        "affected_listings_count": affected_count,
+    }
+
+
 def sync_external_customer_demand_state_for_product(*, producer, product, acting_user=None):
     stock = sync_safety_stock_from_external_demands(
         producer=producer,
@@ -1005,6 +1075,108 @@ def mark_external_customer_demand_fulfilled(*, demand, producer, updated_by=None
         raise ValidationError("Este pedido externo já não pode ser marcado como cumprido.")
 
     previous_values = _external_demand_audit_values(locked_demand)
+    existing_movement = (
+        StockMovement.objects
+        .filter(
+            movement_type=StockMovementType.ORDER_OUT,
+            reference_type="EXTERNAL_DEMAND",
+            reference_id=locked_demand.id,
+        )
+        .first()
+    )
+    movement = existing_movement
+    old_stock_quantity = None
+    new_stock_quantity = None
+
+    if existing_movement is None:
+        stock = (
+            Stock.objects
+            .select_for_update()
+            .filter(producer=producer, product=locked_demand.product)
+            .first()
+        )
+        available_quantity = _quantize_need_quantity(
+            (
+                Decimal(str(getattr(stock, "current_quantity", 0) or 0))
+                - Decimal(str(getattr(stock, "reserved_quantity", 0) or 0))
+            )
+            if stock
+            else Decimal("0.000")
+        )
+        requested_quantity = _quantize_need_quantity(locked_demand.requested_quantity)
+        if available_quantity < requested_quantity:
+            raise ValidationError(
+                "Não existe stock atual suficiente para concluir este pedido. "
+                "Assuma produção prevista em stock ou atualize o stock antes de marcar como cumprido."
+            )
+
+        old_stock_quantity = _quantize_need_quantity(stock.current_quantity)
+        stock.current_quantity = _quantize_need_quantity(old_stock_quantity - requested_quantity)
+        new_stock_quantity = stock.current_quantity
+        stock.updated_by = updated_by
+        stock.last_updated_at = timezone.now()
+        update_fields = ["current_quantity", "updated_by", "last_updated_at"]
+        if hasattr(stock, "updated_at"):
+            stock.updated_at = timezone.now()
+            update_fields.append("updated_at")
+        stock.save(update_fields=update_fields)
+        log_audit_event(
+            actor=updated_by,
+            action="STOCK_UPDATED",
+            entity_type="stocks",
+            entity_id=stock.id,
+            notes="Saída de stock por entrega de pedido externo a cliente.",
+            old_values={"current_quantity": _audit_quantity(old_stock_quantity)},
+            new_values={
+                "stock_id": str(stock.id),
+                "product_id": str(locked_demand.product_id),
+                "current_quantity": _audit_quantity(new_stock_quantity),
+                "demand_id": str(locked_demand.id),
+            },
+        )
+
+        movement = StockMovement.objects.create(
+            stock=stock,
+            movement_type=StockMovementType.ORDER_OUT,
+            quantity_delta=-requested_quantity,
+            reference_type="EXTERNAL_DEMAND",
+            reference_id=locked_demand.id,
+            notes=(
+                f"Saída por entrega do pedido externo de {locked_demand.client_name}: "
+                f"{requested_quantity} {locked_demand.product.unit} de {locked_demand.product.name}."
+            ),
+            performed_by=updated_by,
+        )
+        log_audit_event(
+            actor=updated_by,
+            action="STOCK_MOVEMENT_CREATED",
+            entity_type="stock_movements",
+            entity_id=movement.id,
+            notes=movement.notes,
+            new_values={
+                "movement_id": str(movement.id),
+                "demand_id": str(locked_demand.id),
+                "stock_id": str(stock.id),
+                "product_id": str(locked_demand.product_id),
+                "quantity_delta": _audit_quantity(-requested_quantity),
+                "movement_type": StockMovementType.ORDER_OUT,
+            },
+        )
+
+        from apps.inventory.services import (
+            get_listings_blocking_stock_decrease,
+            reduce_listings_to_fit_stock,
+        )
+
+        blocking = get_listings_blocking_stock_decrease(stock, stock.current_quantity)
+        if blocking["deficit"] > Decimal("0.000"):
+            reduce_listings_to_fit_stock(
+                stock=stock,
+                new_quantity=stock.current_quantity,
+                mode="proportional",
+                acting_user=updated_by,
+            )
+
     now = timezone.now()
     locked_demand.status = ExternalCustomerDemandStatus.FULFILLED
     locked_demand.fulfilled_at = now
@@ -1018,7 +1190,16 @@ def mark_external_customer_demand_fulfilled(*, demand, producer, updated_by=None
         entity_id=locked_demand.id,
         notes="Pedido externo marcado manualmente como cumprido.",
         old_values=previous_values,
-        new_values=_external_demand_audit_values(locked_demand),
+        new_values=_external_demand_audit_values(locked_demand) | {
+            "movement_id": str(movement.id) if movement else None,
+            "old_stock_quantity": (
+                _audit_quantity(old_stock_quantity) if old_stock_quantity is not None else None
+            ),
+            "new_stock_quantity": (
+                _audit_quantity(new_stock_quantity) if new_stock_quantity is not None else None
+            ),
+            "fulfilled_at": str(locked_demand.fulfilled_at),
+        },
     )
     sync_external_customer_demand_state_for_product(
         producer=producer,

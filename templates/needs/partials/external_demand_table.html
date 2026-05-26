@@ -1,0 +1,129 @@
+<div class="ecd-table-wrap">
+  <table class="ecd-table">
+    <thead>
+      {% if is_history %}
+        <tr>
+          <th>Cliente</th>
+          <th>Produto</th>
+          <th>Quantidade</th>
+          <th>Entrega prevista</th>
+          <th>Resultado</th>
+          <th>Data efetiva</th>
+        </tr>
+      {% else %}
+        <tr>
+          <th>Prazo</th>
+          <th>Cliente</th>
+          <th>Produto</th>
+          <th>Quantidade</th>
+          <th>Data de entrega</th>
+          <th>Cobertura</th>
+          <th>Estado</th>
+          <th>Ações</th>
+        </tr>
+      {% endif %}
+    </thead>
+    <tbody>
+      {% for demand in rows %}
+        {% if is_history %}
+          <tr>
+            <td>
+              <strong>{{ demand.client_name }}</strong>
+              {% if demand.client_reference %}<small>Ref. {{ demand.client_reference }}</small>{% endif %}
+            </td>
+            <td>{{ demand.product.name }}</td>
+            <td><strong>{{ demand.requested_quantity|quantity }} {{ demand.product.unit }}</strong></td>
+            <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
+            <td>
+              <span class="ecd-status ecd-status--{{ demand.status|lower }}">{{ demand.get_status_display }}</span>
+            </td>
+            <td>
+              {% if demand.status == "FULFILLED" and demand.fulfilled_at %}
+                {{ demand.fulfilled_at|date:"d/m/Y H:i" }}
+              {% elif demand.status == "CANCELLED" and demand.cancelled_at %}
+                {{ demand.cancelled_at|date:"d/m/Y H:i" }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr class="{% if demand.urgency == 'overdue' %}ecd-row--overdue{% elif demand.urgency == 'soon' or demand.urgency == 'warning' %}ecd-row--warning{% endif %}">
+            <td>
+              {% if demand.urgency == "overdue" %}
+                <span class="ecd-urgency ecd-urgency--overdue"><i class="bi bi-exclamation-circle-fill"></i> Atrasado</span>
+              {% elif demand.urgency == "soon" %}
+                <span class="ecd-urgency ecd-urgency--warning"><i class="bi bi-clock"></i> Entrega em breve</span>
+              {% elif demand.urgency == "warning" %}
+                <span class="ecd-urgency ecd-urgency--warning"><i class="bi bi-calendar-event"></i> Prazo próximo</span>
+              {% else %}
+                <span class="ecd-urgency ecd-urgency--ok"><i class="bi bi-check-circle"></i> No prazo</span>
+              {% endif %}
+            </td>
+            <td>
+              <strong>{{ demand.client_name }}</strong>
+              {% if demand.client_contact %}<small>{{ demand.client_contact }}</small>{% endif %}
+              {% if demand.client_reference %}<small>Ref. {{ demand.client_reference }}</small>{% endif %}
+            </td>
+            <td>{{ demand.product.name }}</td>
+            <td><strong>{{ demand.requested_quantity|quantity }} {{ demand.product.unit }}</strong></td>
+            <td>
+              {{ demand.requested_delivery_date|date:"d/m/Y" }}
+              {% if demand.urgency == "overdue" %}
+                <small class="ecd-days ecd-days--overdue">{{ demand.days_remaining|add:"0" }}d</small>
+              {% elif demand.urgency == "soon" or demand.urgency == "warning" %}
+                <small class="ecd-days">em {{ demand.days_remaining }}d</small>
+              {% endif %}
+            </td>
+            <td>
+              {% if demand.coverage_key == "deficit" %}
+                <span class="ecd-coverage ecd-coverage--deficit"><i class="bi bi-dash-circle-fill"></i> Em falta</span>
+              {% elif demand.coverage_key == "no_margin" %}
+                <span class="ecd-coverage ecd-coverage--tight"><i class="bi bi-check-circle"></i> Coberto sem margem</span>
+              {% else %}
+                <span class="ecd-coverage ecd-coverage--covered"><i class="bi bi-check-circle-fill"></i> Coberto</span>
+              {% endif %}
+            </td>
+            <td><span class="ecd-status ecd-status--{{ demand.status|lower }}">{{ demand.get_status_display }}</span></td>
+            <td>
+              <div class="ecd-actions">
+                <a href="{% url 'needs:external_demands' %}?edit={{ demand.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
+                   hx-get="{% url 'needs:external_demands' %}?edit={{ demand.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
+                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                   class="ecd-mini-btn">
+                  <i class="bi bi-pencil"></i> Editar
+                </a>
+                <form method="post"
+                      action="{% url 'needs:external_demand_fulfill' demand.id %}"
+                      hx-post="{% url 'needs:external_demand_fulfill' demand.id %}"
+                      hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
+                      onsubmit="return confirm('Confirmar a entrega deste pedido ao cliente? A quantidade será retirada do stock atual.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="q" value="{{ q }}">
+                  <input type="hidden" name="status" value="{{ selected_status }}">
+                  <input type="hidden" name="product" value="{{ selected_product_id }}">
+                  <button type="submit" class="ecd-mini-btn">
+                    <i class="bi bi-check2-circle"></i> Cumprido
+                  </button>
+                </form>
+                <form method="post"
+                      action="{% url 'needs:external_demand_cancel' demand.id %}"
+                      hx-post="{% url 'needs:external_demand_cancel' demand.id %}"
+                      hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
+                      onsubmit="return confirm('Cancelar este pedido?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="q" value="{{ q }}">
+                  <input type="hidden" name="status" value="{{ selected_status }}">
+                  <input type="hidden" name="product" value="{{ selected_product_id }}">
+                  <button type="submit" class="ecd-mini-btn ecd-mini-btn--danger">
+                    <i class="bi bi-x-lg"></i> Cancelar
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

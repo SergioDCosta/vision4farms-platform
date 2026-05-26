@@ -138,17 +138,19 @@
             <td>
               {{ demand.requested_delivery_date|date:"d/m/Y" }}
               {% if demand.urgency == "overdue" %}
-                <span class="nd-urgency nd-urgency--overdue nd-urgency--inline"><i class="bi bi-exclamation-circle-fill"></i></span>
-              {% elif demand.urgency == "critical" %}
-                <span class="nd-urgency nd-urgency--critical nd-urgency--inline" title="{{ demand.days_remaining }}d"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                <span class="nd-urgency nd-urgency--overdue nd-urgency--inline"><i class="bi bi-clock-history"></i> Atrasado</span>
+              {% elif demand.urgency == "soon" %}
+                <span class="nd-urgency nd-urgency--warning nd-urgency--inline"><i class="bi bi-clock"></i> Entrega em breve</span>
               {% endif %}
             </td>
             <td>{{ demand.capacity_until_date|floatformat:"-3" }} {{ demand.product.unit }}</td>
             <td>
               {% if demand.stock_diff < 0 %}
                 <span class="nd-diff nd-diff--deficit"><i class="bi bi-dash-circle-fill"></i> Em falta: {{ demand.stock_deficit|floatformat:"-3" }} {{ demand.product.unit }}</span>
+              {% elif demand.stock_diff == 0 %}
+                <span class="nd-diff nd-diff--tight"><i class="bi bi-check-circle"></i> Coberto sem margem</span>
               {% else %}
-                <span class="nd-diff nd-diff--ok"><i class="bi bi-check-circle-fill"></i> Após pedidos: {{ demand.stock_surplus|floatformat:"-3" }} {{ demand.product.unit }}</span>
+                <span class="nd-diff nd-diff--ok"><i class="bi bi-check-circle-fill"></i> Coberto: {{ demand.stock_surplus|floatformat:"-3" }} {{ demand.product.unit }} livres</span>
               {% endif %}
             </td>
             <td>
@@ -171,7 +173,7 @@
                     action="{% url 'needs:external_demand_fulfill' demand.id %}"
                     hx-post="{% url 'needs:external_demand_fulfill' demand.id %}"
                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
-                    hx-confirm="Confirmar que este pedido do cliente já foi cumprido?">
+                    hx-confirm="Confirmar a entrega deste pedido ao cliente? A quantidade será retirada do stock atual.">
                 {% csrf_token %}
                 <input type="hidden" name="q" value="{{ q }}">
                 <input type="hidden" name="category" value="{{ selected_category_id }}">
@@ -220,6 +222,55 @@
     {% endif %}
     <div class="nd-demands-preview__footer">
       <p class="nd-preview-note">As necessidades são atualizadas automaticamente sempre que os stocks forem alterados ou novos pedidos forem registados.</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if past_demands_preview %}
+  <section class="nd-section nd-section--demands-history">
+    <div class="nd-section-head">
+      <div>
+        <h2><i class="bi bi-clock-history"></i> Histórico de pedidos dos clientes</h2>
+        <p>Últimas entregas concluídas e pedidos cancelados.</p>
+      </div>
+      <a href="{% url 'needs:external_demands' %}#historico-pedidos-clientes"
+         hx-get="{% url 'needs:external_demands' %}#historico-pedidos-clientes"
+         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+         class="nd-btn nd-btn--ghost nd-btn--sm">
+        Ver histórico completo <i class="bi bi-arrow-right"></i>
+      </a>
+    </div>
+    <div class="nd-demands-table-wrap">
+      <table class="nd-demands-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Produto</th>
+            <th>Quantidade</th>
+            <th>Entrega prevista</th>
+            <th>Resultado</th>
+            <th>Data efetiva</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for demand in past_demands_preview %}
+            <tr>
+              <td><span class="nd-demands-table__client">{{ demand.client_name }}</span></td>
+              <td>{{ demand.product.name }}</td>
+              <td>{{ demand.requested_quantity|floatformat:"-3" }} {{ demand.product.unit }}</td>
+              <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
+              <td>
+                {% if demand.status == "FULFILLED" %}
+                  <span class="nd-badge nd-badge--ok">Cumprido</span>
+                {% else %}
+                  <span class="nd-badge nd-badge--muted">Cancelado</span>
+                {% endif %}
+              </td>
+              <td>{{ demand.result_at|date:"d/m/Y H:i" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </section>
   {% endif %}
@@ -945,8 +996,8 @@
 /* Row urgency backgrounds */
 .nd-demands-table__row--overdue td  { background: #fff5f5; }
 .nd-demands-table__row--overdue:hover td { background: #fee2e2; }
-.nd-demands-table__row--critical td { background: #fffaf5; }
-.nd-demands-table__row--critical:hover td { background: #fff7ed; }
+.nd-demands-table__row--soon td { background: #fffef0; }
+.nd-demands-table__row--soon:hover td { background: #fefce8; }
 .nd-demands-table__row--warning td  { background: #fffef0; }
 .nd-demands-table__row--warning:hover td { background: #fefce8; }
 
@@ -972,6 +1023,7 @@
   font-weight: 700; font-size: .82rem; white-space: nowrap;
 }
 .nd-diff--deficit { color: #b91c1c; }
+.nd-diff--tight   { color: #92400e; }
 .nd-diff--ok      { color: #15803d; }
 
 /* Actions cell */

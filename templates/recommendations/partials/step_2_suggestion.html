@@ -1,10 +1,19 @@
 <div class="rec-card">
   <div class="rec-card__head">
     <h2>Passo 2 — Sugestão de compra</h2>
-    <p>O sistema dividiu a necessidade de reposição pela melhor combinação de ofertas disponíveis.</p>
+    <p>O sistema selecionou ofertas disponíveis a tempo para cobrir a quantidade necessária.</p>
   </div>
 
   <div class="rec-card__body">
+    {% if is_customer_demand_purchase %}
+      <div class="rec-info rec-info--warning">
+        <strong>Compra para cumprir pedidos dos seus clientes.</strong>
+        Esta recomendação está ligada à procura de {{ recommendation.product.name }}
+        {% if recommendation.deadline_date %}com data crítica em {{ recommendation.deadline_date|date:"d/m/Y" }}{% endif %}.
+        Ao confirmar, a encomenda contará para a cobertura dessa procura e não será tratada apenas como reposição normal de stock.
+      </div>
+    {% endif %}
+
     <div class="rec-summary-grid">
       <div class="rec-stat">
         <p class="rec-stat__label">Produto</p>
@@ -38,13 +47,33 @@
       </div>
     {% else %}
       <div class="rec-info rec-info--neutral">
-        Não existem anúncios ativos para este produto neste momento. Pode criar uma necessidade para receber propostas.
+        {% if is_customer_demand_purchase %}
+          Não existem ofertas disponíveis a tempo para este produto. Pode publicar a procura calculada para receber propostas.
+        {% else %}
+          Não existem anúncios ativos para este produto neste momento. Pode criar uma necessidade para receber propostas.
+        {% endif %}
       </div>
     {% endif %}
 
     {% if recommendation.need_id %}
       <div class="rec-info rec-info--neutral">
-        Já existe uma necessidade associada a esta recomendação para o défice que ficou por cobrir.
+        {% if is_customer_demand_purchase %}
+          A procura foi calculada a partir de pedidos externos dos seus clientes.
+          {% if recommendation.need.is_marketplace_published %}
+            Está publicada no marketplace para receber propostas.
+          {% else %}
+            Continua como sugestão interna até optar por a publicar.
+          {% endif %}
+        {% else %}
+          Já existe uma necessidade associada a esta recomendação para o défice que ficou por cobrir.
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if additional_active_needs %}
+      <div class="rec-info rec-info--neutral">
+        Existe também uma procura adicional criada manualmente para este produto.
+        Essa procura é gerida separadamente e não altera o cálculo dos pedidos dos seus clientes.
       </div>
     {% endif %}
 
@@ -119,7 +148,7 @@
           {% csrf_token %}
           <button type="submit" class="rec-btn-ghost">
             <i class="bi bi-megaphone"></i>
-            {% if recommendation.need_id %}Atualizar necessidade{% else %}Criar necessidade{% endif %}
+            {{ need_action_label }}
           </button>
         </form>
       {% endif %}
@@ -132,7 +161,8 @@
         hx-swap="innerHTML"
         {% if not can_accept %}disabled style="opacity:.55;cursor:not-allowed;"{% endif %}
       >
-        <i class="bi bi-check2-circle"></i> Aceitar recomendação
+        <i class="bi bi-check2-circle"></i>
+        {% if is_customer_demand_purchase %}Comprar para cumprir pedidos{% else %}Aceitar recomendação{% endif %}
       </button>
     </div>
   </div>

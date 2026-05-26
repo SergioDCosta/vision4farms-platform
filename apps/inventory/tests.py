@@ -11,10 +11,13 @@ from apps.catalog.services import CatalogValidationError
 from apps.inventory.forms import CreateCustomProductForm, UpdateStockForm
 from apps.inventory import views
 from apps.inventory.services import (
+    ListingsBlockStockReductionError,
     calculate_inventory_commitment_state,
     create_custom_product_for_producer,
+    get_listings_blocking_stock_decrease,
     get_stock_state,
     producer_has_active_inventory_products,
+    reduce_listings_to_fit_stock,
     _period_bounds,
     _period_chart_segments,
 )
@@ -336,3 +339,151 @@ class InventoryViewContextTests(SimpleTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/inventario/stock/product-1/")
         messages_mock.success.assert_called_once()
+
+
+class ListingsBlockingStockDecreaseTests(SimpleTestCase):
+    def _make_listing(self, listing_id, available, reserved=Decimal("0")):
+        return SimpleNamespace(
+            id=listing_id,
+            quantity_available=available,
+            quantity_reserved=reserved,
+            created_at=None,
+        )
+
+    def _make_stock(self, current=Decimal("100"), reserved=Decimal("0")):
+        return SimpleNamespace(
+            id="stock-1",
+            current_quantity=current,
+            reserved_quantity=reserved,
+            product=SimpleNamespace(name="Batata", unit="kg"),
+        )
+
+    @patch("apps.inventory.services.MarketplaceListing")
+    def test_deficit_when_listings_exceed_new_quantity(self, listing_model):
+        stock = self._make_stock(current=Decimal("150"), reserved=Decimal("0"))
+        listings = [
+            self._make_listing("l1", Decimal("100")),
+            self._make_listing("l2", Decimal("20")),
+        ]
+        listing_model.objects.filter.return_value.select_related.return_value.order_by.return_value = listings
+
+        blocking = get_listings_blocking_stock_decrease(stock, Decimal("80"))
+
+        self.assertEqual(blocking["total_published"], Decimal("120.000"))
+        self.assertEqual(blocking["min_required"], Decimal("120.000"))
+        self.assertEqual(blocking["deficit"], Decimal("40.000"))
+        self.assertEqual(len(blocking["affected_listings"]), 2)
+
+    @patch("apps.inventory.services.MarketplaceListing")
+    def test_no_deficit_when_new_quantity_covers_published(self, listing_model):
+        stock = self._make_stock(current=Decimal("150"), reserved=Decimal("10"))
+        listings = [self._make_listing("l1", Decimal("80"))]
+        listing_model.objects.filter.return_value.select_related.return_value.order_by.return_value = listings
+
+        blocking = get_listings_blocking_stock_decrease(stock, Decimal("120"))
+
+        self.assertEqual(blocking["deficit"], Decimal("0.000"))
+        self.assertEqual(blocking["min_required"], Decimal("90.000"))
+
+    @patch("apps.inventory.services.MarketplaceListing")
+    def test_deficit_considers_reserved_quantity(self, listing_model):
+        stock = self._make_stock(current=Decimal("100"), reserved=Decimal("60"))
+        listings = [self._make_listing("l1", Decimal("30"))]
+        listing_model.objects.filter.return_value.select_related.return_value.order_by.return_value = listings
+
+        blocking = get_listings_blocking_stock_decrease(stock, Decimal("50"))
+
+        self.assertEqual(blocking["min_required"], Decimal("90.000"))
+        self.assertEqual(blocking["deficit"], Decimal("40.000"))
+
+
+class ReduceListingsToFitStockTests(SimpleTestCase):
+    def _make_listing(self, listing_id, available, reserved=Decimal("0")):
+        from apps.marketplace.models import ListingStatus
+
+        listing = MagicMock()
+        listing.id = listing_id
+        listing.quantity_available = available
+        listing.quantity_reserved = reserved
+        listing.status = ListingStatus.ACTIVE
+        return listing
+
+    def _make_stock(self, current=Decimal("100"), reserved=Decimal("0")):
+        return SimpleNamespace(
+            id="stock-1",
+            current_quantity=current,
+            reserved_quantity=reserved,
+            product=SimpleNamespace(name="Batata", unit="kg"),
+        )
+
+    @patch("apps.inventory.services.log_audit_event")
+    @patch("apps.marketplace.services._listing_audit_values", return_value={})
+    @patch("apps.marketplace.services.retire_listing")
+    @patch("apps.inventory.services.MarketplaceListing")
+    def test_proportional_distributes_remaining_capacity(
+        self, listing_model, retire_mock, audit_values_mock, audit_event_mock
+    ):
+        stock = self._make_stock(current=Decimal("100"), reserved=Decimal("0"))
+        l1 = self._make_listing("l1", Decimal("80"))
+        l2 = self._make_listing("l2", Decimal("20"))
+        listing_model.objects.select_for_update.return_value.filter.return_value.select_related.return_value.order_by.return_value = [l1, l2]
+
+        result = reduce_listings_to_fit_stock(
+            stock,
+            Decimal("50"),
+            mode="proportional",
+            acting_user=None,
+        )
+
+        self.assertEqual(result["cancelled"], [])
+        self.assertEqual(len(result["reduced"]), 2)
+        self.assertEqual(l1.quantity_available, Decimal("40.000"))
+        self.assertEqual(l2.quantity_available, Decimal("10.000"))
+        retire_mock.assert_not_called()
+
+    @patch("apps.inventory.services.log_audit_event")
+    @patch("apps.marketplace.services._listing_audit_values", return_value={})
+    @patch("apps.marketplace.services.retire_listing")
+    @patch("apps.inventory.services.MarketplaceListing")
+    def test_cancel_selected_retires_chosen_listings(
+        self, listing_model, retire_mock, audit_values_mock, audit_event_mock
+    ):
+        stock = self._make_stock(current=Decimal("100"), reserved=Decimal("0"))
+        l1 = self._make_listing("l1", Decimal("80"))
+        l2 = self._make_listing("l2", Decimal("20"))
+        listing_model.objects.select_for_update.return_value.filter.return_value.select_related.return_value.order_by.return_value = [l1, l2]
+
+        result = reduce_listings_to_fit_stock(
+            stock,
+            Decimal("50"),
+            mode="cancel_selected",
+            listing_ids_to_cancel=["l1"],
+            acting_user=None,
+        )
+
+        self.assertEqual(result["cancelled"], ["l1"])
+        retire_mock.assert_called_once()
+        # l2 (the remaining listing) should NOT have been reduced — 20 < 50 free capacity
+        self.assertEqual(l2.quantity_available, Decimal("20"))
+
+    def test_unknown_mode_raises_value_error(self):
+        stock = self._make_stock()
+        with patch("apps.inventory.services.MarketplaceListing"):
+            with self.assertRaises(ValueError):
+                reduce_listings_to_fit_stock(
+                    stock, Decimal("50"), mode="bogus", acting_user=None
+                )
+
+
+class UpdateStockListingValidationTests(SimpleTestCase):
+    def test_raises_when_listings_block_reduction(self):
+        blocking = {
+            "total_published": Decimal("100.000"),
+            "reserved_quantity": Decimal("0.000"),
+            "min_required": Decimal("100.000"),
+            "deficit": Decimal("10.000"),
+            "affected_listings": [],
+        }
+        err = ListingsBlockStockReductionError(blocking)
+        self.assertIs(err.blocking, blocking)
+        self.assertIn("anúncios ativos", str(err))

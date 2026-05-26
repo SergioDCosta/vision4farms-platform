@@ -742,7 +742,21 @@ def _update_stock_reserved(stock, quantity, acting_user):
 
     quantity = quantize_qty(quantity)
     previous_reserved = quantize_qty(Decimal(str(stock.reserved_quantity or 0)))
-    stock.reserved_quantity = quantize_qty(Decimal(str(stock.reserved_quantity or 0)) + quantity)
+    new_reserved = quantize_qty(previous_reserved + quantity)
+    current_quantity = quantize_qty(Decimal(str(stock.current_quantity or 0)))
+
+    if new_reserved > current_quantity:
+        product = getattr(stock, "product", None)
+        product_name = getattr(product, "name", "produto") or "produto"
+        product_unit = getattr(product, "unit", "") or ""
+        free_capacity = quantize_qty(max(current_quantity - previous_reserved, Decimal("0.000")))
+        raise OrderServiceError(
+            f"O stock de {product_name} já não chega para reservar esta encomenda "
+            f"(disponível: {free_capacity} {product_unit}). "
+            "Atualize a página e tente novamente."
+        )
+
+    stock.reserved_quantity = new_reserved
 
     update_fields = ["reserved_quantity"]
 
@@ -868,6 +882,35 @@ def _consume_stock_reservation(stock, quantity, acting_user, *, order=None):
                 "order_id": str(order.id),
             },
         )
+
+    _reconcile_listings_against_stock_capacity(stock, acting_user=acting_user)
+
+
+def _reconcile_listings_against_stock_capacity(stock, *, acting_user=None):
+    """
+    Após o stock baixar (entrega concluída), verifica se outros anúncios
+    ativos do mesmo stock excedem agora a capacidade. Se sim, reduz
+    proporcionalmente para não deixar o sistema em estado inválido.
+    """
+    if not stock:
+        return
+
+    from apps.inventory.services import (
+        get_listings_blocking_stock_decrease,
+        reduce_listings_to_fit_stock,
+    )
+
+    new_quantity = Decimal(str(stock.current_quantity or 0))
+    blocking = get_listings_blocking_stock_decrease(stock, new_quantity)
+    if blocking["deficit"] <= Decimal("0.000"):
+        return
+
+    reduce_listings_to_fit_stock(
+        stock=stock,
+        new_quantity=new_quantity,
+        mode="proportional",
+        acting_user=acting_user,
+    )
 
 
 def _consume_forecast_reservation(forecast, quantity, acting_user=None):

@@ -201,7 +201,7 @@ def _commitment_warning_margin(total_external_demand):
     return (total_external_demand * STOCK_WARNING_MARGIN_RATIO).quantize(Decimal("0.001"))
 
 
-def calculate_inventory_commitment_state(producer, product, stock=None):
+def calculate_inventory_commitment_state(producer, product, stock=None, *, exclude_listing_id=None):
     """
     Fonte central para avaliar stock face a pedidos externos.
 
@@ -220,12 +220,17 @@ def calculate_inventory_commitment_state(producer, product, stock=None):
 
     from apps.needs.services import calculate_external_demand_plan
 
-    plan = calculate_external_demand_plan(producer=producer, product=product)
+    plan = calculate_external_demand_plan(
+        producer=producer,
+        product=product,
+        exclude_listing_id=exclude_listing_id,
+    )
     rows = list(plan.get("rows") or [])
     has_external_demands = bool(rows) or _quantize_stock_quantity(plan.get("total_external_demand")) > ZERO
 
     if has_external_demands:
         total_external_demand = _quantize_stock_quantity(plan.get("total_external_demand"))
+        available_stock_now = _quantize_stock_quantity(plan.get("available_stock_now"))
         useful_forecast_total = _quantize_stock_quantity(plan.get("total_forecast_relevant"))
         max_deficit = _quantize_stock_quantity(plan.get("max_deficit"))
         first_deficit_date = plan.get("first_deficit_date")
@@ -1485,9 +1490,14 @@ def get_stock_activity_feed(stock, limit=20):
             impact_label = "Sem impacto direto"
             impact_class = "is-neutral"
 
+        type_label = (
+            "Entrega a cliente externo"
+            if mv.reference_type == "EXTERNAL_DEMAND"
+            else mv.get_movement_type_display()
+        )
         feed.append({
             "created_at": mv.created_at,
-            "type_label": mv.get_movement_type_display(),
+            "type_label": type_label,
             "impact_label": impact_label,
             "impact_class": impact_class,
             "notes": note_parts["notes"],
@@ -1582,6 +1592,184 @@ def get_stock_activity_feed(stock, limit=20):
     feed.sort(key=lambda item: item["created_at"], reverse=True)
     return feed[:limit]
 
+class ListingsBlockStockReductionError(ValidationError):
+    """Raised when a stock reduction would leave active listings without coverage."""
+
+    def __init__(self, blocking):
+        self.blocking = blocking
+        super().__init__(
+            "A nova quantidade não chega para cobrir os anúncios ativos deste produto."
+        )
+
+
+def get_listings_blocking_stock_decrease(stock, new_quantity):
+    """
+    Identifica anúncios ACTIVE/RESERVED associados a este stock que não cabem
+    no novo valor proposto.
+
+    Devolve dict com:
+      - total_published: Σ quantity_available dos listings ativos
+      - reserved_quantity: stock.reserved_quantity atual
+      - min_required: reserved_quantity + total_published (mínimo para satisfazer
+        todos os compromissos atuais)
+      - deficit: max(0, min_required - new_quantity)
+      - affected_listings: lista [{"listing", "quantity_available"}] ordenada
+        por quantity_available decrescente
+    """
+    new_quantity = _quantize_stock_quantity(new_quantity)
+    reserved_quantity = _quantize_stock_quantity(getattr(stock, "reserved_quantity", 0))
+
+    if not stock:
+        return {
+            "total_published": ZERO,
+            "reserved_quantity": reserved_quantity,
+            "min_required": reserved_quantity,
+            "deficit": ZERO,
+            "affected_listings": [],
+        }
+
+    listings = list(
+        MarketplaceListing.objects
+        .filter(
+            stock=stock,
+            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+            quantity_available__gt=0,
+        )
+        .select_related("product", "need", "need__producer")
+        .order_by("-quantity_available", "-created_at")
+    )
+
+    total_published = _quantize_stock_quantity(
+        sum((Decimal(str(l.quantity_available or 0)) for l in listings), Decimal("0"))
+    )
+    min_required = _quantize_stock_quantity(reserved_quantity + total_published)
+    deficit = _quantize_stock_quantity(max(min_required - new_quantity, ZERO))
+
+    return {
+        "total_published": total_published,
+        "reserved_quantity": reserved_quantity,
+        "min_required": min_required,
+        "deficit": deficit,
+        "affected_listings": [
+            {
+                "listing": listing,
+                "quantity_available": _quantize_stock_quantity(listing.quantity_available),
+            }
+            for listing in listings
+        ],
+    }
+
+
+@transaction.atomic
+def reduce_listings_to_fit_stock(
+    stock,
+    new_quantity,
+    *,
+    mode,
+    listing_ids_to_cancel=None,
+    acting_user=None,
+):
+    """
+    Ajusta os anúncios ativos deste stock para caberem em ``new_quantity``.
+
+    Modos:
+      - "proportional": reduz quantity_available de todos os anúncios ativos
+        proporcionalmente até a soma + reserved caber em new_quantity.
+      - "cancel_selected": cancela completamente os anúncios em
+        ``listing_ids_to_cancel`` (via ``retire_listing``). Não toca nos
+        restantes — chama o caller se ainda houver deficit.
+
+    Não mexe em ``quantity_reserved`` dos anúncios — encomendas pendentes
+    mantêm-se. Status do anúncio passa a ``CLOSED`` se ficar com 0 disponível
+    e sem reservas.
+    """
+    from apps.marketplace.services import retire_listing, _listing_audit_values
+
+    new_quantity = _quantize_stock_quantity(new_quantity)
+    reserved_quantity = _quantize_stock_quantity(getattr(stock, "reserved_quantity", 0))
+    listings = list(
+        MarketplaceListing.objects
+        .select_for_update()
+        .filter(
+            stock=stock,
+            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+            quantity_available__gt=0,
+        )
+        .select_related("product")
+        .order_by("-quantity_available", "-created_at")
+    )
+
+    if mode not in {"proportional", "cancel_selected"}:
+        raise ValueError(f"Modo de reconciliação desconhecido: {mode}")
+
+    cancelled_ids = []
+    if mode == "cancel_selected":
+        target_ids = {str(lid) for lid in (listing_ids_to_cancel or [])}
+        remaining = []
+        for listing in listings:
+            if str(listing.id) in target_ids:
+                retire_listing(listing=listing, acting_user=acting_user)
+                cancelled_ids.append(str(listing.id))
+            else:
+                remaining.append(listing)
+        listings = remaining
+
+    target_available_total = _quantize_stock_quantity(
+        max(new_quantity - reserved_quantity, ZERO)
+    )
+    current_available_total = _quantize_stock_quantity(
+        sum((Decimal(str(l.quantity_available or 0)) for l in listings), Decimal("0"))
+    )
+
+    reduced_log = []
+    if current_available_total <= ZERO or current_available_total <= target_available_total:
+        return {"cancelled": cancelled_ids, "reduced": reduced_log}
+
+    ratio = (
+        Decimal("0") if target_available_total <= ZERO
+        else target_available_total / current_available_total
+    )
+    running_total = Decimal("0.000")
+    for index, listing in enumerate(listings):
+        old_values = _listing_audit_values(listing)
+        old_qty = _quantize_stock_quantity(listing.quantity_available)
+        if target_available_total <= ZERO:
+            new_qty = Decimal("0.000")
+        elif index == len(listings) - 1:
+            new_qty = _quantize_stock_quantity(target_available_total - running_total)
+        else:
+            new_qty = _quantize_stock_quantity(old_qty * ratio)
+        new_qty = max(new_qty, Decimal("0.000"))
+        running_total = _quantize_stock_quantity(running_total + new_qty)
+
+        if new_qty == old_qty:
+            continue
+
+        listing.quantity_available = new_qty
+        listing.updated_at = timezone.now()
+        update_fields = ["quantity_available", "updated_at"]
+        if (
+            new_qty <= ZERO
+            and _quantize_stock_quantity(listing.quantity_reserved) <= ZERO
+            and listing.status == ListingStatus.ACTIVE
+        ):
+            listing.status = ListingStatus.CLOSED
+            update_fields.append("status")
+        listing.save(update_fields=update_fields)
+        log_audit_event(
+            actor=acting_user,
+            action="LISTING_AUTO_RECONCILED",
+            entity_type="marketplace_listings",
+            entity_id=listing.id,
+            notes="Anúncio reduzido para caber no novo stock disponível.",
+            old_values=old_values,
+            new_values=_listing_audit_values(listing),
+        )
+        reduced_log.append({"listing_id": str(listing.id), "from": str(old_qty), "to": str(new_qty)})
+
+    return {"cancelled": cancelled_ids, "reduced": reduced_log}
+
+
 @transaction.atomic
 def update_stock(
     stock,
@@ -1590,6 +1778,8 @@ def update_stock(
     movement_type,
     user,
     notes="",
+    *,
+    allow_listing_reconciliation=False,
 ):
     new_quantity = new_quantity or ZERO
     safety_stock = safety_stock or ZERO
@@ -1604,6 +1794,14 @@ def update_stock(
                 f"Atualmente tens {stock.reserved_quantity} reservada."
             )
         )
+
+    if (
+        not allow_listing_reconciliation
+        and new_quantity < Decimal(str(stock.current_quantity or 0))
+    ):
+        blocking = get_listings_blocking_stock_decrease(stock, new_quantity)
+        if blocking["deficit"] > ZERO:
+            raise ListingsBlockStockReductionError(blocking)
 
     quantity_delta = new_quantity - stock.current_quantity
 

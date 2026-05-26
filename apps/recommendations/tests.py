@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -7,6 +8,7 @@ from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase
 
 from apps.accounts.models import AccountStatus, UserRole
+from apps.needs.models import NeedSourceSystem, NeedStatus
 from apps.needs.services import DuplicateActiveNeedError
 from apps.recommendations.services import (
     RECOMMENDATION_DIRECTION_BALANCED,
@@ -14,6 +16,7 @@ from apps.recommendations.services import (
     RECOMMENDATION_DIRECTION_SELL,
     build_recommendation_inventory_rows,
     calculate_current_deficit,
+    generate_recommendation,
 )
 from apps.recommendations.views import _build_sell_recommendation_context
 
@@ -162,6 +165,114 @@ class RecommendationStockDirectionTests(SimpleTestCase):
         self.assertEqual(rows["sell_rows"][0]["sell_quantity"], Decimal("200.000"))
         self.assertEqual(rows["balanced_rows"][0]["product_id"], "balanced-product")
 
+    def test_confirmed_coverage_of_customer_demand_reduces_purchase_recommendation(self):
+        need = SimpleNamespace(
+            source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+            status=NeedStatus.OPEN,
+            needed_by_date=None,
+            is_marketplace_published=True,
+        )
+        stock = SimpleNamespace()
+        state = {
+            "total_external_demand": Decimal("100.000"),
+            "reserved_quantity": Decimal("0.000"),
+            "current_quantity": Decimal("0.000"),
+            "available_stock_now": Decimal("0.000"),
+            "max_deficit": Decimal("100.000"),
+            "temporal_sellable_quantity": Decimal("0.000"),
+            "useful_forecast_total": Decimal("0.000"),
+            "first_deficit_date": date(2026, 6, 1),
+            "state_key": "critical",
+            "plan": {"generated_need": need},
+        }
+
+        with (
+            patch("apps.recommendations.services.Stock") as stock_model,
+            patch("apps.recommendations.services.calculate_inventory_commitment_state", return_value=state),
+            patch("apps.recommendations.services.calculate_need_coverage", return_value={"planned_qty": Decimal("40.000")}),
+        ):
+            stock_model.objects.filter.return_value.first.return_value = stock
+            metrics = calculate_current_deficit(
+                SimpleNamespace(id="producer-1"),
+                SimpleNamespace(id="product-1"),
+            )
+
+        self.assertIs(metrics["customer_demand_need"], need)
+        self.assertEqual(metrics["physical_deficit_quantity"], Decimal("100.000"))
+        self.assertEqual(metrics["planned_need_quantity"], Decimal("40.000"))
+        self.assertEqual(metrics["buy_quantity"], Decimal("60.000"))
+        self.assertEqual(metrics["recommendation_direction"], RECOMMENDATION_DIRECTION_BUY)
+
+    def test_covered_customer_demand_does_not_generate_duplicate_purchase(self):
+        need = SimpleNamespace(
+            source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+            status=NeedStatus.COVERED,
+            needed_by_date=None,
+            is_marketplace_published=False,
+        )
+        state = {
+            "total_external_demand": Decimal("100.000"),
+            "reserved_quantity": Decimal("0.000"),
+            "current_quantity": Decimal("0.000"),
+            "available_stock_now": Decimal("0.000"),
+            "max_deficit": Decimal("100.000"),
+            "temporal_sellable_quantity": Decimal("0.000"),
+            "useful_forecast_total": Decimal("0.000"),
+            "first_deficit_date": date(2026, 6, 1),
+            "state_key": "critical",
+            "plan": {"generated_need": need},
+        }
+
+        with (
+            patch("apps.recommendations.services.Stock") as stock_model,
+            patch("apps.recommendations.services.calculate_inventory_commitment_state", return_value=state),
+            patch("apps.recommendations.services.calculate_need_coverage", return_value={"planned_qty": Decimal("100.000")}),
+        ):
+            stock_model.objects.filter.return_value.first.return_value = SimpleNamespace()
+            metrics = calculate_current_deficit(
+                SimpleNamespace(id="producer-1"),
+                SimpleNamespace(id="product-1"),
+            )
+
+        self.assertEqual(metrics["buy_quantity"], Decimal("0.000"))
+        self.assertEqual(metrics["recommendation_direction"], RECOMMENDATION_DIRECTION_BALANCED)
+
+
+class RecommendationDeadlineTests(SimpleTestCase):
+    def test_late_forecast_is_not_selected_and_purchase_keeps_automatic_need_link(self):
+        producer = SimpleNamespace(id="producer-1")
+        seller = SimpleNamespace(id="seller-1")
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        need = SimpleNamespace(id="need-1")
+        listing = SimpleNamespace(
+            forecast_id="forecast-1",
+            forecast=SimpleNamespace(period_start=date(2026, 6, 15), period_end=date(2026, 6, 30)),
+            quantity_available=Decimal("50.000"),
+            producer=seller,
+            product=product,
+            unit_price=Decimal("1.00"),
+        )
+        recommendation = SimpleNamespace(id="recommendation-1")
+        generate = getattr(generate_recommendation, "__wrapped__", generate_recommendation)
+
+        with (
+            patch("apps.recommendations.services._get_candidate_listings", return_value=[listing]),
+            patch("apps.recommendations.services.Recommendation.objects.create", return_value=recommendation) as create,
+            patch("apps.recommendations.services.RecommendationItem.objects.create") as create_item,
+        ):
+            result = generate(
+                producer=producer,
+                product=product,
+                requested_quantity=Decimal("25.000"),
+                deadline_date=date(2026, 6, 1),
+                need=need,
+            )
+
+        self.assertIs(result, recommendation)
+        self.assertIs(create.call_args.kwargs["need"], need)
+        self.assertEqual(create.call_args.kwargs["deficit_quantity"], Decimal("25.000"))
+        create_item.assert_not_called()
+
 
 class RecommendationNeedCreationViewTests(SimpleTestCase):
     def _request(self):
@@ -205,7 +316,7 @@ class RecommendationNeedCreationViewTests(SimpleTestCase):
     def test_existing_recommendation_need_uses_explicit_update(self):
         producer = SimpleNamespace(id="producer-1")
         product = SimpleNamespace(id="product-1", name="Alface", unit="kg")
-        need = SimpleNamespace(id=uuid4())
+        need = SimpleNamespace(id=uuid4(), source_system=NeedSourceSystem.VISION4FARMS)
         recommendation = SimpleNamespace(
             id=uuid4(),
             producer=producer,
@@ -234,6 +345,39 @@ class RecommendationNeedCreationViewTests(SimpleTestCase):
         update.assert_called_once()
         create.assert_not_called()
 
+    def test_customer_demand_need_is_published_instead_of_manually_updated(self):
+        producer = SimpleNamespace(id="producer-1")
+        product = SimpleNamespace(id="product-1", name="Alface", unit="kg")
+        need = SimpleNamespace(id=uuid4(), source_system=NeedSourceSystem.CUSTOMER_DEMAND)
+        recommendation = SimpleNamespace(
+            id=uuid4(),
+            producer=producer,
+            product=product,
+            need=need,
+            need_id=need.id,
+            deadline_date=None,
+            deficit_quantity=Decimal("20.000"),
+        )
+
+        with (
+            patch("apps.recommendations.views._get_current_producer", return_value=producer),
+            patch("apps.recommendations.views.get_object_or_404", return_value=recommendation),
+            patch("apps.recommendations.views._build_step_2_context", return_value={"wizard_step": 2}),
+            patch("apps.recommendations.views._render_wizard", return_value=HttpResponse("ok")),
+            patch("apps.recommendations.views.publish_need_to_marketplace", return_value=(need, True)) as publish,
+            patch("apps.recommendations.views.update_need") as update,
+            patch("apps.recommendations.views.create_need") as create,
+            patch("apps.recommendations.views._sync_alerts_after_need_change"),
+        ):
+            from apps.recommendations.views import recommendations_create_need_view
+
+            response = recommendations_create_need_view(self._request(), recommendation.id)
+
+        self.assertEqual(response.status_code, 200)
+        publish.assert_called_once()
+        update.assert_not_called()
+        create.assert_not_called()
+
 
 class RecommendationSaleActionTests(SimpleTestCase):
     def test_sell_step_links_to_active_listing_management_when_already_published(self):
@@ -246,7 +390,9 @@ class RecommendationSaleActionTests(SimpleTestCase):
         with (
             patch("apps.recommendations.views.list_marketplace_public_needs", return_value=[]),
             patch("apps.recommendations.views.get_my_listings", return_value=queryset),
+            patch("apps.recommendations.views.Stock") as stock_model,
         ):
+            stock_model.objects.filter.return_value.first.return_value = None
             context = _build_sell_recommendation_context(
                 producer=producer,
                 product=product,

@@ -5,6 +5,15 @@
   </div>
 
   <div class="rec-card__body">
+    {% if recommendation.need.source_system == "CUSTOMER_DEMAND" %}
+      <div class="rec-info rec-info--warning">
+        <strong>Encomenda destinada aos pedidos dos seus clientes.</strong>
+        Ao confirmar, esta compra será ligada à procura automática de {{ recommendation.product.name }}
+        {% if recommendation.deadline_date %}necessária até {{ recommendation.deadline_date|date:"d/m/Y" }}{% endif %},
+        permitindo acompanhar a respetiva cobertura.
+      </div>
+    {% endif %}
+
     <div class="rec-summary-grid">
       <div class="rec-stat">
         <p class="rec-stat__label">Produto</p>
@@ -80,7 +89,8 @@
           class="rec-btn-primary"
           {% if not can_accept %}disabled style="opacity:.55;cursor:not-allowed;"{% endif %}
         >
-          <i class="bi bi-bag-check"></i> Confirmar encomenda
+          <i class="bi bi-bag-check"></i>
+          {% if recommendation.need.source_system == "CUSTOMER_DEMAND" %}Confirmar compra para pedidos{% else %}Confirmar encomenda{% endif %}
         </button>
       </form>
     </div>

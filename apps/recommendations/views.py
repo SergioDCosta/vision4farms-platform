@@ -12,13 +12,20 @@ from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
 from apps.inventory.services import calculate_inventory_commitment_state
 from apps.marketplace.models import ListingStatus
-from apps.marketplace.services import get_my_listings
+from apps.marketplace.services import (
+    get_forecast_available_quantity,
+    get_marketplace_eligible_forecasts,
+    get_max_publishable_quantity,
+    get_my_listings,
+)
 from apps.needs.navigation import build_needs_index_url
-from apps.needs.models import NeedSourceSystem
+from apps.needs.models import Need, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     DuplicateActiveNeedError,
     create_need,
     list_marketplace_public_needs,
+    publish_need_to_marketplace,
+    sync_need_from_external_demands,
     update_need,
 )
 from apps.orders.services import (
@@ -151,6 +158,14 @@ def _empty_recommendation_metrics():
         "sell_quantity": ZERO_QTY,
         "suggested_quantity": ZERO_QTY,
         "recommendation_direction": RECOMMENDATION_DIRECTION_BALANCED,
+        "physical_deficit_quantity": ZERO_QTY,
+        "planned_need_quantity": ZERO_QTY,
+        "useful_forecast_total": ZERO_QTY,
+        "first_deficit_date": None,
+        "deadline_date": None,
+        "customer_demand_need": None,
+        "customer_demand_need_published": False,
+        "has_customer_demand_deficit": False,
     }
 
 
@@ -167,6 +182,14 @@ def _metrics_from_inventory_row(row):
         "sell_quantity": row["sell_quantity"],
         "suggested_quantity": row["suggested_quantity"],
         "recommendation_direction": row["recommendation_direction"],
+        "physical_deficit_quantity": row.get("physical_deficit_quantity", row["buy_quantity"]),
+        "planned_need_quantity": row.get("planned_need_quantity", ZERO_QTY),
+        "useful_forecast_total": row.get("useful_forecast_total", ZERO_QTY),
+        "first_deficit_date": row.get("first_deficit_date"),
+        "deadline_date": row.get("deadline_date"),
+        "customer_demand_need": row.get("customer_demand_need"),
+        "customer_demand_need_published": row.get("customer_demand_need_published", False),
+        "has_customer_demand_deficit": row.get("has_customer_demand_deficit", False),
     }
 
 
@@ -239,6 +262,23 @@ def _build_step_2_context(
 ):
     totals = get_recommendation_totals(recommendation)
     remaining_deficit = _remaining_deficit_from_recommendation(recommendation)
+    linked_need = getattr(recommendation, "need", None)
+    is_customer_demand_purchase = (
+        linked_need is not None
+        and getattr(linked_need, "source_system", None) == NeedSourceSystem.CUSTOMER_DEMAND
+    )
+    additional_needs = []
+    if getattr(recommendation, "producer_id", None) and getattr(recommendation, "product_id", None):
+        additional_needs = list(
+            Need.objects.filter(
+                producer_id=recommendation.producer_id,
+                product_id=recommendation.product_id,
+                status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED],
+            )
+            .exclude(id=getattr(recommendation, "need_id", None))
+            .exclude(source_system=NeedSourceSystem.CUSTOMER_DEMAND)
+            .order_by("-updated_at")[:3]
+        )
     return {
         "wizard_step": 2,
         "recommendation": recommendation,
@@ -249,6 +289,17 @@ def _build_step_2_context(
         "alternative_items": alternative_items or [],
         "can_accept": len(totals["items"]) > 0,
         "need_prompt": need_prompt,
+        "is_customer_demand_purchase": is_customer_demand_purchase,
+        "additional_active_needs": additional_needs,
+        "need_action_label": (
+            "Gerir procura publicada"
+            if is_customer_demand_purchase and getattr(linked_need, "is_marketplace_published", False)
+            else "Publicar procura"
+            if is_customer_demand_purchase
+            else "Atualizar necessidade"
+            if getattr(recommendation, "need_id", None)
+            else "Criar necessidade"
+        ),
     }
 
 
@@ -275,13 +326,9 @@ def _build_sell_recommendation_context(*, producer, product, requested_quantity,
         row["response_url"] = _need_response_url(row["need"].id, product.id, response_quantity)
         compatible_needs.append(row)
 
-    publish_query = urlencode({
-        "source": "stock",
-        "product": str(product.id),
-        "from": "recommendations",
-        "qty": str(requested_quantity),
-    })
-    active_listing = (
+    stock = Stock.objects.filter(producer=producer, product=product).first()
+    stock_publishable = get_max_publishable_quantity(stock) if stock else ZERO_QTY
+    stock_active_listing = (
         get_my_listings(producer=producer, origin="stock")
         .filter(
             product=product,
@@ -290,6 +337,42 @@ def _build_sell_recommendation_context(*, producer, product, requested_quantity,
         )
         .first()
     )
+    active_listing = stock_active_listing
+    publish_source = ""
+    publish_quantity = ZERO_QTY
+    publish_forecast = None
+    if not active_listing and stock_publishable > ZERO_QTY:
+        publish_source = "stock"
+        publish_quantity = min(Decimal(str(requested_quantity)), stock_publishable)
+    elif not active_listing:
+        forecast_active_listing = (
+            get_my_listings(producer=producer, origin="forecast")
+            .filter(
+                product=product,
+                status=ListingStatus.ACTIVE,
+                quantity_available__gt=ZERO_QTY,
+            )
+            .first()
+        )
+        if forecast_active_listing:
+            active_listing = forecast_active_listing
+        else:
+            for forecast in get_marketplace_eligible_forecasts(producer, product=product):
+                forecast_publishable = get_forecast_available_quantity(forecast)
+                if forecast_publishable > ZERO_QTY:
+                    publish_source = "forecast"
+                    publish_forecast = forecast
+                    publish_quantity = min(Decimal(str(requested_quantity)), forecast_publishable)
+                    break
+
+    publish_query = {
+        "source": publish_source,
+        "product": str(product.id),
+        "from": "recommendations",
+        "qty": str(publish_quantity),
+    }
+    if publish_forecast:
+        publish_query["forecast"] = str(publish_forecast.id)
     return {
         "wizard_step": 2,
         "recommendation_direction": RECOMMENDATION_DIRECTION_SELL,
@@ -297,7 +380,14 @@ def _build_sell_recommendation_context(*, producer, product, requested_quantity,
         "requested_quantity": requested_quantity,
         "recommendation_metrics": metrics,
         "compatible_need_rows": compatible_needs[:6],
-        "publish_url": f"{reverse('marketplace:publish')}?{publish_query}",
+        "publish_url": (
+            f"{reverse('marketplace:publish')}?{urlencode(publish_query)}"
+            if publish_source
+            else ""
+        ),
+        "publish_source": publish_source,
+        "publish_quantity": publish_quantity,
+        "publish_forecast": publish_forecast,
         "active_listing": active_listing,
         "manage_listing_url": (
             reverse("marketplace:owner_detail", args=[active_listing.id])
@@ -479,12 +569,58 @@ def recommendations_generate_view(request):
         )
         return _render_wizard(request, context)
 
+    if deficit_data.get("has_customer_demand_deficit") and not deficit_data.get("customer_demand_need"):
+        sync_need_from_external_demands(
+            producer=producer,
+            product=product,
+            acting_user=request.current_user,
+        )
+        deficit_data = calculate_current_deficit(producer, product)
+
+    linked_need = deficit_data.get("customer_demand_need")
+    if deficit_data.get("has_customer_demand_deficit") and not linked_need:
+        form.initial.update({
+            "product_id": str(product.id),
+            "requested_quantity": requested_quantity,
+        })
+        context = _build_step_1_context(
+            form=form,
+            errors={"requested_quantity": "Não foi possível associar esta compra à procura calculada dos pedidos de clientes. Atualize os pedidos e tente novamente."},
+            initial_deficit_quantity=deficit_data["deficit_quantity"],
+            initial_current_quantity=deficit_data["current_stock"],
+            metrics=deficit_data,
+            inventory_rows=inventory_rows,
+        )
+        return _render_wizard(request, context)
+
+    if linked_need and requested_quantity > deficit_data["buy_quantity"]:
+        form.initial.update({
+            "product_id": str(product.id),
+            "requested_quantity": deficit_data["buy_quantity"],
+        })
+        context = _build_step_1_context(
+            form=form,
+            errors={
+                "requested_quantity": (
+                    f"Para cumprir os pedidos de clientes, compre no máximo "
+                    f"{deficit_data['buy_quantity']} {product.unit}. "
+                    "Quantidades adicionais devem ser tratadas separadamente."
+                )
+            },
+            initial_deficit_quantity=deficit_data["deficit_quantity"],
+            initial_current_quantity=deficit_data["current_stock"],
+            metrics=deficit_data,
+            inventory_rows=inventory_rows,
+        )
+        return _render_wizard(request, context)
+
     try:
         recommendation = generate_recommendation(
             producer=producer,
             product=product,
             requested_quantity=requested_quantity,
-            deadline_date=None,
+            deadline_date=deficit_data.get("deadline_date"),
+            need=linked_need,
         )
     except RecommendationGenerationError as exc:
         form.initial.update({
@@ -513,7 +649,7 @@ def recommendations_back_to_need_view(request, recommendation_id):
         return redirect("dashboard:painel")
 
     recommendation = get_object_or_404(
-        Recommendation.objects.select_related("product", "producer"),
+        Recommendation.objects.select_related("product", "producer", "need"),
         id=recommendation_id,
         producer=producer,
     )
@@ -551,7 +687,7 @@ def recommendations_create_need_view(request, recommendation_id):
         return redirect("dashboard:painel")
 
     recommendation = get_object_or_404(
-        Recommendation.objects.select_related("product", "producer"),
+        Recommendation.objects.select_related("product", "producer", "need"),
         id=recommendation_id,
         producer=producer,
     )
@@ -569,7 +705,17 @@ def recommendations_create_need_view(request, recommendation_id):
 
     created = False
     try:
-        if recommendation.need_id:
+        if (
+            recommendation.need_id
+            and recommendation.need.source_system == NeedSourceSystem.CUSTOMER_DEMAND
+        ):
+            need = recommendation.need
+            need, created = publish_need_to_marketplace(
+                need=need,
+                producer=producer,
+                acting_user=request.current_user,
+            )
+        elif recommendation.need_id:
             need, _, _ = update_need(
                 need=recommendation.need,
                 producer=producer,
@@ -618,9 +764,23 @@ def recommendations_create_need_view(request, recommendation_id):
     updated_context = _build_step_2_context(
         recommendation,
         need_prompt={
-            "title": "Necessidade criada" if created else "Necessidade atualizada",
+            "title": (
+                "Procura publicada"
+                if recommendation.need_id
+                and recommendation.need.source_system == NeedSourceSystem.CUSTOMER_DEMAND
+                and created
+                else "Procura já publicada"
+                if recommendation.need_id
+                and recommendation.need.source_system == NeedSourceSystem.CUSTOMER_DEMAND
+                else "Necessidade criada"
+                if created
+                else "Necessidade atualizada"
+            ),
             "message": (
-                "A necessidade foi anunciada com o défice que ficou por cobrir. Quer abrir agora o detalhe desse pedido?"
+                "A procura calculada a partir dos pedidos dos clientes está publicada para receber propostas. Quer abri-la agora?"
+                if recommendation.need_id
+                and recommendation.need.source_system == NeedSourceSystem.CUSTOMER_DEMAND
+                else "A necessidade foi anunciada com o défice que ficou por cobrir. Quer abrir agora o detalhe desse pedido?"
                 if created
                 else "A necessidade associada foi atualizada com o défice mais recente. Quer abrir agora o detalhe desse pedido?"
             ),
@@ -634,7 +794,10 @@ def recommendations_create_need_view(request, recommendation_id):
     return with_htmx_toast(
         response,
         "success",
-        "Necessidade anunciada com sucesso."
+        "Procura publicada para receber propostas."
+        if recommendation.need_id
+        and recommendation.need.source_system == NeedSourceSystem.CUSTOMER_DEMAND
+        else "Necessidade anunciada com sucesso."
         if created
         else "Necessidade existente atualizada com o novo défice.",
     )
@@ -651,7 +814,7 @@ def recommendations_prepare_confirm_view(request, recommendation_id):
         return redirect("dashboard:painel")
 
     recommendation = get_object_or_404(
-        Recommendation.objects.select_related("product", "producer"),
+        Recommendation.objects.select_related("product", "producer", "need"),
         id=recommendation_id,
         producer=producer,
     )
@@ -681,7 +844,7 @@ def recommendations_accept_view(request, recommendation_id):
         return redirect("dashboard:painel")
 
     recommendation = get_object_or_404(
-        Recommendation.objects.select_related("product", "producer"),
+        Recommendation.objects.select_related("product", "producer", "need"),
         id=recommendation_id,
         producer=producer,
     )
@@ -747,7 +910,7 @@ def recommendations_market_options_view(request, recommendation_id):
         return HttpResponse("")
 
     recommendation = get_object_or_404(
-        Recommendation.objects.select_related("product", "producer"),
+        Recommendation.objects.select_related("product", "producer", "need"),
         id=recommendation_id,
         producer=producer,
     )
@@ -770,7 +933,7 @@ def recommendations_replace_item_view(request, recommendation_id):
         return HttpResponse("")
 
     recommendation = get_object_or_404(
-        Recommendation.objects.select_related("product", "producer"),
+        Recommendation.objects.select_related("product", "producer", "need"),
         id=recommendation_id,
         producer=producer,
     )

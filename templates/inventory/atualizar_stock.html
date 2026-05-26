@@ -5,6 +5,117 @@
 {% include "inventory/partials/inventory_styles.html" %}
 
 <div class="inv-page">
+  {% if listing_conflict %}
+    <div class="inv-conflict-overlay" role="dialog" aria-modal="true" aria-labelledby="invConflictTitle">
+      <div class="inv-conflict-modal">
+        <header class="inv-conflict-modal__head">
+          <div>
+            <span class="inv-conflict-modal__eyebrow">Atenção: anúncios em conflito</span>
+            <h2 id="invConflictTitle">A nova quantidade não cobre os anúncios ativos</h2>
+            <p>
+              Quer reduzir o stock de <strong>{{ stock.product.name }}</strong> para
+              <strong>{{ listing_conflict.new_quantity|quantity }} {{ stock.product.unit }}</strong>,
+              mas existem <strong>{{ listing_conflict.total_published|quantity }} {{ stock.product.unit }}</strong>
+              anunciados em {{ listing_conflict.affected_listings|length }} anúncio{{ listing_conflict.affected_listings|length|pluralize:"s" }} ativo{{ listing_conflict.affected_listings|length|pluralize:"s" }}
+              e <strong>{{ listing_conflict.reserved_quantity|quantity }} {{ stock.product.unit }}</strong> já comprometidos com encomendas.
+              Faltam <strong>{{ listing_conflict.deficit|quantity }} {{ stock.product.unit }}</strong> para cumprir os compromissos atuais.
+            </p>
+          </div>
+        </header>
+
+        <form method="post" class="inv-conflict-form">
+          {% csrf_token %}
+          <input type="hidden" name="new_quantity" value="{{ listing_conflict.new_quantity }}">
+          <input type="hidden" name="movement_type" value="{{ listing_conflict.movement_type }}">
+          <input type="hidden" name="notes" value="{{ listing_conflict.notes }}">
+          <input type="hidden" name="confirm_reconciliation" value="1">
+
+          <div class="inv-conflict-table-wrap">
+            <table class="inv-conflict-table">
+              <thead>
+                <tr>
+                  <th>Anúncio</th>
+                  <th class="num">Disponível</th>
+                  <th class="num">Cancelar?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in listing_conflict.affected_listings %}
+                  <tr>
+                    <td>
+                      <a href="{% url 'marketplace:owner_detail' listing_id=row.listing.id %}" target="_blank" rel="noopener">
+                        {{ row.listing.product.name }}
+                        {% if row.listing.need_id %}<span class="inv-conflict-tag">resposta a necessidade</span>{% endif %}
+                      </a>
+                      <div class="inv-conflict-meta">
+                        Publicado em {{ row.listing.published_at|date:"d M Y" }} ·
+                        Reservado: {{ row.listing.quantity_reserved|quantity }} {{ stock.product.unit }}
+                      </div>
+                    </td>
+                    <td class="num">{{ row.quantity_available|quantity }} {{ stock.product.unit }}</td>
+                    <td class="num">
+                      <label class="inv-conflict-checkbox">
+                        <input type="checkbox" name="listing_ids_to_cancel" value="{{ row.listing.id }}">
+                        <span></span>
+                      </label>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="inv-conflict-actions">
+            <button type="submit" name="reconciliation_mode" value="proportional" class="inv-btn inv-btn--primary">
+              <i class="bi bi-arrows-collapse"></i>
+              <span>Reduzir todos proporcionalmente</span>
+            </button>
+            <button type="submit" name="reconciliation_mode" value="cancel_selected" class="inv-btn inv-btn--secondary">
+              <i class="bi bi-x-octagon"></i>
+              <span>Cancelar os assinalados</span>
+            </button>
+            <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}" class="inv-btn inv-btn--ghost">
+              <i class="bi bi-arrow-left"></i>
+              <span>Voltar atrás</span>
+            </a>
+          </div>
+
+          <p class="inv-conflict-hint">
+            <strong>Reduzir proporcionalmente:</strong> os anúncios ativos ficam reduzidos para caberem no novo stock.
+            <strong>Cancelar:</strong> os anúncios marcados são retirados do marketplace; se sobrar défice, será reduzido proporcionalmente nos restantes.
+            Encomendas já aceites (reservadas) não são afetadas.
+          </p>
+        </form>
+      </div>
+    </div>
+
+    <style>
+      .inv-conflict-overlay{position:fixed;inset:0;z-index:9100;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:rgba(10,15,30,.55);backdrop-filter:blur(4px);}
+      .inv-conflict-modal{background:#fff;border-radius:1rem;border:1px solid #e2e8f0;box-shadow:0 32px 64px rgba(15,23,42,.18);width:min(680px,100%);max-height:90vh;overflow:auto;}
+      .inv-conflict-modal__head{padding:1.25rem 1.5rem;border-bottom:1px solid #f1f5f9;}
+      .inv-conflict-modal__eyebrow{display:inline-block;color:#b45309;background:#fffbeb;border:1px solid #fcd34d;border-radius:999px;padding:.2rem .55rem;font-size:.7rem;font-weight:850;letter-spacing:.02em;text-transform:uppercase;margin-bottom:.5rem;}
+      .inv-conflict-modal__head h2{margin:0;font-size:1.2rem;color:#0f172a;font-weight:850;}
+      .inv-conflict-modal__head p{margin:.5rem 0 0;color:#475569;font-size:.88rem;line-height:1.5;}
+      .inv-conflict-form{padding:0 1.5rem 1.25rem;}
+      .inv-conflict-table-wrap{border:1px solid #e2e8f0;border-radius:.75rem;overflow:hidden;margin:1rem 0;}
+      .inv-conflict-table{width:100%;border-collapse:collapse;font-size:.86rem;}
+      .inv-conflict-table thead{background:#f8fafc;}
+      .inv-conflict-table th{padding:.6rem .75rem;text-align:left;font-weight:800;color:#334155;font-size:.74rem;text-transform:uppercase;letter-spacing:.02em;}
+      .inv-conflict-table th.num,.inv-conflict-table td.num{text-align:right;}
+      .inv-conflict-table td{padding:.7rem .75rem;border-top:1px solid #f1f5f9;color:#0f172a;vertical-align:top;}
+      .inv-conflict-table a{color:#1d4ed8;text-decoration:none;font-weight:700;}
+      .inv-conflict-table a:hover{text-decoration:underline;}
+      .inv-conflict-meta{margin-top:.2rem;color:#64748b;font-size:.76rem;}
+      .inv-conflict-tag{display:inline-block;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:999px;padding:.1rem .5rem;font-size:.66rem;font-weight:800;margin-left:.35rem;text-transform:uppercase;letter-spacing:.02em;}
+      .inv-conflict-checkbox{display:inline-flex;align-items:center;cursor:pointer;}
+      .inv-conflict-checkbox input{position:absolute;opacity:0;}
+      .inv-conflict-checkbox span{width:1.15rem;height:1.15rem;border:2px solid #cbd5e1;border-radius:.3rem;display:inline-block;background:#fff;transition:.15s;}
+      .inv-conflict-checkbox input:checked + span{background:#dc2626;border-color:#dc2626;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3E%3Cpath d='M13.485 1.929a1 1 0 0 1 .142 1.408l-7 8.5a1 1 0 0 1-1.475.067l-3.5-3.5a1 1 0 1 1 1.414-1.414l2.726 2.726 6.285-7.629a1 1 0 0 1 1.408-.158z'/%3E%3C/svg%3E");background-position:center;background-size:.85rem;background-repeat:no-repeat;}
+      .inv-conflict-actions{display:flex;flex-wrap:wrap;gap:.55rem;margin-top:.5rem;}
+      .inv-conflict-hint{margin:.85rem 0 0;color:#64748b;font-size:.78rem;line-height:1.55;}
+    </style>
+  {% endif %}
+
   <div class="inv-detail-head">
     <div>
       <h1 class="inv-title">Atualizar Stock</h1>

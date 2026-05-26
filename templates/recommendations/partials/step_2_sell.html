@@ -25,7 +25,8 @@
     </div>
 
     <div class="rec-info rec-info--success">
-      Pode vender até <strong>{{ requested_quantity|quantity }} {{ product.unit }}</strong> e continuar com a quantidade necessária para pedidos externos.
+      Existe margem temporal para vender até <strong>{{ requested_quantity|quantity }} {{ product.unit }}</strong> sem comprometer os pedidos externos.
+      A ação abaixo só disponibiliza a quantidade segura da origem selecionada.
     </div>
 
     {% if active_listing %}
@@ -33,6 +34,17 @@
         <strong>Já existe anúncio ativo para {{ product.name }}.</strong>
         Tem {{ active_listing.quantity_available|quantity }} {{ product.unit }} disponíveis nesse anúncio.
         A quantidade sugerida acima representa a margem que continua disponível segundo os compromissos atuais.
+      </div>
+    {% elif publish_url %}
+      <div class="rec-info">
+        Pode publicar agora
+        <strong>{{ publish_quantity|quantity }} {{ product.unit }}</strong>
+        a partir de
+        <strong>{% if publish_source == "forecast" %}produção prevista{% else %}stock atual{% endif %}</strong>.
+      </div>
+    {% else %}
+      <div class="rec-info rec-info--warning">
+        Existe margem calculada, mas não há neste momento uma origem disponível para criar um novo anúncio.
       </div>
     {% endif %}
 
@@ -97,21 +109,25 @@
         <i class="bi bi-arrow-left"></i> Ajustar quantidade
       </a>
 
-      <a
-        href="{% if active_listing %}{{ manage_listing_url }}{% else %}{{ publish_url }}{% endif %}"
-        hx-get="{% if active_listing %}{{ manage_listing_url }}{% else %}{{ publish_url }}{% endif %}"
-        hx-target="#shellMain"
-        hx-select="#shellMain"
-        hx-swap="outerHTML"
-        hx-push-url="true"
-        class="rec-btn-primary"
-      >
-        {% if active_listing %}
-          <i class="bi bi-pencil-square"></i> Gerir anúncio ativo
-        {% else %}
-          <i class="bi bi-shop"></i> Publicar anúncio
-        {% endif %}
-      </a>
+      {% if active_listing or publish_url %}
+        <a
+          href="{% if active_listing %}{{ manage_listing_url }}{% else %}{{ publish_url }}{% endif %}"
+          hx-get="{% if active_listing %}{{ manage_listing_url }}{% else %}{{ publish_url }}{% endif %}"
+          hx-target="#shellMain"
+          hx-select="#shellMain"
+          hx-swap="outerHTML"
+          hx-push-url="true"
+          class="rec-btn-primary"
+        >
+          {% if active_listing %}
+            <i class="bi bi-pencil-square"></i> Gerir anúncio ativo
+          {% elif publish_source == "forecast" %}
+            <i class="bi bi-calendar-check"></i> Publicar pré-venda
+          {% else %}
+            <i class="bi bi-shop"></i> Publicar anúncio
+          {% endif %}
+        </a>
+      {% endif %}
     </div>
   </div>
 </div>

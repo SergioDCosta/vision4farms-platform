@@ -19,7 +19,7 @@
         <section class="rec-inventory-panel rec-inventory-panel--buy">
           <div class="rec-inventory-panel__head">
             <div>
-              <span class="rec-inventory-panel__eyebrow">Reposição</span>
+              <span class="rec-inventory-panel__eyebrow">Pedidos de clientes</span>
               <h3>Comprar</h3>
             </div>
             <span class="rec-inventory-count">{{ recommendation_buy_rows|length }}</span>
@@ -58,7 +58,10 @@
                     >
                       <td>
                         <strong>{{ row.product_name }}</strong>
-                        <span>Em falta para pedidos externos</span>
+                        <span>
+                          Em falta para pedidos externos
+                          {% if row.first_deficit_date %}até {{ row.first_deficit_date|date:"d/m/Y" }}{% endif %}
+                        </span>
                       </td>
                       <td>{{ row.available_stock|quantity }} {{ row.unit }}</td>
                       <td>{{ row.safety_stock|quantity }} {{ row.unit }}</td>
@@ -119,7 +122,7 @@
                     >
                       <td>
                         <strong>{{ row.product_name }}</strong>
-                        <span>Excedente acima dos compromissos</span>
+                        <span>Margem vendável após compromissos externos</span>
                       </td>
                       <td>{{ row.available_stock|quantity }} {{ row.unit }}</td>
                       <td>{{ row.safety_stock|quantity }} {{ row.unit }}</td>

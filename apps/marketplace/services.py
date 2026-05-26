@@ -195,7 +195,7 @@ def _get_open_stock_published_quantity(stock, *, exclude_listing_id=None):
     return quantize_qty(result["total"] or Decimal("0.000"))
 
 
-def get_forecast_available_quantity(forecast, *, exclude_listing_id=None):
+def _get_uncommitted_forecast_quantity(forecast, *, exclude_listing_id=None):
     forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
     reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
     published_quantity = _get_open_forecast_published_quantity(
@@ -205,6 +205,30 @@ def get_forecast_available_quantity(forecast, *, exclude_listing_id=None):
     return quantize_qty(
         max(forecast_quantity - reserved_quantity - published_quantity, Decimal("0.000"))
     )
+
+
+def get_forecast_available_quantity(forecast, *, exclude_listing_id=None):
+    source_available = _get_uncommitted_forecast_quantity(
+        forecast,
+        exclude_listing_id=exclude_listing_id,
+    )
+    if source_available <= 0:
+        return source_available
+
+    from apps.inventory.services import calculate_inventory_commitment_state
+
+    commitment_state = calculate_inventory_commitment_state(
+        forecast.producer,
+        forecast.product,
+        exclude_listing_id=exclude_listing_id,
+    )
+    if not commitment_state.get("has_external_demands"):
+        return source_available
+
+    safe_margin = quantize_qty(
+        commitment_state.get("temporal_sellable_quantity") or Decimal("0.000")
+    )
+    return quantize_qty(min(source_available, safe_margin))
 
 
 def get_base_listing_queryset():
@@ -498,8 +522,11 @@ def get_max_publishable_quantity(stock, *, exclude_listing_id=None):
         stock.producer,
         stock.product,
         stock=stock,
+        exclude_listing_id=exclude_listing_id,
     )
     base_max = quantize_qty(commitment_state.get("temporal_sellable_quantity") or Decimal("0.000"))
+    if commitment_state.get("has_external_demands"):
+        return base_max
     already_published = _get_open_stock_published_quantity(stock, exclude_listing_id=exclude_listing_id)
     return quantize_qty(max(base_max - already_published, Decimal("0.000")))
 

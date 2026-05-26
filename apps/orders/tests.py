@@ -1,3 +1,4 @@
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,8 @@ from apps.orders.services import (
     OrderServiceError,
     _quantity_label,
     _notify_order_purchase_created,
+    _reconcile_listings_against_stock_capacity,
+    _update_stock_reserved,
     buyer_cancel_order,
     build_presale_timeline_context,
     create_order_from_listing,
@@ -263,3 +266,74 @@ class BuyerOrderCancellationTests(SimpleTestCase):
             self.assertRaisesMessage(OrderServiceError, "em entrega ou concluída"),
         ):
             cancel(order=order, buyer_producer=buyer, acting_user=None)
+
+
+class StockReservationCapacityTests(SimpleTestCase):
+    def _make_stock(self, current=Decimal("100"), reserved=Decimal("0")):
+        return SimpleNamespace(
+            id="stock-1",
+            product_id="product-1",
+            product=SimpleNamespace(name="Batatas", unit="kg"),
+            current_quantity=current,
+            reserved_quantity=reserved,
+            updated_by=None,
+            last_updated_at=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+
+    def test_update_stock_reserved_raises_when_exceeds_current(self):
+        stock = self._make_stock(current=Decimal("90"), reserved=Decimal("0"))
+
+        with (
+            patch("apps.orders.services.log_audit_event"),
+            self.assertRaisesMessage(
+                OrderServiceError, "O stock de Batatas já não chega"
+            ),
+        ):
+            _update_stock_reserved(stock, Decimal("100"), acting_user=None)
+
+        stock.save.assert_not_called()
+
+    def test_update_stock_reserved_succeeds_within_capacity(self):
+        stock = self._make_stock(current=Decimal("100"), reserved=Decimal("20"))
+
+        with patch("apps.orders.services.log_audit_event") as audit:
+            _update_stock_reserved(stock, Decimal("30"), acting_user=None)
+
+        self.assertEqual(stock.reserved_quantity, Decimal("50.000"))
+        stock.save.assert_called_once()
+        audit.assert_called_once()
+
+    def test_reconcile_listings_against_stock_skips_when_no_deficit(self):
+        stock = self._make_stock(current=Decimal("100"), reserved=Decimal("0"))
+        with (
+            patch(
+                "apps.inventory.services.get_listings_blocking_stock_decrease",
+                return_value={"deficit": Decimal("0.000")},
+            ) as blocking,
+            patch(
+                "apps.inventory.services.reduce_listings_to_fit_stock"
+            ) as reducer,
+        ):
+            _reconcile_listings_against_stock_capacity(stock, acting_user=None)
+        blocking.assert_called_once()
+        reducer.assert_not_called()
+
+    def test_reconcile_listings_against_stock_reduces_on_deficit(self):
+        stock = self._make_stock(current=Decimal("80"), reserved=Decimal("0"))
+        with (
+            patch(
+                "apps.inventory.services.get_listings_blocking_stock_decrease",
+                return_value={"deficit": Decimal("20.000")},
+            ),
+            patch(
+                "apps.inventory.services.reduce_listings_to_fit_stock"
+            ) as reducer,
+        ):
+            _reconcile_listings_against_stock_capacity(stock, acting_user="user-1")
+        reducer.assert_called_once()
+        kwargs = reducer.call_args.kwargs
+        self.assertEqual(kwargs["mode"], "proportional")
+        self.assertEqual(kwargs["new_quantity"], Decimal("80"))
+        self.assertEqual(kwargs["acting_user"], "user-1")

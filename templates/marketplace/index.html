@@ -10,16 +10,28 @@
       <p>Encontre ofertas de outros produtores, veja procuras abertas e gira os seus anúncios numa área própria.</p>
     </div>
     {% if can_publish %}
-      <a href="{% url 'marketplace:publish' %}"
-         hx-get="{% url 'marketplace:publish' %}"
-         hx-target="#shellMain"
-         hx-select="#shellMain"
-         hx-swap="outerHTML"
-         hx-push-url="true"
-         class="mk-primary-action">
-        <i class="bi bi-plus-lg"></i>
-        Publicar anúncio
-      </a>
+      <div class="mk-head-actions">
+        <a href="{% url 'needs:index' %}?show_need_form=1"
+           hx-get="{% url 'needs:index' %}?show_need_form=1"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="mk-secondary-action">
+          <i class="bi bi-megaphone"></i>
+          Publicar necessidade
+        </a>
+        <a href="{% url 'marketplace:publish' %}"
+           hx-get="{% url 'marketplace:publish' %}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="mk-primary-action">
+          <i class="bi bi-plus-lg"></i>
+          Publicar anúncio
+        </a>
+      </div>
     {% endif %}
   </header>
 
@@ -191,8 +203,11 @@
 .mk-eyebrow{display:block;color:#059669;font-size:.72rem;font-weight:900;text-transform:uppercase;letter-spacing:0;margin-bottom:.25rem;}
 .mk-head h1{margin:0;color:#0f172a;font-size:1.55rem;font-weight:850;letter-spacing:0;}
 .mk-head p{margin:.35rem 0 0;color:#64748b;font-size:.92rem;line-height:1.45;max-width:56rem;}
+.mk-head-actions{display:flex;align-items:center;gap:.55rem;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
 .mk-primary-action{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;border:0;border-radius:.75rem;background:#16a34a;color:#fff;text-decoration:none;font-weight:800;font-size:.86rem;padding:.78rem 1rem;white-space:nowrap;}
 .mk-primary-action:hover{background:#15803d;color:#fff;}
+.mk-secondary-action{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;border:1px solid #bfdbfe;border-radius:.75rem;background:#eff6ff;color:#1d4ed8;text-decoration:none;font-weight:800;font-size:.86rem;padding:.78rem 1rem;white-space:nowrap;}
+.mk-secondary-action:hover{background:#dbeafe;color:#1d4ed8;}
 .mk-toolbar{padding:1rem;}
 .mk-toolbar__top{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.85rem;}
 .mk-tabs{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;}
@@ -279,7 +294,7 @@
 .mk-empty h3{margin:.4rem 0;color:#0f172a;font-size:1.05rem;}
 .mk-empty p{margin:0 0 1rem;}
 @media (max-width:980px){.mk-filterbar{grid-template-columns:1fr 1fr}.mk-search{grid-column:1/-1}}
-@media (max-width:640px){.mk-head{flex-direction:column}.mk-primary-action{width:100%}.mk-filterbar{grid-template-columns:1fr}.mk-grid{grid-template-columns:1fr}.mk-card__footer,.mk-owner-actions{grid-template-columns:1fr}}
+@media (max-width:640px){.mk-head{flex-direction:column}.mk-head-actions{width:100%;flex-direction:column;}.mk-primary-action,.mk-secondary-action{width:100%}.mk-filterbar{grid-template-columns:1fr}.mk-grid{grid-template-columns:1fr}.mk-card__footer,.mk-owner-actions{grid-template-columns:1fr}}
 </style>
 
 <div class="mk-lightbox" id="mkLightbox" role="dialog" aria-modal="true" aria-label="Imagem ampliada">
