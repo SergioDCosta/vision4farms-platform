@@ -367,7 +367,11 @@
                 {% else %}
                   <form method="post" action="{% url 'needs:publish_marketplace' row.need.id %}" hx-post="{% url 'needs:publish_marketplace' row.need.id %}" hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-disabled-elt="find button">
                     {% csrf_token %}<input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="category" value="{{ selected_category_id }}">
-                    <button type="submit" class="nd-btn nd-btn--primary nd-btn--sm" title="Publicar no marketplace"><i class="bi bi-shop"></i> Publicar</button>
+                    {% if row.need.published_at %}
+                      <button type="submit" class="nd-btn nd-btn--primary nd-btn--sm" title="Republicar no marketplace"><i class="bi bi-arrow-clockwise"></i> Republicar</button>
+                    {% else %}
+                      <button type="submit" class="nd-btn nd-btn--primary nd-btn--sm" title="Publicar no marketplace"><i class="bi bi-shop"></i> Publicar</button>
+                    {% endif %}
                   </form>
                 {% endif %}
               {% endif %}

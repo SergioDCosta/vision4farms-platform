@@ -651,10 +651,19 @@ def external_customer_demand_create_view(request):
     q, status, product_id, _, _ = get_external_demands_filters(request)
     form = ExternalCustomerDemandForm(request.POST, producer=producer)
     if form.is_valid():
+        new_product = form.cleaned_data["product_id"]
+        published_need_ids_before = set(
+            Need.objects.filter(
+                producer=producer,
+                product=new_product,
+                source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+                is_marketplace_published=True,
+            ).values_list("id", flat=True)
+        )
         try:
             create_external_customer_demand(
                 producer=producer,
-                product=form.cleaned_data["product_id"],
+                product=new_product,
                 client_name=form.cleaned_data["client_name"],
                 client_contact=form.cleaned_data.get("client_contact"),
                 client_reference=form.cleaned_data.get("client_reference"),
@@ -666,7 +675,23 @@ def external_customer_demand_create_view(request):
         except ValidationError as exc:
             form.add_error(None, str(exc))
         else:
+            auto_unpublished = False
+            if published_need_ids_before:
+                still_published_ids = set(
+                    Need.objects.filter(
+                        id__in=published_need_ids_before,
+                        is_marketplace_published=True,
+                    ).values_list("id", flat=True)
+                )
+                auto_unpublished = bool(published_need_ids_before - still_published_ids)
+
             messages.success(request, "Pedido externo registado com sucesso.")
+            if auto_unpublished:
+                messages.warning(
+                    request,
+                    "A procura associada foi retirada do marketplace porque os termos mudaram. "
+                    "Pode republicá-la em Necessidades se quiser voltar a receber propostas.",
+                )
             sync_alerts_after_need_change(producer, request.current_user)
             next_url = build_external_demands_url(q=q, status=status, product_id=product_id)
             if _is_htmx(request):
@@ -676,7 +701,16 @@ def external_customer_demand_create_view(request):
                     status=status,
                     product_id=product_id,
                 )
-                return render(request, "needs/external_demands.html", context)
+                response = render(request, "needs/external_demands.html", context)
+                if auto_unpublished:
+                    with_htmx_toast(
+                        response,
+                        "warning",
+                        "Pedido registado. A procura no marketplace foi retirada porque a quantidade ou data mudou — republique se ainda quiser receber propostas.",
+                    )
+                else:
+                    with_htmx_toast(response, "success", "Pedido externo registado com sucesso.")
+                return response
             return redirect(next_url)
 
     add_form_errors_to_messages(request, form)
@@ -710,11 +744,20 @@ def external_customer_demand_edit_view(request, demand_id):
 
     form = ExternalCustomerDemandForm(request.POST, producer=producer, demand=demand)
     if form.is_valid():
+        new_product = form.cleaned_data["product_id"]
+        published_need_ids_before = set(
+            Need.objects.filter(
+                producer=producer,
+                product__in={demand.product, new_product},
+                source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+                is_marketplace_published=True,
+            ).values_list("id", flat=True)
+        )
         try:
             update_external_customer_demand(
                 demand=demand,
                 producer=producer,
-                product=form.cleaned_data["product_id"],
+                product=new_product,
                 client_name=form.cleaned_data["client_name"],
                 client_contact=form.cleaned_data.get("client_contact"),
                 client_reference=form.cleaned_data.get("client_reference"),
@@ -726,7 +769,23 @@ def external_customer_demand_edit_view(request, demand_id):
         except ValidationError as exc:
             form.add_error(None, str(exc))
         else:
+            auto_unpublished = False
+            if published_need_ids_before:
+                still_published_ids = set(
+                    Need.objects.filter(
+                        id__in=published_need_ids_before,
+                        is_marketplace_published=True,
+                    ).values_list("id", flat=True)
+                )
+                auto_unpublished = bool(published_need_ids_before - still_published_ids)
+
             messages.success(request, "Pedido externo atualizado com sucesso.")
+            if auto_unpublished:
+                messages.warning(
+                    request,
+                    "A procura associada foi retirada do marketplace porque os termos mudaram. "
+                    "Pode republicá-la em Necessidades se quiser voltar a receber propostas.",
+                )
             sync_alerts_after_need_change(producer, request.current_user)
             next_url = build_external_demands_url(q=q, status=status, product_id=product_id)
             if _is_htmx(request):
@@ -736,7 +795,16 @@ def external_customer_demand_edit_view(request, demand_id):
                     status=status,
                     product_id=product_id,
                 )
-                return render(request, "needs/external_demands.html", context)
+                response = render(request, "needs/external_demands.html", context)
+                if auto_unpublished:
+                    with_htmx_toast(
+                        response,
+                        "warning",
+                        "Pedido atualizado. A procura no marketplace foi retirada porque a quantidade ou data mudou — republique se ainda quiser receber propostas.",
+                    )
+                else:
+                    with_htmx_toast(response, "success", "Pedido externo atualizado com sucesso.")
+                return response
             return redirect(next_url)
 
     add_form_errors_to_messages(request, form)
