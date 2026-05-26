@@ -1,6 +1,6 @@
 # VISION4FARMS - Contexto Atual do Projeto
 
-Última revisão: 2026-05-25.
+Última revisão: 2026-05-26.
 
 Este ficheiro serve como mapa funcional e técnico atual da aplicação. O objetivo é ajudar a explicar o projeto em relatório, manter o contexto entre sessões de desenvolvimento e evitar decisões baseadas em informação desatualizada.
 
@@ -480,9 +480,12 @@ Feed público:
 
 Tab "Meus anúncios":
 
-- mostra anúncios do produtor autenticado;
-- mantém ações de gestão;
-- não usa badge "meu anúncio" no feed público porque anúncios próprios já não aparecem ali.
+- mostra anúncios de venda (`MarketplaceListing`) do produtor autenticado e as procuras publicadas por esse mesmo produtor (`Need` com `is_marketplace_published=True`);
+- procuras aparecem com cards visuais distintos (borda verde, cabeçalho "A sua procura", badge "Publicada") incluindo contagem de propostas recebidas;
+- ações do dono de procura: "Ver detalhes e propostas" (navega para `/necessidades/?need=<id>`) e "Retirar do marketplace";
+- a linha de contagem de resultados separa "X oferta(s) · Y procura(s)";
+- o contador do tab soma listings + procuras publicadas para o badge numérico;
+- não usa badge "meu anúncio" no feed público porque anúncios/procuras próprios já não aparecem ali.
 
 Tabs adicionais do marketplace:
 
@@ -616,6 +619,18 @@ Need automática por pedidos externos:
 - não pode ser editada diretamente pelo endpoint de edição de needs;
 - para alterar quantidade/data, o produtor deve editar os pedidos externos de origem;
 - evita duplicar necessidades ativas para o mesmo produtor/produto.
+
+Publicação de needs no marketplace:
+
+- needs `MANUAL` são criadas com `is_marketplace_published=True` e `published_at` preenchido — publicação automática na criação;
+- needs `CUSTOMER_DEMAND` são criadas com `is_marketplace_published=False` e `published_at=NULL` — exigem ação explícita "Publicar" na tabela de `/necessidades/`;
+- o botão de publicação mostra "Republicar" (ícone `bi-arrow-clockwise`) quando `published_at IS NOT NULL` mas a need não está publicada atualmente, indicando que já esteve publicada antes;
+- badge "Publicada" aparece na coluna Estado da tabela quando `is_marketplace_published=True`;
+- todos os formulários de ação (Publicar, Retirar, Ignorar) usam `hx-disabled-elt="find button"` para prevenir duplo-clique que causava sequências publicar/retirar imediatas;
+- `published_at` é preservado tanto no retirar explícito como no auto-retirar (nunca apagado), servindo de memória da última publicação;
+- auto-retirar ocorre em dois cenários: (1) quando `required_quantity` ou `needed_by_date` muda ao recalcular pedidos externos (criação ou edição de pedido externo) — é mostrado um toast de aviso HTMX "Pedido atualizado. A procura no marketplace foi retirada porque a quantidade ou data mudou — republique se ainda quiser receber propostas."; (2) quando o status da need passa a `COVERED` por `recalculate_need_status` — silencioso, sem toast;
+- evento de auditoria `NEED_MARKETPLACE_UNPUBLISHED_AFTER_RECALCULATION` é registado em ambos os casos de auto-retirar;
+- toasts de confirmação HTMX são emitidos via `with_htmx_toast()` em `apps/common/htmx.py` que adiciona `HX-Trigger: {"app:toast": {...}}` ao response sem sobrescrever outros triggers — necessário porque swaps HTMX nunca re-executam `base.html` onde os `messages` Django seriam renderizados.
 
 ## 14) Respostas a Necessidades
 
@@ -1005,6 +1020,9 @@ Auditoria operacional crítica implementada:
   - `CUSTOMER_DEMAND_NEED_CREATED`;
   - `CUSTOMER_DEMAND_NEED_UPDATED`;
   - `CUSTOMER_DEMAND_NEED_COVERED`;
+  - `NEED_MARKETPLACE_PUBLISHED`;
+  - `NEED_MARKETPLACE_WITHDRAWN`;
+  - `NEED_MARKETPLACE_UNPUBLISHED_AFTER_RECALCULATION`;
   - `NEED_RESPONSE_CREATED`;
   - `NEED_RESPONSE_UPDATED`;
   - `NEED_RESPONSE_REJECTED`;

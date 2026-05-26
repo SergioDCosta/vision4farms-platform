@@ -7,6 +7,8 @@ from django.utils import timezone
 
 from apps.accounts.models import UserRole
 from apps.alerts.models import AlertStatus, AlertType
+from apps.marketplace.models import ListingStatus
+from apps.needs.models import NeedResponseStatus
 from apps.alerts.services import (
     get_alert_type_label,
     get_client_alerts_badge_state,
@@ -17,6 +19,7 @@ from apps.alerts.services import (
     resolve_alert,
     run_operational_alerts_job,
     _critical_stock_candidates,
+    _need_response_candidates,
     _quantity_label,
 )
 
@@ -35,6 +38,50 @@ class AlertLabelsTests(SimpleTestCase):
 class AlertQuantityLabelsTests(SimpleTestCase):
     def test_quantity_labels_do_not_show_unneeded_decimal_places(self):
         self.assertEqual(_quantity_label(Decimal("200.000"), "kg"), "200 kg")
+
+
+class NeedResponseAlertCandidateTests(SimpleTestCase):
+    def test_pending_proposal_creates_received_offer_candidate_for_need_owner(self):
+        owner = SimpleNamespace(id="owner-1")
+        need = SimpleNamespace(id="need-1")
+        listing = SimpleNamespace(
+            id="listing-1",
+            need_id="need-1",
+            need=need,
+            product=SimpleNamespace(id="product-1", name="Batata", unit="kg"),
+            producer=SimpleNamespace(display_name="Quinta Verde", company_name=None),
+            forecast=None,
+            quantity_available=Decimal("12.000"),
+            unit_price=Decimal("2.50"),
+        )
+        manager = MagicMock()
+        (
+            manager.select_related.return_value
+            .filter.return_value
+            .filter.return_value
+            .order_by.return_value
+            .distinct.return_value
+        ) = [listing]
+
+        with patch("apps.alerts.services.MarketplaceListing.objects", manager):
+            rows = _need_response_candidates(owner)
+
+        self.assertEqual(len(rows), 1)
+        candidate = rows[0]
+        self.assertEqual(candidate["type"], AlertType.NEED_RESPONSE_RECEIVED)
+        self.assertEqual(candidate["title"], "Nova oferta para Batata")
+        self.assertIn("Quinta Verde ofereceu 12 kg", candidate["description"])
+        self.assertIn("2,50", candidate["description"])
+        self.assertEqual(
+            candidate["payload"]["action_url"],
+            "/necessidades/respostas/listing-1/",
+        )
+        manager.select_related.return_value.filter.assert_called_once_with(
+            need__producer=owner,
+            need_response_status=NeedResponseStatus.PENDING,
+            status=ListingStatus.ACTIVE,
+            quantity_available__gt=0,
+        )
 
 
 class AlertTemporalStockCandidatesTests(SimpleTestCase):

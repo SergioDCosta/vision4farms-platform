@@ -154,9 +154,10 @@ class MarketplaceEditSafetyTests(SimpleTestCase):
             status=ListingStatus.CLOSED,
             quantity_reserved=0,
         )
+        update = getattr(update_listing, "__wrapped__", update_listing)
 
         with self.assertRaisesMessage(MarketplaceServiceError, "não pode ser editado"):
-            update_listing(
+            update(
                 listing=listing,
                 quantity_total=10,
                 unit_price=1,

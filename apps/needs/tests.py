@@ -480,6 +480,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             "notes": "Posso entregar esta quantidade.",
         }
 
+        request = self._request()
         with (
             patch("apps.needs.views.Need", need_model),
             patch("apps.needs.views.NeedResponsePublishForm", return_value=form),
@@ -488,18 +489,25 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             patch("apps.needs.views.get_active_need_response_for_responder", return_value=None),
             patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={}),
             patch("apps.needs.views.create_listing", return_value=SimpleNamespace(id="listing-1")) as create_listing,
-            patch("apps.needs.views.sync_alerts_after_need_change"),
+            patch("apps.needs.views.sync_alerts_after_need_change") as sync_alerts,
             patch("apps.needs.views.messages"),
         ):
             from apps.needs.views import need_response_publish_view
 
-            response = need_response_publish_view(self._request())
+            response = need_response_publish_view(request)
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/necessidades/?need=need-1")
         self.assertEqual(create_listing.call_args.kwargs["need"], need)
         self.assertIsNone(create_listing.call_args.kwargs["photo_path"])
         self.assertEqual(create_listing.call_args.kwargs["status"], ListingStatus.ACTIVE)
+        self.assertEqual(
+            sync_alerts.call_args_list,
+            [
+                ((producer, request.current_user), {}),
+                ((need.producer, request.current_user), {}),
+            ],
+        )
 
     def test_need_response_publish_updates_existing_active_response_instead_of_creating_duplicate(self):
         producer = SimpleNamespace(id="seller-1")
