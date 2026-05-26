@@ -187,6 +187,8 @@ class InventoryStockStateTests(SimpleTestCase):
 
         self.assertEqual(stock_state["key"], "critical")
         self.assertEqual(stock_state["deficit_quantity"], Decimal("125.000"))
+        self.assertEqual(commitment_state["state_label"], "Défice temporal")
+        self.assertIn("não chegam a tempo", commitment_state["state_message"])
 
     @patch("apps.needs.services.calculate_external_demand_plan")
     def test_commitment_state_without_external_demands_is_not_critical(self, plan_mock):

@@ -248,8 +248,11 @@ def calculate_inventory_commitment_state(producer, product, stock=None, *, exclu
 
         if max_deficit > ZERO:
             state_key = "critical"
-            state_label = "Crítico"
-            state_message = "Faltam produtos para cumprir pedidos externos dentro das datas prometidas."
+            state_label = "Défice temporal"
+            state_message = (
+                "O stock atual e a produção prevista útil não chegam a tempo "
+                "dos pedidos externos."
+            )
             explanation = "A produção prevista registada não cobre o défice até à primeira data crítica."
         elif temporal_sellable_quantity <= warning_margin:
             state_key = "warning"

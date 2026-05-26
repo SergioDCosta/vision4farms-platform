@@ -1848,6 +1848,17 @@ class ExternalDemandConflictTests(SimpleTestCase):
             "has_external_demands": True,
         }
 
+    def _evaluate_conflict(self):
+        evaluate = getattr(
+            evaluate_external_demand_conflict_with_listings,
+            "__wrapped__",
+            evaluate_external_demand_conflict_with_listings,
+        )
+        return evaluate(
+            producer=SimpleNamespace(id="p1"),
+            product=SimpleNamespace(id="prod1", unit="kg"),
+        )
+
     @patch("apps.marketplace.models.MarketplaceListing")
     @patch("apps.inventory.services.calculate_inventory_commitment_state")
     def test_returns_none_when_no_deficit(self, commit_mock, listing_mock):
@@ -1859,10 +1870,7 @@ class ExternalDemandConflictTests(SimpleTestCase):
             "total": Decimal("0.000"),
             "count": 0,
         }
-        result = evaluate_external_demand_conflict_with_listings(
-            producer=SimpleNamespace(id="p1"),
-            product=SimpleNamespace(id="prod1", unit="kg"),
-        )
+        result = self._evaluate_conflict()
         self.assertIsNone(result)
 
     @patch("apps.marketplace.models.MarketplaceListing")
@@ -1877,10 +1885,7 @@ class ExternalDemandConflictTests(SimpleTestCase):
             "total": Decimal("50.000"),
             "count": 2,
         }
-        result = evaluate_external_demand_conflict_with_listings(
-            producer=SimpleNamespace(id="p1"),
-            product=SimpleNamespace(id="prod1", unit="kg"),
-        )
+        result = self._evaluate_conflict()
         self.assertIsNotNone(result)
         self.assertEqual(result["max_deficit"], Decimal("30.000"))
         self.assertEqual(result["published_quantity"], Decimal("50.000"))
@@ -1896,8 +1901,5 @@ class ExternalDemandConflictTests(SimpleTestCase):
             "total": Decimal("0.000"),
             "count": 0,
         }
-        result = evaluate_external_demand_conflict_with_listings(
-            producer=SimpleNamespace(id="p1"),
-            product=SimpleNamespace(id="prod1", unit="kg"),
-        )
+        result = self._evaluate_conflict()
         self.assertIsNone(result)

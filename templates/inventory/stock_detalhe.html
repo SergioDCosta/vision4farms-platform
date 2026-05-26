@@ -92,7 +92,7 @@
   {% else %}
     {% if stock_state.key == "critical" %}
       <div class="inv-alert inv-alert--warning">
-        <strong>Stock abaixo dos compromissos externos.</strong>
+        <strong>Falta produto a tempo.</strong>
         Faltam {{ stock_state.deficit_quantity|quantity }} {{ stock.product.unit }}{% if stock_state.first_deficit_date %} até {{ stock_state.first_deficit_date|date:"d/m/Y" }}{% endif %} para cumprir os pedidos externos dentro das datas prometidas.
       </div>
     {% elif stock_state.key == "warning" %}
@@ -155,7 +155,7 @@
           {% if stock_state.deficit_quantity > 0 %}
             <span>Quantidade em falta</span>
             <strong>{{ stock_state.deficit_quantity|quantity }} {{ stock.product.unit }}</strong>
-            <small>{% if stock_state.first_deficit_date %}Crítico até {{ stock_state.first_deficit_date|date:"d/m/Y" }}{% else %}Requer reforço de stock{% endif %}</small>
+            <small>{% if stock_state.first_deficit_date %}Em falta até {{ stock_state.first_deficit_date|date:"d/m/Y" }}{% else %}Requer reforço de stock{% endif %}</small>
           {% else %}
             <span>Margem vendável</span>
             <strong>{{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }}</strong>
@@ -556,7 +556,16 @@
                               </button>
                             </form>
                           {% endif %}
-                          <a href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=edit&edit_forecast={{ row.forecast.id }}" class="inv-icon-btn" title="Editar previsão">
+                          <a
+                            href="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=edit&edit_forecast={{ row.forecast.id }}"
+                            hx-get="{% url 'inventory:stock_detalhe' product_id=stock.product.id %}?forecast_mode=edit&edit_forecast={{ row.forecast.id }}"
+                            hx-target="#inv-forecast-card"
+                            hx-select="#inv-forecast-card"
+                            hx-swap="outerHTML"
+                            hx-push-url="false"
+                            class="inv-icon-btn"
+                            title="Editar previsão"
+                          >
                             <i class="bi bi-pencil"></i>
                           </a>
                           <a href="{% url 'marketplace:publish' %}?source=forecast&product={{ stock.product.id }}&forecast={{ row.forecast.id }}" class="inv-icon-btn inv-icon-btn--green" title="Publicar pré-venda">

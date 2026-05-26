@@ -97,7 +97,7 @@
                       action="{% url 'needs:external_demand_fulfill' demand.id %}"
                       hx-post="{% url 'needs:external_demand_fulfill' demand.id %}"
                       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
-                      onsubmit="return confirm('Confirmar a entrega deste pedido ao cliente? A quantidade será retirada do stock atual.');">
+                      hx-confirm="Confirmar a entrega deste pedido ao cliente? A quantidade será retirada do stock atual.">
                   {% csrf_token %}
                   <input type="hidden" name="q" value="{{ q }}">
                   <input type="hidden" name="status" value="{{ selected_status }}">
@@ -110,7 +110,7 @@
                       action="{% url 'needs:external_demand_cancel' demand.id %}"
                       hx-post="{% url 'needs:external_demand_cancel' demand.id %}"
                       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
-                      onsubmit="return confirm('Cancelar este pedido?');">
+                      hx-confirm="Cancelar este pedido?">
                   {% csrf_token %}
                   <input type="hidden" name="q" value="{{ q }}">
                   <input type="hidden" name="status" value="{{ selected_status }}">
