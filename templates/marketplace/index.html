@@ -18,7 +18,7 @@
          hx-push-url="true"
          class="mk-primary-action">
         <i class="bi bi-plus-lg"></i>
-        Publicar excedente
+        Publicar anúncio
       </a>
     {% endif %}
   </header>
@@ -65,8 +65,8 @@
              hx-swap="outerHTML"
              hx-push-url="true"
              class="mk-tab {% if active_tab == 'respostas' %}is-active{% endif %}">
-            <i class="bi bi-reply-all"></i>
-            Respostas
+            <i class="bi bi-chat-square-text"></i>
+            Propostas
             <span>{{ my_pending_responses_count }}</span>
           </a>
         {% endif %}
@@ -130,9 +130,10 @@
   {% if active_tab == "todos" or active_tab == "meus" %}
   <p class="mk-results">
     {% if active_tab == "meus" %}
-      A mostrar <strong>{{ my_listings_count }}</strong> anúncio{{ my_listings_count|pluralize:"s" }} próprio{{ my_listings_count|pluralize:"s" }}.
+      A mostrar <strong>{{ visible_my_listings_count }}</strong> item{{ visible_my_listings_count|pluralize:"ns" }} no seu marketplace
+      ({{ my_listings|length }} oferta{{ my_listings|length|pluralize:"s" }} · {{ my_published_need_rows|length }} procura{{ my_published_need_rows|length|pluralize:"s" }}).
     {% else %}
-      A mostrar <strong>{{ public_listings_count }}</strong> resultado{{ public_listings_count|pluralize:"s" }} no marketplace
+      A mostrar <strong>{{ visible_public_listings_count }}</strong> resultado{{ visible_public_listings_count|pluralize:"s" }} no marketplace
       {% if selected_kind == "all" %}
         ({{ public_offers_count }} oferta{{ public_offers_count|pluralize:"s" }} · {{ public_needs_count }} procura{{ public_needs_count|pluralize:"s" }}).
       {% endif %}
@@ -150,14 +151,18 @@
       {% if active_tab == "meus" %}
         {% for item in my_listings %}
           {% include "marketplace/partials/listing_card.html" with item=item mode="owner" %}
-        {% empty %}
+        {% endfor %}
+        {% for row in my_published_need_rows %}
+          {% include "marketplace/partials/need_card.html" with row=row mode="owner" %}
+        {% endfor %}
+        {% if not my_listings and not my_published_need_rows %}
           <article class="mk-empty">
             <i class="bi bi-inbox"></i>
             <h3>Sem anúncios próprios</h3>
-            <p>{% if q or selected_category_id or selected_origin %}Não encontrámos anúncios com os filtros aplicados.{% else %}Ainda não publicou anúncios no marketplace.{% endif %}</p>
-            <a href="{% url 'marketplace:publish' %}" class="mk-card-action mk-card-action--primary">Publicar excedente</a>
+            <p>{% if q or selected_category_id or selected_origin %}Não encontrámos anúncios com os filtros aplicados.{% else %}Ainda não publicou anúncios ou procuras no marketplace.{% endif %}</p>
+            <a href="{% url 'marketplace:publish' %}" class="mk-card-action mk-card-action--primary">Publicar anúncio</a>
           </article>
-        {% endfor %}
+        {% endif %}
       {% else %}
         {% for item in listings %}
           {% include "marketplace/partials/listing_card.html" with item=item mode="public" %}
@@ -221,6 +226,9 @@
 .mk-lightbox__close:hover{background:rgba(255,255,255,.24);}
 .mk-card__media-empty{height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:1.65rem;}
 .mk-card__media--need{background:linear-gradient(135deg,#eff6ff,#ecfdf5);}
+.mk-card--need-owner{border:1px solid #86efac;box-shadow:0 0 0 1px #bbf7d0 inset, 0 4px 16px rgba(22,163,74,.08);}
+.mk-card--need-owner .mk-card__media--need{background:linear-gradient(135deg,#ecfdf5,#dcfce7);}
+.mk-card--need-owner .mk-need-visual{color:#047857;}
 .mk-need-visual{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;color:#1d4ed8;font-weight:900;}
 .mk-need-visual i{font-size:2rem;}
 .mk-card__badge-row{position:absolute;inset:.75rem .75rem auto;display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem;pointer-events:none;}
@@ -243,6 +251,7 @@
 .mk-producer-line span,.mk-location-line span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mk-card h3{margin:0;color:#0f172a;font-size:1.08rem;font-weight:850;line-height:1.25;min-height:2.65rem;}
 .mk-location-line{margin-top:-.45rem;}
+.mk-location-line + .mk-location-line{margin-top:.1rem;}
 .mk-card__facts{border-top:1px solid #edf2f7;padding-top:.75rem;display:flex;flex-direction:column;gap:.5rem;}
 .mk-fact{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;color:#64748b;font-size:.8rem;}
 .mk-fact strong{color:#0f172a;font-size:.98rem;font-weight:850;text-align:right;}
@@ -252,6 +261,9 @@
 .mk-delivery-chip{border-radius:.65rem;background:#f8fafc;padding:.55rem .65rem;color:#334155;}
 .mk-card__footer{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;padding:1rem;background:#fff;border-top:1px solid #edf2f7;}
 .mk-card__footer--owner{grid-template-columns:1fr;}
+.mk-card__footer form{margin:0;display:block;}
+.mk-card__footer form .mk-card-action{width:100%;}
+.mk-card__footer form.htmx-request button{opacity:.6;cursor:progress;pointer-events:none;}
 .mk-owner-actions{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;}
 .mk-card-action{min-height:2.5rem;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;border-radius:.7rem;text-decoration:none;border:1px solid transparent;font-size:.82rem;font-weight:850;padding:.55rem .65rem;text-align:center;}
 .mk-card-action--ghost{background:#ecfdf5;color:#047857;border-color:#bbf7d0;}

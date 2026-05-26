@@ -16,31 +16,38 @@
       <h1>Pedidos dos meus clientes</h1>
       <p>Registe aqui os compromissos com clientes externos. O sistema calcula automaticamente se o stock e a produção prevista chegam a tempo de cumprir cada pedido.</p>
     </div>
-    <a href="{% url 'needs:external_demands' %}?show_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
-       hx-get="{% url 'needs:external_demands' %}?show_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
-       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-       class="ecd-btn ecd-btn--primary ecd-btn--hero">
-      <i class="bi bi-plus-lg"></i> Novo pedido
-    </a>
+    <div style="display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;">
+      <button type="button" class="ecd-btn ecd-btn--ghost ecd-btn--sm" id="ecdFormulaBtn" title="Como é calculada a necessidade?" aria-expanded="false">
+        <i class="bi bi-calculator"></i> Como funciona?
+      </button>
+      <a href="{% url 'needs:external_demands' %}?show_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
+         hx-get="{% url 'needs:external_demands' %}?show_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}&product={{ selected_product_id|urlencode }}{% endif %}"
+         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+         class="ecd-btn ecd-btn--primary ecd-btn--hero">
+        <i class="bi bi-plus-lg"></i> Novo pedido
+      </a>
+    </div>
   </header>
 
   {# ── KPIs ─────────────────────────────────────────────────────────────── #}
   <section class="ecd-kpis" aria-label="Resumo dos pedidos externos">
-    <article class="ecd-kpi">
+    <a class="ecd-kpi" href="#pedidos-clientes" aria-label="Ir para os pedidos registados">
       <span class="ecd-kpi__icon ecd-kpi__icon--green"><i class="bi bi-clipboard2-check"></i></span>
       <div>
         <span>Total em pedidos em aberto</span>
         <strong>{{ summary.total_quantity|quantity }} kg</strong>
       </div>
-    </article>
-    <article class="ecd-kpi">
+      <i class="bi bi-arrow-down-short ecd-kpi__go"></i>
+    </a>
+    <a class="ecd-kpi" href="{% if summary.product_count %}#planeamento-produto{% else %}#pedidos-clientes{% endif %}" aria-label="Ir para o planeamento por produto">
       <span class="ecd-kpi__icon ecd-kpi__icon--blue"><i class="bi bi-box-seam"></i></span>
       <div>
         <span>Produtos com pedidos</span>
         <strong>{{ summary.product_count }}</strong>
       </div>
-    </article>
-    <article class="ecd-kpi">
+      <i class="bi bi-arrow-down-short ecd-kpi__go"></i>
+    </a>
+    <a class="ecd-kpi" href="{% if demand_plans %}#planeamento-produto{% else %}#pedidos-clientes{% endif %}" aria-label="Ir para a análise do défice calculado">
       <span class="ecd-kpi__icon {% if summary.max_deficit > 0 %}ecd-kpi__icon--red{% else %}ecd-kpi__icon--green{% endif %}">
         <i class="bi bi-{% if summary.max_deficit > 0 %}exclamation-triangle{% else %}check-circle{% endif %}"></i>
       </span>
@@ -48,8 +55,9 @@
         <span>Maior défice calculado</span>
         <strong>{% if summary.max_deficit > 0 %}{{ summary.max_deficit|quantity }} kg{% else %}Sem défice{% endif %}</strong>
       </div>
-    </article>
-    <article class="ecd-kpi">
+      <i class="bi bi-arrow-down-short ecd-kpi__go"></i>
+    </a>
+    <a class="ecd-kpi" href="{% if demand_plans %}#planeamento-produto{% else %}#pedidos-clientes{% endif %}" aria-label="Ir para a análise da data crítica">
       <span class="ecd-kpi__icon {% if summary.first_deficit_date %}ecd-kpi__icon--amber{% else %}ecd-kpi__icon--green{% endif %}">
         <i class="bi bi-calendar-event"></i>
       </span>
@@ -57,12 +65,54 @@
         <span>Próxima data crítica</span>
         <strong>{% if summary.first_deficit_date %}{{ summary.first_deficit_date|date:"d/m/Y" }}{% else %}Tudo coberto{% endif %}</strong>
       </div>
-    </article>
+      <i class="bi bi-arrow-down-short ecd-kpi__go"></i>
+    </a>
   </section>
+
+  {# ── Formulário de novo pedido ─────────────────────────────────────────── #}
+  {% if show_form %}
+    <section class="ecd-card ecd-form-card" id="ecd-new-demand-form">
+      <div class="ecd-card__head">
+        <div>
+          <span class="ecd-eyebrow">Novo compromisso com cliente</span>
+          <h2>Registar pedido externo</h2>
+          <p>Preencha os dados do pedido do cliente. A quantidade em falta será calculada automaticamente.</p>
+        </div>
+        <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+           hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+           class="ecd-btn ecd-btn--ghost ecd-btn--sm">
+          <i class="bi bi-x-lg"></i> Fechar
+        </a>
+      </div>
+      <form method="post"
+            action="{% url 'needs:external_demand_create' %}"
+            hx-post="{% url 'needs:external_demand_create' %}"
+            hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
+            class="ecd-form">
+        {% csrf_token %}
+        <input type="hidden" name="q" value="{{ q }}">
+        <input type="hidden" name="status" value="{{ selected_status }}">
+        <input type="hidden" name="product" value="{{ selected_product_id }}">
+        {% include "needs/partials/external_demand_form_fields.html" with form=create_form %}
+        <div class="ecd-form__actions">
+          <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+             hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
+             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+             class="ecd-btn ecd-btn--ghost">
+            Cancelar
+          </a>
+          <button type="submit" class="ecd-btn ecd-btn--primary">
+            <i class="bi bi-check2"></i> Guardar pedido
+          </button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
 
   {# ── Análise de risco por produto (destaque) ─────────────────────────────── #}
   {% if demand_plans %}
-  <section class="ecd-planning">
+  <section id="planeamento-produto" class="ecd-planning">
     <div class="ecd-section-title">
       <div>
         <span class="ecd-eyebrow">Análise de capacidade</span>
@@ -110,9 +160,9 @@
         <div class="ecd-need-box {% if plan.has_deficit %}is-deficit{% else %}is-covered{% endif %}">
           {% if plan.has_deficit %}
             <div>
-              <span>{% if plan.generated_need %}Procura gerada automaticamente{% else %}Procura prevista{% endif %}</span>
+              <span>{% if plan.generated_need %}Sugestão de procura calculada{% else %}Procura prevista{% endif %}</span>
               <strong>{{ plan.max_deficit|quantity }} {{ plan.product.unit }} em falta</strong>
-              <p>A procura é criada automaticamente no marketplace para que outros produtores possam responder. A produção prevista só conta se estiver disponível antes da data de entrega.</p>
+              <p>Foi calculada uma sugestão de procura. Publique-a no marketplace quando pretender receber propostas. A produção prevista só conta se estiver disponível antes da data de entrega.</p>
             </div>
             <div class="ecd-need-actions">
               <span class="ecd-critical-date"><i class="bi bi-calendar-event"></i> {{ plan.first_deficit_date|date:"d/m/Y" }}</span>
@@ -123,13 +173,15 @@
                    class="ecd-btn ecd-btn--ghost">
                   <i class="bi bi-megaphone"></i> Ver procura gerada
                 </a>
-                {% if plan.generated_need.status == "OPEN" or plan.generated_need.status == "PARTIALLY_COVERED" %}
-                  <a href="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
-                     hx-get="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
-                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                     class="ecd-btn ecd-btn--primary">
-                    <i class="bi bi-shop"></i> Ver no marketplace
-                  </a>
+                {% if plan.generated_need.is_marketplace_published %}
+                  {% if plan.generated_need.status == "OPEN" or plan.generated_need.status == "PARTIALLY_COVERED" %}
+                    <a href="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
+                       hx-get="{% url 'marketplace:index' %}?kind=needs&q={{ plan.product.name|urlencode }}"
+                       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                       class="ecd-btn ecd-btn--primary">
+                      <i class="bi bi-shop"></i> Ver no marketplace
+                    </a>
+                  {% endif %}
                 {% endif %}
               {% endif %}
             </div>
@@ -193,32 +245,37 @@
   </section>
   {% endif %}
 
-  {# ── Card explicativo da fórmula ────────────────────────────────────────── #}
-  <div class="ecd-formula-card">
-    <div class="ecd-formula-card__head">
-      <i class="bi bi-calculator"></i>
-      <strong>Como é calculada a necessidade?</strong>
+  {# ── Popup explicativo da fórmula ───────────────────────────────────────── #}
+  <div class="ecd-formula-popup" id="ecdFormulaPopup" hidden>
+    <div class="ecd-formula-card">
+      <div class="ecd-formula-card__head">
+        <i class="bi bi-calculator"></i>
+        <strong>Como é calculada a necessidade?</strong>
+        <button type="button" class="ecd-formula-close" id="ecdFormulaClose" aria-label="Fechar">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="ecd-formula">
+        <div class="ecd-formula__item ecd-formula__item--blue">
+          <i class="bi bi-clipboard2-check"></i>
+          <span>Pedidos dos clientes até à data de entrega</span>
+        </div>
+        <div class="ecd-formula__op">−</div>
+        <div class="ecd-formula__item ecd-formula__item--green">
+          <i class="bi bi-boxes"></i>
+          <span>Stock inicial + produção prevista útil acumulada até essa data</span>
+        </div>
+        <div class="ecd-formula__op">=</div>
+        <div class="ecd-formula__item ecd-formula__item--amber">
+          <i class="bi bi-exclamation-triangle"></i>
+          <span>Quantidade em falta → sugere uma procura</span>
+        </div>
+      </div>
+      <p class="ecd-formula-card__note">
+        <i class="bi bi-info-circle"></i>
+        A produção prevista só conta se estiver disponível <strong>antes ou na data de entrega</strong> do pedido. Os pedidos anteriores ficam sempre descontados nas datas seguintes.
+      </p>
     </div>
-    <div class="ecd-formula">
-      <div class="ecd-formula__item ecd-formula__item--blue">
-        <i class="bi bi-clipboard2-check"></i>
-        <span>Pedidos dos clientes até à data de entrega</span>
-      </div>
-      <div class="ecd-formula__op">−</div>
-      <div class="ecd-formula__item ecd-formula__item--green">
-        <i class="bi bi-boxes"></i>
-        <span>Stock inicial + produção prevista útil acumulada até essa data</span>
-      </div>
-      <div class="ecd-formula__op">=</div>
-      <div class="ecd-formula__item ecd-formula__item--amber">
-        <i class="bi bi-exclamation-triangle"></i>
-        <span>Quantidade em falta → gera procura automática</span>
-      </div>
-    </div>
-    <p class="ecd-formula-card__note">
-      <i class="bi bi-info-circle"></i>
-      A produção prevista só conta se estiver disponível <strong>antes ou na data de entrega</strong> do pedido. Os pedidos anteriores ficam sempre descontados nas datas seguintes.
-    </p>
   </div>
 
   {# ── Filtros ───────────────────────────────────────────────────────────── #}
@@ -255,47 +312,6 @@
       </select>
     </label>
   </form>
-
-  {# ── Formulário de novo pedido ─────────────────────────────────────────── #}
-  {% if show_form %}
-    <section class="ecd-card ecd-form-card">
-      <div class="ecd-card__head">
-        <div>
-          <span class="ecd-eyebrow">Novo compromisso com cliente</span>
-          <h2>Registar pedido externo</h2>
-          <p>Preencha os dados do pedido do cliente. A quantidade em falta será calculada automaticamente.</p>
-        </div>
-        <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
-           hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
-           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-           class="ecd-btn ecd-btn--ghost ecd-btn--sm">
-          <i class="bi bi-x-lg"></i> Fechar
-        </a>
-      </div>
-      <form method="post"
-            action="{% url 'needs:external_demand_create' %}"
-            hx-post="{% url 'needs:external_demand_create' %}"
-            hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
-            class="ecd-form">
-        {% csrf_token %}
-        <input type="hidden" name="q" value="{{ q }}">
-        <input type="hidden" name="status" value="{{ selected_status }}">
-        <input type="hidden" name="product" value="{{ selected_product_id }}">
-        {% include "needs/partials/external_demand_form_fields.html" with form=create_form %}
-        <div class="ecd-form__actions">
-          <a href="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
-             hx-get="{% url 'needs:external_demands' %}{% if q or selected_status or selected_product_id %}?{% if q %}q={{ q|urlencode }}{% endif %}{% if selected_status %}{% if q %}&{% endif %}status={{ selected_status|urlencode }}{% endif %}{% if selected_product_id %}{% if q or selected_status %}&{% endif %}product={{ selected_product_id|urlencode }}{% endif %}{% endif %}"
-             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-             class="ecd-btn ecd-btn--ghost">
-            Cancelar
-          </a>
-          <button type="submit" class="ecd-btn ecd-btn--primary">
-            <i class="bi bi-check2"></i> Guardar pedido
-          </button>
-        </div>
-      </form>
-    </section>
-  {% endif %}
 
   {# ── Formulário de edição ──────────────────────────────────────────────── #}
   {% if selected_demand and edit_form %}
@@ -339,7 +355,7 @@
   {% endif %}
 
   {# ── Tabela de pedidos ─────────────────────────────────────────────────── #}
-  <section class="ecd-card">
+  <section id="pedidos-clientes" class="ecd-card">
     <div class="ecd-card__head">
       <div>
         <span class="ecd-eyebrow">Registo de pedidos</span>
@@ -401,6 +417,19 @@
                        class="ecd-mini-btn">
                       <i class="bi bi-pencil"></i> Editar
                     </a>
+                    <form method="post"
+                          action="{% url 'needs:external_demand_fulfill' demand.id %}"
+                          hx-post="{% url 'needs:external_demand_fulfill' demand.id %}"
+                          hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
+                          onsubmit="return confirm('Confirmar que este pedido do cliente foi cumprido? Deixará de contar como compromisso externo.');">
+                      {% csrf_token %}
+                      <input type="hidden" name="q" value="{{ q }}">
+                      <input type="hidden" name="status" value="{{ selected_status }}">
+                      <input type="hidden" name="product" value="{{ selected_product_id }}">
+                      <button type="submit" class="ecd-mini-btn">
+                        <i class="bi bi-check2-circle"></i> Cumprido
+                      </button>
+                    </form>
                     <form method="post"
                           action="{% url 'needs:external_demand_cancel' demand.id %}"
                           hx-post="{% url 'needs:external_demand_cancel' demand.id %}"
@@ -494,7 +523,11 @@
   display: flex; gap: .75rem; align-items: center;
   background: #fff; border: 1px solid #dbe5ef; border-radius: .85rem;
   padding: .9rem 1rem; box-shadow: 0 1px 3px rgba(15,23,42,.04);
+  color: inherit; text-decoration: none; position: relative;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
 }
+.ecd-kpi:hover { transform: translateY(-2px); border-color: #a7f3d0; box-shadow: 0 7px 18px rgba(15,23,42,.08); }
+.ecd-kpi:focus-visible { outline: 3px solid rgba(5,150,105,.22); outline-offset: 2px; }
 .ecd-kpi__icon { width: 2.4rem; height: 2.4rem; border-radius: .75rem; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
 .ecd-kpi__icon--green { background: #dcfce7; color: #15803d; }
 .ecd-kpi__icon--blue  { background: #dbeafe; color: #1d4ed8; }
@@ -502,19 +535,37 @@
 .ecd-kpi__icon--red   { background: #fee2e2; color: #b91c1c; }
 .ecd-kpi span:not(.ecd-kpi__icon) { display: block; color: #64748b; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
 .ecd-kpi strong { display: block; margin-top: .15rem; font-size: 1.25rem; font-weight: 800; }
+.ecd-kpi__go { margin-left: auto; color: #94a3b8; font-size: 1.15rem; }
 
 /* ═══════════════════════════════════════════════════════════════════
-   CARD DE FÓRMULA
+   POPUP DE FÓRMULA
 ═══════════════════════════════════════════════════════════════════ */
+.ecd-formula-popup {
+  position: fixed; top: 1rem; left: 50%; transform: translateX(-50%);
+  z-index: 900; width: min(780px, calc(100vw - 2rem));
+  animation: ecd-popup-in .2s ease;
+}
+@keyframes ecd-popup-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 .ecd-formula-card {
-  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .85rem;
+  background: #fff; border: 1px solid #cbd5e1; border-radius: .85rem;
   padding: .9rem 1.1rem; display: flex; flex-direction: column; gap: .65rem;
+  box-shadow: 0 8px 32px rgba(15,23,42,.16), 0 2px 8px rgba(15,23,42,.08);
 }
 .ecd-formula-card__head {
   display: flex; align-items: center; gap: .5rem;
   font-size: .84rem; font-weight: 800; color: #334155;
 }
 .ecd-formula-card__head i { color: #475569; font-size: 1rem; }
+.ecd-formula-close {
+  margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.8rem; height: 1.8rem; border-radius: .5rem; border: 1px solid #e2e8f0;
+  background: #f8fafc; color: #64748b; cursor: pointer; font-size: .8rem;
+  transition: background .14s, color .14s;
+}
+.ecd-formula-close:hover { background: #fee2e2; border-color: #fecaca; color: #dc2626; }
 .ecd-formula {
   display: flex; align-items: center; gap: .5rem; flex-wrap: nowrap;
 }
@@ -631,7 +682,8 @@
 /* ═══════════════════════════════════════════════════════════════════
    PLANEAMENTO POR PRODUTO
 ═══════════════════════════════════════════════════════════════════ */
-.ecd-planning { display: grid; gap: .85rem; }
+.ecd-planning { display: grid; gap: .85rem; scroll-margin-top: 1rem; }
+.ecd-card[id] { scroll-margin-top: 1rem; }
 .ecd-section-title { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .ecd-section-title h2 { margin: .12rem 0 .18rem; font-size: 1.2rem; font-weight: 900; }
 .ecd-section-title p { margin: 0; color: #64748b; font-size: .84rem; }
@@ -723,7 +775,61 @@
   .ecd-plan-metrics { grid-template-columns: 1fr 1fr; }
   .ecd-need-actions { justify-content: stretch; flex-direction: column; }
   .ecd-need-actions .ecd-btn { width: 100%; justify-content: center; }
+  .ecd-formula-popup { width: calc(100vw - 1.5rem); }
+  .ecd-formula { flex-wrap: wrap; }
 }
 </style>
+
+<script>
+(function () {
+  const popup   = document.getElementById('ecdFormulaPopup');
+  const openBtn = document.getElementById('ecdFormulaBtn');
+  const closeBtn = document.getElementById('ecdFormulaClose');
+  if (!popup || !openBtn || !closeBtn) return;
+
+  const SK = 'ecd-formula-dismissed';
+
+  function show() {
+    popup.hidden = false;
+    openBtn.setAttribute('aria-expanded', 'true');
+    sessionStorage.removeItem(SK);
+  }
+
+  function hide() {
+    popup.hidden = true;
+    openBtn.setAttribute('aria-expanded', 'false');
+    sessionStorage.setItem(SK, '1');
+  }
+
+  // Mostrar por defeito a menos que já tenha sido fechado nesta sessão
+  if (!sessionStorage.getItem(SK)) show();
+
+  openBtn.addEventListener('click', function () {
+    popup.hidden ? show() : hide();
+  });
+
+  closeBtn.addEventListener('click', hide);
+
+  // Fechar ao clicar fora do popup
+  document.addEventListener('click', function (e) {
+    if (!popup.hidden && !popup.contains(e.target) && e.target !== openBtn && !openBtn.contains(e.target)) {
+      hide();
+    }
+  });
+
+  // Fechar com Escape
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !popup.hidden) hide();
+  });
+
+  // Scroll automático para o formulário se estiver presente (após swap HTMX ou carga directa)
+  var formCard = document.getElementById('ecd-new-demand-form');
+  if (formCard) {
+    requestAnimationFrame(function () {
+      formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+})();
+</script>
 
 {% endblock %}

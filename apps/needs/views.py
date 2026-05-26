@@ -9,6 +9,7 @@ from django.urls import reverse
 
 from apps.common.audit import log_audit_event
 from apps.common.decorators import client_only_required
+from apps.common.htmx import with_htmx_toast
 from apps.marketplace.models import ListingStatus
 from apps.marketplace.services import (
     MarketplaceServiceError,
@@ -51,12 +52,15 @@ from apps.needs.services import (
     list_external_customer_demands,
     list_marketplace_my_needs,
     list_marketplace_public_needs,
+    mark_external_customer_demand_fulfilled,
     normalize_external_demands_search_query,
     normalize_needs_search_query,
+    publish_need_to_marketplace,
     reject_need_response,
     update_external_customer_demand,
     update_need,
     update_need_response,
+    withdraw_need_from_marketplace,
 )
 
 
@@ -371,6 +375,20 @@ def build_needs_index_context(
         category = getattr(getattr(row["need"], "product", None), "category", None)
         if category:
             category_map[str(category.id)] = category
+    if producer:
+        demand_categories = (
+            ExternalCustomerDemand.objects
+            .filter(producer=producer, status__in=[
+                ExternalCustomerDemandStatus.OPEN,
+                ExternalCustomerDemandStatus.PARTIALLY_COVERED,
+                ExternalCustomerDemandStatus.COVERED,
+            ])
+            .select_related("product__category")
+        )
+        for demand in demand_categories:
+            category = getattr(getattr(demand, "product", None), "category", None)
+            if category:
+                category_map[str(category.id)] = category
     available_categories = sorted(
         category_map.values(),
         key=lambda category: (category.name or "").lower(),
@@ -488,11 +506,11 @@ def build_needs_index_context(
     has_more_demands = False
     preview_demand_kpis = {}
     if producer:
-        active_demands_qs = (
-            ExternalCustomerDemand.objects
-            .filter(producer=producer, status__in=active_statuses)
-            .select_related("product", "product__category")
-            .order_by("requested_delivery_date")
+        active_demands_qs = list_external_customer_demands(
+            producer=producer,
+            q=q,
+            category_id=category_id,
+            active_only=True,
         )
         demands_sample = list(active_demands_qs[:9])
         has_more_demands = len(demands_sample) > 8
@@ -512,10 +530,10 @@ def build_needs_index_context(
             if plan_row:
                 deficit = plan_row["deficit_until_date"]
                 remaining = plan_row["remaining_capacity_until_date"]
-                demand.stock_available = plan_row["capacity_until_date"]
+                demand.capacity_until_date = plan_row["capacity_until_date"]
                 demand.stock_diff = -deficit if deficit > Decimal("0") else remaining
             else:
-                demand.stock_available = Decimal("0")
+                demand.capacity_until_date = Decimal("0")
                 demand.stock_diff = Decimal("0")
             days = (demand.requested_delivery_date - today).days
             if days < 0:
@@ -779,6 +797,50 @@ def external_customer_demand_cancel_view(request, demand_id):
 
 
 @client_only_required
+def external_customer_demand_fulfill_view(request, demand_id):
+    if request.method != "POST":
+        return redirect("needs:external_demands")
+
+    current_user = request.current_user
+    producer = get_current_producer_for_user(current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    q, status, product_id, _, show_form = get_external_demands_filters(request)
+    demand = get_external_customer_demand_for_producer(producer=producer, demand_id=demand_id)
+    if not demand:
+        messages.error(request, "Pedido externo não encontrado.")
+        return redirect("needs:external_demands")
+
+    try:
+        _, changed = mark_external_customer_demand_fulfilled(
+            demand=demand,
+            producer=producer,
+            updated_by=request.current_user,
+        )
+    except ValidationError as exc:
+        messages.error(request, str(exc))
+    else:
+        if changed:
+            messages.success(request, "Pedido marcado como cumprido. Os compromissos externos foram recalculados.")
+            sync_alerts_after_need_change(producer, request.current_user)
+        else:
+            messages.info(request, "O pedido externo já estava marcado como cumprido.")
+
+    if _is_htmx(request):
+        context = build_external_demands_context(
+            producer,
+            q=q,
+            status=status,
+            product_id=product_id,
+            show_form=show_form,
+        )
+        return render(request, "needs/external_demands.html", context)
+    return redirect(build_external_demands_url(q=q, status=status, product_id=product_id, show_form=show_form))
+
+
+@client_only_required
 def needs_index_view(request):
     current_user = request.current_user
     producer = get_current_producer_for_user(current_user)
@@ -1012,6 +1074,7 @@ def need_create_view(request):
                 source_system=source_system,
                 external_id=external_id,
                 notes=form.cleaned_data.get("notes"),
+                acting_user=request.current_user,
             )
         except DuplicateActiveNeedError as exc:
             selected_need_id = str(exc.existing_need.id)
@@ -1151,6 +1214,134 @@ def need_edit_view(request, need_id):
         need_edit_form=form,
     )
     return render(request, "needs/index.html", context)
+
+
+@client_only_required
+def need_publish_marketplace_view(request, need_id):
+    if request.method != "POST":
+        return redirect(build_needs_index_url(selected_need_id=str(need_id)))
+
+    producer = get_current_producer_for_user(request.current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    need = get_need_for_producer(producer=producer, need_id=need_id)
+    if not need:
+        messages.error(request, "Procura não encontrada.")
+        return redirect("needs:index")
+
+    toast_level, toast_msg = "info", ""
+    try:
+        _, changed = publish_need_to_marketplace(
+            need=need,
+            producer=producer,
+            acting_user=request.current_user,
+        )
+    except ValidationError as exc:
+        toast_level, toast_msg = "error", str(exc)
+        messages.error(request, str(exc))
+    else:
+        if changed:
+            toast_level = "success"
+            toast_msg = "Procura publicada no marketplace. Outros produtores já a podem ver."
+            messages.success(request, toast_msg)
+        else:
+            toast_msg = "Esta procura já estava publicada no marketplace."
+            messages.info(request, toast_msg)
+
+    q, category_id, _, requested_product_id, requested_quantity, show_need_form = get_needs_filters(request)
+    if _is_htmx(request):
+        response = render(
+            request,
+            "needs/index.html",
+            build_needs_index_context(
+                producer,
+                q=q,
+                category_id=category_id,
+                selected_need_id=str(need.id),
+                need_prefill_product_id=requested_product_id,
+                need_prefill_quantity=requested_quantity,
+                show_need_form=show_need_form,
+            ),
+        )
+        if toast_msg:
+            with_htmx_toast(response, toast_level, toast_msg)
+        return response
+    return redirect(
+        build_needs_index_url(
+            q=q,
+            category_id=category_id,
+            selected_need_id=str(need.id),
+            need_prefill_product_id=requested_product_id,
+            need_prefill_quantity=requested_quantity,
+            show_need_form=show_need_form,
+        )
+    )
+
+
+@client_only_required
+def need_withdraw_marketplace_view(request, need_id):
+    if request.method != "POST":
+        return redirect(build_needs_index_url(selected_need_id=str(need_id)))
+
+    producer = get_current_producer_for_user(request.current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    need = get_need_for_producer(producer=producer, need_id=need_id)
+    if not need:
+        messages.error(request, "Procura não encontrada.")
+        return redirect("needs:index")
+
+    toast_level, toast_msg = "info", ""
+    try:
+        _, changed = withdraw_need_from_marketplace(
+            need=need,
+            producer=producer,
+            acting_user=request.current_user,
+        )
+    except ValidationError as exc:
+        toast_level, toast_msg = "error", str(exc)
+        messages.error(request, str(exc))
+    else:
+        if changed:
+            toast_level = "success"
+            toast_msg = "Procura retirada do marketplace."
+            messages.success(request, toast_msg)
+        else:
+            toast_msg = "Esta procura já não estava publicada."
+            messages.info(request, toast_msg)
+
+    q, category_id, _, requested_product_id, requested_quantity, show_need_form = get_needs_filters(request)
+    if _is_htmx(request):
+        response = render(
+            request,
+            "needs/index.html",
+            build_needs_index_context(
+                producer,
+                q=q,
+                category_id=category_id,
+                selected_need_id=str(need.id),
+                need_prefill_product_id=requested_product_id,
+                need_prefill_quantity=requested_quantity,
+                show_need_form=show_need_form,
+            ),
+        )
+        if toast_msg:
+            with_htmx_toast(response, toast_level, toast_msg)
+        return response
+    return redirect(
+        build_needs_index_url(
+            q=q,
+            category_id=category_id,
+            selected_need_id=str(need.id),
+            need_prefill_product_id=requested_product_id,
+            need_prefill_quantity=requested_quantity,
+            show_need_form=show_need_form,
+        )
+    )
 
 
 @client_only_required

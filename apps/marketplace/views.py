@@ -24,7 +24,9 @@ from apps.needs.services import (
     calculate_need_coverage,
     get_need_for_producer,
     get_need_response_summaries_for_responder,
+    list_need_responses_for_owner,
     list_marketplace_public_needs,
+    list_marketplace_my_published_needs,
 )
 from apps.needs.navigation import build_needs_index_url
 from apps.marketplace.forms import MarketplacePublishForm, MarketplaceEditForm
@@ -52,6 +54,7 @@ from apps.marketplace.services import (
     is_listing_retirable_in_marketplace,
     is_listing_toggleable_in_marketplace,
     get_public_listings,
+    reactivate_listing,
     retire_listing,
     update_listing,
 )
@@ -435,6 +438,10 @@ def _build_marketplace_index_context(
         if active_tab == "todos" and kind in {"all", "needs"}
         else []
     )
+    for row in marketplace_need_rows:
+        row["producer_location"] = get_producer_location(
+            getattr(row.get("need"), "producer", None)
+        )
     my_listings = get_my_listings(
         producer=producer,
         q=q,
@@ -443,6 +450,20 @@ def _build_marketplace_index_context(
         sort=sort,
         only_available=only_available,
     ) if producer else MarketplaceListing.objects.none()
+
+    my_published_need_rows = (
+        list_marketplace_my_published_needs(
+            producer=producer,
+            q=q,
+            category_id=category_id,
+        )
+        if active_tab == "meus" and producer
+        else []
+    )
+    for row in my_published_need_rows:
+        row["producer_location"] = get_producer_location(
+            getattr(row.get("need"), "producer", None)
+        )
 
     categories_source = (
         get_my_listings(producer=producer, q=q, category_id="", origin=origin, sort=sort, only_available=only_available)
@@ -488,7 +509,18 @@ def _build_marketplace_index_context(
     if producer and public_listings:
         _attach_viewer_order_info(producer, public_listings)
 
-    public_marketplace_count = len(public_listings) + len(marketplace_need_rows)
+    visible_public_marketplace_count = len(public_listings) + len(marketplace_need_rows)
+    visible_my_listings_count = len(my_listings) + len(my_published_need_rows)
+
+    # Tab badges describe the available sections, independently from the
+    # active tab and its filters. Otherwise the public needs count disappears
+    # as soon as the producer opens "Meus anúncios".
+    public_tab_offers_count = get_public_listings(producer=producer).count()
+    public_tab_needs_count = len(list_marketplace_public_needs(viewer_producer=producer))
+    public_tab_count = public_tab_offers_count + public_tab_needs_count
+    my_tab_listings_count = get_my_listings(producer=producer).count() if producer else 0
+    my_tab_needs_count = len(list_marketplace_my_published_needs(producer=producer)) if producer else 0
+    my_tab_count = my_tab_listings_count + my_tab_needs_count
 
     # Contagens para badges dos novos tabs (sempre calculadas se houver produtor)
     my_active_orders_count = 0
@@ -503,11 +535,19 @@ def _build_marketplace_index_context(
                 OrderStatus.DELIVERING,
             ],
         ).count()
-        my_pending_responses_count = MarketplaceListing.objects.filter(
+        pending_sent_responses_count = MarketplaceListing.objects.filter(
             producer=producer,
             need_id__isnull=False,
             status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+            need_response_status=NeedResponseStatus.PENDING,
         ).count()
+        pending_received_responses_count = MarketplaceListing.objects.filter(
+            need__producer=producer,
+            need_id__isnull=False,
+            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+            need_response_status=NeedResponseStatus.PENDING,
+        ).count()
+        my_pending_responses_count = pending_sent_responses_count + pending_received_responses_count
 
     # Dados completos para os novos tabs (só carregados quando necessário)
     my_orders = []
@@ -521,6 +561,8 @@ def _build_marketplace_index_context(
         "cancelled_count": 0,
     }
     my_need_responses = []
+    received_active_need_responses = []
+    received_past_need_responses = []
     if active_tab == "compras" and producer:
         my_orders = list(
             Order.objects
@@ -548,6 +590,15 @@ def _build_marketplace_index_context(
                 my_past_orders.append(order)
                 purchase_summary["cancelled_count"] += 1
     elif active_tab == "respostas" and producer:
+        received_need_responses = list_need_responses_for_owner(owner_producer=producer)
+        received_active_need_responses = [
+            response for response in received_need_responses
+            if response.response_status == NeedResponseStatus.PENDING
+        ]
+        received_past_need_responses = [
+            response for response in received_need_responses
+            if response.response_status != NeedResponseStatus.PENDING
+        ]
         response_listings = list(
             MarketplaceListing.objects
             .filter(producer=producer, need_id__isnull=False)
@@ -583,10 +634,14 @@ def _build_marketplace_index_context(
         "listings": public_listings,
         "marketplace_need_rows": marketplace_need_rows,
         "my_listings": my_listings,
-        "public_listings_count": public_marketplace_count,
+        "my_published_need_rows": my_published_need_rows,
+        "my_needs_count": my_tab_needs_count,
+        "public_listings_count": public_tab_count,
         "public_offers_count": len(public_listings),
         "public_needs_count": len(marketplace_need_rows),
-        "my_listings_count": len(my_listings),
+        "my_listings_count": my_tab_count,
+        "visible_public_listings_count": visible_public_marketplace_count,
+        "visible_my_listings_count": visible_my_listings_count,
         "my_active_orders_count": my_active_orders_count,
         "my_pending_responses_count": my_pending_responses_count,
         "my_orders": my_orders,
@@ -594,6 +649,8 @@ def _build_marketplace_index_context(
         "my_past_orders": my_past_orders,
         "purchase_summary": purchase_summary,
         "my_need_responses": my_need_responses,
+        "received_active_need_responses": received_active_need_responses,
+        "received_past_need_responses": received_past_need_responses,
         "selected_need_id": selected_need_id,
         "selected_need_row": None,
         "need_prefill_product_id": need_prefill_product_id,
@@ -1208,8 +1265,8 @@ def marketplace_publish_view(request):
             return redirect(f"{url}?success=1&listing_id={listing.id}")
 
     context = {
-        "page_title": "Publicar Excedente",
-        "publish_title": "Publicar Excedente",
+        "page_title": "Publicar Anúncio",
+        "publish_title": "Publicar Anúncio",
         "publish_subtitle": "Venda os seus produtos no marketplace da cooperativa.",
         "publish_submit_label": "Publicar no marketplace",
         "publish_cancel_label": "Cancelar",
@@ -1465,24 +1522,18 @@ def marketplace_toggle_status_view(request, listing_id):
     previous_status = listing.status
     feedback = None
     blocked_message = None
+    status_saved_by_service = False
 
     if listing.status == ListingStatus.ACTIVE:
         listing.status = ListingStatus.CANCELLED
         feedback = "Anúncio desativado com sucesso."
     else:
-        available_quantity = Decimal(str(listing.quantity_available or 0))
-        reserved_quantity = Decimal(str(listing.quantity_reserved or 0))
-
-        if listing.status in {ListingStatus.RESERVED, ListingStatus.CLOSED}:
-            blocked_message = "Este anúncio já está reservado ou fechado e não pode ser ativado novamente."
-        elif reserved_quantity > 0:
-            blocked_message = "Este anúncio está com quantidade reservada e não pode ser ativado agora."
-        elif available_quantity <= 0:
-            blocked_message = "Este anúncio não pode ser ativado sem quantidade disponível."
+        try:
+            listing = reactivate_listing(listing=listing, acting_user=request.current_user)
+        except MarketplaceServiceError as exc:
+            blocked_message = str(exc)
         else:
-            listing.status = ListingStatus.ACTIVE
-            if listing.expires_at and listing.expires_at <= now:
-                listing.expires_at = None
+            status_saved_by_service = True
             feedback = "Anúncio ativado com sucesso."
 
     if blocked_message:
@@ -1528,17 +1579,18 @@ def marketplace_toggle_status_view(request, listing_id):
         )
         return redirect(f"{reverse('marketplace:index')}?{query}")
 
-    listing.updated_at = now
-    listing.save(update_fields=["status", "expires_at", "updated_at"])
-    log_audit_event(
-        request=request,
-        action="LISTING_STATUS_CHANGED",
-        entity_type="marketplace_listings",
-        entity_id=listing.id,
-        notes="Estado do anúncio alterado pelo produtor.",
-        old_values=_audit_listing_context(listing) | {"status": previous_status},
-        new_values=_audit_listing_context(listing) | {"status": listing.status},
-    )
+    if not status_saved_by_service:
+        listing.updated_at = now
+        listing.save(update_fields=["status", "expires_at", "updated_at"])
+        log_audit_event(
+            request=request,
+            action="LISTING_STATUS_CHANGED",
+            entity_type="marketplace_listings",
+            entity_id=listing.id,
+            notes="Estado do anúncio alterado pelo produtor.",
+            old_values=_audit_listing_context(listing) | {"status": previous_status},
+            new_values=_audit_listing_context(listing) | {"status": listing.status},
+        )
     messages.success(request, feedback)
     _sync_alerts_after_marketplace_change(producer, request.current_user)
 

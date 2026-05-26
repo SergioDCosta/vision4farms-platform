@@ -214,6 +214,43 @@
       </details>
   {% endif %}
 
+  {% if order_role == "buyer" and can_buyer_cancel %}
+    <details class="ordd-card ordd-danger-zone">
+      <summary>
+        <span>
+          <i class="bi bi-x-circle"></i>
+          Cancelar encomenda
+        </span>
+        <small>Pode cancelar enquanto a encomenda ainda não estiver em entrega.</small>
+      </summary>
+      <form method="post" action="{% url 'orders:buyer_cancel' order.id %}" class="ordd-cancel-form">
+        {% csrf_token %}
+        {% if back_to_group_url %}<input type="hidden" name="next" value="{{ back_to_group_url }}">{% endif %}
+        <div class="ordd-cancel-grid">
+          <div>
+            <label for="buyerCancelReason">Motivo</label>
+            <select id="buyerCancelReason" name="cancel_reason" required>
+              <option value="">Selecione um motivo</option>
+              <option value="Já não necessito do produto">Já não necessito do produto</option>
+              <option value="Quantidade ou condições incorretas">Quantidade ou condições incorretas</option>
+              <option value="Encontrei outra solução">Encontrei outra solução</option>
+              <option value="Erro no pedido">Erro no pedido</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </div>
+          <div>
+            <label for="buyerCancelNotes">Notas adicionais</label>
+            <textarea id="buyerCancelNotes" name="notes" rows="3" maxlength="1000" placeholder="Informação útil para o vendedor..."></textarea>
+          </div>
+        </div>
+        <button type="submit" class="ordd-btn-danger">
+          <i class="bi bi-x-circle"></i>
+          Confirmar cancelamento
+        </button>
+      </form>
+    </details>
+  {% endif %}
+
   <section class="ordd-grid">
     <article class="ordd-card">
       <h3>Itens da encomenda</h3>

@@ -113,6 +113,114 @@
     {% endif %}
   {% endif %}
 
+  <div id="inv-customer-demands" class="inv-card inv-customer-demands-card">
+    <div class="inv-card-head inv-customer-demands-head">
+      <div>
+        <h3 class="inv-card-title"><i class="bi bi-clipboard2-check"></i> Pedidos de clientes</h3>
+        <p class="inv-customer-demands-subtitle">
+          Compromissos externos para {{ stock.product.name }} que determinam a cobertura e a quantidade vendável.
+        </p>
+      </div>
+      <div class="inv-customer-demands-actions">
+        <span class="inv-status {% if stock_state.key == 'critical' %}inv-status--critical{% elif stock_state.key == 'warning' %}inv-status--warning{% else %}inv-status--normal{% endif %}">
+          {{ product_demands_count }} pedido{{ product_demands_count|pluralize }} ativo{{ product_demands_count|pluralize }}
+        </span>
+        <a href="{% url 'needs:external_demands' %}?product={{ stock.product.id }}"
+           hx-get="{% url 'needs:external_demands' %}?product={{ stock.product.id }}"
+           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+           class="inv-btn inv-btn--ghost inv-btn--sm">
+          Ver planeamento <i class="bi bi-arrow-right"></i>
+        </a>
+      </div>
+    </div>
+
+    <div class="inv-card-body inv-customer-demands-body">
+      <div class="inv-customer-demand-kpis">
+        <div class="inv-customer-kpi">
+          <span>Pedidos ativos</span>
+          <strong>{{ product_demands_count }}</strong>
+          <small>{% if next_customer_delivery_date %}Próxima entrega: {{ next_customer_delivery_date|date:"d/m/Y" }}{% else %}Sem datas pendentes{% endif %}</small>
+        </div>
+        <div class="inv-customer-kpi">
+          <span>Compromissos externos</span>
+          <strong>{{ stock_state.safety_stock|quantity }} {{ stock.product.unit }}</strong>
+          <small>Total prometido a clientes</small>
+        </div>
+        <div class="inv-customer-kpi inv-customer-kpi--forecast">
+          <span>Produção útil a tempo</span>
+          <strong>{{ stock_state.useful_forecast_total|quantity }} {{ stock.product.unit }}</strong>
+          <small>Conta apenas antes da entrega</small>
+        </div>
+        <div class="inv-customer-kpi {% if stock_state.deficit_quantity > 0 %}inv-customer-kpi--danger{% else %}inv-customer-kpi--success{% endif %}">
+          {% if stock_state.deficit_quantity > 0 %}
+            <span>Quantidade em falta</span>
+            <strong>{{ stock_state.deficit_quantity|quantity }} {{ stock.product.unit }}</strong>
+            <small>{% if stock_state.first_deficit_date %}Crítico até {{ stock_state.first_deficit_date|date:"d/m/Y" }}{% else %}Requer reforço de stock{% endif %}</small>
+          {% else %}
+            <span>Margem vendável</span>
+            <strong>{{ stock_state.publishable_quantity|quantity }} {{ stock.product.unit }}</strong>
+            <small>Sem comprometer entregas</small>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if product_demands %}
+        <div class="inv-customer-table-shell">
+          <table class="inv-table">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Quantidade</th>
+                <th>Entrega</th>
+                <th>Estado</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for demand in product_demands %}
+                <tr>
+                  <td><strong>{{ demand.client_name }}</strong></td>
+                  <td>{{ demand.requested_quantity|quantity }} {{ stock.product.unit }}</td>
+                  <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
+                  <td>
+                    {% if demand.status == "OPEN" %}
+                      <span class="inv-badge inv-badge--warn">Em aberto</span>
+                    {% elif demand.status == "PARTIALLY_COVERED" %}
+                      <span class="inv-badge inv-badge--info">Parcialmente coberto</span>
+                    {% elif demand.status == "COVERED" %}
+                      <span class="inv-badge inv-badge--ok">Coberto</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <a href="{% url 'needs:external_demands' %}?edit={{ demand.id }}&product={{ stock.product.id }}"
+                       hx-get="{% url 'needs:external_demands' %}?edit={{ demand.id }}&product={{ stock.product.id }}"
+                       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                       class="inv-btn inv-btn--ghost inv-btn--xs" title="Editar pedido">
+                      <i class="bi bi-pencil"></i> Editar
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="inv-customer-demands-empty">
+          <div>
+            <strong>Sem pedidos externos ativos para este produto.</strong>
+            <span>Registe compromissos com clientes para calcular cobertura e gerar procura quando necessário.</span>
+          </div>
+          <a href="{% url 'needs:external_demands' %}?show_form=1&product={{ stock.product.id }}"
+             hx-get="{% url 'needs:external_demands' %}?show_form=1&product={{ stock.product.id }}"
+             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+             class="inv-btn inv-btn--primary inv-btn--sm">
+            <i class="bi bi-plus-lg"></i> Novo pedido
+          </a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
   <div class="inv-card inv-stock-health-card">
     <div class="inv-card-head">
       <div>
@@ -473,81 +581,6 @@
     </div>
   {% endif %}
 
-  {# ── Pedidos de clientes deste produto ──────────────────────────────── #}
-  <div class="inv-card" style="margin-bottom:1.5rem;">
-    <div class="inv-card-head">
-      <div>
-        <h3 class="inv-card-title"><i class="bi bi-clipboard2-check"></i> Pedidos de clientes deste produto</h3>
-        <p style="margin:.25rem 0 0 0;font-size:.82rem;color:#64748b;">
-          Encomendas externas ativas que incluem {{ stock.product.name }}.
-        </p>
-      </div>
-      <a href="{% url 'needs:external_demands' %}?product={{ stock.product.id }}"
-         hx-get="{% url 'needs:external_demands' %}?product={{ stock.product.id }}"
-         hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-         class="inv-btn inv-btn--ghost inv-btn--sm">
-        Ver todos os pedidos deste produto <i class="bi bi-arrow-right"></i>
-      </a>
-    </div>
-
-    {% if product_demands %}
-      <div class="inv-table-wrap">
-        <table class="inv-table">
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Quantidade</th>
-              <th>Data de entrega</th>
-              <th>Estado</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for demand in product_demands %}
-            <tr>
-              <td>
-                <strong>{{ demand.client_name }}</strong>
-                {% if demand.client_contact %}<br><small style="color:#64748b;">{{ demand.client_contact }}</small>{% endif %}
-              </td>
-              <td>{{ demand.requested_quantity|floatformat:"-3" }} {{ stock.product.unit }}</td>
-              <td>{{ demand.requested_delivery_date|date:"d/m/Y" }}</td>
-              <td>
-                {% if demand.status == "OPEN" %}
-                  <span class="inv-badge inv-badge--warn">Em aberto</span>
-                {% elif demand.status == "PARTIALLY_COVERED" %}
-                  <span class="inv-badge inv-badge--info">Parcialmente coberto</span>
-                {% elif demand.status == "COVERED" %}
-                  <span class="inv-badge inv-badge--ok">Coberto</span>
-                {% endif %}
-              </td>
-              <td>
-                <a href="{% url 'needs:external_demands' %}?edit={{ demand.id }}"
-                   hx-get="{% url 'needs:external_demands' %}?edit={{ demand.id }}"
-                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                   class="inv-btn inv-btn--ghost inv-btn--xs" title="Editar pedido">
-                  <i class="bi bi-pencil"></i> Editar
-                </a>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="inv-empty" style="padding:1.25rem .9rem;">
-        <i class="bi bi-clipboard2"></i>
-        <p style="margin:0 0 .35rem 0;font-weight:700;color:#334155;">Sem pedidos externos ativos</p>
-        <p style="margin:0;">
-          <a href="{% url 'needs:external_demands' %}?show_form=1"
-             hx-get="{% url 'needs:external_demands' %}?show_form=1"
-             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true">
-            Registar pedido de cliente
-          </a>
-        </p>
-      </div>
-    {% endif %}
-  </div>
-
   <div class="inv-section-grid">
     <div class="inv-card">
       <div class="inv-card-head">
@@ -620,7 +653,7 @@
             {% if stock_state.key == "excess" %}
               <a href="{% url 'marketplace:publish' %}?source=stock&product={{ stock.product.id }}&from=inventory" class="inv-btn inv-btn--secondary">
                 <i class="bi bi-storefront"></i>
-                <span>Publicar excedente</span>
+                <span>Publicar anúncio</span>
               </a>
             {% elif stock_state.key == "critical" %}
               <a href="{% url 'recommendations:index' %}?product={{ stock.product.id }}" class="inv-btn inv-btn--secondary">
@@ -777,5 +810,3 @@
 </style>
 
 {% endblock %}
-
-

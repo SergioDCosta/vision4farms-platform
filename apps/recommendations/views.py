@@ -11,6 +11,8 @@ from apps.common.decorators import client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
 from apps.inventory.services import calculate_inventory_commitment_state
+from apps.marketplace.models import ListingStatus
+from apps.marketplace.services import get_my_listings
 from apps.needs.navigation import build_needs_index_url
 from apps.needs.models import NeedSourceSystem
 from apps.needs.services import (
@@ -279,6 +281,15 @@ def _build_sell_recommendation_context(*, producer, product, requested_quantity,
         "from": "recommendations",
         "qty": str(requested_quantity),
     })
+    active_listing = (
+        get_my_listings(producer=producer, origin="stock")
+        .filter(
+            product=product,
+            status=ListingStatus.ACTIVE,
+            quantity_available__gt=ZERO_QTY,
+        )
+        .first()
+    )
     return {
         "wizard_step": 2,
         "recommendation_direction": RECOMMENDATION_DIRECTION_SELL,
@@ -287,6 +298,12 @@ def _build_sell_recommendation_context(*, producer, product, requested_quantity,
         "recommendation_metrics": metrics,
         "compatible_need_rows": compatible_needs[:6],
         "publish_url": f"{reverse('marketplace:publish')}?{publish_query}",
+        "active_listing": active_listing,
+        "manage_listing_url": (
+            reverse("marketplace:owner_detail", args=[active_listing.id])
+            if active_listing
+            else ""
+        ),
     }
 
 
@@ -568,6 +585,7 @@ def recommendations_create_need_view(request, recommendation_id):
                 source_system=NeedSourceSystem.VISION4FARMS,
                 external_id=str(recommendation.id),
                 notes=f"Necessidade criada a partir da recomendação #{recommendation.id}.",
+                acting_user=request.current_user,
             )
             recommendation.need = need
             recommendation.updated_at = timezone.now()

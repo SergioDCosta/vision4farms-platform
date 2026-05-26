@@ -15,6 +15,14 @@ SELLER_CANCEL_REASON_CHOICES = (
     ("Outro", "Outro"),
 )
 
+BUYER_CANCEL_REASON_CHOICES = (
+    ("Já não necessito do produto", "Já não necessito do produto"),
+    ("Quantidade ou condições incorretas", "Quantidade ou condições incorretas"),
+    ("Encontrei outra solução", "Encontrei outra solução"),
+    ("Erro no pedido", "Erro no pedido"),
+    ("Outro", "Outro"),
+)
+
 
 class OrderCreateForm(forms.Form):
     quantity = forms.DecimalField(
@@ -45,5 +53,19 @@ class SellerStatusUpdateForm(forms.Form):
     def clean_cancel_reason(self):
         cancel_reason = self.cleaned_data.get("cancel_reason", "").strip()
         if self.status == OrderStatus.CANCELLED and not cancel_reason:
+            raise forms.ValidationError("Escolha um motivo para cancelar a encomenda.")
+        return cancel_reason
+
+
+class BuyerCancelOrderForm(forms.Form):
+    cancel_reason = forms.ChoiceField(
+        choices=BUYER_CANCEL_REASON_CHOICES,
+        error_messages={"required": "Escolha um motivo para cancelar a encomenda."},
+    )
+    notes = forms.CharField(required=False, max_length=ORDER_NOTES_MAX_LENGTH)
+
+    def clean_cancel_reason(self):
+        cancel_reason = self.cleaned_data.get("cancel_reason", "").strip()
+        if not cancel_reason:
             raise forms.ValidationError("Escolha um motivo para cancelar a encomenda.")
         return cancel_reason

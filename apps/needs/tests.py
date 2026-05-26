@@ -27,10 +27,14 @@ from apps.needs.services import (
     list_need_responses_for_owner,
     list_need_responses_for_responder,
     list_marketplace_public_needs,
+    mark_external_customer_demand_fulfilled,
+    publish_need_to_marketplace,
     reject_need_response,
     normalize_needs_search_query,
+    sync_need_from_external_demands,
     update_need,
     update_need_response,
+    withdraw_need_from_marketplace,
 )
 from apps.needs.views import build_needs_index_context
 from apps.orders.models import OrderItemStatus, OrderStatus
@@ -149,6 +153,14 @@ class NeedsRoutingTests(SimpleTestCase):
             reverse("needs:edit", args=[need_id]),
             f"/necessidades/{need_id}/editar/",
         )
+        self.assertEqual(
+            reverse("needs:publish_marketplace", args=[need_id]),
+            f"/necessidades/{need_id}/publicar/",
+        )
+        self.assertEqual(
+            reverse("needs:withdraw_marketplace", args=[need_id]),
+            f"/necessidades/{need_id}/retirar-marketplace/",
+        )
 
     def test_external_customer_demands_urls_are_public_needs_paths(self):
         demand_id = uuid4()
@@ -162,6 +174,10 @@ class NeedsRoutingTests(SimpleTestCase):
         self.assertEqual(
             reverse("needs:external_demand_cancel", args=[demand_id]),
             f"/necessidades/pedidos-clientes/{demand_id}/cancelar/",
+        )
+        self.assertEqual(
+            reverse("needs:external_demand_fulfill", args=[demand_id]),
+            f"/necessidades/pedidos-clientes/{demand_id}/cumprir/",
         )
 
 
@@ -314,6 +330,108 @@ class ExternalDemandPlanningTests(SimpleTestCase):
         self.assertEqual(row["capacity_until_date"], Decimal("60.000"))
         self.assertEqual(row["remaining_capacity_until_date"], Decimal("0.000"))
         self.assertEqual(row["deficit_until_date"], Decimal("40.000"))
+
+
+class ExternalDemandLifecycleTests(SimpleTestCase):
+    def test_sync_lock_only_selects_customer_demand_need(self):
+        from apps.needs.services import _lock_need_for_customer_demand_sync
+
+        queryset = MagicMock()
+        manager = MagicMock()
+        manager.select_for_update.return_value = queryset
+        queryset.filter.return_value = queryset
+        queryset.exclude.return_value = queryset
+        queryset.order_by.return_value = queryset
+        queryset.first.return_value = None
+
+        with patch("apps.needs.services.Need.objects", manager):
+            result = _lock_need_for_customer_demand_sync(
+                producer=SimpleNamespace(id="producer-1"),
+                product=SimpleNamespace(id="product-1"),
+            )
+
+        self.assertIsNone(result)
+        filter_kwargs = queryset.filter.call_args.kwargs
+        self.assertEqual(filter_kwargs["producer"].id, "producer-1")
+        self.assertEqual(filter_kwargs["product"].id, "product-1")
+        self.assertEqual(filter_kwargs["source_system"], NeedSourceSystem.CUSTOMER_DEMAND)
+
+    def test_mark_external_demand_fulfilled_recalculates_customer_demand_state(self):
+        producer = SimpleNamespace(id="producer-1")
+        product = SimpleNamespace(id="product-1", name="Batata")
+        demand = SimpleNamespace(id="demand-1")
+        locked = SimpleNamespace(
+            id="demand-1",
+            producer_id="producer-1",
+            product_id="product-1",
+            product=product,
+            requested_quantity=Decimal("20"),
+            requested_delivery_date=date(2026, 6, 1),
+            status=ExternalCustomerDemandStatus.OPEN,
+            source_system="MANUAL",
+            client_name="Cliente",
+            generated_need_id=None,
+            fulfilled_at=None,
+            updated_by=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        manager = MagicMock()
+        manager.select_for_update.return_value.select_related.return_value.get.return_value = locked
+        fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
+
+        with (
+            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.services.log_audit_event"),
+            patch("apps.needs.services.sync_external_customer_demand_state_for_product") as sync,
+        ):
+            result, changed = fulfill(demand=demand, producer=producer, updated_by=None)
+
+        self.assertTrue(changed)
+        self.assertIs(result, locked)
+        self.assertEqual(locked.status, ExternalCustomerDemandStatus.FULFILLED)
+        self.assertIsNotNone(locked.fulfilled_at)
+        sync.assert_called_once_with(producer=producer, product=product, acting_user=None)
+
+    def test_recalculation_withdraws_a_published_automatic_need_when_deficit_changes(self):
+        producer = SimpleNamespace(id="producer-1")
+        product = SimpleNamespace(id="product-1", name="Batata")
+        existing_need = SimpleNamespace(
+            id="need-1",
+            producer_id="producer-1",
+            product_id="product-1",
+            producer=producer,
+            product=product,
+            required_quantity=Decimal("25.000"),
+            needed_by_date=timezone.now(),
+            source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+            external_id="customer_demands:producer-1:product-1",
+            notes="",
+            status=NeedStatus.OPEN,
+            is_marketplace_published=True,
+            published_at=timezone.now(),
+            updated_at=None,
+            save=MagicMock(),
+        )
+        plan = {"max_deficit": Decimal("40.000"), "first_deficit_date": date(2026, 6, 30)}
+        sync = getattr(sync_need_from_external_demands, "__wrapped__", sync_need_from_external_demands)
+
+        with (
+            patch("apps.needs.services.calculate_external_demand_plan", return_value=plan),
+            patch("apps.needs.services._lock_need_for_customer_demand_sync", return_value=existing_need),
+            patch("apps.needs.services.recalculate_need_status", return_value=(existing_need, {}, False)),
+            patch("apps.needs.services._set_external_demands_generated_need"),
+            patch("apps.needs.services.log_audit_event") as audit,
+        ):
+            need, _, changed = sync(producer=producer, product=product)
+
+        self.assertIs(need, existing_need)
+        self.assertTrue(changed)
+        self.assertFalse(existing_need.is_marketplace_published)
+        self.assertIn(
+            "NEED_MARKETPLACE_UNPUBLISHED_AFTER_RECALCULATION",
+            [call.kwargs["action"] for call in audit.call_args_list],
+        )
 
 
 class NeedResponsePublishViewTests(SimpleTestCase):
@@ -773,9 +891,16 @@ class NeedsServiceTests(SimpleTestCase):
         producer = SimpleNamespace(id="producer-1")
         product = SimpleNamespace(id="product-1")
         need = MagicMock(
+            id="need-new",
+            product_id="product-1",
             producer=producer,
             product=product,
+            required_quantity=Decimal("7.000"),
+            needed_by_date=None,
+            source_system=NeedSourceSystem.MANUAL,
             status=NeedStatus.OPEN,
+            is_marketplace_published=True,
+            published_at=timezone.now(),
         )
         active_qs = MagicMock()
         active_qs.order_by.return_value.first.return_value = None
@@ -790,6 +915,7 @@ class NeedsServiceTests(SimpleTestCase):
                 "apps.needs.services.recalculate_need_status",
                 return_value=(need, {"remaining_to_plan": Decimal("4.000")}, False),
             ),
+            patch("apps.needs.services.log_audit_event"),
         ):
             result, _ = create(
                 producer=producer,
@@ -802,6 +928,8 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertIs(result, need)
         manager.objects.create.assert_called_once()
         self.assertEqual(manager.objects.create.call_args.kwargs["required_quantity"], Decimal("7.000"))
+        self.assertTrue(manager.objects.create.call_args.kwargs["is_marketplace_published"])
+        self.assertIsNotNone(manager.objects.create.call_args.kwargs["published_at"])
 
     def test_ignore_need_marks_need_as_ignored(self):
         producer = SimpleNamespace(id="producer-1")
@@ -851,6 +979,55 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(rows[0]["public_status_label"], "Aberta")
         self.assertEqual(rows[0]["public_quantity"], Decimal("6.000"))
         self.assertEqual(rows[0]["public_offered_quantity"], Decimal("5.000"))
+        filter_kwargs = manager.objects.select_related.return_value.filter.call_args.kwargs
+        self.assertTrue(filter_kwargs["is_marketplace_published"])
+
+    def test_publish_and_withdraw_customer_need_preserves_publication_timestamp(self):
+        producer = SimpleNamespace(id="producer-1")
+        need = SimpleNamespace(
+            id="need-1",
+            producer_id="producer-1",
+            product_id="product-1",
+            producer=producer,
+            product=SimpleNamespace(id="product-1", name="Batata"),
+            required_quantity=Decimal("10.000"),
+            needed_by_date=None,
+            source_system=NeedSourceSystem.CUSTOMER_DEMAND,
+            status=NeedStatus.OPEN,
+            is_marketplace_published=False,
+            published_at=None,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        manager = MagicMock()
+        manager.select_for_update.return_value.select_related.return_value.get.return_value = need
+        publish = getattr(publish_need_to_marketplace, "__wrapped__", publish_need_to_marketplace)
+        withdraw = getattr(withdraw_need_from_marketplace, "__wrapped__", withdraw_need_from_marketplace)
+
+        with (
+            patch("apps.needs.services.Need.objects", manager),
+            patch(
+                "apps.needs.services.calculate_need_coverage",
+                return_value={"remaining_to_plan": Decimal("10.000")},
+            ),
+            patch(
+                "apps.needs.services.calculate_external_demand_plan",
+                return_value={"max_deficit": Decimal("10.000")},
+            ),
+            patch("apps.needs.services.log_audit_event") as audit,
+        ):
+            _, published = publish(need=need, producer=producer)
+            publication_timestamp = need.published_at
+            _, withdrawn = withdraw(need=need, producer=producer)
+
+        self.assertTrue(published)
+        self.assertTrue(withdrawn)
+        self.assertFalse(need.is_marketplace_published)
+        self.assertIs(need.published_at, publication_timestamp)
+        self.assertEqual(
+            [call.kwargs["action"] for call in audit.call_args_list],
+            ["NEED_MARKETPLACE_PUBLISHED", "NEED_MARKETPLACE_WITHDRAWN"],
+        )
 
     def test_public_offered_quantity_counts_only_other_relevant_offers(self):
         viewer = SimpleNamespace(id="viewer-1")
@@ -1474,6 +1651,7 @@ class NeedsServiceTests(SimpleTestCase):
             patch("apps.needs.views.get_need_response_counts_for_owner", return_value={"need-1": 1}),
             patch("apps.needs.views.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
             patch("apps.needs.views.list_need_responses_for_responder", return_value=[active_response, past_response]) as sent_responses,
+            patch("apps.needs.views.list_external_customer_demands", return_value=[]),
             patch("apps.needs.views.ExternalCustomerDemand.objects.filter") as demand_filter,
             patch("apps.needs.views.Stock.objects.filter", return_value=[]),
         ):

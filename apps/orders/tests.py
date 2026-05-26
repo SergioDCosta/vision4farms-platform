@@ -1,15 +1,17 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
 from apps.marketplace.models import MarketplaceListing
 from apps.needs.models import NeedResponseStatus
-from apps.orders.models import Order, OrderItem, OrderStatus
+from apps.orders.forms import BuyerCancelOrderForm
+from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderStatus
 from apps.orders.services import (
     OrderServiceError,
     _quantity_label,
     _notify_order_purchase_created,
+    buyer_cancel_order,
     build_presale_timeline_context,
     create_order_from_listing,
     get_order_source_label,
@@ -183,3 +185,81 @@ class NeedResponseOrderTests(SimpleTestCase):
 
         self.assertIn("oferta foi aceite", emit.call_args.kwargs["title"])
         self.assertIn("aceitou a sua oferta privada para uma necessidade", emit.call_args.kwargs["description"])
+
+
+class BuyerOrderCancellationTests(SimpleTestCase):
+    def test_buyer_cancel_form_requires_reason(self):
+        form = BuyerCancelOrderForm({"cancel_reason": "", "notes": ""})
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("cancel_reason", form.errors)
+
+    def test_buyer_cancellation_releases_listings_and_records_reason(self):
+        buyer = SimpleNamespace(id="buyer-1")
+        seller = SimpleNamespace(id="seller-1")
+        order = SimpleNamespace(
+            id="order-1",
+            buyer_producer_id=buyer.id,
+            buyer_producer=buyer,
+            status=OrderStatus.CONFIRMED,
+        )
+        item = SimpleNamespace(
+            listing_id="listing-1",
+            seller_producer=seller,
+            item_status=OrderItemStatus.CONFIRMED,
+            save=MagicMock(),
+        )
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        items_query = MagicMock()
+        items_query.select_related.return_value.filter.return_value.exclude.return_value = [item]
+        cancel = getattr(buyer_cancel_order, "__wrapped__", buyer_cancel_order)
+
+        def mark_cancelled(current_order):
+            current_order.status = OrderStatus.CANCELLED
+            return current_order
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.services.OrderItem.objects", items_query),
+            patch("apps.orders.services._reconcile_listing_reservation") as reconcile,
+            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids") as sync_responses,
+            patch("apps.orders.services._recalculate_order_status", side_effect=mark_cancelled),
+            patch("apps.orders.services._create_status_history") as create_history,
+            patch("apps.orders.services.recalculate_needs_for_order") as recalculate_needs,
+            patch("apps.orders.services._sync_alerts_for_producers"),
+            patch("apps.orders.services._log_order_status_change") as audit_status,
+        ):
+            result = cancel(
+                order=order,
+                buyer_producer=buyer,
+                acting_user=None,
+                notes="Cancelada pelo comprador. Motivo: Erro no pedido",
+            )
+
+        self.assertIs(result, order)
+        self.assertEqual(item.item_status, OrderItemStatus.CANCELLED)
+        item.save.assert_called_once()
+        reconcile.assert_called_once_with("listing-1", None)
+        sync_responses.assert_called_once_with({"listing-1"})
+        create_history.assert_called_once()
+        self.assertIn("Motivo: Erro no pedido", create_history.call_args.kwargs["notes"])
+        recalculate_needs.assert_called_once_with(order, acting_user=None)
+        audit_status.assert_called_once()
+
+    def test_buyer_cannot_cancel_order_already_in_delivery(self):
+        buyer = SimpleNamespace(id="buyer-1")
+        order = SimpleNamespace(
+            id="order-1",
+            buyer_producer_id=buyer.id,
+            status=OrderStatus.DELIVERING,
+        )
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        cancel = getattr(buyer_cancel_order, "__wrapped__", buyer_cancel_order)
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            self.assertRaisesMessage(OrderServiceError, "em entrega ou concluída"),
+        ):
+            cancel(order=order, buyer_producer=buyer, acting_user=None)

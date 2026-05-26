@@ -10,7 +10,7 @@ from apps.common.redirects import get_safe_next_url
 from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import get_need_for_producer
 from apps.marketplace.models import MarketplaceListing, ListingStatus
-from apps.orders.forms import OrderCreateForm, SellerStatusUpdateForm
+from apps.orders.forms import BuyerCancelOrderForm, OrderCreateForm, SellerStatusUpdateForm
 from apps.orders.models import OrderStatus, OrderItemStatus
 from apps.orders.models import OrderItem
 from apps.orders.services import (
@@ -30,6 +30,7 @@ from apps.orders.services import (
     is_order_from_need_response,
     is_order_forecast_only,
     build_presale_timeline_context,
+    buyer_cancel_order,
     seller_update_order_status,
 )
 
@@ -172,6 +173,15 @@ def order_detail_view(request, order_id):
         and order.status not in {OrderStatus.COMPLETED, OrderStatus.CANCELLED}
         and any(item.item_status not in {OrderItemStatus.CANCELLED, OrderItemStatus.COMPLETED} for item in seller_items)
     )
+    can_buyer_cancel = (
+        role == "buyer"
+        and order.status in {OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS}
+        and bool(active_order_items)
+        and all(
+            item.item_status not in {OrderItemStatus.IN_DELIVERY, OrderItemStatus.COMPLETED}
+            for item in active_order_items
+        )
+    )
     is_presale_order = is_order_forecast_only(order)
     is_need_response_order = is_order_from_need_response(order)
     presale_timeline = build_presale_timeline_context(order) if is_presale_order else None
@@ -201,6 +211,7 @@ def order_detail_view(request, order_id):
         "can_seller_start": can_seller_start,
         "can_seller_deliver": can_seller_deliver,
         "can_seller_cancel": can_seller_cancel,
+        "can_buyer_cancel": can_buyer_cancel,
         "presale_timeline_steps": presale_timeline["steps"] if presale_timeline else [],
         "presale_timeline_state": presale_timeline["state"] if presale_timeline else "normal",
         "presale_timeline_cancelled": presale_timeline["cancelled"] if presale_timeline else False,
@@ -379,6 +390,47 @@ def confirm_order_receipt_view(request, order_id):
 
     messages.success(request, "Receção da encomenda confirmada com sucesso.")
     return _redirect_after_action()
+
+
+@client_only_required
+def buyer_cancel_order_view(request, order_id):
+    if request.method != "POST":
+        return redirect("orders:detail", order_id=order_id)
+
+    producer = get_current_producer_for_user(request.current_user)
+    if not producer:
+        messages.error(request, "Perfil de produtor não encontrado.")
+        return redirect("dashboard:painel")
+
+    order = get_order_detail_for_buyer(buyer_producer=producer, order_id=order_id)
+    form = BuyerCancelOrderForm(request.POST)
+    if not form.is_valid():
+        first_error = next(iter(form.errors.values()))[0]
+        messages.error(request, first_error)
+        return redirect(f"{reverse('orders:detail', kwargs={'order_id': order.id})}?force_single=1")
+
+    cancel_reason = form.cleaned_data["cancel_reason"].strip()
+    additional_notes = form.cleaned_data["notes"].strip()
+    notes = f"Cancelada pelo comprador. Motivo: {cancel_reason}"
+    if additional_notes:
+        notes = f"{notes} | {additional_notes}"
+
+    try:
+        buyer_cancel_order(
+            order=order,
+            buyer_producer=producer,
+            acting_user=request.current_user,
+            notes=notes,
+        )
+    except OrderServiceError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "Encomenda cancelada. As reservas foram libertadas.")
+
+    next_url = get_safe_next_url(request, request.POST.get("next"))
+    if next_url:
+        return redirect(next_url)
+    return redirect(f"{reverse('orders:detail', kwargs={'order_id': order.id})}?force_single=1")
 
 
 @client_only_required

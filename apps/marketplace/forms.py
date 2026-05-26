@@ -520,10 +520,7 @@ class MarketplaceEditForm(forms.Form):
                 )
                 source_unit = self.listing.product.unit
 
-            max_allowed = max(
-                source_available + reserved_quantity,
-                Decimal(str(self.listing.quantity_total or 0)),
-            )
+            max_allowed = source_available + reserved_quantity
             if quantity_total > max_allowed:
                 self.add_error(
                     "quantity_total",

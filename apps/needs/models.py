@@ -68,6 +68,8 @@ class Need(models.Model):
         choices=NeedStatus.choices,
         default=NeedStatus.OPEN,
     )
+    is_marketplace_published = models.BooleanField(default=False)
+    published_at = models.DateTimeField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

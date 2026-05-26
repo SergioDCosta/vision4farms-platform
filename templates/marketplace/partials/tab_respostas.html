@@ -1,29 +1,112 @@
 <div class="mk-tab-section">
+  <section id="mk-received-responses" class="mk-tab-group mk-tab-group--received">
+    <div class="mk-tab-group__header">
+      <div>
+        <h2 class="mk-tab-group__title"><i class="bi bi-inbox"></i> Recebidas: propostas às minhas procuras</h2>
+        <p>Ofertas de outros produtores para responder aos seus pedidos em falta.</p>
+      </div>
+      {% if received_active_need_responses %}
+        <span class="mk-section-count">{{ received_active_need_responses|length }} por decidir</span>
+      {% endif %}
+    </div>
+    {% if received_active_need_responses %}
+      <div class="mk-responses-list">
+        {% for response in received_active_need_responses %}
+        <div class="mk-resp-row">
+          <div class="mk-resp-row__product">
+            <span class="mk-resp-row__name">{{ response.product_name }}</span>
+            <span class="mk-resp-row__requester">
+              <i class="bi bi-person"></i> De {{ response.producer_label }}
+            </span>
+          </div>
+          <div class="mk-resp-row__offer">
+            <span class="mk-resp-row__qty">{{ response.offered_quantity|floatformat:"-2" }} {{ response.product_unit }}</span>
+            <span class="mk-resp-row__price">{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</span>
+          </div>
+          <div class="mk-resp-row__status">
+            <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+          </div>
+          <div class="mk-resp-row__actions">
+            <a href="{{ response.detail_url }}"
+                 hx-get="{{ response.detail_url }}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-btn mk-btn--primary">
+              <i class="bi bi-cart-check"></i> {{ response.cta_label }}
+            </a>
+            {% if response.can_reject %}
+              <form method="post" action="{{ response.reject_url }}" class="mk-reject-form"
+                    onsubmit="return confirm('Rejeitar esta proposta?');">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'marketplace:index' %}?tab=respostas#mk-received-responses">
+                <button type="submit" class="mk-btn mk-btn--danger"><i class="bi bi-x-circle"></i> Rejeitar</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="mk-tab-empty mk-tab-empty--inline">
+        <i class="bi bi-inbox"></i>
+        <h3>Sem propostas por decidir</h3>
+        <p>Quando outro produtor responder a uma procura sua, a proposta aparece aqui.</p>
+      </div>
+    {% endif %}
+    {% if received_past_need_responses %}
+      <div class="mk-history-heading">Histórico de propostas recebidas</div>
+      <div class="mk-responses-list mk-responses-list--past">
+        {% for response in received_past_need_responses %}
+          <div class="mk-resp-row mk-resp-row--past">
+            <div class="mk-resp-row__product">
+              <span class="mk-resp-row__name">{{ response.product_name }}</span>
+              <span class="mk-resp-row__requester"><i class="bi bi-person"></i> De {{ response.producer_label }}</span>
+            </div>
+            <div class="mk-resp-row__offer">
+              <span class="mk-resp-row__qty">{% if response.ordered_quantity > 0 %}{{ response.ordered_quantity|floatformat:"-2" }}{% else %}{{ response.offered_quantity|floatformat:"-2" }}{% endif %} {{ response.product_unit }}</span>
+              <span class="mk-resp-row__price">{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</span>
+            </div>
+            <div class="mk-resp-row__status">
+              <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+            </div>
+            <div class="mk-resp-row__actions">
+              <a href="{{ response.detail_url }}"
+                 hx-get="{{ response.detail_url }}"
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver detalhe</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
 
-  {% if my_need_responses %}
-    <div class="mk-tab-group">
-      <h2 class="mk-tab-group__title"><i class="bi bi-reply-all"></i> As minhas propostas a necessidades</h2>
+  <section id="mk-sent-responses" class="mk-tab-group">
+    <div class="mk-tab-group__header">
+      <div>
+        <h2 class="mk-tab-group__title"><i class="bi bi-send"></i> Enviadas: propostas a outros produtores</h2>
+        <p>Acompanhe as propostas que enviou para responder às procuras de outros produtores.</p>
+      </div>
+    </div>
+    {% if my_need_responses %}
       <div class="mk-responses-list">
         {% for listing in my_need_responses %}
         <div class="mk-resp-row">
           <div class="mk-resp-row__product">
             <span class="mk-resp-row__name">{{ listing.product.name }}</span>
             {% if listing.need %}
-              <span class="mk-resp-row__requester">
-                <i class="bi bi-person"></i>
-                {{ listing.need.producer.display_name|default:listing.need.producer.company_name }}
-              </span>
+              <span class="mk-resp-row__requester"><i class="bi bi-person"></i> Para {{ listing.need.producer.display_name|default:listing.need.producer.company_name }}</span>
             {% endif %}
           </div>
           <div class="mk-resp-row__offer">
-            <span class="mk-resp-row__qty">{{ listing.quantity_available }} kg</span>
-            <span class="mk-resp-row__price">{{ listing.unit_price }} €/kg</span>
+            <span class="mk-resp-row__qty">{{ listing.quantity_available|floatformat:"-2" }} {{ listing.product.unit }}</span>
+            <span class="mk-resp-row__price">{{ listing.unit_price|floatformat:2 }} €/{{ listing.product.unit }}</span>
           </div>
           <div class="mk-resp-row__status">
             {% if listing.response_summary %}
-              <span class="mk-badge mk-badge--{{ listing.response_summary.badge_class }}">
-                {{ listing.response_summary.status_label }}
-              </span>
+              <span class="mk-badge mk-badge--{{ listing.response_summary.badge_class }}">{{ listing.response_summary.status_label }}</span>
             {% else %}
               <span class="mk-badge mk-badge--warning">Pendente</span>
             {% endif %}
@@ -32,77 +115,57 @@
             {% if listing.response_summary %}
               <a href="{{ listing.response_summary.detail_url }}"
                  hx-get="{{ listing.response_summary.detail_url }}"
-                 hx-target="#shellMain"
-                 hx-select="#shellMain"
-                 hx-swap="outerHTML"
-                 hx-push-url="true"
-                 class="mk-btn mk-btn--secondary">
-                <i class="bi bi-eye"></i>
-                Ver proposta
-              </a>
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
               {% if listing.response_summary.can_edit %}
                 <a href="{{ listing.response_summary.edit_url }}"
                    hx-get="{{ listing.response_summary.edit_url }}"
-                   hx-target="#shellMain"
-                   hx-select="#shellMain"
-                   hx-swap="outerHTML"
-                   hx-push-url="true"
-                   class="mk-btn mk-btn--secondary">
-                  <i class="bi bi-pencil"></i>
-                  Editar
-                </a>
+                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                   class="mk-btn mk-btn--secondary"><i class="bi bi-pencil"></i> Editar</a>
               {% endif %}
             {% else %}
               <a href="{% url 'needs:response_detail' listing.id %}"
                  hx-get="{% url 'needs:response_detail' listing.id %}"
-                 hx-target="#shellMain"
-                 hx-select="#shellMain"
-                 hx-swap="outerHTML"
-                 hx-push-url="true"
-                 class="mk-btn mk-btn--secondary">
-                <i class="bi bi-eye"></i>
-                Ver proposta
-              </a>
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
             {% endif %}
           </div>
         </div>
         {% endfor %}
       </div>
-    </div>
+    {% else %}
+      <div class="mk-tab-empty mk-tab-empty--inline">
+        <i class="bi bi-send"></i>
+        <h3>Ainda não enviou propostas</h3>
+        <p>Responda às procuras abertas de outros produtores a partir do marketplace.</p>
+        <a href="{% url 'marketplace:index' %}?tab=todos&kind=needs"
+           hx-get="{% url 'marketplace:index' %}?tab=todos&kind=needs"
+           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+           class="mk-btn mk-btn--primary"><i class="bi bi-search"></i> Ver procuras abertas</a>
+      </div>
+    {% endif %}
+  </section>
 
-    <div class="mk-tab-hint">
-      <i class="bi bi-info-circle"></i>
-      As propostas ficam visíveis até o produtor aceitar ou a necessidade ser coberta. Pode fazer nova proposta se a anterior foi rejeitada ou cancelada.
-    </div>
-
-  {% else %}
-    <div class="mk-tab-empty">
-      <i class="bi bi-reply"></i>
-      <h3>Ainda não respondeu a nenhuma necessidade</h3>
-      <p>Explore as procuras abertas de outros produtores e ofereça os seus excedentes como resposta.</p>
-      <a href="{% url 'marketplace:index' %}?tab=todos&kind=needs"
-         hx-get="{% url 'marketplace:index' %}?tab=todos&kind=needs"
-         hx-target="#shellMain"
-         hx-select="#shellMain"
-         hx-swap="outerHTML"
-         hx-push-url="true"
-         class="mk-btn mk-btn--primary">
-        <i class="bi bi-search"></i>
-        Ver procuras abertas
-      </a>
-    </div>
-  {% endif %}
-
+  <div class="mk-tab-hint">
+    <i class="bi bi-info-circle"></i>
+    Uma proposta recebida só origina encomenda quando a aceitar. As propostas enviadas podem ser ajustadas enquanto aguardam decisão.
+  </div>
 </div>
 
 <style>
 .mk-tab-section{display:flex;flex-direction:column;gap:1.25rem;}
-.mk-tab-group{background:#fff;border:1px solid #dbe4ee;border-radius:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.05);overflow:hidden;}
-.mk-tab-group__title{display:flex;align-items:center;gap:.55rem;margin:0;padding:.85rem 1.2rem;font-size:.86rem;font-weight:800;color:#334155;border-bottom:1px solid #edf2f7;}
+.mk-tab-group{background:#fff;border:1px solid #dbe4ee;border-radius:.9rem;box-shadow:0 1px 3px rgba(15,23,42,.05);overflow:hidden;scroll-margin-top:1rem;}
+.mk-tab-group--received{border-color:#bbf7d0;}
+.mk-tab-group__header{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.9rem 1.2rem;border-bottom:1px solid #edf2f7;}
+.mk-tab-group__header p{margin:.2rem 0 0;font-size:.78rem;color:#64748b;}
+.mk-tab-group__title{display:flex;align-items:center;gap:.55rem;margin:0;font-size:.9rem;font-weight:800;color:#334155;}
 .mk-tab-group__title i{color:#64748b;}
+.mk-tab-group--received .mk-tab-group__title i{color:#16a34a;}
+.mk-section-count{padding:.36rem .7rem;background:#dcfce7;color:#166534;border-radius:999px;font-size:.74rem;font-weight:800;white-space:nowrap;}
 .mk-responses-list{display:flex;flex-direction:column;}
 .mk-resp-row{display:grid;grid-template-columns:1fr auto auto auto;gap:.6rem 1.1rem;align-items:center;padding:.85rem 1.2rem;border-bottom:1px solid #f1f5f9;}
 .mk-resp-row:last-child{border-bottom:0;}
+.mk-resp-row--past{background:#fcfdff;}
 .mk-resp-row__product{display:flex;flex-direction:column;gap:.15rem;}
 .mk-resp-row__name{font-size:.88rem;font-weight:700;color:#0f172a;}
 .mk-resp-row__requester{font-size:.78rem;color:#64748b;display:flex;align-items:center;gap:.3rem;}
@@ -111,6 +174,7 @@
 .mk-resp-row__price{font-size:.78rem;color:#64748b;}
 .mk-resp-row__status{display:flex;align-items:center;}
 .mk-resp-row__actions{display:flex;gap:.5rem;align-items:center;}
+.mk-history-heading{padding:.65rem 1.2rem;background:#f8fafc;border-top:1px solid #edf2f7;border-bottom:1px solid #edf2f7;color:#64748b;font-size:.72rem;font-weight:800;text-transform:uppercase;}
 .mk-tab-hint{display:flex;align-items:flex-start;gap:.55rem;padding:.8rem 1rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:.75rem;font-size:.82rem;color:#0369a1;}
 .mk-tab-hint i{flex-shrink:0;margin-top:.1rem;}
 .mk-badge{display:inline-flex;align-items:center;padding:.28rem .65rem;border-radius:999px;font-size:.75rem;font-weight:700;white-space:nowrap;}
@@ -121,6 +185,7 @@
 .mk-badge--info,.mk-badge--blue{background:#dbeafe;color:#1e40af;}
 .mk-badge--purple{background:#ede9fe;color:#6d28d9;}
 .mk-tab-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;padding:3rem 1.5rem;background:#fff;border:1px solid #dbe4ee;border-radius:.9rem;text-align:center;}
+.mk-tab-empty--inline{border:0;border-radius:0;padding:2rem 1.5rem;}
 .mk-tab-empty i{font-size:2.2rem;color:#cbd5e1;}
 .mk-tab-empty h3{margin:0;font-size:1.05rem;font-weight:800;color:#0f172a;}
 .mk-tab-empty p{margin:0;font-size:.9rem;color:#64748b;max-width:32rem;}
@@ -129,4 +194,13 @@
 .mk-btn--primary:hover{background:#15803d;color:#fff;}
 .mk-btn--secondary{background:#fff;color:#334155;border-color:#e2e8f0;}
 .mk-btn--secondary:hover{background:#f8fafc;color:#0f172a;}
+.mk-btn--danger{background:#fff;color:#b91c1c;border-color:#fecaca;cursor:pointer;}
+.mk-btn--danger:hover{background:#fef2f2;color:#991b1b;}
+.mk-reject-form{margin:0;}
+@media (max-width: 760px){
+  .mk-tab-group__header{align-items:flex-start;flex-direction:column;}
+  .mk-resp-row{grid-template-columns:1fr;gap:.65rem;}
+  .mk-resp-row__offer{align-items:flex-start;}
+  .mk-resp-row__actions{flex-wrap:wrap;}
+}
 </style>

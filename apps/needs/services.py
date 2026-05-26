@@ -88,6 +88,10 @@ def _need_audit_values(need, *, plan=None):
         "needed_by_date": str(need.needed_by_date) if need.needed_by_date else None,
         "status": need.status,
         "source_system": need.source_system,
+        "is_marketplace_published": bool(getattr(need, "is_marketplace_published", False)),
+        "published_at": (
+            str(need.published_at) if getattr(need, "published_at", None) else None
+        ),
     }
     if plan is not None:
         values["max_deficit"] = _audit_quantity(plan.get("max_deficit"))
@@ -95,6 +99,20 @@ def _need_audit_values(need, *, plan=None):
             str(plan.get("first_deficit_date")) if plan.get("first_deficit_date") else None
         )
     return values
+
+
+def _need_marketplace_audit_values(need):
+    return {
+        "need_id": str(need.id),
+        "product_id": str(need.product_id),
+        "source_system": need.source_system,
+        "required_quantity": _audit_quantity(need.required_quantity),
+        "needed_by_date": str(need.needed_by_date) if need.needed_by_date else None,
+        "is_marketplace_published": bool(getattr(need, "is_marketplace_published", False)),
+        "published_at": (
+            str(need.published_at) if getattr(need, "published_at", None) else None
+        ),
+    }
 
 
 class DuplicateActiveNeedError(ValidationError):
@@ -186,7 +204,15 @@ def get_external_customer_demand_for_producer(*, producer, demand_id):
     )
 
 
-def list_external_customer_demands(*, producer, q="", status="", product_id=""):
+def list_external_customer_demands(
+    *,
+    producer,
+    q="",
+    status="",
+    product_id="",
+    category_id="",
+    active_only=False,
+):
     if not producer:
         return ExternalCustomerDemand.objects.none()
 
@@ -215,6 +241,14 @@ def list_external_customer_demands(*, producer, q="", status="", product_id=""):
         qs = qs.filter(product_id=product_id)
     elif product_id:
         qs = qs.none()
+
+    if category_id and _is_uuid_like(category_id):
+        qs = qs.filter(product__category_id=category_id)
+    elif category_id:
+        qs = qs.none()
+
+    if active_only:
+        qs = qs.filter(status__in=EXTERNAL_DEMAND_ACTIVE_STATUSES)
 
     return qs
 
@@ -386,7 +420,7 @@ def _get_customer_demand_need_for_product(*, producer, product):
 
 
 def _lock_need_for_customer_demand_sync(*, producer, product):
-    customer_need = (
+    return (
         Need.objects
         .select_for_update()
         .filter(
@@ -395,20 +429,6 @@ def _lock_need_for_customer_demand_sync(*, producer, product):
             source_system=NeedSourceSystem.CUSTOMER_DEMAND,
         )
         .exclude(status__in=[NeedStatus.IGNORED, NeedStatus.CANCELLED])
-        .order_by("-updated_at", "-created_at")
-        .first()
-    )
-    if customer_need:
-        return customer_need
-
-    return (
-        Need.objects
-        .select_for_update()
-        .filter(
-            producer=producer,
-            product=product,
-            status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED, NeedStatus.COVERED],
-        )
         .order_by("-updated_at", "-created_at")
         .first()
     )
@@ -536,6 +556,18 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
 
         if existing_need:
             update_fields = []
+            publication_values_before = None
+            public_terms_changed = (
+                bool(getattr(existing_need, "is_marketplace_published", False))
+                and (
+                    _quantize_need_quantity(existing_need.required_quantity) != max_deficit
+                    or existing_need.needed_by_date != needed_by_date
+                )
+            )
+            if public_terms_changed:
+                publication_values_before = _need_marketplace_audit_values(existing_need)
+                existing_need.is_marketplace_published = False
+                update_fields.append("is_marketplace_published")
             if _quantize_need_quantity(existing_need.required_quantity) != max_deficit:
                 existing_need.required_quantity = max_deficit
                 update_fields.append("required_quantity")
@@ -561,6 +593,16 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
                     update_fields.append("updated_at")
                 existing_need.save(update_fields=list(dict.fromkeys(update_fields)))
                 changed = True
+            if publication_values_before:
+                log_audit_event(
+                    actor=acting_user,
+                    action="NEED_MARKETPLACE_UNPUBLISHED_AFTER_RECALCULATION",
+                    entity_type="needs",
+                    entity_id=existing_need.id,
+                    notes="Procura retirada do marketplace porque o défice ou a data crítica foram recalculados.",
+                    old_values=publication_values_before,
+                    new_values=_need_marketplace_audit_values(existing_need),
+                )
             need = existing_need
         else:
             need = Need.objects.create(
@@ -572,6 +614,8 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
                 external_id=external_id,
                 notes=CUSTOMER_DEMAND_NEED_NOTES,
                 status=NeedStatus.OPEN,
+                is_marketplace_published=False,
+                published_at=None,
             )
             changed = True
             log_audit_event(
@@ -599,6 +643,7 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
 
     if existing_need:
         update_fields = []
+        publication_values_before = None
         if existing_need.source_system != NeedSourceSystem.CUSTOMER_DEMAND:
             existing_need.source_system = NeedSourceSystem.CUSTOMER_DEMAND
             update_fields.append("source_system")
@@ -609,6 +654,10 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
         if existing_need.status != NeedStatus.COVERED:
             existing_need.status = NeedStatus.COVERED
             update_fields.append("status")
+        if getattr(existing_need, "is_marketplace_published", False):
+            publication_values_before = _need_marketplace_audit_values(existing_need)
+            existing_need.is_marketplace_published = False
+            update_fields.append("is_marketplace_published")
         if (existing_need.notes or "") != CUSTOMER_DEMAND_NEED_NOTES:
             existing_need.notes = CUSTOMER_DEMAND_NEED_NOTES
             update_fields.append("notes")
@@ -632,6 +681,16 @@ def sync_need_from_external_demands(*, producer, product, acting_user=None):
                 notes="Procura automática coberta após recalcular stock e previsão disponíveis.",
                 old_values=previous_need_values,
                 new_values=_need_audit_values(existing_need, plan=plan),
+            )
+        if publication_values_before:
+            log_audit_event(
+                actor=acting_user,
+                action="NEED_MARKETPLACE_UNPUBLISHED_AFTER_RECALCULATION",
+                entity_type="needs",
+                entity_id=existing_need.id,
+                notes="Procura retirada do marketplace porque os pedidos passaram a estar cobertos.",
+                old_values=publication_values_before,
+                new_values=_need_marketplace_audit_values(existing_need),
             )
         _set_external_demands_generated_need(producer=producer, product=product, need=existing_need)
         return existing_need, plan, changed
@@ -925,6 +984,50 @@ def cancel_external_customer_demand(*, demand, producer, updated_by=None):
     return locked_demand, True
 
 
+@transaction.atomic
+def mark_external_customer_demand_fulfilled(*, demand, producer, updated_by=None):
+    if not demand:
+        raise ValidationError("Pedido externo inválido.")
+
+    locked_demand = (
+        ExternalCustomerDemand.objects
+        .select_for_update()
+        .select_related("product")
+        .get(id=demand.id)
+    )
+    if locked_demand.producer_id != producer.id:
+        raise ValidationError("Não pode concluir este pedido externo.")
+    if locked_demand.status == ExternalCustomerDemandStatus.FULFILLED:
+        return locked_demand, False
+    if locked_demand.status == ExternalCustomerDemandStatus.CANCELLED:
+        raise ValidationError("Um pedido cancelado não pode ser marcado como cumprido.")
+    if locked_demand.status not in EXTERNAL_DEMAND_EDITABLE_STATUSES:
+        raise ValidationError("Este pedido externo já não pode ser marcado como cumprido.")
+
+    previous_values = _external_demand_audit_values(locked_demand)
+    now = timezone.now()
+    locked_demand.status = ExternalCustomerDemandStatus.FULFILLED
+    locked_demand.fulfilled_at = now
+    locked_demand.updated_by = updated_by
+    locked_demand.updated_at = now
+    locked_demand.save(update_fields=["status", "fulfilled_at", "updated_by", "updated_at"])
+    log_audit_event(
+        actor=updated_by,
+        action="EXTERNAL_DEMAND_FULFILLED",
+        entity_type="external_customer_demands",
+        entity_id=locked_demand.id,
+        notes="Pedido externo marcado manualmente como cumprido.",
+        old_values=previous_values,
+        new_values=_external_demand_audit_values(locked_demand),
+    )
+    sync_external_customer_demand_state_for_product(
+        producer=producer,
+        product=locked_demand.product,
+        acting_user=updated_by,
+    )
+    return locked_demand, True
+
+
 def is_listing_effectively_expired(listing, *, now=None):
     expires_at = getattr(listing, "expires_at", None)
     if not expires_at or not isinstance(expires_at, datetime):
@@ -1130,14 +1233,38 @@ def recalculate_need_status(need, *, acting_user=None):
     next_status = _resolve_need_status(need, coverage)
     status_changed = False
 
+    publication_values_before = None
+    update_fields = []
+    if (
+        getattr(need, "source_system", None) == NeedSourceSystem.CUSTOMER_DEMAND
+        and next_status == NeedStatus.COVERED
+        and getattr(need, "is_marketplace_published", False)
+    ):
+        publication_values_before = _need_marketplace_audit_values(need)
+        need.is_marketplace_published = False
+        update_fields.append("is_marketplace_published")
+
     if need.status != next_status:
         need.status = next_status
+        update_fields.append("status")
+        status_changed = True
+
+    if update_fields:
         if hasattr(need, "updated_at"):
             need.updated_at = timezone.now()
-            need.save(update_fields=["status", "updated_at"])
-        else:
-            need.save(update_fields=["status"])
-        status_changed = True
+            update_fields.append("updated_at")
+        need.save(update_fields=list(dict.fromkeys(update_fields)))
+
+    if publication_values_before:
+        log_audit_event(
+            actor=acting_user,
+            action="NEED_MARKETPLACE_UNPUBLISHED_AFTER_RECALCULATION",
+            entity_type="needs",
+            entity_id=need.id,
+            notes="Procura retirada do marketplace porque ficou coberta.",
+            old_values=publication_values_before,
+            new_values=_need_marketplace_audit_values(need),
+        )
 
     return need, coverage, status_changed
 
@@ -1207,6 +1334,7 @@ def create_need(
     source_system=NeedSourceSystem.MANUAL,
     external_id=None,
     notes=None,
+    acting_user=None,
 ):
     quantity = _quantize_need_quantity(required_quantity)
     if quantity <= Decimal("0.000"):
@@ -1226,6 +1354,7 @@ def create_need(
     if existing_need:
         raise DuplicateActiveNeedError(existing_need)
 
+    is_marketplace_published = source_system != NeedSourceSystem.CUSTOMER_DEMAND
     need = Need.objects.create(
         producer=producer,
         product=product,
@@ -1235,9 +1364,20 @@ def create_need(
         external_id=external_id,
         notes=(notes or "").strip() or None,
         status=NeedStatus.OPEN,
+        is_marketplace_published=is_marketplace_published,
+        published_at=timezone.now() if is_marketplace_published else None,
     )
 
-    need, coverage, _ = recalculate_need_status(need)
+    need, coverage, _ = recalculate_need_status(need, acting_user=acting_user)
+    if is_marketplace_published:
+        log_audit_event(
+            actor=acting_user,
+            action="NEED_MARKETPLACE_PUBLISHED",
+            entity_type="needs",
+            entity_id=need.id,
+            notes="Procura publicada no marketplace ao ser criada explicitamente.",
+            new_values=_need_marketplace_audit_values(need),
+        )
     return need, coverage
 
 
@@ -1262,6 +1402,90 @@ def ignore_need(*, need, producer):
     else:
         need.save(update_fields=["status"])
     return True
+
+
+@transaction.atomic
+def publish_need_to_marketplace(*, need, producer, acting_user=None):
+    if not need:
+        raise ValidationError("Procura inválida.")
+
+    locked_need = (
+        Need.objects
+        .select_for_update()
+        .select_related("product", "producer")
+        .get(id=need.id)
+    )
+    if locked_need.producer_id != producer.id:
+        raise ValidationError("Não pode publicar esta procura.")
+    if locked_need.status not in ACTIVE_NEED_STATUSES:
+        raise ValidationError("Apenas procuras abertas ou parcialmente cobertas podem ser publicadas.")
+
+    coverage = calculate_need_coverage(locked_need)
+    if coverage["remaining_to_plan"] <= Decimal("0.000"):
+        raise ValidationError("Esta procura já não tem quantidade por cobrir.")
+
+    if locked_need.source_system == NeedSourceSystem.CUSTOMER_DEMAND:
+        plan = calculate_external_demand_plan(
+            producer=locked_need.producer,
+            product=locked_need.product,
+        )
+        if _quantize_need_quantity(plan.get("max_deficit")) <= Decimal("0.000"):
+            raise ValidationError("Os pedidos de clientes já estão cobertos; não existe défice para publicar.")
+
+    if getattr(locked_need, "is_marketplace_published", False):
+        return locked_need, False
+
+    locked_need.is_marketplace_published = True
+    locked_need.published_at = timezone.now()
+    update_fields = ["is_marketplace_published", "published_at"]
+    if hasattr(locked_need, "updated_at"):
+        locked_need.updated_at = timezone.now()
+        update_fields.append("updated_at")
+    locked_need.save(update_fields=update_fields)
+    log_audit_event(
+        actor=acting_user,
+        action="NEED_MARKETPLACE_PUBLISHED",
+        entity_type="needs",
+        entity_id=locked_need.id,
+        notes="Procura publicada no marketplace pelo produtor.",
+        new_values=_need_marketplace_audit_values(locked_need),
+    )
+    return locked_need, True
+
+
+@transaction.atomic
+def withdraw_need_from_marketplace(*, need, producer, acting_user=None):
+    if not need:
+        raise ValidationError("Procura inválida.")
+
+    locked_need = (
+        Need.objects
+        .select_for_update()
+        .select_related("product", "producer")
+        .get(id=need.id)
+    )
+    if locked_need.producer_id != producer.id:
+        raise ValidationError("Não pode retirar esta procura.")
+    if not getattr(locked_need, "is_marketplace_published", False):
+        return locked_need, False
+
+    previous_values = _need_marketplace_audit_values(locked_need)
+    locked_need.is_marketplace_published = False
+    update_fields = ["is_marketplace_published"]
+    if hasattr(locked_need, "updated_at"):
+        locked_need.updated_at = timezone.now()
+        update_fields.append("updated_at")
+    locked_need.save(update_fields=update_fields)
+    log_audit_event(
+        actor=acting_user,
+        action="NEED_MARKETPLACE_WITHDRAWN",
+        entity_type="needs",
+        entity_id=locked_need.id,
+        notes="Procura retirada do marketplace pelo produtor.",
+        old_values=previous_values,
+        new_values=_need_marketplace_audit_values(locked_need),
+    )
+    return locked_need, True
 
 
 def _build_need_row(need):
@@ -1357,6 +1581,7 @@ def list_marketplace_public_needs(*, viewer_producer=None, q="", category_id="")
         .select_related("producer", "producer__user", "product", "product__category")
         .filter(
             status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED],
+            is_marketplace_published=True,
             product__is_active=True,
         )
         .order_by("-updated_at", "-created_at")
@@ -1437,6 +1662,45 @@ def list_marketplace_my_needs(*, producer, q="", category_id=""):
         qs = qs.filter(product__category_id=category_id)
 
     return [_build_need_row(need) for need in qs]
+
+
+def list_marketplace_my_published_needs(*, producer, q="", category_id=""):
+    if not producer:
+        return []
+    qs = (
+        Need.objects
+        .select_related("producer", "producer__user", "product", "product__category")
+        .filter(
+            producer=producer,
+            status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED],
+            is_marketplace_published=True,
+            product__is_active=True,
+        )
+        .order_by("-updated_at", "-created_at")
+    )
+
+    if q:
+        q = normalize_needs_search_query(q)
+        qs = qs.filter(Q(product__name__icontains=q) | Q(notes__icontains=q))
+
+    if category_id:
+        qs = qs.filter(product__category_id=category_id)
+
+    rows = []
+    for need in qs:
+        row = _build_need_row(need)
+        row["public_quantity"] = row["remaining_to_plan"]
+        rows.append(row)
+
+    if rows:
+        response_counts = get_need_response_counts_for_owner(
+            owner_producer=producer,
+            need_ids=[row["need"].id for row in rows],
+        )
+        for row in rows:
+            row["response_count"] = response_counts.get(str(row["need"].id), 0)
+
+    return rows
 
 
 def get_need_response_counts_for_owner(*, owner_producer, need_ids):

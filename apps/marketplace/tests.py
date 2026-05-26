@@ -1,3 +1,4 @@
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID
@@ -10,6 +11,8 @@ from apps.marketplace.services import (
     MarketplaceServiceError,
     get_my_listings,
     get_public_listings,
+    is_listing_editable_in_marketplace,
+    reactivate_listing,
     retire_listing,
     update_listing,
 )
@@ -134,6 +137,7 @@ class MarketplaceListingVisibilityTests(SimpleTestCase):
     def test_my_marketplace_listings_exclude_need_responses(self, base_queryset_mock):
         qs = MagicMock()
         qs.filter.return_value = qs
+        qs.exclude.return_value = qs
         base_queryset_mock.return_value = qs
         producer = SimpleNamespace(id="producer-1")
 
@@ -141,6 +145,7 @@ class MarketplaceListingVisibilityTests(SimpleTestCase):
 
         self.assertIs(result, qs.order_by.return_value)
         qs.filter.assert_any_call(producer=producer, need_id__isnull=True)
+        qs.exclude.assert_called_once()
 
 
 class MarketplaceEditSafetyTests(SimpleTestCase):
@@ -157,6 +162,35 @@ class MarketplaceEditSafetyTests(SimpleTestCase):
                 unit_price=1,
                 delivery_mode="PICKUP",
             )
+
+    @patch("apps.marketplace.services.get_max_publishable_quantity", return_value=Decimal("5.000"))
+    def test_reactivate_listing_rejects_quantity_above_current_publishable_limit(self, max_quantity_mock):
+        listing = SimpleNamespace(
+            id="listing-1",
+            need_id=None,
+            status=ListingStatus.CANCELLED,
+            quantity_available=Decimal("10.000"),
+            quantity_reserved=Decimal("0.000"),
+            stock_id="stock-1",
+            forecast_id=None,
+            expires_at=None,
+            product=SimpleNamespace(unit="kg"),
+        )
+        stock = SimpleNamespace(id="stock-1")
+        listing_manager = MagicMock()
+        listing_manager.select_for_update.return_value.select_related.return_value.get.return_value = listing
+        stock_manager = MagicMock()
+        stock_manager.select_for_update.return_value.filter.return_value.first.return_value = stock
+        reactivate = getattr(reactivate_listing, "__wrapped__", reactivate_listing)
+
+        with (
+            patch("apps.marketplace.services.MarketplaceListing.objects", listing_manager),
+            patch("apps.marketplace.services.Stock.objects", stock_manager),
+            self.assertRaisesMessage(MarketplaceServiceError, "máximo publicável atual"),
+        ):
+            reactivate(listing=listing)
+
+        max_quantity_mock.assert_called_once_with(stock, exclude_listing_id=listing.id)
 
     @patch("apps.marketplace.views.expire_due_active_listings")
     @patch("apps.marketplace.views.get_object_or_404")
@@ -252,6 +286,7 @@ class MarketplaceDeleteListingTests(SimpleTestCase):
             status=ListingStatus.ACTIVE,
             quantity_available=10,
             photo_path="marketplace/listings/photo.jpg",
+            expires_at=None,
             save=MagicMock(),
         )
 
@@ -261,7 +296,19 @@ class MarketplaceDeleteListingTests(SimpleTestCase):
         self.assertEqual(listing.status, ListingStatus.CANCELLED)
         self.assertEqual(str(listing.quantity_available), "0.000")
         self.assertIsNone(listing.photo_path)
+        self.assertIsNotNone(listing.expires_at)
         listing.save.assert_called_once()
+
+    def test_retired_listing_cannot_be_edited_again(self):
+        listing = SimpleNamespace(
+            status=ListingStatus.CANCELLED,
+            quantity_available=0,
+            photo_path=None,
+            expires_at=None,
+            need_id=None,
+        )
+
+        self.assertFalse(is_listing_editable_in_marketplace(listing))
 
     @patch("apps.marketplace.views._sync_alerts_after_marketplace_change")
     @patch("apps.marketplace.views._delete_uploaded_file")

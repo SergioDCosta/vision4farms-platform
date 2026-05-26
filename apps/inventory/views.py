@@ -151,7 +151,7 @@ def _build_stock_detail_context(
         else "new" if normalized_forecast_mode == "new" else "list"
     )
 
-    product_demands = (
+    product_demands = list(
         ExternalCustomerDemand.objects
         .filter(
             producer=producer,
@@ -164,6 +164,9 @@ def _build_stock_detail_context(
         )
         .select_related("product")
         .order_by("requested_delivery_date")
+    )
+    next_customer_delivery_date = (
+        product_demands[0].requested_delivery_date if product_demands else None
     )
 
     context = {
@@ -186,7 +189,8 @@ def _build_stock_detail_context(
         "incoming_forecast_period_end": incoming_forecast_period_end,
         "incoming_forecast_items": incoming_forecast_items,
         "product_demands": product_demands,
-        "product_demands_count": product_demands.count(),
+        "product_demands_count": len(product_demands),
+        "next_customer_delivery_date": next_customer_delivery_date,
         "page_title": f"Stock — {stock.product.name}",
     }
     return context

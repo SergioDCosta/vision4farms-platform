@@ -95,7 +95,9 @@
   gap:.25rem;
   border-bottom:1px solid #e2e8f0;
   overflow-x:auto;
+  scrollbar-width:none;
 }
+.inv-tabs::-webkit-scrollbar{display:none;}
 
 .inv-tab{
   display:inline-flex;
@@ -865,6 +867,81 @@
 .inv-stock-health-card{
   margin-top:1rem;
 }
+.inv-customer-demands-card{
+  margin-top:1rem;
+  border-color:#bbf7d0;
+}
+.inv-customer-demands-head{
+  align-items:center;
+  background:#f8fffb;
+}
+.inv-customer-demands-subtitle{
+  margin:.25rem 0 0;
+  color:#64748b;
+  font-size:.82rem;
+}
+.inv-customer-demands-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:.65rem;
+  flex-wrap:wrap;
+}
+.inv-customer-demands-body{
+  display:flex;
+  flex-direction:column;
+  gap:1rem;
+}
+.inv-customer-demand-kpis{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:.65rem;
+}
+.inv-customer-kpi{
+  min-width:0;
+  padding:.8rem .9rem;
+  border:1px solid #e2e8f0;
+  border-radius:.8rem;
+  background:#f8fafc;
+}
+.inv-customer-kpi span{
+  display:block;
+  color:#64748b;
+  font-size:.7rem;
+  font-weight:800;
+  text-transform:uppercase;
+}
+.inv-customer-kpi strong{
+  display:block;
+  margin:.18rem 0;
+  color:#0f172a;
+  font-size:1.13rem;
+  font-weight:800;
+}
+.inv-customer-kpi small{
+  display:block;
+  color:#64748b;
+  font-size:.74rem;
+}
+.inv-customer-kpi--forecast{background:#eff6ff;border-color:#bfdbfe;}
+.inv-customer-kpi--forecast strong{color:#1d4ed8;}
+.inv-customer-kpi--success{background:#f0fdf4;border-color:#bbf7d0;}
+.inv-customer-kpi--success strong{color:#15803d;}
+.inv-customer-kpi--danger{background:#fff7ed;border-color:#fed7aa;}
+.inv-customer-kpi--danger strong{color:#b91c1c;}
+.inv-customer-table-shell{overflow:auto;}
+.inv-customer-demands-empty{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  padding:.85rem 1rem;
+  border-radius:.8rem;
+  background:#f8fafc;
+  border:1px dashed #cbd5e1;
+}
+.inv-customer-demands-empty strong{display:block;color:#334155;font-size:.9rem;}
+.inv-customer-demands-empty span{display:block;color:#64748b;font-size:.82rem;margin-top:.2rem;}
 .inv-stock-health-grid{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -994,6 +1071,9 @@
   .inv-report-grid{
     grid-template-columns:1fr;
   }
+  .inv-customer-demand-kpis{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
   .inv-commerce-metrics{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
@@ -1062,6 +1142,18 @@
   }
   .inv-forecast-toggle-check{
     justify-content:flex-start;
+  }
+  .inv-customer-demands-head,
+  .inv-customer-demands-empty{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .inv-customer-demands-actions{
+    justify-content:flex-start;
+  }
+  .inv-customer-demands-actions .inv-btn,
+  .inv-customer-demands-empty .inv-btn{
+    width:100%;
   }
   #inventory-panel{
     margin-top:.85rem;

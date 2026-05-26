@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Q, Min, Max, Count, Case, When, Value, CharField
 from django.utils import timezone
 
@@ -224,8 +225,35 @@ def get_base_listing_queryset():
     )
 
 
+def _retired_listing_filter():
+    """Identify removed listings while keeping merely disabled listings manageable."""
+    return (
+        Q(status=ListingStatus.CANCELLED, quantity_available__lte=0)
+        & (
+            Q(expires_at__isnull=False, expires_at__lte=timezone.now())
+            | Q(photo_path__isnull=True)
+            | Q(photo_path="")
+        )
+    )
+
+
+def is_listing_retired_in_marketplace(listing):
+    if not listing or getattr(listing, "need_id", None):
+        return False
+    if getattr(listing, "status", None) != ListingStatus.CANCELLED:
+        return False
+    if Decimal(str(getattr(listing, "quantity_available", 0) or 0)) > 0:
+        return False
+    expires_at = getattr(listing, "expires_at", None)
+    is_expired_marker = bool(expires_at and expires_at <= timezone.now())
+    has_no_photo = not getattr(listing, "photo_path", None)
+    return is_expired_marker or has_no_photo
+
+
 def is_listing_editable_in_marketplace(listing):
     if not listing or getattr(listing, "need_id", None):
+        return False
+    if is_listing_retired_in_marketplace(listing):
         return False
     return getattr(listing, "status", None) in MARKETPLACE_EDITABLE_STATUSES
 
@@ -233,11 +261,15 @@ def is_listing_editable_in_marketplace(listing):
 def is_listing_toggleable_in_marketplace(listing):
     if not listing or getattr(listing, "need_id", None):
         return False
+    if is_listing_retired_in_marketplace(listing):
+        return False
     return getattr(listing, "status", None) in MARKETPLACE_EDITABLE_STATUSES
 
 
 def is_listing_retirable_in_marketplace(listing):
     if not listing or getattr(listing, "need_id", None):
+        return False
+    if is_listing_retired_in_marketplace(listing):
         return False
     if getattr(listing, "status", None) in MARKETPLACE_FINAL_STATUSES:
         return False
@@ -346,8 +378,9 @@ def retire_listing(*, listing, acting_user=None):
     listing.status = ListingStatus.CANCELLED
     listing.quantity_available = Decimal("0.000")
     listing.photo_path = None
+    listing.expires_at = now
     listing.updated_at = now
-    listing.save(update_fields=["status", "quantity_available", "photo_path", "updated_at"])
+    listing.save(update_fields=["status", "quantity_available", "photo_path", "expires_at", "updated_at"])
     log_audit_event(
         actor=acting_user or getattr(listing, "_audit_actor", None),
         action="LISTING_RETIRED",
@@ -361,7 +394,11 @@ def retire_listing(*, listing, acting_user=None):
 
 
 def get_my_listings(*, producer, q="", category_id="", origin="", sort="recent", only_available=False):
-    qs = get_base_listing_queryset().filter(producer=producer, need_id__isnull=True)
+    qs = (
+        get_base_listing_queryset()
+        .filter(producer=producer, need_id__isnull=True)
+        .exclude(_retired_listing_filter())
+    )
     qs = _apply_listing_filters(
         qs,
         q=q,
@@ -393,7 +430,7 @@ def get_listing_detail_queryset(*, producer=None):
                 quantity_available__gt=0,
                 product__is_active=True,
             )
-            | Q(producer=producer)
+            | (Q(producer=producer) & ~_retired_listing_filter())
             | Q(need__producer=producer)
         )
 
@@ -631,6 +668,7 @@ def resolve_listing_source(*, producer, product, listing_source, forecast_id=Non
     raise MarketplaceServiceError("Origem da oferta inválida.")
 
 
+@transaction.atomic
 def create_listing(
     *,
     producer,
@@ -653,15 +691,23 @@ def create_listing(
     stock = None
     selected_forecast = None
     if listing_source == LISTING_SOURCE_STOCK:
-        stock = get_stock_for_product(producer, product)
+        stock = (
+            Stock.objects.select_for_update()
+            .filter(producer=producer, product=product)
+            .first()
+        )
         max_publishable = get_max_publishable_quantity(stock)
     elif listing_source == LISTING_SOURCE_FORECAST:
-        selected_forecast = forecast
-        _validate_listing_source_xor(stock=None, forecast=selected_forecast)
-        if not selected_forecast:
+        if not forecast:
             raise MarketplaceServiceError("Selecione uma previsão de produção válida.")
-        if selected_forecast.producer_id != producer.id or selected_forecast.product_id != product.id:
+        selected_forecast = (
+            ProductionForecast.objects.select_for_update()
+            .filter(id=forecast.id, producer=producer, product=product)
+            .first()
+        )
+        if not selected_forecast:
             raise MarketplaceServiceError("A previsão selecionada não pertence a este produto/produtor.")
+        _validate_listing_source_xor(stock=None, forecast=selected_forecast)
         if not selected_forecast.is_marketplace_enabled:
             raise MarketplaceServiceError("Esta previsão não está ativa para marketplace.")
         max_publishable = get_forecast_available_quantity(selected_forecast)
@@ -749,6 +795,7 @@ def create_listing(
     return listing
 
 
+@transaction.atomic
 def update_listing(
     *,
     listing,
@@ -783,12 +830,26 @@ def update_listing(
         )
 
     if has_stock_source:
-        source_available = get_max_publishable_quantity(listing.stock, exclude_listing_id=listing.id)
+        locked_stock = (
+            Stock.objects.select_for_update()
+            .filter(id=listing.stock_id)
+            .first()
+        )
+        if not locked_stock:
+            raise MarketplaceServiceError("O stock associado ao anúncio não existe.")
+        listing.stock = locked_stock
+        source_available = get_max_publishable_quantity(locked_stock, exclude_listing_id=listing.id)
     else:
-        if not listing.forecast:
+        locked_forecast = (
+            ProductionForecast.objects.select_for_update()
+            .filter(id=listing.forecast_id)
+            .first()
+        )
+        if not locked_forecast:
             raise MarketplaceServiceError("A previsão associada ao anúncio não existe.")
+        listing.forecast = locked_forecast
         source_available = get_forecast_available_quantity(
-            listing.forecast,
+            locked_forecast,
             exclude_listing_id=listing.id,
         )
 
@@ -803,10 +864,7 @@ def update_listing(
     if unit_price <= 0:
         raise MarketplaceServiceError("O preço tem de ser superior a zero.")
 
-    max_allowed_total = max(
-        source_available + reserved_quantity,
-        Decimal(str(listing.quantity_total or 0)),
-    )
+    max_allowed_total = source_available + reserved_quantity
     if quantity_total > max_allowed_total:
         raise MarketplaceServiceError(
             (
@@ -866,6 +924,71 @@ def update_listing(
             if listing.need_id
             else "Condições do anúncio atualizadas."
         ),
+        old_values=old_values,
+        new_values=_listing_audit_values(listing),
+    )
+    return listing
+
+
+@transaction.atomic
+def reactivate_listing(*, listing, acting_user=None):
+    """Reactivate a disabled offer only if its source still covers its quantity."""
+    try:
+        listing = (
+            MarketplaceListing.objects.select_for_update()
+            .select_related("stock", "forecast", "product")
+            .get(id=listing.id)
+        )
+    except MarketplaceListing.DoesNotExist:
+        raise MarketplaceServiceError("Este anúncio já não existe.")
+
+    if listing.need_id:
+        raise MarketplaceServiceError("As propostas a necessidades são geridas no fluxo de necessidades.")
+    if listing.status in MARKETPLACE_FINAL_STATUSES:
+        raise MarketplaceServiceError("Este anúncio já está reservado ou fechado e não pode ser ativado novamente.")
+    if is_listing_retired_in_marketplace(listing):
+        raise MarketplaceServiceError("Este anúncio foi removido e não pode ser ativado novamente.")
+
+    available_quantity = quantize_qty(listing.quantity_available or 0)
+    reserved_quantity = quantize_qty(listing.quantity_reserved or 0)
+    if reserved_quantity > 0:
+        raise MarketplaceServiceError("Este anúncio está com quantidade reservada e não pode ser ativado agora.")
+    if available_quantity <= 0:
+        raise MarketplaceServiceError("Este anúncio não pode ser ativado sem quantidade disponível.")
+
+    if listing.stock_id:
+        stock = Stock.objects.select_for_update().filter(id=listing.stock_id).first()
+        if not stock:
+            raise MarketplaceServiceError("O stock associado ao anúncio não existe.")
+        listing.stock = stock
+        max_publishable = get_max_publishable_quantity(stock, exclude_listing_id=listing.id)
+    elif listing.forecast_id:
+        forecast = ProductionForecast.objects.select_for_update().filter(id=listing.forecast_id).first()
+        if not forecast:
+            raise MarketplaceServiceError("A previsão associada ao anúncio não existe.")
+        listing.forecast = forecast
+        max_publishable = get_forecast_available_quantity(forecast, exclude_listing_id=listing.id)
+    else:
+        raise MarketplaceServiceError("Este anúncio não tem uma origem válida.")
+
+    if available_quantity > max_publishable:
+        raise MarketplaceServiceError(
+            "Não pode ativar este anúncio: a quantidade ultrapassa o máximo "
+            f"publicável atual ({max_publishable} {listing.product.unit})."
+        )
+
+    old_values = _listing_audit_values(listing)
+    listing.status = ListingStatus.ACTIVE
+    if listing.expires_at and listing.expires_at <= timezone.now():
+        listing.expires_at = None
+    listing.updated_at = timezone.now()
+    listing.save(update_fields=["status", "expires_at", "updated_at"])
+    log_audit_event(
+        actor=acting_user,
+        action="LISTING_STATUS_CHANGED",
+        entity_type="marketplace_listings",
+        entity_id=listing.id,
+        notes="Anúncio reativado pelo produtor após validação da quantidade publicável.",
         old_values=old_values,
         new_values=_listing_audit_values(listing),
     )

@@ -28,6 +28,14 @@
       Pode vender até <strong>{{ requested_quantity|quantity }} {{ product.unit }}</strong> e continuar com a quantidade necessária para pedidos externos.
     </div>
 
+    {% if active_listing %}
+      <div class="rec-info">
+        <strong>Já existe anúncio ativo para {{ product.name }}.</strong>
+        Tem {{ active_listing.quantity_available|quantity }} {{ product.unit }} disponíveis nesse anúncio.
+        A quantidade sugerida acima representa a margem que continua disponível segundo os compromissos atuais.
+      </div>
+    {% endif %}
+
     <div class="rec-sell-section">
       <div class="rec-sell-section__head">
         <div>
@@ -90,15 +98,19 @@
       </a>
 
       <a
-        href="{{ publish_url }}"
-        hx-get="{{ publish_url }}"
+        href="{% if active_listing %}{{ manage_listing_url }}{% else %}{{ publish_url }}{% endif %}"
+        hx-get="{% if active_listing %}{{ manage_listing_url }}{% else %}{{ publish_url }}{% endif %}"
         hx-target="#shellMain"
         hx-select="#shellMain"
         hx-swap="outerHTML"
         hx-push-url="true"
         class="rec-btn-primary"
       >
-        <i class="bi bi-shop"></i> Publicar excedente
+        {% if active_listing %}
+          <i class="bi bi-pencil-square"></i> Gerir anúncio ativo
+        {% else %}
+          <i class="bi bi-shop"></i> Publicar anúncio
+        {% endif %}
       </a>
     </div>
   </div>

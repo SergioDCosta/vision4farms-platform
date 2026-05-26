@@ -1,8 +1,8 @@
-<article class="mk-card mk-card--need">
+<article class="mk-card mk-card--need{% if mode == 'owner' %} mk-card--need-owner{% endif %}">
   <div class="mk-card__media mk-card__media--need">
     <div class="mk-need-visual">
       <i class="bi bi-megaphone"></i>
-      <span>Procura ativa</span>
+      <span>{% if mode == 'owner' %}A sua procura{% else %}Procura ativa{% endif %}</span>
     </div>
     <div class="mk-card__badge-row">
       <div class="mk-card__badge-stack">
@@ -10,7 +10,10 @@
           <i class="bi bi-search"></i>
           Procura
         </span>
-        {% if row.viewer_response_summary %}
+        {% if mode == 'owner' %}
+          <span class="mk-badge mk-badge--ok"><i class="bi bi-shop"></i> Publicada</span>
+          {% if row.response_count %}<span class="mk-badge mk-badge--info"><i class="bi bi-chat-square-text"></i> {{ row.response_count }} proposta{{ row.response_count|pluralize }}</span>{% endif %}
+        {% elif row.viewer_response_summary %}
           <span class="mk-badge {% if row.viewer_response_summary.status == 'ACCEPTED' %}mk-badge--ok{% elif row.viewer_response_summary.status == 'REJECTED' or row.viewer_response_summary.status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--info{% endif %}">
             <i class="bi bi-send-check"></i>
             {% if row.viewer_response_summary.status == 'PENDING' %}Proposta pendente
@@ -35,6 +38,10 @@
     </div>
     <h3>{{ row.need.product.name }}</h3>
     <div class="mk-location-line">
+      <i class="bi bi-geo-alt"></i>
+      <span>{{ row.producer_location|default:"Localização não indicada" }}</span>
+    </div>
+    <div class="mk-location-line">
       <i class="bi bi-calendar-event"></i>
       <span>{% if row.need.needed_by_date %}Até {{ row.need.needed_by_date|date:"d/m/Y" }}{% else %}Data a combinar{% endif %}</span>
     </div>
@@ -58,7 +65,29 @@
   </div>
 
   <div class="mk-card__footer">
-    {% if row.viewer_response_summary %}
+    {% if mode == 'owner' %}
+      <a href="{% url 'needs:index' %}?need={{ row.need.id }}"
+         hx-get="{% url 'needs:index' %}?need={{ row.need.id }}"
+         hx-target="#shellMain"
+         hx-select="#shellMain"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="mk-card-action mk-card-action--primary">
+        <i class="bi bi-clipboard2-data"></i>
+        Ver detalhes e propostas
+      </a>
+      <form method="post" action="{% url 'needs:withdraw_marketplace' row.need.id %}"
+            hx-post="{% url 'needs:withdraw_marketplace' row.need.id %}"
+            hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML"
+            hx-disabled-elt="find button"
+            hx-confirm="Retirar esta procura do marketplace? Outros produtores deixarão de a ver.">
+        {% csrf_token %}
+        <button type="submit" class="mk-card-action mk-card-action--ghost">
+          <i class="bi bi-shop-window"></i>
+          Retirar do marketplace
+        </button>
+      </form>
+    {% elif row.viewer_response_summary %}
       {% if row.viewer_response_summary.can_edit %}
         <a href="{{ row.viewer_response_summary.edit_url }}"
            hx-get="{{ row.viewer_response_summary.edit_url }}"

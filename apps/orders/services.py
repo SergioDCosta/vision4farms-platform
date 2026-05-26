@@ -2069,6 +2069,68 @@ def get_order_detail_for_seller(*, seller_producer, order_id):
 
 
 @transaction.atomic
+def buyer_cancel_order(*, order, buyer_producer, acting_user, notes=None):
+    order = Order.objects.select_for_update().get(id=order.id)
+    previous_status = order.status
+
+    if order.buyer_producer_id != buyer_producer.id:
+        raise OrderServiceError("Esta encomenda não pertence ao comprador atual.")
+
+    if order.status in {OrderStatus.DELIVERING, OrderStatus.COMPLETED}:
+        raise OrderServiceError("A encomenda já está em entrega ou concluída e não pode ser cancelada pelo comprador.")
+    if order.status == OrderStatus.CANCELLED:
+        raise OrderServiceError("Esta encomenda já foi cancelada.")
+    if order.status not in {OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.IN_PROGRESS}:
+        raise OrderServiceError("A encomenda já não pode ser cancelada pelo comprador.")
+
+    active_items = list(
+        OrderItem.objects
+        .select_related("listing", "seller_producer")
+        .filter(order_id=order.id)
+        .exclude(item_status=OrderItemStatus.CANCELLED)
+    )
+    if not active_items:
+        raise OrderServiceError("Não existem itens ativos para cancelar nesta encomenda.")
+    if any(item.item_status in {OrderItemStatus.IN_DELIVERY, OrderItemStatus.COMPLETED} for item in active_items):
+        raise OrderServiceError("Existem itens já em entrega ou concluídos; o comprador já não pode cancelar esta encomenda.")
+
+    touched_listing_ids = set()
+    sellers = {}
+    for item in active_items:
+        item.item_status = OrderItemStatus.CANCELLED
+        item.updated_at = timezone.now()
+        item.save(update_fields=["item_status", "updated_at"])
+        if item.listing_id:
+            touched_listing_ids.add(item.listing_id)
+        seller = getattr(item, "seller_producer", None)
+        if seller:
+            sellers[getattr(seller, "id", id(seller))] = seller
+
+    for listing_id in touched_listing_ids:
+        _reconcile_listing_reservation(listing_id, acting_user)
+    _sync_need_response_statuses_for_listing_ids(touched_listing_ids)
+
+    _recalculate_order_status(order)
+    cancellation_notes = notes or "Encomenda cancelada pelo comprador."
+    _create_status_history(
+        order=order,
+        status=OrderStatus.CANCELLED,
+        changed_by=acting_user,
+        notes=cancellation_notes,
+    )
+    recalculate_needs_for_order(order, acting_user=acting_user)
+    _sync_alerts_for_producers(order.buyer_producer, *sellers.values(), acting_user=acting_user)
+    _log_order_status_change(
+        order,
+        previous_status=previous_status,
+        acting_user=acting_user,
+        notes=cancellation_notes,
+        cancelled=True,
+    )
+    return order
+
+
+@transaction.atomic
 def seller_update_order_status(*, order, seller_producer, new_status, acting_user, notes=None):
     order = Order.objects.select_for_update().get(id=order.id)
     previous_status = order.status

@@ -1,6 +1,6 @@
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from django.http import HttpResponse
@@ -15,6 +15,7 @@ from apps.recommendations.services import (
     build_recommendation_inventory_rows,
     calculate_current_deficit,
 )
+from apps.recommendations.views import _build_sell_recommendation_context
 
 
 class RecommendationStockDirectionTests(SimpleTestCase):
@@ -232,3 +233,26 @@ class RecommendationNeedCreationViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         update.assert_called_once()
         create.assert_not_called()
+
+
+class RecommendationSaleActionTests(SimpleTestCase):
+    def test_sell_step_links_to_active_listing_management_when_already_published(self):
+        producer = SimpleNamespace(id="producer-1")
+        product = SimpleNamespace(id="product-1", name="Alface", unit="kg")
+        listing = SimpleNamespace(id=uuid4(), quantity_available=Decimal("12.000"))
+        queryset = MagicMock()
+        queryset.filter.return_value.first.return_value = listing
+
+        with (
+            patch("apps.recommendations.views.list_marketplace_public_needs", return_value=[]),
+            patch("apps.recommendations.views.get_my_listings", return_value=queryset),
+        ):
+            context = _build_sell_recommendation_context(
+                producer=producer,
+                product=product,
+                requested_quantity=Decimal("20.000"),
+                metrics={},
+            )
+
+        self.assertIs(context["active_listing"], listing)
+        self.assertEqual(context["manage_listing_url"], f"/marketplace/meus/{listing.id}/")

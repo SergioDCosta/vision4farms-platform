@@ -11,6 +11,7 @@ urlpatterns = [
     path("encomendas/<uuid:order_id>/", views.order_detail_view, name="detail"),
     path("encomendas/criar/anuncio/<uuid:listing_id>/", views.create_order_from_listing_view, name="create_from_listing"),
     path("encomendas/<uuid:order_id>/confirmar-rececao/", views.confirm_order_receipt_view, name="confirm_receipt"),
+    path("encomendas/<uuid:order_id>/cancelar/", views.buyer_cancel_order_view, name="buyer_cancel"),
 
     path("encomendas/<uuid:order_id>/estado/confirmar/", views.seller_update_order_status_view, {"status": OrderStatus.CONFIRMED}, name="seller_confirm"),
     path("encomendas/<uuid:order_id>/estado/preparar/", views.seller_update_order_status_view, {"status": OrderStatus.IN_PROGRESS}, name="seller_in_progress"),
