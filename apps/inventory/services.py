@@ -2150,12 +2150,12 @@ def get_purchase_dashboard(producer, *, period="annual", year=None, month=None):
     production_points = _build_production_chart(producer, segments)
     commercial_chart_data = {
         "labels": [point["label"] for point in commercial_points],
-        "purchases": [point["purchase_total"] for point in commercial_points],
-        "sales": [point["sales_total"] for point in commercial_points],
+        "purchases": [float(point["purchase_total"]) for point in commercial_points],
+        "sales": [float(point["sales_total"]) for point in commercial_points],
     }
     production_chart_data = {
         "labels": [point["label"] for point in production_points],
-        "quantities": [point["quantity"] for point in production_points],
+        "quantities": [float(point["quantity"]) for point in production_points],
     }
 
     top_purchased_products = (
@@ -2196,7 +2196,7 @@ def get_purchase_dashboard(producer, *, period="annual", year=None, month=None):
     )
     production_product_chart_data = {
         "labels": [row["stock__product__name"] for row in production_product_rows],
-        "quantities": [row["total_quantity"] for row in production_product_rows],
+        "quantities": [float(row["total_quantity"] or 0) for row in production_product_rows],
     }
 
     return {

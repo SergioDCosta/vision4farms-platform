@@ -333,8 +333,14 @@
   function mountChart(canvasId, config) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || !window.Chart) return;
+    
+    // Deleta de forma limpa qualquer instância anterior do gráfico no canvas utilizando a API oficial do Chart.js
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+      existingChart.destroy();
+    }
     if (canvas._inventoryChart) {
-      canvas._inventoryChart.destroy();
+      try { canvas._inventoryChart.destroy(); } catch(e) {}
     }
     canvas._inventoryChart = new Chart(canvas, config);
   }
@@ -342,6 +348,13 @@
   const commercial = parseJson("inv-commercial-chart-data");
   const production = parseJson("inv-production-chart-data");
   const productionProducts = parseJson("inv-production-product-chart-data");
+
+  // Garante que os valores numéricos (Decimais serializados como strings no JSON) são tratados como Number pelo Chart.js
+  if (commercial.purchases) commercial.purchases = commercial.purchases.map(Number);
+  if (commercial.sales) commercial.sales = commercial.sales.map(Number);
+  if (production.quantities) production.quantities = production.quantities.map(Number);
+  if (productionProducts.quantities) productionProducts.quantities = productionProducts.quantities.map(Number);
+
   const gridColor = "rgba(148, 163, 184, 0.24)";
   const textColor = "#64748b";
 
@@ -427,10 +440,20 @@
   if (window.Chart) {
     initCharts();
   } else {
-    var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js';
-    s.onload = initCharts;
-    document.head.appendChild(s);
+    // Evita carregar o mesmo script múltiplas vezes caso já haja um a carregar no head (comum no HTMX)
+    const existingScript = document.querySelector('script[src*="chart.umd.min.js"]');
+    if (existingScript) {
+      const originalOnload = existingScript.onload;
+      existingScript.onload = function () {
+        if (originalOnload) originalOnload();
+        initCharts();
+      };
+    } else {
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js';
+      s.onload = initCharts;
+      document.head.appendChild(s);
+    }
   }
 })();
 </script>

@@ -2089,7 +2089,10 @@ def get_editable_need_response_for_responder(*, responder_producer, listing_id):
 def _get_need_response_listing_for_update(listing_id):
     return (
         MarketplaceListing.objects
-        .select_for_update()
+        # Lock only marketplace_listings. stock, forecast and need are null=True
+        # (LEFT JOINs); PostgreSQL rejects FOR UPDATE on the nullable side of an
+        # outer join, so of=("self",) is required here.
+        .select_for_update(of=("self",))
         .select_related(
             "producer",
             "product",

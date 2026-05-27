@@ -994,7 +994,7 @@ def reactivate_listing(*, listing, acting_user=None):
     """Reactivate a disabled offer only if its source still covers its quantity."""
     try:
         listing = (
-            MarketplaceListing.objects.select_for_update()
+            MarketplaceListing.objects.select_for_update(of=("self",))
             .select_related("stock", "forecast", "product")
             .get(id=listing.id)
         )
