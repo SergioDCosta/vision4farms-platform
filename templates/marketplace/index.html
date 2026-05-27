@@ -11,6 +11,7 @@
     </div>
     {% if can_publish %}
       <div class="mk-head-actions">
+        {% if active_tab != "todos" or listings or marketplace_need_rows %}
         <a href="{% url 'needs:index' %}?show_need_form=1"
            hx-get="{% url 'needs:index' %}?show_need_form=1"
            hx-target="#shellMain"
@@ -21,6 +22,7 @@
           <i class="bi bi-megaphone"></i>
           Publicar necessidade
         </a>
+        {% endif %}
         <a href="{% url 'marketplace:publish' %}"
            hx-get="{% url 'marketplace:publish' %}"
            hx-target="#shellMain"
@@ -35,6 +37,7 @@
     {% endif %}
   </header>
 
+  <div id="mk-marketplace-workspace">
   <section class="mk-toolbar">
     <div class="mk-toolbar__top">
       <nav class="mk-tabs" aria-label="Secções do marketplace">
@@ -187,6 +190,17 @@
             <i class="bi bi-search"></i>
             <h3>Sem resultados disponíveis</h3>
             <p>{% if q or selected_category_id or selected_origin or selected_kind != "all" %}Não encontrámos ofertas ou procuras com os filtros aplicados.{% else %}Não existem ofertas nem procuras ativas no marketplace neste momento.{% endif %}</p>
+            {% if can_publish %}
+              <a href="{% url 'marketplace:publish' %}"
+                 hx-get="{% url 'marketplace:publish' %}"
+                 hx-target="#shellMain"
+                 hx-select="#shellMain"
+                 hx-swap="outerHTML"
+                 hx-push-url="true"
+                 class="mk-card-action mk-card-action--primary">
+                <i class="bi bi-plus-lg"></i> Publicar anúncio
+              </a>
+            {% endif %}
           </article>
         {% endif %}
       {% endif %}
@@ -194,6 +208,7 @@
     {% endif %}
   </div>
   </div>{# /mk-content-region #}
+  </div>{# /mk-marketplace-workspace #}
 </div>
 
 <style>

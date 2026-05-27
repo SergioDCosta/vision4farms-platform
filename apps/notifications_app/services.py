@@ -1,6 +1,7 @@
 import re
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.common.formatting import format_quantity
@@ -8,6 +9,7 @@ from apps.notifications_app.models import Notification, NotificationType
 
 
 QUANTITY_WITH_UNIT_RE = re.compile(r"(?<![\w])(\d+(?:[.,]\d{1,3})?)(?=\s*kg\b)")
+VISIBLE_ALERT_NOTIFICATION_STATUSES = ("ACTIVE", "READ")
 
 
 def _normalize_quantity_text(text):
@@ -186,6 +188,10 @@ def list_recent_notifications_for_user(*, user, limit=8):
         Notification.objects
         .select_related("alert")
         .filter(user=user)
+        .filter(
+            ~Q(type=NotificationType.ALERT)
+            | Q(alert__status__in=VISIBLE_ALERT_NOTIFICATION_STATUSES)
+        )
         .order_by("-created_at")[:limit]
     )
     for notification in notifications:

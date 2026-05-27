@@ -104,8 +104,8 @@
         <form method="post"
               action="{% url 'marketplace:toggle_status' item.id %}"
               hx-post="{% url 'marketplace:toggle_status' item.id %}"
-              hx-target="#mk-listings-region"
-              hx-select="#mk-listings-region"
+              hx-target="#mk-marketplace-workspace"
+              hx-select="#mk-marketplace-workspace"
               hx-swap="outerHTML"
               class="mk-owner-form">
           {% csrf_token %}

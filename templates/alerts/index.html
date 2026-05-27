@@ -16,7 +16,7 @@
       </div>
       <div class="alt-stat">
         <strong>{{ tab_counts.ignored }}</strong>
-        <span>Ignorados</span>
+        <span>Adiados</span>
       </div>
       <div class="alt-stat">
         <strong>{{ tab_counts.resolved }}</strong>
@@ -44,7 +44,7 @@
          hx-swap="outerHTML"
          hx-push-url="true"
          class="alt-tab {% if active_tab == 'ignored' %}is-active{% endif %}">
-        Ignorados
+        Adiados
         <span>{{ tab_counts.ignored }}</span>
       </a>
       <a href="{{ tab_urls.resolved }}"
@@ -347,8 +347,8 @@
           <h3>Sem alertas ativos</h3>
           <p>Não existem alertas ativos neste momento.</p>
         {% elif active_tab == 'ignored' %}
-          <h3>Sem alertas ignorados</h3>
-          <p>Ainda não ignorou alertas.</p>
+          <h3>Sem alertas adiados</h3>
+          <p>Ainda não adiou alertas.</p>
         {% else %}
           <h3>Sem alertas resolvidos</h3>
           <p>Os alertas resolvidos aparecerão aqui.</p>

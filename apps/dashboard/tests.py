@@ -1,4 +1,7 @@
+import json
+import uuid
 from datetime import timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -202,6 +205,104 @@ class DashboardWeatherCardViewTests(SimpleTestCase):
         render_args = render_mock.call_args[0]
         self.assertEqual(render_args[1], "dashboard/partials/weather_card.html")
         weather_context_mock.assert_called_once_with(request.current_user)
+
+
+class DashboardMarketplaceMapViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch("apps.dashboard.views.get_public_listings")
+    @patch("apps.dashboard.views.ProducerProfile.objects.get")
+    def test_map_endpoint_includes_full_public_feed_and_public_detail_urls(self, producer_get_mock, public_listings_mock):
+        viewer = SimpleNamespace(id="viewer-1")
+        producer_get_mock.return_value = viewer
+        listing_id = uuid.uuid4()
+        seller = SimpleNamespace(
+            latitude=Decimal("40.123456"),
+            longitude=Decimal("-8.123456"),
+            city="Coimbra",
+            district="Coimbra",
+            display_name="Quinta Centro",
+            company_name=None,
+        )
+        category = SimpleNamespace(id=uuid.uuid4(), name="Hortícolas")
+        listing = SimpleNamespace(
+            id=listing_id,
+            producer=seller,
+            product=SimpleNamespace(name="Batata", unit="kg", category=category),
+            quantity_available=Decimal("15.000"),
+            unit_price=Decimal("1.25"),
+            delivery_mode="PICKUP",
+            delivery_radius_km=None,
+            forecast_id=None,
+            stock_id=uuid.uuid4(),
+        )
+        qs = public_listings_mock.return_value
+        qs.filter.return_value.select_related.return_value.order_by.return_value.__getitem__.return_value = [listing]
+
+        request = self.factory.get("/painel/mapa-anuncios/")
+        request.current_user = SimpleNamespace(id="user-1")
+        response = views.marketplace_map_listings_view.__wrapped__(request)
+        payload = json.loads(response.content)
+
+        public_listings_mock.assert_called_once_with()
+        self.assertEqual(payload["listings"][0]["product_name"], "Batata")
+        self.assertEqual(payload["listings"][0]["producer_location"], "Coimbra, Coimbra")
+        self.assertFalse(payload["listings"][0]["is_own"])
+        self.assertEqual(payload["listings"][0]["url"], f"/marketplace/anuncios/{listing_id}/")
+
+    @patch("apps.dashboard.views.get_public_listings")
+    @patch("apps.dashboard.views.ProducerProfile.objects.get")
+    def test_map_endpoint_marks_own_public_listing_and_links_to_management(self, producer_get_mock, public_listings_mock):
+        listing_id = uuid.uuid4()
+        viewer = SimpleNamespace(id="viewer-1")
+        producer_get_mock.return_value = viewer
+        listing = SimpleNamespace(
+            id=listing_id,
+            producer_id="viewer-1",
+            producer=SimpleNamespace(
+                id="viewer-1",
+                latitude=Decimal("40.123456"),
+                longitude=Decimal("-8.123456"),
+                city="Coimbra",
+                district="Coimbra",
+                display_name="Minha Quinta",
+                company_name=None,
+            ),
+            product=SimpleNamespace(name="Batata", unit="kg", category=None),
+            quantity_available=Decimal("15.000"),
+            unit_price=Decimal("1.25"),
+            delivery_mode="PICKUP",
+            delivery_radius_km=None,
+            forecast_id=None,
+            stock_id=uuid.uuid4(),
+        )
+        qs = public_listings_mock.return_value
+        qs.filter.return_value.select_related.return_value.order_by.return_value.__getitem__.return_value = [listing]
+
+        request = self.factory.get("/painel/mapa-anuncios/")
+        request.current_user = SimpleNamespace(id="user-1")
+        response = views.marketplace_map_listings_view.__wrapped__(request)
+        payload = json.loads(response.content)
+
+        self.assertTrue(payload["listings"][0]["is_own"])
+        self.assertEqual(payload["listings"][0]["url"], f"/marketplace/meus/{listing_id}/")
+
+    @patch("apps.dashboard.views.get_public_listings")
+    @patch("apps.dashboard.views.ProducerProfile.objects.get")
+    def test_map_endpoint_skips_invalid_coordinates(self, producer_get_mock, public_listings_mock):
+        producer_get_mock.return_value = SimpleNamespace(id="viewer-1")
+        listing = SimpleNamespace(
+            producer=SimpleNamespace(latitude=Decimal("99"), longitude=Decimal("-8")),
+        )
+        qs = public_listings_mock.return_value
+        qs.filter.return_value.select_related.return_value.order_by.return_value.__getitem__.return_value = [listing]
+
+        request = self.factory.get("/painel/mapa-anuncios/")
+        request.current_user = SimpleNamespace(id="user-1")
+        response = views.marketplace_map_listings_view.__wrapped__(request)
+
+        self.assertEqual(json.loads(response.content), {"listings": []})
 
 
 class DashboardWeatherCardContextTests(SimpleTestCase):

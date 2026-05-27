@@ -39,7 +39,7 @@ from apps.needs.models import (
 )
 from apps.needs.services import calculate_need_coverage
 from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderStatus
-from apps.marketplace.services import get_forecast_available_quantity
+from apps.marketplace.services import get_forecast_available_quantity, get_max_publishable_quantity
 from apps.common.formatting import format_quantity
 
 
@@ -213,7 +213,7 @@ def _money_label(value):
 
 def get_alert_type_label(alert_type):
     labels = {
-        AlertType.CRITICAL_STOCK: "Stock crítico",
+        AlertType.CRITICAL_STOCK: "Défice nos pedidos externos",
         AlertType.SURPLUS_AVAILABLE: "Excedente / oportunidade de venda",
         AlertType.BUY_OPPORTUNITY: "Oportunidade de compra",
         AlertType.EXTERNAL_DEFICIT: "Necessidade sem cobertura suficiente",
@@ -850,7 +850,7 @@ def resolve_message_unread_alert(
     return True
 
 
-def _critical_stock_candidates(producer):
+def _stock_commitment_rows(producer):
     rows = []
     stocks = (
         Stock.objects
@@ -865,11 +865,29 @@ def _critical_stock_candidates(producer):
     )
 
     for stock in stocks:
-        commitment_state = calculate_inventory_commitment_state(
-            producer,
-            stock.product,
-            stock=stock,
-        )
+        try:
+            commitment_state = calculate_inventory_commitment_state(
+                producer,
+                stock.product,
+                stock=stock,
+            )
+        except Exception:
+            logger.exception(
+                "Falha ao calcular estado temporal para alertas producer_id=%s product_id=%s.",
+                getattr(producer, "id", None),
+                getattr(stock, "product_id", None),
+            )
+            continue
+        rows.append((stock, commitment_state))
+    return rows
+
+
+def _critical_stock_candidates(producer, *, stock_commitment_rows=None):
+    rows = []
+    if stock_commitment_rows is None:
+        stock_commitment_rows = _stock_commitment_rows(producer)
+
+    for stock, commitment_state in stock_commitment_rows:
         if commitment_state.get("max_deficit", Decimal("0.000")) <= Decimal("0.000"):
             continue
 
@@ -890,7 +908,7 @@ def _critical_stock_candidates(producer):
                 severity=AlertSeverity.CRITICAL,
                 category=AlertCategory.STOCK,
                 product=stock.product,
-                title=f"Compromissos externos em risco: {stock.product.name}",
+                title=f"Falta produto a tempo: {stock.product.name}",
                 description=(
                     f"Faltam {deficit_label} para cumprir pedidos externos"
                     + (f" até {deadline_label}." if deadline_label else ".")
@@ -906,7 +924,7 @@ def _critical_stock_candidates(producer):
                     "action_label": "Ver detalhe do stock",
                     "secondary_action_url": f"/recomendacoes/?product={stock.product_id}",
                     "secondary_action_label": "Abrir recomendações",
-                    "impact_label": f"Falta stock para cumprir pedidos externos de {stock.product.name}",
+                    "impact_label": f"Falta produto a tempo para cumprir pedidos externos de {stock.product.name}",
                     "reason": "O stock atual e a produção prevista útil não chegam a tempo dos pedidos externos.",
                 },
                 requires_action=True,
@@ -916,55 +934,54 @@ def _critical_stock_candidates(producer):
     return rows
 
 
-def _surplus_candidates(producer):
+def _surplus_candidates(producer, *, stock_commitment_rows=None):
     rows = []
-    stocks = (
-        Stock.objects
-        .select_related("product")
-        .filter(
-            producer=producer,
-            product__is_active=True,
-            product__producer_links__producer=producer,
-            product__producer_links__is_active=True,
-        )
-        .distinct()
-    )
+    if stock_commitment_rows is None:
+        stock_commitment_rows = _stock_commitment_rows(producer)
 
-    for stock in stocks:
-        commitment_state = calculate_inventory_commitment_state(
-            producer,
-            stock.product,
-            stock=stock,
-        )
-        real_surplus = _as_decimal(commitment_state.get("temporal_sellable_quantity"))
-        if real_surplus <= Decimal("0.000"):
+    for stock, commitment_state in stock_commitment_rows:
+        try:
+            if commitment_state.get("has_external_demands"):
+                publishable_quantity = _as_decimal(commitment_state.get("temporal_sellable_quantity"))
+            else:
+                publishable_quantity = _as_decimal(get_max_publishable_quantity(stock))
+        except Exception:
+            logger.exception(
+                "Falha ao calcular quantidade publicavel para alerta producer_id=%s product_id=%s.",
+                getattr(producer, "id", None),
+                getattr(stock, "product_id", None),
+            )
+            continue
+        if publishable_quantity <= Decimal("0.000"):
             continue
 
         total_external_demand = _as_decimal(commitment_state.get("total_external_demand"))
-        if total_external_demand > 0 and real_surplus <= (total_external_demand * Decimal("0.10")):
+        if total_external_demand > 0 and publishable_quantity <= (total_external_demand * Decimal("0.10")):
             continue
 
         unit = getattr(stock.product, "unit", "") or ""
-        surplus_label = _quantity_label(real_surplus, unit)
+        surplus_label = _quantity_label(publishable_quantity, unit)
         rows.append(
             _candidate(
                 alert_type=AlertType.SURPLUS_AVAILABLE,
                 severity=AlertSeverity.INFO,
                 category=AlertCategory.MARKETPLACE,
                 product=stock.product,
-                title=f"Excedente disponível: {stock.product.name}",
+                title=f"Quantidade disponível para anunciar: {stock.product.name}",
                 description=(
-                    f"Margem vendável depois de cumprir pedidos externos por data: {surplus_label}."
+                    f"Pode publicar até {surplus_label} sem comprometer pedidos externos "
+                    "nem quantidades já anunciadas ou propostas."
                 ),
                 payload={
-                    "real_surplus": str(real_surplus),
+                    "real_surplus": str(publishable_quantity),
+                    "publishable_quantity": str(publishable_quantity),
                     "useful_forecast_total": str(commitment_state.get("useful_forecast_total")),
                     "total_external_demand": str(total_external_demand),
                     "action_url": (
                         f"/marketplace/publicar/?source=stock&product={stock.product_id}&from=inventory"
                     ),
                     "action_label": "Publicar no marketplace",
-                    "reason": "Existe margem temporal acima dos compromissos externos.",
+                    "reason": "Existe quantidade ainda publicável depois de considerar compromissos e anúncios/propostas ativos.",
                 },
                 requires_action=False,
                 priority=55,
@@ -996,6 +1013,13 @@ def _need_candidates(producer):
         unit = getattr(need.product, "unit", "") or ""
         remaining_label = _quantity_label(remaining_to_plan, unit)
         is_customer_demand = getattr(need, "source_system", None) == NeedSourceSystem.CUSTOMER_DEMAND
+        if is_customer_demand:
+            commitment_state = calculate_inventory_commitment_state(
+                producer,
+                need.product,
+            )
+            if _as_decimal(commitment_state.get("max_deficit")) > Decimal("0.000"):
+                continue
         rows.append(
             _candidate(
                 alert_type=AlertType.NEED_UNDERCOVERED,
@@ -1400,8 +1424,9 @@ def _listing_expiring_candidates(producer):
 
 def _candidate_rows(producer):
     rows = []
-    rows.extend(_critical_stock_candidates(producer))
-    rows.extend(_surplus_candidates(producer))
+    stock_commitment_rows = _stock_commitment_rows(producer)
+    rows.extend(_critical_stock_candidates(producer, stock_commitment_rows=stock_commitment_rows))
+    rows.extend(_surplus_candidates(producer, stock_commitment_rows=stock_commitment_rows))
     rows.extend(_need_candidates(producer))
     rows.extend(_need_response_candidates(producer))
     rows.extend(_need_deadline_candidates(producer))
@@ -1858,7 +1883,7 @@ def expire_ignored_alerts_for_producer(*, producer, acting_user=None):
             alert,
             AlertEventType.CLEARED,
             performed_by=acting_user,
-            notes="Alerta ignorado expirado automaticamente após 30 minutos.",
+            notes="Alerta adiado expirado automaticamente após o período definido.",
         )
 
     return len(expiring_alerts)

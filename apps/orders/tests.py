@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.inventory.models import StockMovementType
 from apps.marketplace.models import MarketplaceListing
 from apps.needs.models import NeedResponseStatus
 from apps.orders.forms import BuyerCancelOrderForm
@@ -11,15 +12,20 @@ from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderStatus
 from apps.orders.services import (
     OrderServiceError,
     _quantity_label,
+    _consume_stock_reservation,
     _notify_order_purchase_created,
+    _reconcile_listing_reservation,
     _reconcile_listings_against_stock_capacity,
+    _register_buyer_order_inbound,
     _update_stock_reserved,
     buyer_cancel_order,
     build_presale_timeline_context,
+    confirm_order_receipt,
     create_order_from_listing,
     get_order_source_label,
     is_order_from_need_response,
     is_order_forecast_only,
+    seller_update_order_status,
 )
 
 
@@ -189,6 +195,63 @@ class NeedResponseOrderTests(SimpleTestCase):
         self.assertIn("oferta foi aceite", emit.call_args.kwargs["title"])
         self.assertIn("aceitou a sua oferta privada para uma necessidade", emit.call_args.kwargs["description"])
 
+    def test_accepting_need_response_links_order_item_to_need_and_recalculates_coverage(self):
+        buyer = SimpleNamespace(id="buyer-1")
+        seller = SimpleNamespace(id="seller-1")
+        product = SimpleNamespace(id="product-1", name="Batata")
+        need = SimpleNamespace(id="need-1")
+        listing = SimpleNamespace(
+            id="listing-1",
+            need_id=need.id,
+            need_response_status=NeedResponseStatus.PENDING,
+            stock_id="stock-1",
+            forecast_id=None,
+            unit_price=Decimal("2.00"),
+            product=product,
+            product_id=product.id,
+            producer=seller,
+            producer_id=seller.id,
+        )
+        order_group = SimpleNamespace(id="group-1")
+        order = SimpleNamespace(
+            id="order-1",
+            order_number=1,
+            buyer_producer_id=buyer.id,
+            status=OrderStatus.PENDING,
+            total_amount=Decimal("20.00"),
+            source_type="MARKETPLACE",
+        )
+        item_manager = MagicMock()
+        item_manager.filter.return_value.exists.return_value = False
+        create = getattr(create_order_from_listing, "__wrapped__", create_order_from_listing)
+
+        with (
+            patch("apps.orders.services._lock_listing_for_order", return_value=listing),
+            patch("apps.orders.services._validate_listing_can_be_ordered"),
+            patch("apps.orders.services._validate_listing_source_xor"),
+            patch("apps.orders.services._create_order_group_with_retry", return_value=order_group),
+            patch("apps.orders.services._create_order_with_retry", return_value=order),
+            patch("apps.orders.services._map_delivery_method_from_listing", return_value="PICKUP"),
+            patch("apps.orders.services.OrderItem.objects", item_manager),
+            patch("apps.orders.services._reconcile_listing_reservation"),
+            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.services._create_status_history"),
+            patch("apps.orders.services.log_audit_event"),
+            patch("apps.orders.services._notify_order_purchase_created"),
+            patch("apps.orders.services.recalculate_needs_for_order") as recalculate_needs,
+            patch("apps.orders.services._sync_alerts_for_producers"),
+        ):
+            create(
+                buyer_producer=buyer,
+                listing=listing,
+                quantity="10",
+                acting_user=None,
+                need=need,
+            )
+
+        self.assertIs(item_manager.create.call_args.kwargs["need"], need)
+        recalculate_needs.assert_called_once_with(order, acting_user=None)
+
 
 class BuyerOrderCancellationTests(SimpleTestCase):
     def test_buyer_cancel_form_requires_reason(self):
@@ -256,6 +319,23 @@ class BuyerOrderCancellationTests(SimpleTestCase):
             id="order-1",
             buyer_producer_id=buyer.id,
             status=OrderStatus.DELIVERING,
+        )
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        cancel = getattr(buyer_cancel_order, "__wrapped__", buyer_cancel_order)
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            self.assertRaisesMessage(OrderServiceError, "em entrega ou concluída"),
+        ):
+            cancel(order=order, buyer_producer=buyer, acting_user=None)
+
+    def test_buyer_cannot_cancel_completed_order(self):
+        buyer = SimpleNamespace(id="buyer-1")
+        order = SimpleNamespace(
+            id="order-1",
+            buyer_producer_id=buyer.id,
+            status=OrderStatus.COMPLETED,
         )
         order_manager = MagicMock()
         order_manager.select_for_update.return_value.get.return_value = order
@@ -337,3 +417,346 @@ class StockReservationCapacityTests(SimpleTestCase):
         self.assertEqual(kwargs["mode"], "proportional")
         self.assertEqual(kwargs["new_quantity"], Decimal("80"))
         self.assertEqual(kwargs["acting_user"], "user-1")
+
+
+class MarketplaceOrderLifecycleTests(SimpleTestCase):
+    def _make_listing(self, *, available=Decimal("100"), reserved=Decimal("0")):
+        return SimpleNamespace(
+            id="listing-1",
+            stock_id="stock-1",
+            forecast_id=None,
+            status="ACTIVE",
+            quantity_available=available,
+            quantity_reserved=reserved,
+            product=SimpleNamespace(unit="kg"),
+            updated_at=None,
+            save=MagicMock(),
+        )
+
+    def test_pending_order_reserves_listing_and_seller_stock_immediately(self):
+        listing = self._make_listing()
+        listing_manager = MagicMock()
+        listing_manager.select_for_update.return_value.get.return_value = listing
+
+        with (
+            patch("apps.orders.services.MarketplaceListing.objects", listing_manager),
+            patch("apps.orders.services._expected_reserved_quantity_for_listing", return_value=Decimal("30.000")),
+            patch("apps.orders.services._update_stock_reserved") as update_stock_reserved,
+            patch("apps.orders.services.Stock.objects") as stock_manager,
+            patch("apps.orders.services._log_listing_status_if_changed"),
+        ):
+            stock = SimpleNamespace(id="stock-1")
+            stock_manager.select_for_update.return_value.get.return_value = stock
+            _reconcile_listing_reservation("listing-1", acting_user=None)
+
+        self.assertEqual(listing.quantity_available, Decimal("70.000"))
+        self.assertEqual(listing.quantity_reserved, Decimal("30.000"))
+        update_stock_reserved.assert_called_once_with(stock, Decimal("30.000"), None)
+
+    def test_reconciling_confirmation_does_not_duplicate_existing_reservation(self):
+        listing = self._make_listing(available=Decimal("70.000"), reserved=Decimal("30.000"))
+        listing_manager = MagicMock()
+        listing_manager.select_for_update.return_value.get.return_value = listing
+
+        with (
+            patch("apps.orders.services.MarketplaceListing.objects", listing_manager),
+            patch("apps.orders.services._expected_reserved_quantity_for_listing", return_value=Decimal("30.000")),
+            patch("apps.orders.services._update_stock_reserved") as update_stock_reserved,
+        ):
+            _reconcile_listing_reservation("listing-1", acting_user=None)
+
+        listing.save.assert_not_called()
+        update_stock_reserved.assert_not_called()
+        self.assertEqual(listing.quantity_reserved, Decimal("30.000"))
+
+    def test_seller_confirmation_changes_state_and_records_history_without_new_reservation(self):
+        seller = SimpleNamespace(id="seller-1")
+        order = SimpleNamespace(
+            id="order-1",
+            status=OrderStatus.PENDING,
+            buyer_producer=SimpleNamespace(id="buyer-1"),
+        )
+        item = SimpleNamespace(
+            listing_id="listing-1",
+            item_status=OrderItemStatus.PENDING,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        item_manager = MagicMock()
+        item_manager.select_related.return_value.filter.return_value = [item]
+        confirm = getattr(seller_update_order_status, "__wrapped__", seller_update_order_status)
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.services.OrderItem.objects", item_manager),
+            patch("apps.orders.services._reconcile_listing_reservation") as reconcile,
+            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.services._recalculate_order_status"),
+            patch("apps.orders.services._create_status_history") as status_history,
+            patch("apps.orders.services._notify_order_status_changed_to_buyer"),
+            patch("apps.orders.services.recalculate_needs_for_order"),
+            patch("apps.orders.services._sync_alerts_for_producers"),
+            patch("apps.orders.services._log_order_status_change"),
+        ):
+            confirm(
+                order=order,
+                seller_producer=seller,
+                new_status=OrderStatus.CONFIRMED,
+                acting_user=None,
+            )
+
+        self.assertEqual(item.item_status, OrderItemStatus.CONFIRMED)
+        item.save.assert_called_once()
+        reconcile.assert_called_once_with("listing-1", None, strict=False)
+        status_history.assert_called_once()
+
+    def test_seller_marks_delivery_without_consuming_physical_stock(self):
+        seller = SimpleNamespace(id="seller-1")
+        order = SimpleNamespace(
+            id="order-1",
+            status=OrderStatus.IN_PROGRESS,
+            buyer_producer=SimpleNamespace(id="buyer-1"),
+        )
+        item = SimpleNamespace(
+            listing_id="listing-1",
+            item_status=OrderItemStatus.CONFIRMED,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        item_manager = MagicMock()
+        item_manager.select_related.return_value.filter.return_value = [item]
+        deliver = getattr(seller_update_order_status, "__wrapped__", seller_update_order_status)
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.services.OrderItem.objects", item_manager),
+            patch("apps.orders.services.OrderStatusHistory.objects.filter") as history_filter,
+            patch("apps.orders.services._consume_listing_reservation") as consume_reservation,
+            patch("apps.orders.services._recalculate_order_status"),
+            patch("apps.orders.services._create_status_history") as status_history,
+            patch("apps.orders.services._notify_order_status_changed_to_buyer"),
+            patch("apps.orders.services.recalculate_needs_for_order"),
+            patch("apps.orders.services._sync_alerts_for_producers"),
+            patch("apps.orders.services._log_order_status_change"),
+        ):
+            history_filter.return_value.exists.return_value = True
+            deliver(
+                order=order,
+                seller_producer=seller,
+                new_status=OrderStatus.DELIVERING,
+                acting_user=None,
+            )
+
+        self.assertEqual(item.item_status, OrderItemStatus.IN_DELIVERY)
+        item.save.assert_called_once()
+        consume_reservation.assert_not_called()
+        status_history.assert_called_once()
+
+    def test_seller_cancellation_releases_reservation_and_records_reason_for_buyer(self):
+        seller = SimpleNamespace(id="seller-1")
+        buyer = SimpleNamespace(id="buyer-1")
+        order = SimpleNamespace(
+            id="order-1",
+            status=OrderStatus.CONFIRMED,
+            buyer_producer=buyer,
+        )
+        item = SimpleNamespace(
+            listing_id="listing-1",
+            item_status=OrderItemStatus.CONFIRMED,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        item_manager = MagicMock()
+        item_manager.select_related.return_value.filter.return_value = [item]
+        cancel = getattr(seller_update_order_status, "__wrapped__", seller_update_order_status)
+
+        def mark_cancelled(current_order):
+            current_order.status = OrderStatus.CANCELLED
+            return current_order
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.services.OrderItem.objects", item_manager),
+            patch("apps.orders.services._reconcile_listing_reservation") as reconcile,
+            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.services._recalculate_order_status", side_effect=mark_cancelled),
+            patch("apps.orders.services._create_status_history") as status_history,
+            patch("apps.orders.services._notify_order_status_changed_to_buyer") as notify_buyer,
+            patch("apps.orders.services.recalculate_needs_for_order"),
+            patch("apps.orders.services._sync_alerts_for_producers"),
+            patch("apps.orders.services._log_order_status_change"),
+        ):
+            cancel(
+                order=order,
+                seller_producer=seller,
+                new_status=OrderStatus.CANCELLED,
+                acting_user=None,
+                notes="Motivo: Sem stock disponível",
+            )
+
+        self.assertEqual(item.item_status, OrderItemStatus.CANCELLED)
+        reconcile.assert_called_once_with("listing-1", None)
+        self.assertIn("Motivo: Sem stock disponível", status_history.call_args.kwargs["notes"])
+        notify_buyer.assert_called_once()
+        self.assertEqual(notify_buyer.call_args.kwargs["status"], OrderStatus.CANCELLED)
+
+    def test_seller_cannot_cancel_completed_order(self):
+        seller = SimpleNamespace(id="seller-1")
+        order = SimpleNamespace(
+            id="order-1",
+            status=OrderStatus.COMPLETED,
+            buyer_producer=SimpleNamespace(id="buyer-1"),
+        )
+        item = SimpleNamespace(item_status=OrderItemStatus.COMPLETED)
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        item_manager = MagicMock()
+        item_manager.select_related.return_value.filter.return_value = [item]
+        cancel = getattr(seller_update_order_status, "__wrapped__", seller_update_order_status)
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.services.OrderItem.objects", item_manager),
+            self.assertRaisesMessage(OrderServiceError, "já não pode ser alterada"),
+        ):
+            cancel(
+                order=order,
+                seller_producer=seller,
+                new_status=OrderStatus.CANCELLED,
+                acting_user=None,
+            )
+
+    def test_buyer_receipt_consumes_seller_reservation_and_registers_inbound_stock(self):
+        buyer = SimpleNamespace(id="buyer-1")
+        seller = SimpleNamespace(id="seller-1")
+        product = SimpleNamespace(id="product-1", name="Batata")
+        order = SimpleNamespace(
+            id="order-1",
+            order_number=10,
+            status=OrderStatus.DELIVERING,
+            buyer_producer=buyer,
+            buyer_producer_id=buyer.id,
+            total_amount=Decimal("30.00"),
+            source_type="MARKETPLACE",
+        )
+        item = SimpleNamespace(
+            listing_id="listing-1",
+            product=product,
+            quantity=Decimal("30.000"),
+            item_status=OrderItemStatus.IN_DELIVERY,
+            seller_producer=seller,
+            updated_at=None,
+            save=MagicMock(),
+        )
+        order_manager = MagicMock()
+        order_manager.select_for_update.return_value.get.return_value = order
+        item_manager = MagicMock()
+        item_manager.select_related.return_value.filter.return_value.exclude.return_value = [item]
+        complete = getattr(confirm_order_receipt, "__wrapped__", confirm_order_receipt)
+
+        def mark_completed(current_order, status):
+            current_order.status = status
+
+        with (
+            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.services.OrderItem.objects", item_manager),
+            patch("apps.orders.services._consume_listing_reservation") as consume_reservation,
+            patch("apps.orders.services._register_buyer_order_inbound") as register_inbound,
+            patch("apps.orders.services._sync_external_demands_for_product_change"),
+            patch("apps.orders.services._set_order_status", side_effect=mark_completed),
+            patch("apps.orders.services._create_status_history") as status_history,
+            patch("apps.orders.services._log_order_status_change"),
+            patch("apps.orders.services.log_audit_event"),
+            patch("apps.orders.services._notify_order_completed_to_seller"),
+            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.services.recalculate_needs_for_order"),
+            patch("apps.orders.services._sync_alerts_for_producers"),
+        ):
+            complete(order=order, acting_user=None)
+
+        self.assertEqual(item.item_status, OrderItemStatus.COMPLETED)
+        consume_reservation.assert_called_once_with(
+            "listing-1",
+            Decimal("30.000"),
+            None,
+            order=order,
+        )
+        register_inbound.assert_called_once_with(
+            buyer_producer=buyer,
+            order=order,
+            product=product,
+            quantity=Decimal("30.000"),
+            acting_user=None,
+        )
+        self.assertEqual(order.status, OrderStatus.COMPLETED)
+        status_history.assert_called_once()
+
+    def test_consuming_seller_stock_creates_order_out_movement(self):
+        stock = SimpleNamespace(
+            id="stock-1",
+            product_id="product-1",
+            current_quantity=Decimal("100.000"),
+            reserved_quantity=Decimal("30.000"),
+            save=MagicMock(),
+        )
+        order = SimpleNamespace(id="order-1", order_number=10)
+        movement = SimpleNamespace(
+            id="move-out",
+            movement_type=StockMovementType.ORDER_OUT,
+            quantity_delta=Decimal("-30.000"),
+            notes="Saída.",
+        )
+
+        with (
+            patch("apps.orders.services.StockMovement.objects.create", return_value=movement) as create_movement,
+            patch("apps.orders.services.log_audit_event"),
+            patch("apps.orders.services._reconcile_listings_against_stock_capacity") as reconcile,
+        ):
+            _consume_stock_reservation(stock, Decimal("30.000"), None, order=order)
+
+        self.assertEqual(stock.current_quantity, Decimal("70.000"))
+        self.assertEqual(stock.reserved_quantity, Decimal("0.000"))
+        self.assertEqual(create_movement.call_args.kwargs["movement_type"], StockMovementType.ORDER_OUT)
+        self.assertEqual(create_movement.call_args.kwargs["quantity_delta"], Decimal("-30.000"))
+        reconcile.assert_called_once_with(stock, acting_user=None)
+
+    def test_registering_buyer_receipt_creates_order_in_movement(self):
+        buyer = SimpleNamespace(id="buyer-1")
+        product = SimpleNamespace(id="product-1", name="Batata")
+        stock = SimpleNamespace(
+            id="buyer-stock-1",
+            product_id=product.id,
+            current_quantity=Decimal("5.000"),
+            save=MagicMock(),
+        )
+        order = SimpleNamespace(id="order-1", order_number=10)
+        movement = SimpleNamespace(
+            id="move-in",
+            movement_type=StockMovementType.ORDER_IN,
+            quantity_delta=Decimal("30.000"),
+            notes="Entrada.",
+        )
+
+        with (
+            patch("apps.orders.services._ensure_buyer_product_link"),
+            patch("apps.orders.services._ensure_buyer_stock", return_value=stock),
+            patch("apps.orders.services.StockMovement.objects.create", return_value=movement) as create_movement,
+            patch("apps.orders.services.log_audit_event"),
+        ):
+            _register_buyer_order_inbound(
+                buyer_producer=buyer,
+                order=order,
+                product=product,
+                quantity=Decimal("30.000"),
+                acting_user=None,
+            )
+
+        self.assertEqual(stock.current_quantity, Decimal("35.000"))
+        self.assertEqual(create_movement.call_args.kwargs["movement_type"], StockMovementType.ORDER_IN)
+        self.assertEqual(create_movement.call_args.kwargs["quantity_delta"], Decimal("30.000"))

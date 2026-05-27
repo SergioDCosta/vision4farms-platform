@@ -316,15 +316,36 @@ def _stock_active_listings_quantity(stock, *, exclude_listing_id=None):
     return _quantize_need_quantity(result["total"] or Decimal("0.000"))
 
 
+def _stock_pending_need_responses_quantity(stock, *, exclude_listing_id=None):
+    """Quantidade oferecida em propostas privadas pendentes sem encomenda associada."""
+    if not stock:
+        return Decimal("0.000")
+    qs = MarketplaceListing.objects.filter(
+        stock=stock,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        need_id__isnull=False,
+        need_response_status=NeedResponseStatus.PENDING,
+        order_items__isnull=True,
+    )
+    if exclude_listing_id:
+        qs = qs.exclude(id=exclude_listing_id)
+    result = qs.aggregate(total=Sum("quantity_available"))
+    return _quantize_need_quantity(result["total"] or Decimal("0.000"))
+
+
 def _stock_available_quantity(stock, *, exclude_listing_id=None):
     if not stock:
         return Decimal("0.000")
     current_quantity = _quantize_need_quantity(getattr(stock, "current_quantity", 0))
     reserved_quantity = _quantize_need_quantity(getattr(stock, "reserved_quantity", 0))
-    # Subtrai também as quantidades já anunciadas em listings ativos no marketplace —
-    # esse stock está comprometido e não pode contar para cumprir pedidos de clientes.
+    # Subtrai anúncios públicos e propostas privadas pendentes: ambos comprometem
+    # stock que não pode voltar a ser prometido nem contar para pedidos externos.
     marketplace_committed = _stock_active_listings_quantity(stock, exclude_listing_id=exclude_listing_id)
-    net = current_quantity - reserved_quantity - marketplace_committed
+    pending_need_responses = _stock_pending_need_responses_quantity(
+        stock,
+        exclude_listing_id=exclude_listing_id,
+    )
+    net = current_quantity - reserved_quantity - marketplace_committed - pending_need_responses
     return _quantize_need_quantity(max(net, Decimal("0.000")))
 
 

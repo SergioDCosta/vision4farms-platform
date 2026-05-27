@@ -1,0 +1,43 @@
+<section class="pnl-card pnl-map-card" aria-label="Anúncios próximos">
+  <div class="pnl-card-head pnl-map-head">
+    <div>
+      <h2 class="pnl-card-title">Anúncios no mapa</h2>
+      <p class="pnl-card-hint">Produtos disponíveis junto da sua exploração.</p>
+    </div>
+    <div class="pnl-map-actions">
+      <button type="button" id="pnlMapFullscreen" class="pnl-map-icon-btn" title="Ver mapa em ecrã inteiro" aria-label="Ver mapa em ecrã inteiro">
+        <i class="bi bi-arrows-fullscreen"></i>
+      </button>
+      <a href="{% url 'marketplace:index' %}" class="pnl-see-all">Ver todos <i class="bi bi-arrow-right"></i></a>
+    </div>
+  </div>
+
+  <div class="pnl-map-filters">
+    <select id="pnlMapCategory" class="pnl-map-select" aria-label="Filtrar por categoria">
+      <option value="">Todas as categorias</option>
+    </select>
+    <div class="pnl-map-chips" id="pnlMapDeliveryChips" aria-label="Modo de entrega">
+      <button type="button" class="pnl-map-chip pnl-map-chip--active" data-mode="">Todos</button>
+      <button type="button" class="pnl-map-chip" data-mode="PICKUP">Levantamento</button>
+      <button type="button" class="pnl-map-chip" data-mode="DELIVERY">Entrega</button>
+      <button type="button" class="pnl-map-chip" data-mode="BOTH">Ambos</button>
+    </div>
+    <div class="pnl-map-proximity">
+      <button type="button" id="pnlMapLocate" class="pnl-map-locate-btn" title="Mostrar anúncios perto de mim">
+        <i class="bi bi-geo-alt"></i> Perto de mim
+      </button>
+      <select id="pnlMapRadius" class="pnl-map-select" hidden aria-label="Raio de pesquisa">
+        <option value="10">10 km</option>
+        <option value="25" selected>25 km</option>
+        <option value="50">50 km</option>
+        <option value="100">100 km</option>
+        <option value="">Todos</option>
+      </select>
+    </div>
+  </div>
+  <div class="pnl-map-meta">
+    <span class="pnl-map-count" id="pnlMapCount">A carregar anúncios com localização...</span>
+    <span class="pnl-map-status" id="pnlMapStatus" hidden></span>
+  </div>
+  <div id="pnlMap" class="pnl-map-container" aria-label="Mapa de anúncios disponíveis"></div>
+</section>

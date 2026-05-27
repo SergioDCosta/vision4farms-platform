@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -34,6 +35,7 @@ from apps.needs.services import (
     reject_need_response,
     normalize_needs_search_query,
     sync_need_from_external_demands,
+    _stock_available_quantity,
     update_need,
     update_need_response,
     withdraw_need_from_marketplace,
@@ -203,6 +205,7 @@ class ExternalDemandPlanningTests(SimpleTestCase):
             patch("apps.needs.services.Stock.objects", FakeServiceManager([stock] if stock else [])),
             patch("apps.needs.services.ProductionForecast.objects", FakeServiceManager(forecasts)),
             patch("apps.needs.services._stock_active_listings_quantity", return_value=Decimal("0.000")),
+            patch("apps.needs.services._stock_pending_need_responses_quantity", return_value=Decimal("0.000")),
             patch("apps.needs.services._forecast_active_listings_quantity", return_value=Decimal("0.000")),
             patch("apps.needs.services._get_customer_demand_need_for_product", return_value=None),
         ):
@@ -656,6 +659,37 @@ class NeedResponsePublishViewTests(SimpleTestCase):
                 ((need.producer, request.current_user), {}),
             ],
         )
+        self.assertTrue(
+            need_model.objects.select_related.return_value.filter.call_args.kwargs[
+                "is_marketplace_published"
+            ]
+        )
+
+    def test_need_response_publish_rejects_need_not_available_in_public_marketplace(self):
+        producer = SimpleNamespace(id="seller-1")
+        need_model = MagicMock()
+        need_model.objects.select_related.return_value.filter.return_value.first.return_value = None
+        request = self._request()
+
+        with (
+            patch("apps.needs.views.Need", need_model),
+            patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
+            patch("apps.needs.views.create_listing") as create_listing,
+            patch("apps.needs.views.messages") as messages_mock,
+        ):
+            from apps.needs.views import need_response_publish_view
+
+            response = need_response_publish_view(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/marketplace/")
+        self.assertTrue(
+            need_model.objects.select_related.return_value.filter.call_args.kwargs[
+                "is_marketplace_published"
+            ]
+        )
+        messages_mock.error.assert_called_once()
+        create_listing.assert_not_called()
 
     def test_need_response_publish_updates_existing_active_response_instead_of_creating_duplicate(self):
         producer = SimpleNamespace(id="seller-1")
@@ -724,6 +758,43 @@ class NeedResponsePublishViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         expire.assert_not_called()
+
+    def test_external_demand_fulfill_htmx_surfaces_insufficient_stock_error_as_toast(self):
+        request = RequestFactory().post(
+            "/necessidades/pedidos-clientes/demand-1/cumprir/",
+            HTTP_HX_REQUEST="true",
+        )
+        request.current_user = SimpleNamespace(
+            is_active=True,
+            account_status=AccountStatus.ACTIVE,
+            role=UserRole.CLIENTE,
+        )
+        producer = SimpleNamespace(id="producer-1")
+        demand = SimpleNamespace(id="demand-1")
+
+        with (
+            patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
+            patch("apps.needs.views.get_external_customer_demand_for_producer", return_value=demand),
+            patch(
+                "apps.needs.views.mark_external_customer_demand_fulfilled",
+                side_effect=ValidationError("Não existe stock atual suficiente para concluir este pedido."),
+            ),
+            patch("apps.needs.views.build_external_demands_context", return_value={"page_title": "Pedidos"}),
+            patch("apps.needs.views.render", return_value=HttpResponse("ok")),
+            patch("apps.needs.views.messages") as messages_mock,
+        ):
+            from apps.needs.views import external_customer_demand_fulfill_view
+
+            response = external_customer_demand_fulfill_view(request, "demand-1")
+
+        self.assertEqual(response.status_code, 200)
+        toast_payload = json.loads(response["HX-Trigger"])["app:toast"]
+        self.assertEqual(toast_payload["level"], "error")
+        self.assertEqual(
+            toast_payload["message"],
+            "Não existe stock atual suficiente para concluir este pedido.",
+        )
+        messages_mock.error.assert_not_called()
 
     def test_need_response_publish_blocks_new_proposal_when_latest_response_cannot_be_replaced(self):
         producer = SimpleNamespace(id="seller-1")
@@ -983,6 +1054,23 @@ class NeedEditTests(SimpleTestCase):
 
 
 class NeedsServiceTests(SimpleTestCase):
+    def test_stock_available_quantity_subtracts_pending_private_need_responses(self):
+        stock = SimpleNamespace(
+            current_quantity=Decimal("100.000"),
+            reserved_quantity=Decimal("10.000"),
+        )
+
+        with (
+            patch("apps.needs.services._stock_active_listings_quantity", return_value=Decimal("20.000")),
+            patch(
+                "apps.needs.services._stock_pending_need_responses_quantity",
+                return_value=Decimal("30.000"),
+            ),
+        ):
+            available = _stock_available_quantity(stock)
+
+        self.assertEqual(available, Decimal("40.000"))
+
     def test_calculate_need_coverage_counts_planned_and_completed_items(self):
         need = SimpleNamespace(id="need-1", required_quantity=Decimal("10"))
         items = [

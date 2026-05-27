@@ -3,6 +3,12 @@
 
 {% block app_title %}Painel{% endblock %}
 
+{% block extra_css %}
+{{ block.super }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+{% endblock %}
+
 {% block app_content %}
 <div class="pnl">
 
@@ -152,6 +158,8 @@
         </div>
       </div>
       {% endif %}
+
+      {% include "dashboard/partials/marketplace_map_card.html" %}
 
     </div>
 
@@ -372,11 +380,13 @@
           </a>
         </div>
       </div>
+      {% include "dashboard/partials/marketplace_map_card.html" %}
     </div>
 
   </div>
 
   {% endif %}
+
 </div>
 
 <style>
@@ -1014,6 +1024,454 @@
     dateLine.innerHTML = '<span class="pnl-pulse"></span>' +
       dias[now.getDay()] + ', ' + now.getDate() + ' ' + meses[now.getMonth()] + ' ' + now.getFullYear();
   }
+})();
+</script>
+
+{# ── Estilos e lógica do mapa de anúncios ─────────────────────────────── #}
+<style>
+.pnl-map-head { padding: 1rem 1.15rem .85rem; }
+.pnl-map-card .pnl-card-hint { max-width: 25rem; }
+.pnl-map-actions { display:flex; align-items:center; gap:.75rem; flex-shrink:0; }
+.pnl-map-icon-btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:32px; height:32px; border:1px solid var(--br); border-radius:.5rem;
+  background:#fff; color:#475569; cursor:pointer; transition:background .15s, color .15s;
+}
+.pnl-map-icon-btn:hover { background:#f1f5f9; color:#0f172a; }
+.pnl-map-container {
+  height: 410px;
+  border-top: 1px solid var(--br);
+  overflow: hidden;
+  z-index: 0;
+  position: relative;
+}
+.pnl-map-filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+  padding: .65rem .85rem .55rem;
+}
+.pnl-map-select {
+  min-width: 150px; height: 2rem; padding: 0 .55rem; border: 1px solid #e2e8f0;
+  border-radius: .45rem; font-size: .76rem; background: #f8fafc; color: #334155;
+  cursor: pointer;
+}
+.pnl-map-chips { display: flex; gap: .3rem; flex-wrap: wrap; }
+.pnl-map-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  min-height: 1.85rem; padding: .2rem .55rem; border: 1px solid #e2e8f0; border-radius: 999px;
+  font-size: .72rem; font-weight: 600; background: #f8fafc;
+  color: #475569; cursor: pointer; transition: background .15s, color .15s;
+}
+.pnl-map-chip--active { background: #16a34a; border-color: #16a34a; color: #fff; }
+.pnl-map-chip:hover:not(.pnl-map-chip--active) { background: #f1f5f9; }
+.pnl-map-proximity { display: flex; align-items: center; gap: .4rem; }
+.pnl-map-proximity [hidden] { display: none; }
+.pnl-map-locate-btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+  min-height: 1.85rem; padding: .2rem .55rem; border: 1px solid #2563eb; border-radius: 999px;
+  font-size: .72rem; font-weight: 600; background: #eff6ff;
+  color: #1d4ed8; cursor: pointer; transition: .15s; white-space: nowrap;
+}
+.pnl-map-locate-btn:hover, .pnl-map-locate-btn.active { background: #2563eb; color: #fff; }
+.pnl-map-meta {
+  display:flex; justify-content:space-between; align-items:center; gap:.4rem;
+  padding: 0 .9rem .6rem;
+  font-size: .72rem; color: #64748b;
+}
+.pnl-map-status { color: #92400e; text-align:right; }
+.pnl-map-popup-title { margin:0 0 .15rem; font-size:.9rem; font-weight:700; color:#0f172a; }
+.pnl-map-popup-meta { margin:0 0 .45rem; font-size:.75rem; color:#64748b; }
+.pnl-map-popup-value { margin:0 0 .55rem; font-size:.8rem; color:#334155; }
+.pnl-map-popup-value strong { color:#15803d; }
+.pnl-map-popup-owner {
+  display:inline-flex; margin:0 0 .4rem; padding:.1rem .4rem; border-radius:999px;
+  background:#dcfce7; color:#166534; font-size:.67rem; font-weight:700;
+}
+.pnl-map-popup-link { color:#15803d; font-size:.77rem; font-weight:700; text-decoration:none; }
+.pnl-map-user-pin {
+  display:flex; align-items:center; justify-content:center;
+  width:30px; height:30px; border:3px solid #fff; border-radius:50%;
+  background:#2563eb; color:#fff; box-shadow:0 2px 10px rgba(37,99,235,.42);
+  font-size:.9rem;
+}
+.pnl-map-card:fullscreen {
+  display: flex !important; flex-direction: column !important; height: 100vh !important; border-radius: 0 !important; background: #fff !important;
+}
+.pnl-map-card:-webkit-full-screen {
+  display: flex !important; flex-direction: column !important; height: 100vh !important; border-radius: 0 !important; background: #fff !important;
+}
+.pnl-map-card:fullscreen .pnl-map-container {
+  flex: 1 !important; height: auto !important; min-height: 0 !important;
+}
+.pnl-map-card:-webkit-full-screen .pnl-map-container {
+  flex: 1 !important; height: auto !important; min-height: 0 !important;
+}
+
+/* Estilos para popups múltiplos agrupados */
+.pnl-map-popup-multi-title {
+  margin: 0 0 2px !important;
+  font-size: 0.92rem !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+}
+.pnl-map-popup-multi-meta {
+  margin: 0 0 8px !important;
+  font-size: 0.74rem !important;
+  color: #64748b !important;
+  border-bottom: 1.5px solid #e2e8f0 !important;
+  padding-bottom: 6px !important;
+}
+.pnl-map-popup-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.pnl-map-popup-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.pnl-map-popup-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.pnl-map-popup-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+@media (max-width: 640px) {
+  .pnl-map-container { height: 330px; }
+  .pnl-map-select { flex:1 1 100%; }
+}
+</style>
+
+<script>
+(function () {
+  var mapElement = document.getElementById("pnlMap");
+  if (!mapElement || mapElement.dataset.mounted === "true") return;
+  mapElement.dataset.mounted = "true";
+
+  function setStatus(message) {
+    var element = document.getElementById("pnlMapStatus");
+    if (!element) return;
+    element.hidden = !message;
+    element.textContent = message || "";
+  }
+
+  function ensureLeaflet() {
+    if (!document.querySelector('link[data-pnl-leaflet-css]') && !document.querySelector('link[href*="leaflet@1.9.4/dist/leaflet.css"]')) {
+      var stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      stylesheet.dataset.pnlLeafletCss = "true";
+      document.head.appendChild(stylesheet);
+    }
+    if (window.L) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var existing = document.getElementById("pnl-leaflet-js");
+      if (existing) {
+        existing.addEventListener("load", resolve, { once: true });
+        existing.addEventListener("error", reject, { once: true });
+        return;
+      }
+      var script = document.createElement("script");
+      script.id = "pnl-leaflet-js";
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+      script.crossOrigin = "";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function distKm(la1, lo1, la2, lo2) {
+    var radius = 6371;
+    var deltaLatitude = (la2 - la1) * Math.PI / 180;
+    var deltaLongitude = (lo2 - lo1) * Math.PI / 180;
+    var a = Math.sin(deltaLatitude / 2) * Math.sin(deltaLatitude / 2)
+          + Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180)
+          * Math.sin(deltaLongitude / 2) * Math.sin(deltaLongitude / 2);
+    return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  ensureLeaflet().then(function () {
+    var map = L.map(mapElement, { zoomControl: true, scrollWheelZoom: false }).setView([39.5, -8.0], 6);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      subdomains: "abcd",
+      maxZoom: 19
+    }).addTo(map);
+
+    // Zoom com Ctrl + Scroll do rato
+    mapElement.addEventListener("wheel", function (e) {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        map.scrollWheelZoom.enable();
+      } else {
+        map.scrollWheelZoom.disable();
+      }
+    }, { passive: false });
+
+    mapElement.addEventListener("mouseleave", function () {
+      map.scrollWheelZoom.disable();
+    });
+
+    var allListings = [];
+    var markers = L.layerGroup().addTo(map);
+    var userLocation = L.layerGroup().addTo(map);
+    var activeCategory = "";
+    var activeDelivery = "";
+    var userLat = null;
+    var userLon = null;
+    var activeRadius = null;
+    var markerColors = { PICKUP: "#16a34a", DELIVERY: "#2563eb", BOTH: "#d97706" };
+    var deliveryLabels = { PICKUP: "Levantamento", DELIVERY: "Entrega", BOTH: "Levantamento e entrega" };
+    var categoryElement = document.getElementById("pnlMapCategory");
+    var locateButton = document.getElementById("pnlMapLocate");
+    var radiusElement = document.getElementById("pnlMapRadius");
+    var fullscreenButton = document.getElementById("pnlMapFullscreen");
+    var mapCard = mapElement.closest(".pnl-map-card");
+
+    function renderMarkers() {
+      markers.clearLayers();
+      var visibleCount = 0;
+      var bounds = [];
+
+      // Agrupar anúncios por coordenadas (arredondado a 5 casas decimais ~1.1 metros)
+      var locationGroups = {};
+      allListings.forEach(function (listing) {
+        if (activeCategory && listing.category_id !== activeCategory) return;
+        if (activeDelivery && listing.delivery_mode !== activeDelivery) return;
+        if (activeRadius && userLat !== null && distKm(userLat, userLon, listing.lat, listing.lon) > activeRadius) return;
+
+        var key = Number(listing.lat).toFixed(5) + "," + Number(listing.lon).toFixed(5);
+        if (!locationGroups[key]) {
+          locationGroups[key] = {
+            lat: Number(listing.lat),
+            lon: Number(listing.lon),
+            listings: []
+          };
+        }
+        locationGroups[key].listings.push(listing);
+        visibleCount += 1;
+      });
+
+      // Renderizar os marcadores
+      Object.keys(locationGroups).forEach(function (key) {
+        var group = locationGroups[key];
+        var listings = group.listings;
+        if (listings.length === 0) return;
+
+        var popupContent = "";
+        var markerRadius = 8;
+        var markerColor = "#64748b";
+
+        if (listings.length === 1) {
+          var listing = listings[0];
+          var quantity = Number(listing.quantity || 0).toLocaleString("pt-PT", { maximumFractionDigits: 3 });
+          var price = Number(listing.unit_price || 0).toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          var unit = escapeHtml(listing.unit);
+          var location = listing.producer_location ? " · " + escapeHtml(listing.producer_location) : "";
+          var ownerBadge = listing.is_own ? '<span class="pnl-map-popup-owner">Meu anúncio</span>' : "";
+          
+          popupContent = ownerBadge + '<p class="pnl-map-popup-title">' + escapeHtml(listing.product_name) + '</p>'
+            + '<p class="pnl-map-popup-meta">' + escapeHtml(listing.producer_name) + location + '</p>'
+            + '<p class="pnl-map-popup-value"><strong>' + quantity + ' ' + unit + '</strong> · ' + price + ' &euro;/' + unit + '<br>' + escapeHtml(deliveryLabels[listing.delivery_mode] || "") + '</p>'
+            + '<a class="pnl-map-popup-link" href="' + escapeHtml(listing.url) + '">Ver anúncio <i class="bi bi-arrow-right"></i></a>';
+          
+          markerRadius = 8;
+          markerColor = markerColors[listing.delivery_mode] || "#64748b";
+        } else {
+          // Múltiplos anúncios nesta coordenada
+          var producers = [];
+          listings.forEach(function (l) {
+            if (producers.indexOf(l.producer_name) === -1) {
+              producers.push(l.producer_name);
+            }
+          });
+          var location = listings[0].producer_location ? escapeHtml(listings[0].producer_location) : "";
+          var producerText = producers.join(", ");
+          
+          popupContent = '<div class="pnl-map-popup-multi">'
+            + '<p class="pnl-map-popup-multi-title">' + listings.length + ' anúncios neste local</p>'
+            + '<p class="pnl-map-popup-multi-meta">' + escapeHtml(producerText) + (location ? ' · ' + location : '') + '</p>'
+            + '<div class="pnl-map-popup-scroll" style="max-height:180px; overflow-y:auto; margin-top:8px; padding-right:5px; display:flex; flex-direction:column; gap:8px;">';
+
+          listings.forEach(function (listing) {
+            var quantity = Number(listing.quantity || 0).toLocaleString("pt-PT", { maximumFractionDigits: 3 });
+            var price = Number(listing.unit_price || 0).toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            var unit = escapeHtml(listing.unit);
+            var ownerLabel = listing.is_own ? ' <span class="pnl-map-popup-owner" style="font-size:0.6rem; padding: 1px 4px; margin-left:4px;">Meu</span>' : '';
+            var modeColor = markerColors[listing.delivery_mode] || "#64748b";
+            var modeLabel = deliveryLabels[listing.delivery_mode] || "";
+
+            popupContent += '<div style="border-bottom:1px solid #f1f5f9; padding-bottom:6px; margin-bottom:2px;">'
+              + '<p style="margin:0 0 2px; font-weight:700; font-size:0.82rem; color:#0f172a;">' + escapeHtml(listing.product_name) + ownerLabel + '</p>'
+              + '<p style="margin:0 0 4px; font-size:0.74rem; color:#475569;">'
+              + '<strong>' + quantity + ' ' + unit + '</strong> · ' + price + ' &euro;/' + unit + '<br>'
+              + '<span style="color:' + modeColor + '; font-weight:600;">' + escapeHtml(modeLabel) + '</span>'
+              + '</p>'
+              + '<a class="pnl-map-popup-link" style="font-size:0.74rem;" href="' + escapeHtml(listing.url) + '">Ver anúncio <i class="bi bi-arrow-right"></i></a>'
+              + '</div>';
+          });
+
+          popupContent += '</div></div>';
+
+          // Raio maior para múltiplos anúncios (sinalização visual)
+          markerRadius = 11;
+
+          // Definir a cor do marcador
+          var firstMode = listings[0].delivery_mode;
+          var allSameMode = listings.every(function (l) { return l.delivery_mode === firstMode; });
+          if (allSameMode) {
+            markerColor = markerColors[firstMode];
+          } else {
+            // Mixed modes, usar uma cor de destaque vibrante (indigo)
+            markerColor = "#6366f1";
+          }
+        }
+
+        var marker = L.circleMarker([group.lat, group.lon], {
+          radius: markerRadius,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: markerColor,
+          fillOpacity: 1
+        }).bindPopup(popupContent);
+
+        markers.addLayer(marker);
+        bounds.push([group.lat, group.lon]);
+      });
+
+      document.getElementById("pnlMapCount").textContent = visibleCount
+        ? visibleCount + (visibleCount === 1 ? " anúncio com localização" : " anúncios com localização")
+        : "Sem anúncios localizáveis para estes filtros";
+      if (bounds.length && userLat === null) map.fitBounds(bounds, { padding: [18, 18], maxZoom: 11 });
+    }
+
+    function renderUserLocation() {
+      userLocation.clearLayers();
+      if (userLat === null || userLon === null) return;
+      var icon = L.divIcon({
+        className: "",
+        html: '<span class="pnl-map-user-pin"><i class="bi bi-person-fill"></i></span>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+        popupAnchor: [0, -18]
+      });
+      userLocation.addLayer(
+        L.marker([userLat, userLon], { icon: icon, zIndexOffset: 1000 }).bindPopup("<strong>A sua localização</strong>")
+      );
+    }
+
+    fetch("{% url 'dashboard:painel_mapa' %}", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (response) {
+        if (!response.ok) throw new Error("map-listings-load");
+        return response.json();
+      })
+      .then(function (payload) {
+        allListings = payload.listings || [];
+        var categories = {};
+        allListings.forEach(function (listing) {
+          if (listing.category_id) categories[listing.category_id] = listing.category_name;
+        });
+        Object.keys(categories).sort(function (first, second) {
+          return categories[first].localeCompare(categories[second], "pt");
+        }).forEach(function (id) {
+          var option = document.createElement("option");
+          option.value = id;
+          option.textContent = categories[id];
+          categoryElement.appendChild(option);
+        });
+        renderMarkers();
+      })
+      .catch(function () {
+        document.getElementById("pnlMapCount").textContent = "Mapa indisponível";
+        setStatus("Não foi possível carregar os anúncios.");
+      });
+
+    categoryElement.addEventListener("change", function () {
+      activeCategory = this.value;
+      renderMarkers();
+    });
+    document.querySelectorAll("#pnlMapDeliveryChips .pnl-map-chip").forEach(function (button) {
+      button.addEventListener("click", function () {
+        document.querySelectorAll("#pnlMapDeliveryChips .pnl-map-chip").forEach(function (item) {
+          item.classList.remove("pnl-map-chip--active");
+        });
+        button.classList.add("pnl-map-chip--active");
+        activeDelivery = button.dataset.mode;
+        renderMarkers();
+      });
+    });
+    locateButton.addEventListener("click", function () {
+      if (locateButton.classList.contains("active")) {
+        locateButton.classList.remove("active");
+        radiusElement.hidden = true;
+        userLat = null;
+        userLon = null;
+        activeRadius = null;
+        renderUserLocation();
+        setStatus("");
+        renderMarkers();
+        return;
+      }
+      if (!navigator.geolocation) {
+        setStatus("Localização indisponível neste browser.");
+        return;
+      }
+      locateButton.disabled = true;
+      navigator.geolocation.getCurrentPosition(function (position) {
+        locateButton.disabled = false;
+        locateButton.classList.add("active");
+        radiusElement.hidden = false;
+        userLat = position.coords.latitude;
+        userLon = position.coords.longitude;
+        activeRadius = Number(radiusElement.value) || null;
+        renderUserLocation();
+        setStatus("");
+        map.setView([userLat, userLon], 10);
+        renderMarkers();
+      }, function () {
+        locateButton.disabled = false;
+        setStatus("Não foi possível aceder à sua localização.");
+      });
+    });
+    radiusElement.addEventListener("change", function () {
+      activeRadius = Number(this.value) || null;
+      renderMarkers();
+    });
+    fullscreenButton.addEventListener("click", function () {
+      if (!document.fullscreenElement) {
+        if (!mapCard || !mapCard.requestFullscreen) {
+          setStatus("Ecrã inteiro indisponível neste browser.");
+          return;
+        }
+        mapCard.requestFullscreen().catch(function () {
+          setStatus("Não foi possível abrir em ecrã inteiro.");
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    });
+    document.addEventListener("fullscreenchange", function () {
+      var isFullscreen = document.fullscreenElement === mapCard;
+      fullscreenButton.innerHTML = isFullscreen
+        ? '<i class="bi bi-fullscreen-exit"></i>'
+        : '<i class="bi bi-arrows-fullscreen"></i>';
+      fullscreenButton.title = isFullscreen ? "Sair do ecrã inteiro" : "Ver mapa em ecrã inteiro";
+      fullscreenButton.setAttribute("aria-label", fullscreenButton.title);
+      window.setTimeout(function () { map.invalidateSize(); }, 80);
+    });
+  }).catch(function () {
+    document.getElementById("pnlMapCount").textContent = "Mapa indisponível";
+    setStatus("Não foi possível carregar o mapa.");
+  });
 })();
 </script>
 

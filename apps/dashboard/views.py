@@ -4,8 +4,9 @@ import json
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError, RestrictedError
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from apps.accounts.models import User
@@ -49,6 +50,7 @@ from apps.dashboard.services.client_dashboard import (
     build_weather_card_context,
 )
 from apps.inventory.models import ProducerProduct, ProducerProfile, Stock
+from apps.marketplace.services import get_public_listings
 
 
 def _htmx_target(request):
@@ -79,6 +81,66 @@ def dashboard_weather_card_view(request):
         return redirect("accounts:login")
 
     return render(request, "dashboard/partials/weather_card.html", context)
+
+
+@client_only_required
+def marketplace_map_listings_view(request):
+    try:
+        producer = ProducerProfile.objects.get(user=request.current_user)
+    except ProducerProfile.DoesNotExist:
+        return JsonResponse({"listings": []})
+
+    listings = (
+        get_public_listings()
+        .filter(
+            show_location_on_map=True,
+            producer__latitude__isnull=False,
+            producer__longitude__isnull=False,
+        )
+        .select_related("product", "product__category", "producer")
+        .order_by("-published_at")[:300]
+    )
+
+    data = []
+    for listing in listings:
+        p = listing.producer
+        try:
+            latitude = float(p.latitude)
+            longitude = float(p.longitude)
+        except (TypeError, ValueError):
+            continue
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            continue
+
+        cat = getattr(listing.product, "category", None)
+        is_own = getattr(listing, "producer_id", getattr(p, "id", None)) == producer.id
+        location = (
+            f"{p.city}, {p.district}" if p.city and p.district
+            else p.city or p.district or ""
+        )
+        data.append({
+            "id": str(listing.id),
+            "product_name": listing.product.name,
+            "category_id": str(cat.id) if cat else "",
+            "category_name": cat.name if cat else "Sem categoria",
+            "producer_name": p.display_name or getattr(p, "company_name", None) or "Produtor",
+            "producer_location": location,
+            "lat": latitude,
+            "lon": longitude,
+            "quantity": str(listing.quantity_available),
+            "unit": listing.product.unit,
+            "unit_price": str(listing.unit_price),
+            "delivery_mode": listing.delivery_mode,
+            "delivery_radius_km": float(listing.delivery_radius_km) if listing.delivery_radius_km else None,
+            "source": "forecast" if listing.forecast_id and not listing.stock_id else "stock",
+            "is_own": is_own,
+            "url": reverse(
+                "marketplace:owner_detail" if is_own else "marketplace:public_detail",
+                kwargs={"listing_id": listing.id},
+            ),
+        })
+
+    return JsonResponse({"listings": data})
 
 
 @admin_required

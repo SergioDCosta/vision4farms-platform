@@ -231,6 +231,11 @@ def add_form_errors_to_messages(request, form):
             messages.error(request, f"{label}: {error}" if label else str(error))
 
 
+def _validation_error_text(exc):
+    messages_list = getattr(exc, "messages", None)
+    return messages_list[0] if messages_list else str(exc)
+
+
 def build_external_demands_url(*, q="", status="", product_id="", show_form=False, edit_id=""):
     params = {}
     if q:
@@ -928,6 +933,7 @@ def external_customer_demand_cancel_view(request, demand_id):
         messages.error(request, "Pedido externo não encontrado.")
         return redirect("needs:external_demands")
 
+    toast_level, toast_msg = "info", ""
     try:
         _, changed = cancel_external_customer_demand(
             demand=demand,
@@ -935,13 +941,13 @@ def external_customer_demand_cancel_view(request, demand_id):
             updated_by=request.current_user,
         )
     except ValidationError as exc:
-        messages.error(request, str(exc))
+        toast_level, toast_msg = "error", _validation_error_text(exc)
     else:
         if changed:
-            messages.success(request, "Pedido externo cancelado.")
+            toast_level, toast_msg = "success", "Pedido externo cancelado."
             sync_alerts_after_need_change(producer, request.current_user)
         else:
-            messages.info(request, "O pedido externo já estava cancelado.")
+            toast_msg = "O pedido externo já estava cancelado."
 
     if _is_htmx(request):
         context = build_external_demands_context(
@@ -951,7 +957,14 @@ def external_customer_demand_cancel_view(request, demand_id):
             product_id=product_id,
             show_form=show_form,
         )
-        return render(request, "needs/external_demands.html", context)
+        response = render(request, "needs/external_demands.html", context)
+        return with_htmx_toast(response, toast_level, toast_msg)
+    if toast_level == "error":
+        messages.error(request, toast_msg)
+    elif toast_level == "success":
+        messages.success(request, toast_msg)
+    else:
+        messages.info(request, toast_msg)
     return redirect(build_external_demands_url(q=q, status=status, product_id=product_id, show_form=show_form))
 
 
@@ -972,6 +985,7 @@ def external_customer_demand_fulfill_view(request, demand_id):
         messages.error(request, "Pedido externo não encontrado.")
         return redirect("needs:external_demands")
 
+    toast_level, toast_msg = "info", ""
     try:
         _, changed = mark_external_customer_demand_fulfilled(
             demand=demand,
@@ -979,16 +993,14 @@ def external_customer_demand_fulfill_view(request, demand_id):
             updated_by=request.current_user,
         )
     except ValidationError as exc:
-        messages.error(request, str(exc))
+        toast_level, toast_msg = "error", _validation_error_text(exc)
     else:
         if changed:
-            messages.success(
-                request,
-                "Pedido marcado como cumprido. A saída foi registada no stock e os compromissos foram recalculados.",
-            )
+            toast_level = "success"
+            toast_msg = "Pedido marcado como cumprido. A saída foi registada no stock e os compromissos foram recalculados."
             sync_alerts_after_need_change(producer, request.current_user)
         else:
-            messages.info(request, "O pedido externo já estava marcado como cumprido.")
+            toast_msg = "O pedido externo já estava marcado como cumprido."
 
     if _is_htmx(request):
         context = build_external_demands_context(
@@ -998,7 +1010,14 @@ def external_customer_demand_fulfill_view(request, demand_id):
             product_id=product_id,
             show_form=show_form,
         )
-        return render(request, "needs/external_demands.html", context)
+        response = render(request, "needs/external_demands.html", context)
+        return with_htmx_toast(response, toast_level, toast_msg)
+    if toast_level == "error":
+        messages.error(request, toast_msg)
+    elif toast_level == "success":
+        messages.success(request, toast_msg)
+    else:
+        messages.info(request, toast_msg)
     return redirect(build_external_demands_url(q=q, status=status, product_id=product_id, show_form=show_form))
 
 
@@ -1049,14 +1068,18 @@ def need_response_publish_view(request):
         need = (
             Need.objects
             .select_related("product", "producer", "producer__user", "product__category")
-            .filter(id=requested_need_id, status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED])
+            .filter(
+                id=requested_need_id,
+                status__in=[NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED],
+                is_marketplace_published=True,
+            )
             .first()
         )
     except (TypeError, ValueError, ValidationError):
         need = None
     if not need:
-        messages.error(request, "A necessidade já não está disponível para resposta.")
-        return redirect("needs:index")
+        messages.error(request, "Esta procura não está publicada ou já não está disponível para resposta.")
+        return redirect("marketplace:index")
     if need.producer_id == producer.id:
         messages.error(request, "Não pode responder à sua própria necessidade.")
         return redirect(build_needs_index_url(selected_need_id=str(need.id)))

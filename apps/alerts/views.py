@@ -240,7 +240,7 @@ def alert_reactivate_view(request, alert_id):
         return response
 
     changed = reactivate_ignored_alert(alert, user=request.current_user)
-    message = "Alerta reativado." if changed else "O alerta já não estava ignorado."
+    message = "Alerta reativado." if changed else "O alerta já não estava adiado."
 
     response = _render_alerts_page(request, producer, tab, alert_type, category, q, action_only)
     if _is_htmx(request):

@@ -195,6 +195,32 @@ def _get_open_stock_published_quantity(stock, *, exclude_listing_id=None):
     return quantize_qty(result["total"] or Decimal("0.000"))
 
 
+def _get_pending_stock_need_response_quantity(stock, *, exclude_listing_id=None):
+    """
+    Quantidade prometida em propostas privadas ainda não convertidas em encomenda.
+
+    Uma proposta pendente não cria reserva física, mas não pode deixar o mesmo
+    stock ser novamente prometido ou publicado.
+    """
+    if not stock:
+        return Decimal("0.000")
+
+    from django.db.models import Sum
+
+    qs = MarketplaceListing.objects.filter(
+        stock=stock,
+        need_id__isnull=False,
+        status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+        need_response_status=NeedResponseStatus.PENDING,
+        order_items__isnull=True,
+    )
+    if exclude_listing_id:
+        qs = qs.exclude(id=exclude_listing_id)
+
+    result = qs.aggregate(total=Sum("quantity_available"))
+    return quantize_qty(result["total"] or Decimal("0.000"))
+
+
 def _get_uncommitted_forecast_quantity(forecast, *, exclude_listing_id=None):
     forecast_quantity = Decimal(str(forecast.forecast_quantity or 0))
     reserved_quantity = Decimal(str(forecast.reserved_quantity or 0))
@@ -528,7 +554,13 @@ def get_max_publishable_quantity(stock, *, exclude_listing_id=None):
     if commitment_state.get("has_external_demands"):
         return base_max
     already_published = _get_open_stock_published_quantity(stock, exclude_listing_id=exclude_listing_id)
-    return quantize_qty(max(base_max - already_published, Decimal("0.000")))
+    pending_need_responses = _get_pending_stock_need_response_quantity(
+        stock,
+        exclude_listing_id=exclude_listing_id,
+    )
+    return quantize_qty(
+        max(base_max - already_published - pending_need_responses, Decimal("0.000"))
+    )
 
 
 def get_publishable_products(producer):

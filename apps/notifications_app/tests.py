@@ -6,7 +6,11 @@ from django.test import SimpleTestCase
 from django.utils import timezone
 
 from apps.notifications_app.models import NotificationType
-from apps.notifications_app.services import clear_recent_notifications_for_user, create_alert_notification
+from apps.notifications_app.services import (
+    clear_recent_notifications_for_user,
+    create_alert_notification,
+    list_recent_notifications_for_user,
+)
 
 
 class AlertNotificationServiceTests(SimpleTestCase):
@@ -83,3 +87,23 @@ class AlertNotificationServiceTests(SimpleTestCase):
 
         self.assertEqual(deleted_count, 4)
         notification_model.objects.filter.assert_called_once_with(user=user)
+
+    @patch("apps.notifications_app.services.Notification")
+    def test_recent_alert_notifications_only_include_active_or_read_alerts(self, notification_model):
+        user = SimpleNamespace(id="user-1")
+        user_qs = MagicMock()
+        visible_qs = MagicMock()
+        ordered_qs = MagicMock()
+        notification_model.objects.select_related.return_value.filter.return_value = user_qs
+        user_qs.filter.return_value = visible_qs
+        visible_qs.order_by.return_value = ordered_qs
+        ordered_qs.__getitem__.return_value = []
+
+        notifications = list_recent_notifications_for_user(user=user)
+
+        self.assertEqual(notifications, [])
+        notification_model.objects.select_related.return_value.filter.assert_called_once_with(user=user)
+        visibility_condition = str(user_qs.filter.call_args.args[0])
+        self.assertIn("alert__status__in", visibility_condition)
+        self.assertIn("ACTIVE", visibility_condition)
+        self.assertIn("READ", visibility_condition)
