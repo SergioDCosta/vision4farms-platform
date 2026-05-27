@@ -1,7 +1,8 @@
 <script>
 (function () {
   const button = document.getElementById("autoLocationBtn");
-  if (!button) return;
+  const mapElement = document.getElementById("stgMap");
+  if (!button || !mapElement) return;
 
   const statusEl = document.getElementById("autoLocationStatus");
   const latitudeInput = document.getElementById("id_latitude");
@@ -10,6 +11,12 @@
   const cityInput = document.getElementById("id_city");
   const districtInput = document.getElementById("id_district");
   const addressLineInput = document.getElementById("id_address_line");
+  
+  const searchInput = document.getElementById("stgMapSearchInput");
+  const searchBtn = document.getElementById("stgMapSearchBtn");
+
+  let map = null;
+  let marker = null;
 
   function setStatus(level, message) {
     if (!statusEl) return;
@@ -21,19 +28,262 @@
   }
 
   function normalizePostalCode(value) {
-    const raw = (value || "").trim();
-    if (!raw) return "";
-    const digits = raw.replace(/\D/g, "");
-    if (digits.length === 7) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-    return raw.toUpperCase();
+    const digits = (value || "").replace(/\D/g, "");
+    if (digits.length >= 4) {
+      return digits.slice(0, 4) + "-" + digits.slice(4, 7);
+    }
+    return digits;
   }
 
-  function geolocationPromise(options) {
-    return new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  // Validação e máscara em tempo real do Código-Postal
+  if (postalCodeInput) {
+    postalCodeInput.addEventListener("input", function (e) {
+      let val = e.target.value;
+      const cleanVal = val.replace(/\D/g, "").slice(0, 7);
+      if (cleanVal.length >= 4) {
+        val = cleanVal.slice(0, 4) + "-" + cleanVal.slice(4);
+      } else {
+        val = cleanVal;
+      }
+      e.target.value = val;
+
+      // Validação visual de contorno
+      if (val.match(/^\d{4}-\d{3}$/)) {
+        postalCodeInput.classList.remove("stg-input-invalid");
+        postalCodeInput.classList.add("stg-input-valid");
+      } else if (val === "") {
+        postalCodeInput.classList.remove("stg-input-invalid", "stg-input-valid");
+      } else {
+        postalCodeInput.classList.remove("stg-input-valid");
+        postalCodeInput.classList.add("stg-input-invalid");
+      }
+    });
+
+    // Validar valor inicial se já existir
+    if (postalCodeInput.value.match(/^\d{4}-\d{3}$/)) {
+      postalCodeInput.classList.add("stg-input-valid");
+    }
+  }
+
+  function ensureLeaflet() {
+    if (!document.querySelector('link[data-pnl-leaflet-css]') && !document.querySelector('link[href*="leaflet@1.9.4/dist/leaflet.css"]')) {
+      var stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      stylesheet.dataset.pnlLeafletCss = "true";
+      document.head.appendChild(stylesheet);
+    }
+    if (window.L) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var existing = document.getElementById("pnl-leaflet-js");
+      if (existing) {
+        existing.addEventListener("load", resolve, { once: true });
+        existing.addEventListener("error", reject, { once: true });
+        return;
+      }
+      var script = document.createElement("script");
+      script.id = "pnl-leaflet-js";
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+      script.crossOrigin = "";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
     });
   }
 
+  // Reverse Geocoding: preencher inputs a partir de coordenadas
+  async function reverseGeocode(lat, lon, updateInputs = true) {
+    try {
+      const endpoint = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1&accept-language=pt-PT`;
+      const response = await fetch(endpoint, { method: "GET" });
+      if (!response.ok) throw new Error("Erro de geolocalização.");
+      
+      const payload = await response.json();
+      const address = payload.address || {};
+      
+      let postcode = address.postcode || "";
+      if (postcode) {
+        const clean = postcode.replace(/\D/g, "");
+        if (clean.length === 7) {
+          postcode = clean.slice(0, 4) + "-" + clean.slice(4);
+        }
+      }
+
+      const city = address.city || address.town || address.village || address.municipality || "";
+      const district = address.county || address.state_district || address.state || "";
+      const road = address.road || "";
+      const houseNumber = address.house_number || "";
+      const addressLine = [road, houseNumber].filter(Boolean).join(", ");
+
+      if (updateInputs) {
+        if (postalCodeInput && postcode) {
+          postalCodeInput.value = postcode;
+          if (postcode.match(/^\d{4}-\d{3}$/)) {
+            postalCodeInput.classList.remove("stg-input-invalid");
+            postalCodeInput.classList.add("stg-input-valid");
+          }
+        }
+        if (cityInput && city) cityInput.value = city;
+        if (districtInput && district) districtInput.value = district;
+        if (addressLineInput && addressLine) addressLineInput.value = addressLine;
+      }
+      return { postcode, city, district, addressLine };
+    } catch (e) {
+      console.error("Reverse geocoding falhou", e);
+      throw e;
+    }
+  }
+
+  // Atualizar inputs de coordenadas
+  function updateCoordsInputs(lat, lon) {
+    if (latitudeInput) latitudeInput.value = Number(lat).toFixed(6);
+    if (longitudeInput) longitudeInput.value = Number(lon).toFixed(6);
+  }
+
+  function initializeMap() {
+    ensureLeaflet().then(function () {
+      // Determinar centro inicial do mapa
+      let initialLat = 39.5;
+      let initialLon = -8.0;
+      let initialZoom = 6;
+      let hasCoords = false;
+
+      if (latitudeInput && longitudeInput && latitudeInput.value && longitudeInput.value) {
+        const parsedLat = parseFloat(latitudeInput.value);
+        const parsedLon = parseFloat(longitudeInput.value);
+        if (!isNaN(parsedLat) && !isNaN(parsedLon)) {
+          initialLat = parsedLat;
+          initialLon = parsedLon;
+          initialZoom = 14;
+          hasCoords = true;
+        }
+      }
+
+      // Inicializar mapa
+      map = L.map(mapElement, {
+        zoomControl: true,
+        scrollWheelZoom: false
+      }).setView([initialLat, initialLon], initialZoom);
+
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+        subdomains: "abcd",
+        maxZoom: 19
+      }).addTo(map);
+
+      // Zoom do mapa com Ctrl + Scroll
+      mapElement.addEventListener("wheel", function (e) {
+        if (e.ctrlKey) {
+          e.preventDefault();
+          map.scrollWheelZoom.enable();
+        } else {
+          map.scrollWheelZoom.disable();
+        }
+      }, { passive: false });
+
+      mapElement.addEventListener("mouseleave", function () {
+        map.scrollWheelZoom.disable();
+      });
+
+      // Inicializar Marcador
+      marker = L.marker([initialLat, initialLon], {
+        draggable: true
+      }).addTo(map);
+
+      // Transparência suave no pin se não houver coordenadas definidas (para indicar que é provisório)
+      if (!hasCoords) {
+        marker.setOpacity(0.5);
+      }
+
+      // Evento de arrastar o marcador (dragend)
+      marker.on("dragend", async function () {
+        marker.setOpacity(1.0);
+        const position = marker.getLatLng();
+        updateCoordsInputs(position.lat, position.lng);
+        setStatus("info", "A obter morada a partir da posição do marcador...");
+        try {
+          await reverseGeocode(position.lat, position.lng);
+          setStatus("success", "Coordenadas e morada atualizadas a partir do mapa.");
+        } catch {
+          setStatus("error", "Não foi possível resolver a morada para as novas coordenadas.");
+        }
+      });
+
+      // Evento de clique no mapa
+      map.on("click", async function (e) {
+        marker.setOpacity(1.0);
+        marker.setLatLng(e.latlng);
+        updateCoordsInputs(e.latlng.lat, e.latlng.lng);
+        setStatus("info", "A obter morada a partir da posição clicada...");
+        try {
+          await reverseGeocode(e.latlng.lat, e.latlng.lng);
+          setStatus("success", "Marcador posicionado. Morada atualizada.");
+        } catch {
+          setStatus("error", "Não foi possível resolver a morada para as novas coordenadas.");
+        }
+      });
+    }).catch(function (err) {
+      console.error("Erro ao carregar o Leaflet", err);
+    });
+  }
+
+  // Pesquisa de Endereço (Nominatim Search Geocoding)
+  async function searchAddress() {
+    if (!searchInput || !searchInput.value.trim()) return;
+    const query = searchInput.value.trim();
+
+    searchBtn.disabled = true;
+    setStatus("info", "A pesquisar morada...");
+
+    try {
+      const endpoint = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&accept-language=pt-PT`;
+      const response = await fetch(endpoint, { method: "GET" });
+      if (!response.ok) throw new Error("Falha na pesquisa de morada.");
+      
+      const payload = await response.json();
+      if (!payload || payload.length === 0) {
+        setStatus("error", "Nenhum resultado encontrado para esta pesquisa.");
+        return;
+      }
+
+      const result = payload[0];
+      const lat = parseFloat(result.lat);
+      const lon = parseFloat(result.lon);
+
+      if (map && marker) {
+        marker.setOpacity(1.0);
+        marker.setLatLng([lat, lon]);
+        map.setView([lat, lon], 15);
+        updateCoordsInputs(lat, lon);
+        
+        setStatus("info", "A preencher detalhes da morada...");
+        try {
+          await reverseGeocode(lat, lon);
+          setStatus("success", "Morada encontrada e preenchida com sucesso.");
+        } catch {
+          setStatus("success", "Morada encontrada, mas não foi possível preencher todos os detalhes automaticamente.");
+        }
+      }
+    } catch (e) {
+      console.error("Pesquisa falhou", e);
+      setStatus("error", "Ocorreu um erro ao efetuar a pesquisa.");
+    } finally {
+      searchBtn.disabled = false;
+    }
+  }
+
+  if (searchBtn && searchInput) {
+    searchBtn.addEventListener("click", searchAddress);
+    searchInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        searchAddress();
+      }
+    });
+  }
+
+  // Geolocalização por Dispositivo ("Obter localização automaticamente")
   async function requestAutomaticLocation() {
     if (!navigator.geolocation) {
       setStatus("error", "Este navegador não suporta geolocalização.");
@@ -53,32 +303,17 @@
       const lat = Number(position.coords.latitude || 0);
       const lon = Number(position.coords.longitude || 0);
 
-      if (latitudeInput) latitudeInput.value = lat.toFixed(6);
-      if (longitudeInput) longitudeInput.value = lon.toFixed(6);
+      updateCoordsInputs(lat, lon);
 
-      setStatus("info", "A converter coordenadas em morada...");
-
-      const endpoint = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1&accept-language=pt-PT`;
-      const response = await fetch(endpoint, { method: "GET" });
-      if (!response.ok) throw new Error("Falha ao obter os dados de morada.");
-
-      const payload = await response.json();
-      const address = payload.address || {};
-      const postcode = normalizePostalCode(address.postcode);
-      const city = address.city || address.town || address.village || address.municipality || "";
-      const district = address.county || address.state_district || address.state || "";
-      const road = address.road || "";
-      const houseNumber = address.house_number || "";
-      const addressLine = [road, houseNumber].filter(Boolean).join(", ");
-
-      if (postalCodeInput && postcode) postalCodeInput.value = postcode;
-      if (cityInput && city) cityInput.value = city;
-      if (districtInput && district) districtInput.value = district;
-      if (addressLineInput && !addressLineInput.value.trim() && addressLine) {
-        addressLineInput.value = addressLine;
+      if (map && marker) {
+        marker.setOpacity(1.0);
+        marker.setLatLng([lat, lon]);
+        map.setView([lat, lon], 15);
       }
 
-      setStatus("success", "Localização preenchida. Confirma os dados e guarda a localização.");
+      setStatus("info", "A converter coordenadas em morada...");
+      await reverseGeocode(lat, lon);
+      setStatus("success", "Localização obtida com sucesso. Confirma os dados e grava.");
     } catch (error) {
       if (error && typeof error.code === "number") {
         if (error.code === 1) setStatus("error", "Permissão de localização recusada.");
@@ -99,6 +334,9 @@
     const params = new URLSearchParams(window.location.search || "");
     return params.get("auto_location") === "1" && window.location.hash === "#localizacao";
   }
+
+  // Inicializar o Mapa
+  initializeMap();
 
   if (shouldAutoRequestLocation()) {
     window.setTimeout(() => {

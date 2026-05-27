@@ -53,6 +53,18 @@
         <div id="autoLocationStatus" class="stg-geo-status" aria-live="polite"></div>
       </div>
 
+      <div class="stg-map-picker-wrapper" style="margin-top: 1.15rem; display: flex; flex-direction: column; gap: 0.5rem;">
+        <label style="font-size: .79rem; font-weight: 800; color: #334155;">Pesquisar morada no mapa</label>
+        <div class="stg-map-search-bar" style="display: flex; gap: 0.5rem;">
+          <input type="text" id="stgMapSearchInput" class="form-control" placeholder="Ex: Avenida da Liberdade, Lisboa" style="flex: 1;">
+          <button type="button" id="stgMapSearchBtn" class="stg-btn-ghost" style="padding: 0 1rem; min-height: 38px; display: flex; align-items: center; gap: 0.35rem;">
+            <i class="bi bi-search"></i><span class="stg-search-btn-text">Pesquisar</span>
+          </button>
+        </div>
+        <div id="stgMap" style="height: 280px; border: 1px solid #e2e8f0; border-radius: .85rem; overflow: hidden; z-index: 0; position: relative;"></div>
+        <span class="stg-help"><i class="bi bi-info-circle-fill" style="color: #16a34a;"></i> Dica: Pode arrastar o marcador azul ou clicar em qualquer ponto do mapa para ajustar a localização exata da sua exploração.</span>
+      </div>
+
       <details class="stg-location-card">
         <summary class="stg-location-card__head">
           <i class="bi bi-crosshair stg-location-card__icon"></i>
