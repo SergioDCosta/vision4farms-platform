@@ -86,53 +86,69 @@
   <section id="mk-sent-responses" class="mk-tab-group">
     <div class="mk-tab-group__header">
       <div>
-        <h2 class="mk-tab-group__title"><i class="bi bi-send"></i> Enviadas: propostas a outros produtores</h2>
+        <h2 class="mk-tab-group__title"><i class="bi bi-send"></i> Propostas enviadas por mim</h2>
         <p>Acompanhe as propostas que enviou para responder às procuras de outros produtores.</p>
       </div>
+      {% if sent_active_need_responses %}
+        <span class="mk-section-count">{{ sent_active_need_responses|length }} por decidir</span>
+      {% endif %}
     </div>
-    {% if my_need_responses %}
+    {% if sent_need_responses %}
       <div class="mk-responses-list">
-        {% for listing in my_need_responses %}
+        {% for response in sent_active_need_responses %}
         <div class="mk-resp-row">
           <div class="mk-resp-row__product">
-            <span class="mk-resp-row__name">{{ listing.product.name }}</span>
-            {% if listing.need %}
-              <span class="mk-resp-row__requester"><i class="bi bi-person"></i> Para {{ listing.need.producer.display_name|default:listing.need.producer.company_name }}</span>
-            {% endif %}
+            <span class="mk-resp-row__name">{{ response.product_name }}</span>
+            <span class="mk-resp-row__requester"><i class="bi bi-person"></i> Para {{ response.need_owner_label }}</span>
           </div>
           <div class="mk-resp-row__offer">
-            <span class="mk-resp-row__qty">{{ listing.quantity_available|floatformat:"-2" }} {{ listing.product.unit }}</span>
-            <span class="mk-resp-row__price">{{ listing.unit_price|floatformat:2 }} €/{{ listing.product.unit }}</span>
+            <span class="mk-resp-row__qty">{{ response.offered_quantity|floatformat:"-2" }} {{ response.product_unit }}</span>
+            <span class="mk-resp-row__price">{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</span>
           </div>
           <div class="mk-resp-row__status">
-            {% if listing.response_summary %}
-              <span class="mk-badge mk-badge--{{ listing.response_summary.badge_class }}">{{ listing.response_summary.status_label }}</span>
-            {% else %}
-              <span class="mk-badge mk-badge--warning">Pendente</span>
-            {% endif %}
+            <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
           </div>
           <div class="mk-resp-row__actions">
-            {% if listing.response_summary %}
-              <a href="{{ listing.response_summary.detail_url }}"
-                 hx-get="{{ listing.response_summary.detail_url }}"
+            <a href="{{ response.detail_url }}"
+               hx-get="{{ response.detail_url }}"
+               hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+               class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
+            {% if response.is_editable %}
+              <a href="{{ response.edit_url }}"
+                 hx-get="{{ response.edit_url }}"
                  hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                 class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
-              {% if listing.response_summary.can_edit %}
-                <a href="{{ listing.response_summary.edit_url }}"
-                   hx-get="{{ listing.response_summary.edit_url }}"
-                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                   class="mk-btn mk-btn--secondary"><i class="bi bi-pencil"></i> Editar</a>
-              {% endif %}
-            {% else %}
-              <a href="{% url 'needs:response_detail' listing.id %}"
-                 hx-get="{% url 'needs:response_detail' listing.id %}"
-                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                 class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
+                 class="mk-btn mk-btn--secondary"><i class="bi bi-pencil"></i> Editar</a>
             {% endif %}
           </div>
         </div>
         {% endfor %}
       </div>
+      {% if sent_past_need_responses %}
+        <div class="mk-history-heading">Histórico de propostas enviadas</div>
+        <div class="mk-responses-list mk-responses-list--past">
+          {% for response in sent_past_need_responses %}
+            <div class="mk-resp-row mk-resp-row--past">
+              <div class="mk-resp-row__product">
+                <span class="mk-resp-row__name">{{ response.product_name }}</span>
+                <span class="mk-resp-row__requester"><i class="bi bi-person"></i> Para {{ response.need_owner_label }}</span>
+              </div>
+              <div class="mk-resp-row__offer">
+                <span class="mk-resp-row__qty">{% if response.ordered_quantity > 0 %}{{ response.ordered_quantity|floatformat:"-2" }}{% else %}{{ response.offered_quantity|floatformat:"-2" }}{% endif %} {{ response.product_unit }}</span>
+                <span class="mk-resp-row__price">{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</span>
+              </div>
+              <div class="mk-resp-row__status">
+                <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
+              </div>
+              <div class="mk-resp-row__actions">
+                <a href="{{ response.detail_url }}"
+                   hx-get="{{ response.detail_url }}"
+                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                   class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
     {% else %}
       <div class="mk-tab-empty mk-tab-empty--inline">
         <i class="bi bi-send"></i>

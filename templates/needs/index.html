@@ -18,8 +18,8 @@
         <i class="bi bi-clipboard2-plus"></i> Novo pedido de cliente
       </a>
       {% if can_publish %}
-      <a href="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
-         hx-get="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+      <a href="{% url 'needs:create' %}"
+         hx-get="{% url 'needs:create' %}"
          hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
          class="nd-btn nd-btn--ghost">
         <i class="bi bi-megaphone"></i> Criar procura manual
@@ -275,64 +275,6 @@
   </section>
   {% endif %}
 
-  {# ── Painel: Criar procura manual ──────────────────────────────────────── #}
-  {% if show_need_form %}
-    <section class="nd-panel nd-panel--form">
-      <div class="nd-panel__head">
-        <div>
-          <h2>Criar procura manual</h2>
-          <p>Anuncie uma necessidade independente dos pedidos de clientes para receber propostas privadas de outros produtores.</p>
-        </div>
-        <a href="{% url 'needs:index' %}{% if selected_need_id or q or selected_category_id %}?{% if selected_need_id %}need={{ selected_need_id }}{% endif %}{% if q %}{% if selected_need_id %}&{% endif %}q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if selected_need_id or q %}&{% endif %}category={{ selected_category_id|urlencode }}{% endif %}{% endif %}"
-           hx-get="{% url 'needs:index' %}{% if selected_need_id or q or selected_category_id %}?{% if selected_need_id %}need={{ selected_need_id }}{% endif %}{% if q %}{% if selected_need_id %}&{% endif %}q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if selected_need_id or q %}&{% endif %}category={{ selected_category_id|urlencode }}{% endif %}{% endif %}"
-           hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-           class="nd-btn nd-btn--ghost nd-btn--sm">
-          <i class="bi bi-x-lg"></i> Fechar
-        </a>
-      </div>
-      <form method="post"
-            action="{% url 'needs:create' %}"
-            hx-post="{% url 'needs:create' %}"
-            hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="false"
-            class="nd-form">
-        {% csrf_token %}
-        <input type="hidden" name="q" value="{{ q }}">
-        <input type="hidden" name="category" value="{{ selected_category_id }}">
-        {% if selected_need_id %}<input type="hidden" name="need" value="{{ selected_need_id }}">{% endif %}
-        <input type="hidden" name="show_need_form" value="1">
-        <input type="hidden" name="source_context" value="needs">
-        <label>
-          Produto
-          <select name="product_id" required>
-            <option value="">Selecionar produto</option>
-            {% for product in need_products %}
-              <option value="{{ product.id }}" {% if need_prefill_product_id == product.id|stringformat:"s" %}selected{% endif %}>
-                {{ product.name }}{% if product.is_critical_stock %} — compromissos em aberto{% endif %}
-              </option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Quantidade necessária (kg)
-          <input type="number" name="required_quantity" min="0.001" step="0.001" required value="{{ need_prefill_quantity|default:'' }}" placeholder="Ex: 100">
-        </label>
-        <label>
-          Data limite
-          <input type="date" name="needed_by_date">
-        </label>
-        <label class="nd-form__wide">
-          Observações (opcional)
-          <textarea name="notes" rows="2" maxlength="1200" placeholder="Ex: entrega urgente para cliente externo"></textarea>
-        </label>
-        <div class="nd-form__actions">
-          <button type="submit" class="nd-btn nd-btn--primary">
-            <i class="bi bi-megaphone"></i> Guardar procura
-          </button>
-        </div>
-      </form>
-    </section>
-  {% endif %}
-
   {# ══ SECÇÃO PRINCIPAL: Necessidades geradas ══════════════════════════════ #}
   <section id="procuras-geradas" class="nd-section">
     <div class="nd-section-head">
@@ -341,8 +283,8 @@
         <p>Défices calculados a partir de pedidos de clientes e procuras registadas manualmente.</p>
       </div>
       {% if can_publish %}
-      <a href="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
-         hx-get="{% url 'needs:index' %}?show_need_form=1{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+      <a href="{% url 'needs:create' %}"
+         hx-get="{% url 'needs:create' %}"
          hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
          class="nd-btn nd-btn--ghost nd-btn--sm">
         <i class="bi bi-plus-lg"></i> Nova procura
@@ -449,7 +391,7 @@
                 <p>Registe pedidos de clientes para o sistema calcular automaticamente se precisa de procurar produto junto de outros produtores. Também pode criar uma procura manual.</p>
                 <div class="nd-empty-main__actions">
                   <a href="{% url 'needs:external_demands' %}?show_form=1" hx-get="{% url 'needs:external_demands' %}?show_form=1" hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true" class="nd-btn nd-btn--primary"><i class="bi bi-clipboard2-plus"></i> Registar pedido de cliente</a>
-                  {% if can_publish %}<a href="{% url 'needs:index' %}?show_need_form=1" hx-get="{% url 'needs:index' %}?show_need_form=1" hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true" class="nd-btn nd-btn--ghost"><i class="bi bi-megaphone"></i> Criar procura manual</a>{% endif %}
+                  {% if can_publish %}<a href="{% url 'needs:create' %}" hx-get="{% url 'needs:create' %}" hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true" class="nd-btn nd-btn--ghost"><i class="bi bi-megaphone"></i> Criar procura manual</a>{% endif %}
                 </div>
               </div>
             </td>
@@ -667,129 +609,6 @@
       <i class="bi bi-shop"></i> Ir para marketplace
     </a>
   </section>
-
-  {# ── Histórico de propostas recebidas (só se houver) ──────────────────── #}
-  {% if received_past_need_response_rows %}
-  <section class="nd-panel nd-history nd-history--collapsed" data-nd-history-section>
-    <div class="nd-panel__head nd-history-head" data-nd-history-toggle role="button" tabindex="0" aria-expanded="false">
-      <div>
-        <h2>Histórico de propostas recebidas</h2>
-        <p>{{ received_past_need_response_rows|length }} registo{{ received_past_need_response_rows|length|pluralize }} — aceites, rejeitadas, concluídas ou encerradas.</p>
-      </div>
-      <div class="nd-history-toggle" aria-hidden="true"><i class="bi bi-chevron-down"></i></div>
-    </div>
-    <div class="nd-history-collapse" data-nd-history-collapse>
-      <div class="nd-history-grid">
-        {% for response in received_past_need_response_rows %}
-          <article class="nd-response-card nd-response-card--past">
-            <div class="nd-response-card__head">
-              <div>
-                <h4>{{ response.producer_label }}</h4>
-                <p>{{ response.product_name }} · {{ response.source_label }}</p>
-              </div>
-              <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
-            </div>
-            <div class="nd-metrics nd-metrics--response">
-              <span>{% if response.ordered_quantity > 0 %}Encomenda{% else %}Proposta{% endif %} <strong>{% if response.ordered_quantity > 0 %}{{ response.ordered_quantity|quantity }}{% else %}{{ response.offered_quantity|quantity }}{% endif %} {{ response.product_unit }}</strong></span>
-              <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
-            </div>
-            <div class="nd-card-actions">
-              <a href="{{ response.detail_url }}"
-                 hx-get="{{ response.detail_url }}"
-                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                 class="nd-btn nd-btn--ghost nd-btn--sm"><i class="bi bi-eye"></i> Ver detalhe</a>
-            </div>
-          </article>
-        {% endfor %}
-      </div>
-    </div>
-  </section>
-  {% endif %}
-
-  {# ── Histórico de propostas enviadas (só se houver) ───────────────────── #}
-  {% if sent_need_response_rows %}
-  <section class="nd-panel nd-history nd-history--collapsed" data-nd-history-section>
-    <div class="nd-panel__head nd-history-head" data-nd-history-toggle role="button" tabindex="0" aria-expanded="false">
-      <div>
-        <h2>Propostas enviadas por mim</h2>
-        <p>{{ sent_need_response_rows|length }} proposta{{ sent_need_response_rows|length|pluralize }} enviada{{ sent_need_response_rows|length|pluralize }} a outros produtores.</p>
-      </div>
-      <div class="nd-history-toggle" aria-hidden="true"><i class="bi bi-chevron-down"></i></div>
-    </div>
-    <div class="nd-history-collapse" data-nd-history-collapse>
-      {% if sent_active_need_response_rows %}
-      <div class="nd-history-group">
-        <div class="nd-history-group__head">
-          <h3>Aguardam decisão</h3>
-          <span>{{ sent_active_need_response_rows|length }}</span>
-        </div>
-        <div class="nd-history-grid">
-          {% for response in sent_active_need_response_rows %}
-            <article class="nd-response-card">
-              <div class="nd-response-card__head">
-                <div>
-                  <h4>Para {{ response.need_owner_label }}</h4>
-                  <p>{{ response.product_name }} · {{ response.source_label }}</p>
-                </div>
-                <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
-              </div>
-              <div class="nd-response-message">{{ response.response_message }}</div>
-              <div class="nd-metrics nd-metrics--response">
-                <span>Quantidade <strong>{{ response.offered_quantity|quantity }} {{ response.product_unit }}</strong></span>
-                <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
-              </div>
-              <div class="nd-card-actions">
-                {% if response.is_editable %}
-                  <a href="{{ response.edit_url }}"
-                     hx-get="{{ response.edit_url }}"
-                     hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                     class="nd-btn nd-btn--primary nd-btn--sm"><i class="bi bi-pencil-square"></i> Editar</a>
-                {% endif %}
-                <a href="{{ response.detail_url }}"
-                   hx-get="{{ response.detail_url }}"
-                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                   class="nd-btn nd-btn--ghost nd-btn--sm"><i class="bi bi-eye"></i> Ver</a>
-              </div>
-            </article>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-
-      {% if sent_past_need_response_rows %}
-      <div class="nd-history-group {% if sent_active_need_response_rows %}nd-history-group--border{% endif %}">
-        <div class="nd-history-group__head">
-          <h3>Histórico</h3>
-          <span>{{ sent_past_need_response_rows|length }}</span>
-        </div>
-        <div class="nd-history-grid">
-          {% for response in sent_past_need_response_rows %}
-            <article class="nd-response-card nd-response-card--past">
-              <div class="nd-response-card__head">
-                <div>
-                  <h4>Para {{ response.need_owner_label }}</h4>
-                  <p>{{ response.product_name }} · {{ response.source_label }}</p>
-                </div>
-                <span class="nd-badge nd-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
-              </div>
-              <div class="nd-metrics nd-metrics--response">
-                <span>{% if response.ordered_quantity > 0 %}Encomenda{% else %}Proposta{% endif %} <strong>{% if response.ordered_quantity > 0 %}{{ response.ordered_quantity|quantity }}{% else %}{{ response.offered_quantity|quantity }}{% endif %} {{ response.product_unit }}</strong></span>
-                <span>Preço <strong>{{ response.unit_price|floatformat:2 }} €/{{ response.product_unit }}</strong></span>
-              </div>
-              <div class="nd-card-actions">
-                <a href="{{ response.detail_url }}"
-                   hx-get="{{ response.detail_url }}"
-                   hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                   class="nd-btn nd-btn--ghost nd-btn--sm"><i class="bi bi-eye"></i> Ver</a>
-              </div>
-            </article>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
 
 </div>
 

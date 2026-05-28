@@ -403,14 +403,14 @@ def _apply_listing_sort(qs, *, sort="recent"):
 
 
 def get_public_listings(*, producer=None, q="", category_id="", origin="", sort="recent", only_available=True):
+    # Os anúncios do próprio produtor também aparecem no feed geral: o cartão
+    # distingue-os com "O seu anúncio" e a guarda de compra impede comprá-los.
     qs = get_base_listing_queryset().filter(
         status=ListingStatus.ACTIVE,
         quantity_available__gt=0,
         need_id__isnull=True,
         product__is_active=True,
     )
-    if producer:
-        qs = qs.exclude(producer=producer)
 
     qs = _apply_listing_filters(
         qs,

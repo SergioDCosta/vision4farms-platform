@@ -1894,13 +1894,14 @@ class NeedsServiceTests(SimpleTestCase):
             patch("apps.needs.views.get_critical_stock_product_ids", return_value={"product-1"}),
             patch("apps.needs.views.get_need_response_counts_for_owner", return_value={"need-1": 1}),
             patch("apps.needs.views.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
-            patch("apps.needs.views.list_need_responses_for_responder", return_value=[active_response, past_response]) as sent_responses,
+            patch("apps.needs.views.MarketplaceListing.objects.filter") as sent_response_filter,
             patch("apps.needs.views.list_external_customer_demands", return_value=[]),
             patch("apps.needs.views.ExternalCustomerDemand.objects.filter") as demand_filter,
             patch("apps.needs.views.Stock.objects.filter", return_value=[]),
         ):
             demand_filter.return_value.select_related.return_value.order_by.return_value.__getitem__ = lambda self, s: iter([])
             demand_filter.return_value.count.return_value = 0
+            sent_response_filter.return_value.count.return_value = 1
             context = build_needs_index_context(
                 SimpleNamespace(id="owner-1"),
                 q="",
@@ -1912,19 +1913,17 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(context["need_my_rows"][0]["response_count"], 1)
         self.assertEqual(context["need_response_rows"], [])
         self.assertEqual(context["active_need_response_rows"], [])
-        self.assertEqual(context["past_need_response_rows"], [])
-        self.assertEqual(context["all_past_need_response_rows"], [past_response])
-        self.assertEqual(context["received_past_need_response_rows"], [past_response])
-        self.assertEqual(context["sent_need_response_rows"], [active_response, past_response])
-        self.assertEqual(context["sent_active_need_response_rows"], [active_response])
-        self.assertEqual(context["sent_past_need_response_rows"], [past_response])
+        self.assertEqual(context["all_active_received_proposals"], [active_response])
+        self.assertEqual(context["sent_proposals_pending_count"], 1)
+        self.assertNotIn("received_past_need_response_rows", context)
+        self.assertNotIn("sent_need_response_rows", context)
         self.assertTrue(context["need_products"][0].is_critical_stock)
         responses.assert_any_call(
             owner_producer=SimpleNamespace(id="owner-1"),
             q="",
             category_id="",
         )
-        sent_responses.assert_called_once()
+        sent_response_filter.assert_called_once()
 
 
 class ExternalDemandConflictTests(SimpleTestCase):

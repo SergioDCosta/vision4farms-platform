@@ -1,0 +1,129 @@
+{% extends "dashboard/base_app.html" %}
+{% block app_title %}{{ page_title|default:"Publicar necessidade" }}{% endblock %}
+{% block app_content %}
+
+<div class="np-page">
+  <header class="np-header">
+    <div>
+      <span>Procura manual</span>
+      <h1>Publicar necessidade</h1>
+      <p>Anuncie uma necessidade independente dos pedidos de clientes para receber propostas privadas de outros produtores.</p>
+    </div>
+    <a href="{{ back_to_needs_url }}"
+       hx-get="{{ back_to_needs_url }}"
+       hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+       class="np-btn np-btn--ghost">
+      <i class="bi bi-arrow-left"></i>
+      <span>Voltar às necessidades</span>
+    </a>
+  </header>
+
+  <div class="np-layout">
+    <section class="np-card">
+      <div class="np-card__head">
+        <h2>Dados da necessidade</h2>
+        <p>Ao guardar, a procura fica publicada no marketplace para que outros produtores possam enviar propostas.</p>
+      </div>
+
+      {% if form.non_field_errors %}
+        <div class="np-alert np-alert--error">
+          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'needs:create' %}" class="np-form" novalidate>
+        {% csrf_token %}
+        {% if source_context %}<input type="hidden" name="source_context" value="{{ source_context }}">{% endif %}
+        {% if external_id %}<input type="hidden" name="external_id" value="{{ external_id }}">{% endif %}
+
+        <div class="np-field{% if form.product_id.errors %} has-error{% endif %}">
+          <label for="{{ form.product_id.id_for_label }}">{{ form.product_id.label }}</label>
+          {{ form.product_id }}
+          {% if form.product_id.errors %}<div class="np-errors">{{ form.product_id.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="np-grid">
+          <div class="np-field{% if form.required_quantity.errors %} has-error{% endif %}">
+            <label for="{{ form.required_quantity.id_for_label }}">{{ form.required_quantity.label }}</label>
+            {{ form.required_quantity }}
+            {% if form.required_quantity.errors %}<div class="np-errors">{{ form.required_quantity.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="np-field{% if form.needed_by_date.errors %} has-error{% endif %}">
+            <label for="{{ form.needed_by_date.id_for_label }}">{{ form.needed_by_date.label }}</label>
+            {{ form.needed_by_date }}
+            <div class="np-help">Opcional. Indique até quando precisa de receber o produto.</div>
+            {% if form.needed_by_date.errors %}<div class="np-errors">{{ form.needed_by_date.errors.0 }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="np-field{% if form.notes.errors %} has-error{% endif %}">
+          <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+          {{ form.notes }}
+          {% if form.notes.errors %}<div class="np-errors">{{ form.notes.errors.0 }}</div>{% endif %}
+        </div>
+
+        <div class="np-actions">
+          <button type="submit" class="np-btn np-btn--primary">
+            <i class="bi bi-megaphone"></i>
+            <span>Publicar necessidade</span>
+          </button>
+          <a href="{{ back_to_needs_url }}"
+             hx-get="{{ back_to_needs_url }}"
+             hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+             class="np-btn np-btn--ghost">Cancelar</a>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+
+<style>
+.np-page { display:flex; flex-direction:column; gap:1rem; }
+.np-header, .np-card {
+  background:#fff; border:1px solid #dfe7ef; border-radius:8px;
+  box-shadow:0 1px 2px rgba(15,23,42,.03);
+}
+.np-header {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:1rem; padding:1rem 1.1rem;
+}
+.np-header span { color:#16a34a; font-size:.74rem; font-weight:800; text-transform:uppercase; }
+.np-header h1 { margin:.2rem 0; color:#0f172a; font-size:1.35rem; line-height:1.2; }
+.np-header p, .np-card__head p, .np-help { margin:0; color:#64748b; font-size:.88rem; }
+.np-layout { display:grid; grid-template-columns:minmax(0, 720px); gap:1rem; }
+.np-card { padding:1rem; }
+.np-card__head { margin-bottom:1rem; }
+.np-card__head h2 { margin:0 0 .25rem; font-size:1rem; color:#0f172a; }
+.np-form { display:flex; flex-direction:column; gap:1rem; }
+.np-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1rem; }
+.np-field { display:flex; flex-direction:column; gap:.35rem; min-width:0; }
+.np-field label { font-size:.78rem; font-weight:800; color:#475569; text-transform:uppercase; }
+.np-field input, .np-field select, .np-field textarea {
+  width:100%; border:1px solid #cbd5e1; border-radius:.6rem; padding:.65rem .75rem;
+  color:#0f172a; background:#fff; min-height:42px;
+}
+.np-field textarea { resize:vertical; min-height:90px; }
+.np-field.has-error input, .np-field.has-error select, .np-field.has-error textarea { border-color:#ef4444; }
+.np-errors { color:#b91c1c; font-size:.82rem; }
+.np-alert {
+  display:flex; flex-direction:column; gap:.25rem; padding:.75rem .85rem;
+  border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:.7rem; margin-bottom:1rem;
+}
+.np-alert p { margin:0; font-size:.86rem; line-height:1.4; }
+.np-actions { display:flex; gap:.7rem; flex-wrap:wrap; margin-top:.25rem; }
+.np-btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
+  border-radius:.6rem; border:1px solid #cbd5e1; padding:.7rem .95rem;
+  font-weight:800; text-decoration:none; cursor:pointer;
+}
+.np-btn--primary { background:#16a34a; border-color:#16a34a; color:#fff; }
+.np-btn--ghost { background:#fff; color:#0f172a; }
+@media (max-width: 640px) {
+  .np-header { align-items:stretch; flex-direction:column; }
+  .np-grid { grid-template-columns:1fr; }
+  .np-btn { width:100%; }
+}
+</style>
+
+{% endblock %}

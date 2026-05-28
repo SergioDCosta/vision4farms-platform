@@ -15,6 +15,12 @@
           {% if item.source_key == "forecast" %}<i class="bi bi-calendar2-week"></i>{% else %}<i class="bi bi-box-seam"></i>{% endif %}
           {{ item.source_label|default:"Stock atual" }}
         </span>
+        {% if item.is_owner %}
+          <span class="mk-badge mk-badge--info">
+            <i class="bi bi-person-badge"></i>
+            O seu anúncio
+          </span>
+        {% endif %}
         {% if item.viewer_order_info %}
           <span class="mk-badge {% if item.viewer_order_info.item_status == 'COMPLETED' %}mk-badge--ok{% elif item.viewer_order_info.item_status == 'CANCELLED' %}mk-badge--closed{% else %}mk-badge--info{% endif %}">
             <i class="bi bi-bag-check"></i>
@@ -141,7 +147,18 @@
         <i class="bi bi-eye"></i>
         Ver detalhes
       </a>
-      {% if item.viewer_order_info %}
+      {% if item.is_owner %}
+        <a href="{% url 'marketplace:owner_detail' item.id %}"
+           hx-get="{% url 'marketplace:owner_detail' item.id %}"
+           hx-target="#shellMain"
+           hx-select="#shellMain"
+           hx-swap="outerHTML"
+           hx-push-url="true"
+           class="mk-card-action mk-card-action--owner">
+          <i class="bi bi-gear"></i>
+          Gerir anúncio
+        </a>
+      {% elif item.viewer_order_info and item.viewer_order_info.item_status != "COMPLETED" and item.viewer_order_info.item_status != "CANCELLED" %}
         <a href="{% url 'orders:detail' item.viewer_order_info.order_id %}"
            hx-get="{% url 'orders:detail' item.viewer_order_info.order_id %}"
            hx-target="#shellMain"

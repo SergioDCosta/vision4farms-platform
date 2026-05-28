@@ -12,8 +12,8 @@
     {% if can_publish %}
       <div class="mk-head-actions">
         {% if active_tab != "todos" or listings or marketplace_need_rows %}
-        <a href="{% url 'needs:index' %}?show_need_form=1"
-           hx-get="{% url 'needs:index' %}?show_need_form=1"
+        <a href="{% url 'needs:create' %}"
+           hx-get="{% url 'needs:create' %}"
            hx-target="#shellMain"
            hx-select="#shellMain"
            hx-swap="outerHTML"
@@ -299,6 +299,7 @@
 .mk-card-action--ghost{background:#ecfdf5;color:#047857;border-color:#bbf7d0;}
 .mk-card-action--primary{background:#059669;color:#fff;}
 .mk-card-action--blue{background:#eef2ff;color:#4338ca;}
+.mk-card-action--owner{background:#4f46e5;color:#fff;border-color:#4338ca;}
 .mk-card-action--muted{background:#f1f5f9;color:#475569;}
 .mk-card-action:hover{filter:brightness(.98);transform:translateY(-1px);}
 .mk-card-action.is-disabled{opacity:.65;cursor:not-allowed;transform:none;}

@@ -10,7 +10,7 @@ from django.urls import reverse
 from apps.common.audit import log_audit_event
 from apps.common.decorators import client_only_required
 from apps.common.htmx import with_htmx_toast
-from apps.marketplace.models import ListingStatus
+from apps.marketplace.models import ListingStatus, MarketplaceListing
 from apps.marketplace.services import (
     MarketplaceServiceError,
     build_delivery_text,
@@ -24,7 +24,7 @@ from django.utils import timezone
 from apps.inventory.models import ProductionForecast, Stock
 from apps.needs.forms import ExternalCustomerDemandForm, NeedCreateForm, NeedEditForm, NeedResponseEditForm, NeedResponsePublishForm
 from apps.needs.navigation import build_needs_index_url
-from apps.needs.models import ExternalCustomerDemand, ExternalCustomerDemandStatus, Need, NeedSourceSystem, NeedStatus
+from apps.needs.models import ExternalCustomerDemand, ExternalCustomerDemandStatus, Need, NeedResponseStatus, NeedSourceSystem, NeedStatus
 from apps.needs.services import (
     calculate_external_demand_plan,
     calculate_need_coverage,
@@ -48,7 +48,6 @@ from apps.needs.services import (
     get_need_response_summaries_for_responder,
     ignore_need,
     list_need_responses_for_owner,
-    list_need_responses_for_responder,
     build_external_demand_plans,
     list_external_customer_demands,
     list_marketplace_my_needs,
@@ -498,10 +497,6 @@ def build_needs_index_context(
         response for response in need_response_rows
         if response.response_status == "PENDING"
     ]
-    past_need_response_rows = [
-        response for response in need_response_rows
-        if response.response_status != "PENDING"
-    ]
     all_need_response_rows = (
         list_need_responses_for_owner(
             owner_producer=producer,
@@ -511,30 +506,9 @@ def build_needs_index_context(
         if producer
         else []
     )
-    all_past_need_response_rows = [
-        response for response in all_need_response_rows
-        if response.response_status != "PENDING"
-    ]
     all_active_received_proposals = [
         response for response in all_need_response_rows
         if response.response_status == "PENDING"
-    ]
-    sent_need_response_rows = (
-        list_need_responses_for_responder(
-            responder_producer=producer,
-            q=q,
-            category_id=category_id,
-        )
-        if producer
-        else []
-    )
-    sent_active_need_response_rows = [
-        response for response in sent_need_response_rows
-        if response.response_status == "PENDING"
-    ]
-    sent_past_need_response_rows = [
-        response for response in sent_need_response_rows
-        if response.response_status != "PENDING"
     ]
 
     generated_needs_count = sum(
@@ -542,7 +516,16 @@ def build_needs_index_context(
         if row.get("status") in {NeedStatus.OPEN, NeedStatus.PARTIALLY_COVERED}
     )
     received_proposals_pending_count = len(all_active_received_proposals)
-    sent_proposals_pending_count = len(sent_active_need_response_rows)
+    sent_proposals_pending_count = (
+        MarketplaceListing.objects.filter(
+            producer=producer,
+            need_id__isnull=False,
+            status__in=[ListingStatus.ACTIVE, ListingStatus.RESERVED],
+            need_response_status=NeedResponseStatus.PENDING,
+        ).count()
+        if producer
+        else 0
+    )
 
     active_statuses = [
         ExternalCustomerDemandStatus.OPEN,
@@ -649,12 +632,6 @@ def build_needs_index_context(
         "need_products": need_products,
         "need_response_rows": need_response_rows,
         "active_need_response_rows": active_need_response_rows,
-        "past_need_response_rows": past_need_response_rows,
-        "all_past_need_response_rows": all_past_need_response_rows,
-        "received_past_need_response_rows": all_past_need_response_rows,
-        "sent_need_response_rows": sent_need_response_rows,
-        "sent_active_need_response_rows": sent_active_need_response_rows,
-        "sent_past_need_response_rows": sent_past_need_response_rows,
         "all_active_received_proposals": all_active_received_proposals,
         "external_demands_open_count": external_demands_open_count,
         "active_demands_preview": active_demands_preview,
@@ -1228,9 +1205,6 @@ def need_response_publish_view(request):
 
 @client_only_required
 def need_create_view(request):
-    if request.method != "POST":
-        return redirect("needs:index")
-
     current_user = request.current_user
     producer = get_current_producer_for_user(current_user)
 
@@ -1238,72 +1212,59 @@ def need_create_view(request):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
-    q, category_id, selected_need_id, requested_product_id, requested_quantity, _ = get_needs_filters(request)
-    show_need_form = True
-    source_context = (request.POST.get("source_context") or "").strip().lower()
+    source = request.POST if request.method == "POST" else request.GET
+    source_context = (source.get("source_context") or "").strip().lower()
     source_system = (
         NeedSourceSystem.VISION4FARMS
         if source_context in {"recommendation", "vision4farms"}
         else NeedSourceSystem.MANUAL
     )
-    external_id = (request.POST.get("external_id") or "").strip() or None
-    form = NeedCreateForm(request.POST, producer=producer)
+    external_id = (source.get("external_id") or "").strip() or None
 
-    if form.is_valid():
-        try:
-            need, _ = create_need(
-                producer=producer,
-                product=form.cleaned_data["product_id"],
-                required_quantity=form.cleaned_data["required_quantity"],
-                needed_by_date=form.cleaned_data.get("needed_by_date"),
-                source_system=source_system,
-                external_id=external_id,
-                notes=form.cleaned_data.get("notes"),
-                acting_user=request.current_user,
-            )
-        except DuplicateActiveNeedError as exc:
-            selected_need_id = str(exc.existing_need.id)
-            requested_product_id = str(exc.existing_need.product_id)
-            requested_quantity = ""
-            show_need_form = False
-            messages.warning(
-                request,
-                "Já existe uma necessidade ativa para este produto. Abra-a para editar quantidade, data ou observações.",
-            )
-        except ValidationError as exc:
-            messages.error(request, str(exc))
-        else:
-            selected_need_id = str(need.id)
-            requested_product_id = str(need.product_id)
-            requested_quantity = ""
-            messages.success(request, "Necessidade anunciada com sucesso.")
-            sync_alerts_after_need_change(producer, request.current_user)
-            show_need_form = False
+    if request.method == "POST":
+        form = NeedCreateForm(request.POST, producer=producer)
+        if form.is_valid():
+            try:
+                need, _ = create_need(
+                    producer=producer,
+                    product=form.cleaned_data["product_id"],
+                    required_quantity=form.cleaned_data["required_quantity"],
+                    needed_by_date=form.cleaned_data.get("needed_by_date"),
+                    source_system=source_system,
+                    external_id=external_id,
+                    notes=form.cleaned_data.get("notes"),
+                    acting_user=request.current_user,
+                )
+            except DuplicateActiveNeedError as exc:
+                messages.warning(
+                    request,
+                    "Já existe uma necessidade ativa para este produto. Abra-a para editar quantidade, data ou observações.",
+                )
+                return redirect(build_needs_index_url(selected_need_id=str(exc.existing_need.id)))
+            except ValidationError as exc:
+                form.add_error(None, _validation_error_text(exc))
+            else:
+                messages.success(request, "Necessidade anunciada com sucesso.")
+                sync_alerts_after_need_change(producer, request.current_user)
+                return redirect(build_needs_index_url(selected_need_id=str(need.id)))
     else:
-        add_form_errors_to_messages(request, form)
+        form_initial = {}
+        requested_product_id = (request.GET.get("product") or request.GET.get("product_id") or "").strip()
+        requested_quantity = (request.GET.get("qty") or request.GET.get("quantity") or "").strip()
+        if requested_product_id:
+            form_initial["product_id"] = requested_product_id
+        if requested_quantity:
+            form_initial["required_quantity"] = requested_quantity
+        form = NeedCreateForm(producer=producer, initial=form_initial)
 
-    if _is_htmx(request):
-        context = build_needs_index_context(
-            producer,
-            q=q,
-            category_id=category_id,
-            selected_need_id=selected_need_id,
-            need_prefill_product_id=requested_product_id,
-            need_prefill_quantity=requested_quantity,
-            show_need_form=show_need_form,
-        )
-        return render(request, "needs/index.html", context)
-
-    return redirect(
-        build_needs_index_url(
-            q=q,
-            category_id=category_id,
-            selected_need_id=selected_need_id,
-            need_prefill_product_id=requested_product_id,
-            need_prefill_quantity=requested_quantity,
-            show_need_form=show_need_form,
-        )
-    )
+    context = {
+        "page_title": "Publicar necessidade",
+        "form": form,
+        "back_to_needs_url": build_needs_index_url(),
+        "source_context": source_context,
+        "external_id": external_id or "",
+    }
+    return render(request, "needs/publish.html", context)
 
 
 @client_only_required

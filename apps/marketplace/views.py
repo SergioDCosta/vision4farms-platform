@@ -23,7 +23,7 @@ from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import (
     calculate_need_coverage,
     get_need_for_producer,
-    get_need_response_summaries_for_responder,
+    list_need_responses_for_responder,
     list_need_responses_for_owner,
     list_marketplace_public_needs,
     list_marketplace_my_published_needs,
@@ -187,8 +187,10 @@ def _attach_viewer_order_info(producer, listings):
                 "item_status": oi.item_status,
                 "order_id": str(oi.order_id),
             }
+    producer_id = getattr(producer, "id", None)
     for listing in listings:
         listing.viewer_order_info = order_map.get(str(listing.id))
+        listing.is_owner = bool(producer_id and listing.producer_id == producer_id)
 
 
 def _first_non_empty_text(*values):
@@ -560,7 +562,9 @@ def _build_marketplace_index_context(
         "completed_total": Decimal("0.00"),
         "cancelled_count": 0,
     }
-    my_need_responses = []
+    sent_need_responses = []
+    sent_active_need_responses = []
+    sent_past_need_responses = []
     received_active_need_responses = []
     received_past_need_responses = []
     if active_tab == "compras" and producer:
@@ -599,28 +603,15 @@ def _build_marketplace_index_context(
             response for response in received_need_responses
             if response.response_status != NeedResponseStatus.PENDING
         ]
-        response_listings = list(
-            MarketplaceListing.objects
-            .filter(producer=producer, need_id__isnull=False)
-            .select_related(
-                "need", "need__producer", "need__product",
-                "need__product__category", "product",
-            )
-            .order_by("-created_at")
-        )
-        if response_listings:
-            need_ids = list({str(listing.need_id) for listing in response_listings})
-            summaries = get_need_response_summaries_for_responder(
-                responder_producer=producer,
-                need_ids=need_ids,
-            )
-            seen_needs = set()
-            for listing in response_listings:
-                need_key = str(listing.need_id)
-                if need_key not in seen_needs:
-                    seen_needs.add(need_key)
-                    listing.response_summary = summaries.get(need_key)
-                    my_need_responses.append(listing)
+        sent_need_responses = list_need_responses_for_responder(responder_producer=producer)
+        sent_active_need_responses = [
+            response for response in sent_need_responses
+            if response.response_status == NeedResponseStatus.PENDING
+        ]
+        sent_past_need_responses = [
+            response for response in sent_need_responses
+            if response.response_status != NeedResponseStatus.PENDING
+        ]
 
     return {
         "page_title": "Marketplace",
@@ -648,7 +639,9 @@ def _build_marketplace_index_context(
         "my_active_orders": my_active_orders,
         "my_past_orders": my_past_orders,
         "purchase_summary": purchase_summary,
-        "my_need_responses": my_need_responses,
+        "sent_need_responses": sent_need_responses,
+        "sent_active_need_responses": sent_active_need_responses,
+        "sent_past_need_responses": sent_past_need_responses,
         "received_active_need_responses": received_active_need_responses,
         "received_past_need_responses": received_past_need_responses,
         "selected_need_id": selected_need_id,
