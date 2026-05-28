@@ -606,7 +606,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
         request.session = {}
         return request
 
-    def test_need_response_publish_creates_private_listing_and_redirects_to_need(self):
+    def test_need_response_publish_creates_private_listing_and_redirects_to_response_detail(self):
         producer = SimpleNamespace(id="seller-1")
         need = SimpleNamespace(
             id="need-1",
@@ -630,6 +630,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             "show_location_on_map": True,
             "notes": "Posso entregar esta quantidade.",
         }
+        listing_id = uuid4()
 
         request = self._request()
         with (
@@ -639,7 +640,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             patch("apps.needs.views.calculate_need_coverage", return_value={"remaining_to_receive": Decimal("10")}),
             patch("apps.needs.views.get_active_need_response_for_responder", return_value=None),
             patch("apps.needs.views.get_need_response_summaries_for_responder", return_value={}),
-            patch("apps.needs.views.create_listing", return_value=SimpleNamespace(id="listing-1")) as create_listing,
+            patch("apps.needs.views.create_listing", return_value=SimpleNamespace(id=listing_id)) as create_listing,
             patch("apps.needs.views.sync_alerts_after_need_change") as sync_alerts,
             patch("apps.needs.views.messages"),
         ):
@@ -648,7 +649,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             response = need_response_publish_view(request)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/necessidades/?need=need-1")
+        self.assertEqual(response["Location"], f"/necessidades/respostas/{listing_id}/")
         self.assertEqual(create_listing.call_args.kwargs["need"], need)
         self.assertIsNone(create_listing.call_args.kwargs["photo_path"])
         self.assertEqual(create_listing.call_args.kwargs["status"], ListingStatus.ACTIVE)
@@ -664,6 +665,51 @@ class NeedResponsePublishViewTests(SimpleTestCase):
                 "is_marketplace_published"
             ]
         )
+
+    def test_need_response_detail_for_responder_returns_to_marketplace_proposals(self):
+        producer = SimpleNamespace(id="seller-1")
+        buyer = SimpleNamespace(id="buyer-1")
+        listing_id = uuid4()
+        need_id = uuid4()
+        need = SimpleNamespace(
+            id=need_id,
+            product=SimpleNamespace(name="Tomate"),
+            producer_id=buyer.id,
+            producer=buyer,
+        )
+        listing = SimpleNamespace(
+            id=listing_id,
+            need_id=need_id,
+            need=need,
+            producer_id=producer.id,
+        )
+        response_summary = SimpleNamespace(
+            ordered_quantity=Decimal("0"),
+            offered_quantity=Decimal("5"),
+            unit_price=Decimal("2.50"),
+        )
+        request = RequestFactory().get(f"/necessidades/respostas/{listing_id}/")
+        request.current_user = SimpleNamespace(
+            is_active=True,
+            account_status=AccountStatus.ACTIVE,
+            role=UserRole.CLIENTE,
+        )
+
+        with (
+            patch("apps.needs.views.get_current_producer_for_user", return_value=producer),
+            patch("apps.needs.views.get_need_response_listing_for_viewer", return_value=listing),
+            patch("apps.needs.views.build_need_response_for_listing", return_value=response_summary),
+            patch("apps.needs.views.build_delivery_text", return_value="Levantamento"),
+            patch("apps.needs.views.render", return_value=HttpResponse("ok")) as render_mock,
+        ):
+            from apps.needs.views import need_response_detail_view
+
+            response = need_response_detail_view(request, listing_id)
+
+        self.assertEqual(response.status_code, 200)
+        context = render_mock.call_args.args[2]
+        self.assertEqual(context["back_to_needs_url"], "/marketplace/?tab=respostas")
+        self.assertEqual(context["back_label"], "Voltar às propostas")
 
     def test_need_response_publish_rejects_need_not_available_in_public_marketplace(self):
         producer = SimpleNamespace(id="seller-1")

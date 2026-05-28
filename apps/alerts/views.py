@@ -65,7 +65,7 @@ def _get_producer(request):
     return ProducerProfile.objects.filter(user=user).first()
 
 
-def _render_alerts_page(request, producer, tab, alert_type="", category="", q="", action_only=False):
+def _render_alerts_page(request, producer, tab, alert_type="", category="", q="", action_only=False, previous_last_seen_at=None):
     active_type = normalize_alert_type(alert_type)
     active_category = normalize_alert_category(category)
     q = (q or "").strip()
@@ -110,6 +110,7 @@ def _render_alerts_page(request, producer, tab, alert_type="", category="", q=""
             "resolved": _alerts_index_url(tab="resolved", alert_type=active_type, category=active_category, q=q, action_only=action_only),
         },
         "current_url": _alerts_index_url(tab=tab, alert_type=active_type, category=active_category, q=q, action_only=action_only),
+        "previous_last_seen_at": previous_last_seen_at,
     }
     return render(request, "alerts/index.html", context)
 
@@ -127,13 +128,18 @@ def alerts_index_view(request):
 
     _expire_ignored_alerts(producer, acting_user=request.current_user)
     sync_alerts_for_producer(producer, acting_user=request.current_user)
+
+    from apps.alerts.services import ALERTS_LAST_SEEN_SESSION_KEY, _parse_session_datetime
+    last_seen_val = request.session.get(ALERTS_LAST_SEEN_SESSION_KEY)
+    previous_last_seen_at = _parse_session_datetime(last_seen_val)
+
     mark_client_alerts_seen(request)
     tab = _normalize_tab(request.GET.get("tab"))
     alert_type = normalize_alert_type(request.GET.get("type"))
     category = normalize_alert_category(request.GET.get("category"))
     q = (request.GET.get("q") or "").strip()
     action_only = request.GET.get("action") == "1"
-    return _render_alerts_page(request, producer, tab, alert_type, category, q, action_only)
+    return _render_alerts_page(request, producer, tab, alert_type, category, q, action_only, previous_last_seen_at=previous_last_seen_at)
 
 
 @client_only_required

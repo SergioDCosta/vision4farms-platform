@@ -1335,6 +1335,9 @@
   border-top: 1px solid #f1f5f9;
   min-height: 30px;
 }
+.msg-typing-wrap[hidden] {
+  display: none !important;
+}
 .msg-typing-dot {
   width: 6px;
   height: 6px;
@@ -1657,6 +1660,14 @@
     if (lastId) {
       socket.send(JSON.stringify({ type: "conversation.sync", last_message_id: lastId }));
     }
+    // Se o utilizador já começou a escrever no input enquanto o socket ligava, envia o typing.start imediatamente
+    if (input && input.value.trim().length > 0 && !typingActive) {
+      socket.send(JSON.stringify({ type: "typing.start" }));
+      typingActive = true;
+      lastTypingSentTime = Date.now();
+      clearTimeout(typingStopTimer);
+      typingStopTimer = setTimeout(stopTyping, 2200);
+    }
   });
 
   socket.addEventListener("close", () => {
@@ -1679,6 +1690,7 @@
 
   // ── Typing indicator ──────────────────────────────────────
   let typingActive = false;
+  let lastTypingSentTime = 0;
   let typingHideTimer = null;
   let typingStopTimer = null;
 
@@ -1699,9 +1711,13 @@
   }
 
   function sendTypingStart() {
-    if (!typingActive && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "typing.start" }));
-      typingActive = true;
+    const now = Date.now();
+    if (socket.readyState === WebSocket.OPEN) {
+      if (!typingActive || (now - lastTypingSentTime > 1500)) {
+        socket.send(JSON.stringify({ type: "typing.start" }));
+        typingActive = true;
+        lastTypingSentTime = now;
+      }
     }
     clearTimeout(typingStopTimer);
     typingStopTimer = setTimeout(stopTyping, 2200);
@@ -1713,6 +1729,7 @@
       socket.send(JSON.stringify({ type: "typing.stop" }));
     }
     typingActive = false;
+    lastTypingSentTime = 0;
   }
 
   // ── Read receipts ──────────────────────────────────────────

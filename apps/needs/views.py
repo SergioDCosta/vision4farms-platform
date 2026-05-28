@@ -1181,7 +1181,7 @@ def need_response_publish_view(request):
             sync_alerts_after_need_change(producer, request.current_user)
             sync_alerts_after_need_change(need.producer, request.current_user)
             messages.success(request, "Resposta enviada. A oferta ficou ligada à necessidade selecionada.")
-            return redirect(build_needs_index_url(selected_need_id=str(need.id)))
+            return redirect("needs:response_detail", listing_id=listing.id)
 
     context = {
         "page_title": "Responder a necessidade",
@@ -1633,7 +1633,16 @@ def need_response_detail_view(request, listing_id):
     response = build_need_response_for_listing(listing)
     is_need_owner = bool(listing.need and listing.need.producer_id == producer.id)
     is_responder = bool(listing.producer_id == producer.id)
+    opened_from_marketplace = (request.GET.get("from") or "").strip().lower() == "marketplace"
     quantity_for_total = response.ordered_quantity if response.ordered_quantity > 0 else response.offered_quantity
+    marketplace_proposals_url = f"{reverse('marketplace:index')}?tab=respostas"
+    back_url = (
+        marketplace_proposals_url
+        if is_responder or opened_from_marketplace
+        else build_needs_index_url(
+            selected_need_id=str(listing.need_id) if is_need_owner else "",
+        )
+    )
     context = {
         "page_title": "Oferta para necessidade",
         "listing": listing,
@@ -1644,9 +1653,8 @@ def need_response_detail_view(request, listing_id):
         "is_responder": is_responder,
         "delivery_text": build_delivery_text(listing),
         "purchase_url": reverse("orders:create_from_listing", kwargs={"listing_id": listing.id}),
-        "back_to_needs_url": build_needs_index_url(
-            selected_need_id=str(listing.need_id) if is_need_owner else "",
-        ),
+        "back_to_needs_url": back_url,
+        "back_label": "Voltar às propostas" if is_responder or opened_from_marketplace else "Voltar às necessidades",
     }
     return render(request, "needs/response_detail.html", context)
 

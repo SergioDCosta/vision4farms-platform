@@ -760,7 +760,7 @@ Página:
 
 Objetivo:
 
-- mostrar alertas operacionais que exigem atenção ou acompanhamento.
+- mostrar alertas operacionais que exigem atenção ou acompanhamento com uma hierarquia visual limpa e despoluída.
 
 Tabs:
 
@@ -774,6 +774,13 @@ Filtros:
 - categoria;
 - pesquisa;
 - apenas alertas que exigem ação.
+- interface colapsável de filtros com ponto sinalizador de filtros ativos.
+
+Hierarquia Visual e Badges (Fase 2):
+- **Badges de Status (Prioridade Máxima):** Badges pulsantes `Novo` (azul) e `Ação Requerida` (vermelho com ping animado) no topo esquerdo do cartão.
+- **Badges de Risco (Condicionais):** Badges de severidade `Crítico` (vermelho) ou `Atenção` (laranja) são exibidos apenas para severidade `CRITICAL` ou `WARNING`. Nenhuma badge de severidade é exibida para a severidade `INFO` (reduzindo ruído).
+- **Metadados Inline (Context Row):** Categoria e Tipo detalhado de alerta foram movidos para uma linha de contexto em texto cinzento discreto acima do título (Exemplo: `STOCK · Défice nos pedidos externos`).
+- Apenas um máximo de 2 badges visuais são mostrados em simultâneo.
 
 Secções de alertas ativos:
 
@@ -806,7 +813,7 @@ Lógica de stock em alertas:
 Ações:
 
 - resolver;
-- adiar/lembrar mais tarde;
+- adiar/lembrar mais tarde (menu popover estético para adiar por 1h, amanhã ou 1 semana);
 - adiar todos/visíveis;
 - filtros preservados em ações HTMX.
 
@@ -829,8 +836,10 @@ Exemplos:
 
 Na página `/alertas/`:
 
-- mostra últimas 6 notificações recentes;
-- botão "Limpar notificações" remove apenas notificações do utilizador atual;
+- mostra últimas 6 notificações recentes na barra lateral.
+- **Ícones Contextuais Dinâmicos:** Exibe ícones específicos baseados no tipo (`MESSAGE` -> envelope/chat azul, `ORDER_UPDATE` -> caixa verde, `ALERT` -> sino laranja, `RECOMMENDATION` -> lâmpada amarela, etc.) com cores de fundo suaves.
+- **Destaque de Não Lido:** Itens não lidos apresentam um ponto de leitura azul pulsante no topo superior do ícone.
+- botão "Limpar notificações" remove apenas notificações do utilizador atual com transição HTMX;
 - limpar notificações não resolve, ignora nem apaga alertas reais.
 
 Deduplicação:
