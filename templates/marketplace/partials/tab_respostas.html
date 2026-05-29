@@ -27,8 +27,8 @@
             <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
           </div>
           <div class="mk-resp-row__actions">
-            <a href="{{ response.detail_url }}?from=marketplace"
-                 hx-get="{{ response.detail_url }}?from=marketplace"
+            <a href="{{ response.detail_url }}"
+                 hx-get="{{ response.detail_url }}"
                  hx-target="#shellMain"
                  hx-select="#shellMain"
                  hx-swap="outerHTML"
@@ -72,8 +72,8 @@
               <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
             </div>
             <div class="mk-resp-row__actions">
-              <a href="{{ response.detail_url }}?from=marketplace"
-                 hx-get="{{ response.detail_url }}?from=marketplace"
+              <a href="{{ response.detail_url }}"
+                 hx-get="{{ response.detail_url }}"
                  hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
                  class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver detalhe</a>
             </div>
@@ -109,8 +109,8 @@
             <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
           </div>
           <div class="mk-resp-row__actions">
-            <a href="{{ response.detail_url }}?from=marketplace"
-               hx-get="{{ response.detail_url }}?from=marketplace"
+            <a href="{{ response.detail_url }}"
+               hx-get="{{ response.detail_url }}"
                hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
                class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
             {% if response.is_editable %}
@@ -140,8 +140,8 @@
                 <span class="mk-badge mk-badge--{{ response.response_badge_class }}">{{ response.response_status_label }}</span>
               </div>
               <div class="mk-resp-row__actions">
-                <a href="{{ response.detail_url }}?from=marketplace"
-                   hx-get="{{ response.detail_url }}?from=marketplace"
+                <a href="{{ response.detail_url }}"
+                   hx-get="{{ response.detail_url }}"
                    hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
                    class="mk-btn mk-btn--secondary"><i class="bi bi-eye"></i> Ver proposta</a>
               </div>

@@ -304,14 +304,10 @@ def _build_step_2_context(
 
 
 def _need_response_url(need_id, product_id, quantity=None):
-    query = {
-        "from": "need",
-        "need": str(need_id),
-        "product": str(product_id),
-    }
+    query = {"product": str(product_id)}
     if quantity is not None:
         query["qty"] = str(quantity)
-    return f"{reverse('needs:respond')}?{urlencode(query)}"
+    return f"{reverse('marketplace:need_respond', args=[need_id])}?{urlencode(query)}"
 
 
 def _build_sell_recommendation_context(*, producer, product, requested_quantity, metrics):

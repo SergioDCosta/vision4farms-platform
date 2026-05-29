@@ -88,6 +88,30 @@
           <p>{{ response.response_message }}</p>
         </div>
 
+        {% if associated_order_item %}
+          <div class="nrd-order-link">
+            <div>
+              <span>Encomenda associada</span>
+              <strong>#{{ associated_order_item.order.order_number }}</strong>
+              <p>
+                {{ associated_order_item.order.get_status_display }} ·
+                {{ associated_order_item.quantity|quantity }} {{ associated_order_item.product.unit }} ·
+                {{ associated_order_item.subtotal|floatformat:2 }} €
+              </p>
+            </div>
+            <a href="{{ associated_order_url }}"
+               hx-get="{{ associated_order_url }}"
+               hx-target="#shellMain"
+               hx-select="#shellMain"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               class="nrd-btn nrd-btn--primary">
+              <i class="bi bi-receipt"></i>
+              Ver encomenda
+            </a>
+          </div>
+        {% endif %}
+
         <div class="nrd-note">
           <span>Observações da resposta</span>
           <p>{% if response.notes %}{{ response.notes }}{% else %}Sem observações da resposta.{% endif %}</p>
@@ -334,6 +358,34 @@
 }
 .nrd-state i { color:#16a34a; margin-top:.1rem; }
 .nrd-state p { margin:0; line-height:1.45; overflow-wrap:anywhere; }
+.nrd-order-link {
+  display:flex;
+  justify-content:space-between;
+  gap:1rem;
+  align-items:center;
+  padding:.85rem;
+  border:1px solid #bbf7d0;
+  background:#f0fdf4;
+  border-radius:.55rem;
+}
+.nrd-order-link span {
+  display:block;
+  color:#15803d;
+  font-size:.72rem;
+  font-weight:900;
+  text-transform:uppercase;
+}
+.nrd-order-link strong {
+  display:block;
+  margin-top:.12rem;
+  color:#0f172a;
+}
+.nrd-order-link p {
+  margin:.18rem 0 0;
+  color:#475569;
+  font-size:.86rem;
+  line-height:1.45;
+}
 .nrd-actions { display:flex; flex-direction:column; gap:.55rem; }
 .nrd-actions form { margin:0; }
 .nrd-actions .nrd-btn,
@@ -364,6 +416,10 @@
   .nrd-metrics,
   .nrd-metrics--offer {
     grid-template-columns:1fr;
+  }
+  .nrd-order-link {
+    align-items:stretch;
+    flex-direction:column;
   }
 }
 </style>

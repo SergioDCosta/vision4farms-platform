@@ -62,6 +62,19 @@ from apps.needs.services import (
     update_need_response,
     withdraw_need_from_marketplace,
 )
+from apps.orders.models import OrderItem
+
+
+def _is_marketplace_path(request):
+    return request.path.startswith("/marketplace/")
+
+
+def _marketplace_proposals_url():
+    return f"{reverse('marketplace:index')}?tab=respostas"
+
+
+def _marketplace_needs_url():
+    return f"{reverse('marketplace:index')}?tab=todos&kind=needs"
 
 
 def sync_alerts_after_need_change(producer, acting_user):
@@ -1022,7 +1035,7 @@ def needs_index_view(request):
 
 
 @client_only_required
-def need_response_publish_view(request):
+def need_response_publish_view(request, need_id=None):
     current_user = request.current_user
     producer = get_current_producer_for_user(current_user)
     if not producer:
@@ -1032,6 +1045,7 @@ def need_response_publish_view(request):
     requested_need_id = (
         request.POST.get("need_id")
         or request.POST.get("need")
+        or need_id
         or request.GET.get("need")
         or ""
     )
@@ -1039,7 +1053,7 @@ def need_response_publish_view(request):
     requested_product_id = str(request.POST.get("product") or request.GET.get("product") or "").strip()
     if not requested_need_id:
         messages.error(request, "Necessidade não indicada.")
-        return redirect("needs:index")
+        return redirect(_marketplace_needs_url() if _is_marketplace_path(request) else "needs:index")
 
     try:
         need = (
@@ -1062,7 +1076,7 @@ def need_response_publish_view(request):
         return redirect(build_needs_index_url(selected_need_id=str(need.id)))
     if requested_product_id and str(need.product_id) != requested_product_id:
         messages.error(request, "Produto inválido para responder a esta necessidade.")
-        return redirect("needs:index")
+        return redirect(_marketplace_needs_url() if _is_marketplace_path(request) else "needs:index")
 
     form_initial = {}
     requested_quantity = (request.GET.get("qty") or request.GET.get("quantity") or "").strip()
@@ -1079,7 +1093,7 @@ def need_response_publish_view(request):
     ).get(str(need.id))
 
     if existing_response and request.method == "GET":
-        return redirect("needs:response_edit", listing_id=existing_response.id)
+        return redirect("marketplace:proposal_edit", listing_id=existing_response.id)
 
     if existing_response and request.method == "POST":
         form = NeedResponseEditForm(request.POST, listing=existing_response)
@@ -1109,7 +1123,7 @@ def need_response_publish_view(request):
                 sync_alerts_after_need_change(producer, request.current_user)
                 sync_alerts_after_need_change(need.producer, request.current_user)
                 messages.success(request, "Proposta atualizada com sucesso.")
-                return redirect("needs:response_detail", listing_id=listing.id)
+                return redirect("marketplace:proposal_detail", listing_id=listing.id)
 
         context = {
             "page_title": "Editar proposta",
@@ -1126,7 +1140,8 @@ def need_response_publish_view(request):
             "coverage": coverage,
             "existing_response": existing_response,
             "responder_inventory": build_need_response_inventory_context(producer, need.product),
-            "back_to_needs_url": build_needs_index_url(),
+            "back_to_needs_url": _marketplace_proposals_url(),
+            "back_label": "Voltar às propostas",
         }
         return render(request, "needs/respond.html", context)
 
@@ -1135,7 +1150,7 @@ def need_response_publish_view(request):
             request,
             "Já existe uma proposta enviada para esta necessidade que não permite nova proposta neste momento.",
         )
-        return redirect("needs:response_detail", listing_id=latest_response_summary.listing_id)
+        return redirect("marketplace:proposal_detail", listing_id=latest_response_summary.listing_id)
 
     form = NeedResponsePublishForm(
         request.POST or None,
@@ -1181,7 +1196,7 @@ def need_response_publish_view(request):
             sync_alerts_after_need_change(producer, request.current_user)
             sync_alerts_after_need_change(need.producer, request.current_user)
             messages.success(request, "Resposta enviada. A oferta ficou ligada à necessidade selecionada.")
-            return redirect("needs:response_detail", listing_id=listing.id)
+            return redirect("marketplace:proposal_detail", listing_id=listing.id)
 
     context = {
         "page_title": "Responder a necessidade",
@@ -1198,7 +1213,8 @@ def need_response_publish_view(request):
         "coverage": coverage,
         "existing_response": existing_response,
         "responder_inventory": build_need_response_inventory_context(producer, need.product),
-        "back_to_needs_url": build_needs_index_url(),
+        "back_to_needs_url": _marketplace_needs_url(),
+        "back_label": "Voltar ao marketplace",
     }
     return render(request, "needs/respond.html", context)
 
@@ -1555,13 +1571,16 @@ def need_response_edit_view(request, listing_id):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
+    if request.method == "GET" and not _is_marketplace_path(request):
+        return redirect("marketplace:proposal_edit", listing_id=listing_id)
+
     listing = get_editable_need_response_for_responder(
         responder_producer=producer,
         listing_id=listing_id,
     )
     if not listing:
         messages.error(request, "Esta proposta já não pode ser editada.")
-        return redirect("needs:index")
+        return redirect(_marketplace_proposals_url())
 
     need = listing.need
     form = NeedResponseEditForm(request.POST or None, listing=listing)
@@ -1593,7 +1612,7 @@ def need_response_edit_view(request, listing_id):
             sync_alerts_after_need_change(producer, request.current_user)
             sync_alerts_after_need_change(need.producer, request.current_user)
             messages.success(request, "Proposta atualizada com sucesso.")
-            return redirect("needs:response_detail", listing_id=updated_listing.id)
+            return redirect("marketplace:proposal_detail", listing_id=updated_listing.id)
 
     context = {
         "page_title": "Editar proposta",
@@ -1610,7 +1629,8 @@ def need_response_edit_view(request, listing_id):
         "coverage": coverage,
         "existing_response": listing,
         "responder_inventory": build_need_response_inventory_context(producer, need.product),
-        "back_to_needs_url": build_needs_index_url(),
+        "back_to_needs_url": _marketplace_proposals_url(),
+        "back_label": "Voltar às propostas",
     }
     return render(request, "needs/respond.html", context)
 
@@ -1623,6 +1643,9 @@ def need_response_detail_view(request, listing_id):
         messages.error(request, "Perfil de produtor não encontrado.")
         return redirect("dashboard:painel")
 
+    if request.method == "GET" and not _is_marketplace_path(request):
+        return redirect("marketplace:proposal_detail", listing_id=listing_id)
+
     listing = get_need_response_listing_for_viewer(
         viewer_producer=producer,
         listing_id=listing_id,
@@ -1633,9 +1656,16 @@ def need_response_detail_view(request, listing_id):
     response = build_need_response_for_listing(listing)
     is_need_owner = bool(listing.need and listing.need.producer_id == producer.id)
     is_responder = bool(listing.producer_id == producer.id)
-    opened_from_marketplace = (request.GET.get("from") or "").strip().lower() == "marketplace"
+    opened_from_marketplace = _is_marketplace_path(request) or (request.GET.get("from") or "").strip().lower() == "marketplace"
     quantity_for_total = response.ordered_quantity if response.ordered_quantity > 0 else response.offered_quantity
-    marketplace_proposals_url = f"{reverse('marketplace:index')}?tab=respostas"
+    associated_order_item = (
+        OrderItem.objects
+        .filter(listing_id=listing.id, need_id=listing.need_id)
+        .select_related("order", "product")
+        .order_by("-created_at")
+        .first()
+    )
+    marketplace_proposals_url = _marketplace_proposals_url()
     back_url = (
         marketplace_proposals_url
         if is_responder or opened_from_marketplace
@@ -1655,6 +1685,8 @@ def need_response_detail_view(request, listing_id):
         "purchase_url": reverse("orders:create_from_listing", kwargs={"listing_id": listing.id}),
         "back_to_needs_url": back_url,
         "back_label": "Voltar às propostas" if is_responder or opened_from_marketplace else "Voltar às necessidades",
+        "associated_order_item": associated_order_item,
+        "associated_order_url": reverse("orders:detail", args=[associated_order_item.order_id]) if associated_order_item else "",
     }
     return render(request, "needs/response_detail.html", context)
 
@@ -1662,7 +1694,7 @@ def need_response_detail_view(request, listing_id):
 @client_only_required
 def need_response_reject_view(request, listing_id):
     if request.method != "POST":
-        return redirect("needs:response_detail", listing_id=listing_id)
+        return redirect("marketplace:proposal_detail", listing_id=listing_id)
 
     current_user = request.current_user
     producer = get_current_producer_for_user(current_user)
@@ -1694,4 +1726,4 @@ def need_response_reject_view(request, listing_id):
 
     if next_url.startswith("/") and not next_url.startswith("//"):
         return redirect(next_url)
-    return redirect("needs:response_detail", listing_id=listing_id)
+    return redirect("marketplace:proposal_detail", listing_id=listing_id)

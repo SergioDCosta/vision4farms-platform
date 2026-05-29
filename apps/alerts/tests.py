@@ -80,7 +80,7 @@ class NeedResponseAlertCandidateTests(SimpleTestCase):
         self.assertIn("2,50", candidate["description"])
         self.assertEqual(
             candidate["payload"]["action_url"],
-            "/necessidades/respostas/listing-1/",
+            "/marketplace/propostas/listing-1/",
         )
         manager.select_related.return_value.filter.assert_called_once_with(
             need__producer=owner,

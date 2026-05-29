@@ -1814,12 +1814,10 @@ def list_marketplace_public_needs(*, viewer_producer=None, q="", category_id="")
             row["public_quantity"] = row["remaining_to_plan"]
             row["public_offered_quantity"] = Decimal("0.000")
             need_product_id = getattr(need, "product_id", None) or getattr(getattr(need, "product", None), "id", "")
-            response_query = urlencode({
-                "from": "need",
-                "need": str(need.id),
-                "product": str(need_product_id),
-            })
-            row["response_url"] = f"{reverse('needs:respond')}?{response_query}"
+            response_query = urlencode({"product": str(need_product_id)})
+            row["response_url"] = (
+                f"{reverse('marketplace:need_respond', args=[need.id])}?{response_query}"
+            )
             rows.append(row)
 
     if viewer_producer and rows:
@@ -2344,9 +2342,9 @@ def _build_need_response(
         can_buy=state["can_buy"],
         can_reject=state["can_reject"],
         notes=listing.notes or "",
-        detail_url=reverse("needs:response_detail", args=[listing.id]),
-        reject_url=reverse("needs:response_reject", args=[listing.id]),
-        edit_url=reverse("needs:response_edit", args=[listing.id]) if is_editable else "",
+        detail_url=reverse("marketplace:proposal_detail", args=[listing.id]),
+        reject_url=reverse("marketplace:proposal_reject", args=[listing.id]),
+        edit_url=reverse("marketplace:proposal_edit", args=[listing.id]) if is_editable else "",
         is_editable=is_editable,
     )
 
@@ -2468,9 +2466,9 @@ def get_need_response_summaries_for_responder(*, responder_producer, need_ids):
             status_label=state["label"],
             badge_class=state["badge_class"],
             message=state["message"],
-            detail_url=reverse("needs:response_detail", args=[listing.id]),
+            detail_url=reverse("marketplace:proposal_detail", args=[listing.id]),
             is_active=state["is_active"],
-            edit_url=reverse("needs:response_edit", args=[listing.id]) if can_edit else "",
+            edit_url=reverse("marketplace:proposal_edit", args=[listing.id]) if can_edit else "",
             can_edit=can_edit,
             can_send_new_proposal=state["status"] in {"REJECTED", "CANCELLED", "EXPIRED", "WITHDRAWN", "COMPLETED"},
         )
@@ -2615,8 +2613,8 @@ def reject_need_response(*, listing, owner_producer, acting_user=None):
             alert_type=AlertType.OFFER_REJECTED,
             title=f"Oferta rejeitada: {listing.product.name}",
             description="O produtor da necessidade rejeitou a sua proposta. Pode enviar uma nova proposta se fizer sentido.",
-            action_url=f"/necessidades/?need={listing.need_id}",
-            action_label="Ver necessidade",
+            action_url=f"/marketplace/propostas/{listing.id}/",
+            action_label="Ver proposta",
             acting_user=getattr(owner_producer, "user", None),
             severity=AlertSeverity.INFO,
             requires_action=False,

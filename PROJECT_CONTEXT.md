@@ -1,6 +1,6 @@
 # VISION4FARMS - Contexto Atual do Projeto
 
-Última revisão: 2026-05-26.
+Última revisão: 2026-05-28.
 
 Este ficheiro serve como mapa funcional e técnico atual da aplicação. O objetivo é ajudar a explicar o projeto em relatório, manter o contexto entre sessões de desenvolvimento e evitar decisões baseadas em informação desatualizada.
 
@@ -490,7 +490,7 @@ Tab "Meus anúncios":
 Tabs adicionais do marketplace:
 
 - "Compras" resume compras/encomendas originadas no marketplace;
-- "Respostas" mostra propostas enviadas pelo produtor para procuras/necessidades;
+- "Respostas" mostra propostas recebidas para procuras próprias e propostas enviadas pelo produtor para procuras/necessidades;
 - cards usam badges contextuais para estados como proposta pendente, aceite, rejeitada ou encomenda associada;
 - empty states evitam CTAs errados como criar necessidade manual quando o contexto é marketplace.
 
@@ -505,7 +505,7 @@ Procuras no marketplace:
 - vêm de `needs`, não de `marketplace_listings`;
 - são cards de procura visualmente distintos das ofertas;
 - aparecem quando a necessidade está `OPEN` ou `PARTIALLY_COVERED` e ainda existe quantidade por planear;
-- CTA principal abre `/necessidades/responder/?need=<id>&product=<id>`;
+- CTA principal abre `/marketplace/procuras/<need_id>/responder/?product=<id>`;
 - não existe página pública própria de detalhe da necessidade nesta fase.
 
 Regras:
@@ -534,12 +534,15 @@ Páginas:
 - `/necessidades/pedidos-clientes/<uuid>/editar/`;
 - `/necessidades/pedidos-clientes/<uuid>/cancelar/`;
 - `/necessidades/criar/`;
-- `/necessidades/responder/`;
 - `/necessidades/<uuid>/ignorar/`;
 - `/necessidades/<uuid>/editar/`;
-- `/necessidades/respostas/<listing_id>/`;
-- `/necessidades/respostas/<listing_id>/editar/`;
-- `/necessidades/respostas/<listing_id>/rejeitar/`.
+- propostas privadas são geridas no marketplace:
+  `/marketplace/procuras/<need_id>/responder/`,
+  `/marketplace/propostas/<listing_id>/`,
+  `/marketplace/propostas/<listing_id>/editar/`,
+  `/marketplace/propostas/<listing_id>/rejeitar/`;
+- rotas antigas `/necessidades/responder/` e `/necessidades/respostas/<listing_id>/...`
+  ficam como compatibilidade.
 
 Estados da necessidade:
 
@@ -555,11 +558,9 @@ Página `/necessidades/`:
 - "As minhas necessidades";
 - destaque para pedidos externos de clientes quando existem compromissos relevantes;
 - detalhe da necessidade selecionada;
-- ofertas ativas;
-- responder a necessidades abertas;
-- históricos colapsáveis:
-  - "Histórico de ofertas recebidas";
-  - "Ofertas enviadas".
+- propostas recebidas pendentes para uma procura selecionada;
+- KPIs e CTAs encaminham históricos de propostas recebidas/enviadas para `/marketplace/?tab=respostas`;
+- a página fica focada em pedidos externos, procuras próprias e publicação/retirada de procuras no marketplace.
 
 Criação:
 
@@ -648,7 +649,7 @@ Estados da proposta (`need_response_status`):
 
 Fluxo do produtor que responde:
 
-- abre `/necessidades/responder/?need=<id>&product=<id>`;
+- abre `/marketplace/procuras/<need_id>/responder/?product=<id>`;
 - vê card "O seu inventário" com stock atual, reservado, disponível, compromissos externos, produção futura e máximo publicável;
 - envia proposta com quantidade, preço, entrega e observações;
 - se já existir proposta pendente para essa necessidade, edita a proposta existente;
@@ -657,10 +658,11 @@ Fluxo do produtor que responde:
 Fluxo do dono da necessidade:
 
 - vê ofertas recebidas;
-- abre detalhe em `/necessidades/respostas/<listing_id>/`;
+- abre detalhe em `/marketplace/propostas/<listing_id>/`;
 - pode comprar/aceitar proposta pendente;
 - pode rejeitar proposta pendente;
-- não pode comprar proposta rejeitada/cancelada/concluída.
+- não pode comprar proposta rejeitada/cancelada/concluída;
+- quando a proposta já originou encomenda, o detalhe mostra a encomenda associada e link para `/encomendas/<order_id>/`.
 
 Quantidades:
 
@@ -898,7 +900,7 @@ Regras de segurança/abuso:
 - mensagens de texto têm limite server-side de 2000 caracteres;
 - envio de mensagens/anexos tem rate limit por utilizador/conversa;
 - contacto por anúncio só pode ser iniciado para anúncios públicos, ativos, com quantidade disponível e sem `need_id`;
-- respostas privadas a necessidades continuam a usar as páginas de `needs`, não o contacto normal de marketplace.
+- respostas privadas a necessidades usam o fluxo de propostas do marketplace (`/marketplace/propostas/...`) e não o contacto normal por mensagem.
 - abrir `/mensagens/` sem conversa explícita não marca automaticamente a primeira conversa como lida;
 - quando uma mensagem nova chega a uma conversa arquivada, a conversa volta para "Ativas" para os destinatários;
 - notificações recentes de mensagens são deduplicadas por conversa e marcadas como lidas quando a conversa é aberta.

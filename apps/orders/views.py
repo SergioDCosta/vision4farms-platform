@@ -314,13 +314,13 @@ def create_order_from_listing_view(request, listing_id):
     if listing.need_id:
         if listing.need_response_status == NeedResponseStatus.REJECTED:
             messages.error(request, "Esta oferta foi rejeitada e já não pode ser comprada.")
-            return redirect("needs:response_detail", listing_id=listing.id)
+            return redirect("marketplace:proposal_detail", listing_id=listing.id)
         if listing.need_response_status != NeedResponseStatus.PENDING:
             messages.error(request, "Esta oferta já não está pendente e não pode ser comprada.")
-            return redirect("needs:response_detail", listing_id=listing.id)
+            return redirect("marketplace:proposal_detail", listing_id=listing.id)
         if OrderItem.objects.filter(listing_id=listing.id, need_id=listing.need_id).exists():
             messages.error(request, "Esta oferta já originou uma encomenda e não pode ser comprada novamente.")
-            return redirect("needs:response_detail", listing_id=listing.id)
+            return redirect("marketplace:proposal_detail", listing_id=listing.id)
         if not listing.need or listing.need.producer_id != producer.id:
             messages.error(request, "Esta oferta é dirigida ao produtor da necessidade e não está disponível para esta conta.")
             return redirect("marketplace:index")

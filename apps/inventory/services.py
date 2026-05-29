@@ -2250,4 +2250,3 @@ def get_recent_orders_for_export(producer, limit=50):
         "recent_orders": recent_orders,
         "export_total": export_total,
     }
-

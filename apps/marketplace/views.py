@@ -955,7 +955,7 @@ def marketplace_detail_view(request, listing_id):
         id=listing_id,
     )
     if getattr(listing, "need_id", None):
-        return redirect("needs:response_detail", listing_id=listing.id)
+        return redirect("marketplace:proposal_detail", listing_id=listing.id)
 
     if producer and listing.producer_id == producer.id:
         return redirect("marketplace:owner_detail", listing_id=listing.id)
@@ -973,7 +973,7 @@ def marketplace_owner_detail_view(request, listing_id):
         id=listing_id,
     )
     if getattr(listing, "need_id", None):
-        return redirect("needs:response_detail", listing_id=listing.id)
+        return redirect("marketplace:proposal_detail", listing_id=listing.id)
     if not producer or listing.producer_id != producer.id:
         return redirect("marketplace:public_detail", listing_id=listing.id)
 
@@ -992,7 +992,7 @@ def marketplace_public_detail_view(request, listing_id):
         id=listing_id,
     )
     if getattr(listing, "need_id", None):
-        return redirect("needs:response_detail", listing_id=listing.id)
+        return redirect("marketplace:proposal_detail", listing_id=listing.id)
     if producer and listing.producer_id == producer.id:
         return redirect("marketplace:owner_detail", listing_id=listing.id)
 
@@ -1038,13 +1038,21 @@ def marketplace_publish_view(request):
     )
     legacy_origin = (request.POST.get("from") or request.GET.get("from") or "").strip().lower()
     if legacy_origin == "need" or legacy_need_id:
-        query = {"from": "need"}
         if legacy_need_id:
-            query["need"] = str(legacy_need_id).strip()
+            try:
+                uuid.UUID(str(legacy_need_id).strip())
+            except (TypeError, ValueError):
+                return redirect(f"{reverse('marketplace:index')}?tab=todos&kind=needs")
+            query = {}
+            legacy_product_id = (request.POST.get("product") or request.GET.get("product") or "").strip()
+            if legacy_product_id:
+                query["product"] = legacy_product_id
+            query_string = urlencode(query)
+            response_url = reverse("marketplace:need_respond", args=[str(legacy_need_id).strip()])
+            return redirect(f"{response_url}?{query_string}" if query_string else response_url)
         legacy_product_id = (request.POST.get("product") or request.GET.get("product") or "").strip()
-        if legacy_product_id:
-            query["product"] = legacy_product_id
-        return redirect(f"{reverse('needs:respond')}?{urlencode(query)}")
+        query = {"tab": "todos", "kind": "needs"}
+        return redirect(f"{reverse('marketplace:index')}?{urlencode(query)}")
 
     success = request.GET.get("success") == "1"
     created_listing_id = request.GET.get("listing_id")
@@ -1300,11 +1308,11 @@ def marketplace_edit_view(request, listing_id):
     if listing.need_id:
         messages.warning(
             request,
-            "Esta proposta pertence ao fluxo de necessidades e deve ser gerida na página de necessidades.",
+            "Esta proposta pertence ao separador Propostas do marketplace.",
         )
         if listing.need_response_status == NeedResponseStatus.PENDING and listing.status == ListingStatus.ACTIVE:
-            return redirect("needs:response_edit", listing_id=listing.id)
-        return redirect("needs:response_detail", listing_id=listing.id)
+            return redirect("marketplace:proposal_edit", listing_id=listing.id)
+        return redirect("marketplace:proposal_detail", listing_id=listing.id)
 
     if not is_listing_editable_in_marketplace(listing):
         messages.warning(
@@ -1401,9 +1409,9 @@ def marketplace_delete_view(request, listing_id):
     if listing.need_id:
         messages.warning(
             request,
-            "Esta proposta pertence ao fluxo de necessidades e não deve ser removida no marketplace.",
+            "Esta proposta pertence ao separador Propostas e não deve ser removida como anúncio.",
         )
-        return redirect("needs:response_detail", listing_id=listing.id)
+        return redirect("marketplace:proposal_detail", listing_id=listing.id)
 
     if not is_listing_retirable_in_marketplace(listing):
         messages.warning(
@@ -1507,9 +1515,9 @@ def marketplace_toggle_status_view(request, listing_id):
     if listing.need_id:
         messages.warning(
             request,
-            "Esta proposta pertence ao fluxo de necessidades e deve ser gerida na página de necessidades.",
+            "Esta proposta pertence ao separador Propostas do marketplace.",
         )
-        return redirect("needs:response_detail", listing_id=listing.id)
+        return redirect("marketplace:proposal_detail", listing_id=listing.id)
 
     now = timezone.now()
     previous_status = listing.status

@@ -134,8 +134,26 @@ class NeedsRoutingTests(SimpleTestCase):
     def test_need_response_publish_url_is_public_needs_path(self):
         self.assertEqual(reverse("needs:respond"), "/necessidades/responder/")
 
-    def test_need_response_urls_are_public_needs_paths(self):
+    def test_need_response_urls_have_marketplace_canonical_paths(self):
         listing_id = uuid4()
+        need_id = uuid4()
+
+        self.assertEqual(
+            reverse("marketplace:need_respond", args=[need_id]),
+            f"/marketplace/procuras/{need_id}/responder/",
+        )
+        self.assertEqual(
+            reverse("marketplace:proposal_detail", args=[listing_id]),
+            f"/marketplace/propostas/{listing_id}/",
+        )
+        self.assertEqual(
+            reverse("marketplace:proposal_edit", args=[listing_id]),
+            f"/marketplace/propostas/{listing_id}/editar/",
+        )
+        self.assertEqual(
+            reverse("marketplace:proposal_reject", args=[listing_id]),
+            f"/marketplace/propostas/{listing_id}/rejeitar/",
+        )
 
         self.assertEqual(
             reverse("needs:response_detail", args=[listing_id]),
@@ -588,7 +606,7 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
 class NeedResponsePublishViewTests(SimpleTestCase):
     def _request(self):
         request = RequestFactory().post(
-            "/necessidades/responder/?from=need&need=need-1&product=product-1",
+            "/marketplace/procuras/need-1/responder/?product=product-1",
             data={
                 "need_id": "need-1",
                 "listing_source": LISTING_SOURCE_STOCK,
@@ -608,8 +626,9 @@ class NeedResponsePublishViewTests(SimpleTestCase):
 
     def test_need_response_publish_creates_private_listing_and_redirects_to_response_detail(self):
         producer = SimpleNamespace(id="seller-1")
+        need_id = uuid4()
         need = SimpleNamespace(
-            id="need-1",
+            id=need_id,
             product_id="product-1",
             producer_id="buyer-1",
             product=SimpleNamespace(id="product-1", name="Tomate", unit="kg"),
@@ -649,7 +668,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             response = need_response_publish_view(request)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], f"/necessidades/respostas/{listing_id}/")
+        self.assertEqual(response["Location"], f"/marketplace/propostas/{listing_id}/")
         self.assertEqual(create_listing.call_args.kwargs["need"], need)
         self.assertIsNone(create_listing.call_args.kwargs["photo_path"])
         self.assertEqual(create_listing.call_args.kwargs["status"], ListingStatus.ACTIVE)
@@ -688,7 +707,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             offered_quantity=Decimal("5"),
             unit_price=Decimal("2.50"),
         )
-        request = RequestFactory().get(f"/necessidades/respostas/{listing_id}/")
+        request = RequestFactory().get(f"/marketplace/propostas/{listing_id}/")
         request.current_user = SimpleNamespace(
             is_active=True,
             account_status=AccountStatus.ACTIVE,
@@ -700,8 +719,10 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             patch("apps.needs.views.get_need_response_listing_for_viewer", return_value=listing),
             patch("apps.needs.views.build_need_response_for_listing", return_value=response_summary),
             patch("apps.needs.views.build_delivery_text", return_value="Levantamento"),
+            patch("apps.needs.views.OrderItem.objects.filter") as order_filter,
             patch("apps.needs.views.render", return_value=HttpResponse("ok")) as render_mock,
         ):
+            order_filter.return_value.select_related.return_value.order_by.return_value.first.return_value = None
             from apps.needs.views import need_response_detail_view
 
             response = need_response_detail_view(request, listing_id)
@@ -710,6 +731,24 @@ class NeedResponsePublishViewTests(SimpleTestCase):
         context = render_mock.call_args.args[2]
         self.assertEqual(context["back_to_needs_url"], "/marketplace/?tab=respostas")
         self.assertEqual(context["back_label"], "Voltar às propostas")
+
+    def test_legacy_need_response_detail_redirects_to_marketplace_proposal(self):
+        producer = SimpleNamespace(id="seller-1")
+        listing_id = uuid4()
+        request = RequestFactory().get(f"/necessidades/respostas/{listing_id}/")
+        request.current_user = SimpleNamespace(
+            is_active=True,
+            account_status=AccountStatus.ACTIVE,
+            role=UserRole.CLIENTE,
+        )
+
+        with patch("apps.needs.views.get_current_producer_for_user", return_value=producer):
+            from apps.needs.views import need_response_detail_view
+
+            response = need_response_detail_view(request, listing_id)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/marketplace/propostas/{listing_id}/")
 
     def test_need_response_publish_rejects_need_not_available_in_public_marketplace(self):
         producer = SimpleNamespace(id="seller-1")
@@ -779,7 +818,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             response = need_response_publish_view(self._request())
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], f"/necessidades/respostas/{listing_id}/")
+        self.assertEqual(response["Location"], f"/marketplace/propostas/{listing_id}/")
         create_listing.assert_not_called()
         update_response.assert_called_once()
 
@@ -873,7 +912,7 @@ class NeedResponsePublishViewTests(SimpleTestCase):
             response = need_response_publish_view(self._request())
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], f"/necessidades/respostas/{listing_id}/")
+        self.assertEqual(response["Location"], f"/marketplace/propostas/{listing_id}/")
         create_listing.assert_not_called()
 
 
@@ -1233,8 +1272,9 @@ class NeedsServiceTests(SimpleTestCase):
         need.save.assert_called()
 
     def test_public_needs_hide_partially_covered_status(self):
+        need_id = uuid4()
         need = SimpleNamespace(
-            id="need-1",
+            id=need_id,
             status=NeedStatus.PARTIALLY_COVERED,
             producer=SimpleNamespace(display_name="Produtor A"),
             required_quantity=Decimal("10"),
@@ -1261,7 +1301,7 @@ class NeedsServiceTests(SimpleTestCase):
                 },
             ),
             patch("apps.needs.services.get_need_response_summaries_for_responder", return_value={}),
-            patch("apps.needs.services.get_public_offered_quantities_by_need", return_value={"need-1": Decimal("5.000")}),
+            patch("apps.needs.services.get_public_offered_quantities_by_need", return_value={str(need_id): Decimal("5.000")}),
         ):
             rows = list_marketplace_public_needs(viewer_producer=SimpleNamespace(id="viewer-1"))
 
@@ -1511,9 +1551,9 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(response.available_quantity, Decimal("5.000"))
         self.assertEqual(response.ordered_quantity, Decimal("0.000"))
         self.assertEqual(response.cta_label, "Ver oferta e comprar")
-        self.assertEqual(response.detail_url, f"/necessidades/respostas/{listing_id}/")
-        self.assertEqual(response.reject_url, f"/necessidades/respostas/{listing_id}/rejeitar/")
-        self.assertEqual(response.edit_url, f"/necessidades/respostas/{listing_id}/editar/")
+        self.assertEqual(response.detail_url, f"/marketplace/propostas/{listing_id}/")
+        self.assertEqual(response.reject_url, f"/marketplace/propostas/{listing_id}/rejeitar/")
+        self.assertEqual(response.edit_url, f"/marketplace/propostas/{listing_id}/editar/")
         self.assertTrue(response.is_editable)
 
     def test_responder_summary_marks_active_response(self):
@@ -1552,8 +1592,8 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertTrue(summary.is_active)
         self.assertTrue(summary.can_edit)
         self.assertFalse(summary.can_send_new_proposal)
-        self.assertEqual(summary.detail_url, f"/necessidades/respostas/{listing_id}/")
-        self.assertEqual(summary.edit_url, f"/necessidades/respostas/{listing_id}/editar/")
+        self.assertEqual(summary.detail_url, f"/marketplace/propostas/{listing_id}/")
+        self.assertEqual(summary.edit_url, f"/marketplace/propostas/{listing_id}/editar/")
 
     def test_responder_summary_allows_new_proposal_after_rejection(self):
         listing_id = uuid4()
@@ -1793,7 +1833,7 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertFalse(summary.is_active)
         self.assertFalse(summary.can_edit)
         self.assertTrue(summary.can_send_new_proposal)
-        self.assertEqual(summary.detail_url, f"/necessidades/respostas/{listing_id}/")
+        self.assertEqual(summary.detail_url, f"/marketplace/propostas/{listing_id}/")
 
     def test_sent_need_responses_are_explicit_history_rows(self):
         listing_id = uuid4()

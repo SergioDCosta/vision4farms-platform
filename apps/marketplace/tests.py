@@ -61,9 +61,10 @@ class MarketplaceNeedsRoutingTests(SimpleTestCase):
 
 
 class MarketplacePublishNeedResponseTests(SimpleTestCase):
-    def test_legacy_need_response_publish_redirects_to_needs_flow(self):
+    def test_legacy_need_response_publish_redirects_to_marketplace_response_flow(self):
+        need_id = "f470b620-6b04-4d24-af52-f2cb736cb4e6"
         request = RequestFactory().get(
-            "/marketplace/publicar/?from=need&need=need-1&product=product-1",
+            f"/marketplace/publicar/?from=need&need={need_id}&product=product-1",
         )
         request.current_user = SimpleNamespace(
             is_active=True,
@@ -82,7 +83,7 @@ class MarketplacePublishNeedResponseTests(SimpleTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response["Location"],
-            "/necessidades/responder/?from=need&need=need-1&product=product-1",
+            f"/marketplace/procuras/{need_id}/responder/?product=product-1",
         )
 
 

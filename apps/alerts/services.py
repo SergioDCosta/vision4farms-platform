@@ -1149,7 +1149,7 @@ def _need_response_candidates(producer):
                     "need_id": str(listing.need_id),
                     "quantity_available": str(listing.quantity_available),
                     "unit_price": str(listing.unit_price),
-                    "action_url": f"/necessidades/respostas/{listing.id}/",
+                    "action_url": f"/marketplace/propostas/{listing.id}/",
                     "action_label": "Ver oferta",
                     "secondary_action_url": f"/necessidades/?need={listing.need_id}",
                     "secondary_action_label": "Ver necessidade",
