@@ -72,6 +72,16 @@ class AccountVerificationToken(models.Model):
     purpose = models.CharField(max_length=30, choices=VerificationPurpose.choices)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(blank=True, null=True)
+    invite_payload = models.JSONField(blank=True, null=True)
+    sent_at = models.DateTimeField(blank=True, null=True)
+    revoked_at = models.DateTimeField(blank=True, null=True)
+    revoked_by_user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="revoked_verification_tokens",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

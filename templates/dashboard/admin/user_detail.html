@@ -126,6 +126,57 @@
   </div>
 
   <div class="adm-user-detail-side">
+    {% if invitation %}
+      <div class="adm-card">
+        <div class="adm-card-head">
+          <div>
+            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0f172a;">Estado do convite</h3>
+            <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.86rem;">
+              Acompanhamento da ativação enviada ao utilizador.
+            </p>
+          </div>
+          <span class="adm-pill adm-pill--{{ invitation.tone }}"><span class="adm-pill-dot"></span>{{ invitation.label }}</span>
+        </div>
+        <div class="adm-card-body">
+          <div class="adm-user-summary-stack">
+            <div class="adm-user-info-item">
+              <div class="adm-user-info-label">Último envio</div>
+              <div class="adm-user-info-value">{{ invitation.token.sent_at|date:"d/m/Y H:i"|default:"—" }}</div>
+            </div>
+            <div class="adm-user-info-item">
+              <div class="adm-user-info-label">Válido até</div>
+              <div class="adm-user-info-value">{{ invitation.token.expires_at|date:"d/m/Y H:i"|default:"—" }}</div>
+            </div>
+            {% if invitation.token.revoked_at %}
+              <div class="adm-user-info-item">
+                <div class="adm-user-info-label">Revogado em</div>
+                <div class="adm-user-info-value">{{ invitation.token.revoked_at|date:"d/m/Y H:i" }}</div>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" %}
+            <div class="adm-user-invite-actions">
+              <form method="post" action="{% url 'dashboard:gestor_utilizador_reenviar_convite' user_obj.id %}">
+                {% csrf_token %}
+                <button type="submit" class="adm-btn-primary">
+                  <i class="bi bi-envelope-arrow-up"></i> Reenviar convite
+                </button>
+              </form>
+              {% if invitation.status == "pending" or invitation.status == "delivery_failed" %}
+                <form method="post" action="{% url 'dashboard:gestor_utilizador_revogar_convite' user_obj.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="adm-btn-ghost" onclick="return confirm('Revogar este convite? O link deixará de funcionar.')">
+                    <i class="bi bi-envelope-x"></i> Revogar convite
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
     <div class="adm-card">
       <div class="adm-card-head">
         <div>
@@ -148,19 +199,25 @@
               <i class="bi bi-slash-circle"></i> Não pode alterar a sua própria conta
             </button>
           {% else %}
-            {% if user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" %}
-              <form method="post" action="{% url 'dashboard:gestor_utilizador_confirmar_email' user_obj.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <button
-                  type="submit"
-                  class="adm-btn-primary"
-                  style="width:100%;justify-content:center;"
-                  onclick="return confirm('Confirmar esta conta sem validação por email?')"
-                >
-                  <i class="bi bi-patch-check"></i> Confirmar conta (sem email)
-                </button>
-              </form>
+            {% if user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" and not user_obj.email_verified_at %}
+              <button
+                type="button"
+                class="adm-btn-primary"
+                style="width:100%;justify-content:center;"
+                data-bs-toggle="modal"
+                data-bs-target="#confirmEmailWithoutValidationModal"
+              >
+                <i class="bi bi-patch-check"></i> Validar email manualmente
+              </button>
+            {% elif user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" and user_obj.email_verified_at %}
+              <button
+                type="button"
+                class="adm-btn-ghost"
+                disabled
+                style="width:100%;justify-content:center;opacity:.65;cursor:not-allowed;"
+              >
+                <i class="bi bi-hourglass-split"></i> Aguarda conclusão do convite
+              </button>
             {% endif %}
 
             {% if user_obj.account_status != "PENDING_EMAIL_CONFIRMATION" %}
@@ -288,6 +345,45 @@
   </div>
 </div>
 
+{% if user_obj.account_status == "PENDING_EMAIL_CONFIRMATION" and not user_obj.email_verified_at %}
+  <div class="modal fade" id="confirmEmailWithoutValidationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border-radius:.85rem;border:none;overflow:hidden;">
+        <div class="modal-header" style="padding:1rem 1.2rem;border-bottom:1px solid #e2e8f0;">
+          <h5 class="modal-title fw-bold">Validar email manualmente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <form method="post" action="{% url 'dashboard:gestor_utilizador_confirmar_email' user_obj.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <div class="modal-body" style="padding:1.1rem 1.2rem;">
+            <p style="margin:0 0 1rem;color:#475569;font-size:.88rem;line-height:1.5;">
+              Esta ação ignora a validação normal do endereço de email. O utilizador convidado continuará obrigado a concluir o registo e definir a própria palavra-passe.
+            </p>
+            <label class="form-label" for="id_manual_confirmation_justification">Justificação administrativa</label>
+            <textarea
+              id="id_manual_confirmation_justification"
+              name="justification"
+              class="form-control"
+              rows="4"
+              minlength="10"
+              maxlength="500"
+              required
+              placeholder="Indica o motivo para esta exceção."
+            ></textarea>
+          </div>
+          <div class="modal-footer" style="padding:1rem 1.2rem;border-top:1px solid #e2e8f0;gap:.6rem;">
+            <button type="button" class="adm-btn-ghost" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="adm-btn-primary">
+              <i class="bi bi-patch-check"></i> Confirmar validação
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
 <style>
 .adm-user-detail-layout{
   display:grid;
@@ -331,6 +427,19 @@
   display:flex;
   flex-direction:column;
   gap:.75rem;
+}
+.adm-user-invite-actions{
+  display:flex;
+  flex-direction:column;
+  gap:.6rem;
+  margin-top:.85rem;
+}
+.adm-user-invite-actions form,
+.adm-user-invite-actions button{
+  width:100%;
+}
+.adm-user-invite-actions button{
+  justify-content:center;
 }
 .adm-audit-details{
   min-width:18rem;

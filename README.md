@@ -37,6 +37,7 @@ A interface é server-rendered com Django Templates e HTMX. A aplicação evita 
 - Mensagens entre produtores com anexos e atualização em tempo real.
 - Suporte conversacional para clientes e gestores.
 - Consola de gestão para utilizadores, catálogo, categorias, auditoria e suporte.
+- Convites administrativos com dados pré-preenchidos, expiração, reenvio, revogação e auditoria.
 
 ## Fluxos principais
 

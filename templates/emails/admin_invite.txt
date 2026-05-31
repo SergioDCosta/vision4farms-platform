@@ -2,7 +2,11 @@ Olá {{ first_name }},
 
 Foi convidado por um administrador para aceder à plataforma Vision4Farms.
 
-Para ativar a sua conta, clique no link abaixo:
+{% if personal_message %}Mensagem do administrador:
+{{ personal_message }}
+
+{% endif %}Para rever os seus dados, definir a sua palavra-passe e ativar a conta, clique no link abaixo.
+Este convite é válido durante 48 horas.
 {{ verify_url }}
 
 Se não estava à espera deste convite, pode ignorar este email.

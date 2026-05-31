@@ -29,6 +29,16 @@ urlpatterns = [
         views.admin_user_confirm_email_view,
         name="gestor_utilizador_confirmar_email",
     ),
+    path(
+        "gestor/utilizadores/<uuid:user_id>/reenviar-convite/",
+        views.admin_user_resend_invite_view,
+        name="gestor_utilizador_reenviar_convite",
+    ),
+    path(
+        "gestor/utilizadores/<uuid:user_id>/revogar-convite/",
+        views.admin_user_revoke_invite_view,
+        name="gestor_utilizador_revogar_convite",
+    ),
     path("gestor/utilizadores/<uuid:user_id>/estado/", views.admin_user_toggle_status_view, name="gestor_utilizador_estado"),
 
     path("gestor/auditoria/", views.admin_audit_view, name="gestor_auditoria"),

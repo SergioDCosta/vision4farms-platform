@@ -151,8 +151,8 @@ Páginas principais:
 - `/registo/`;
 - `/logout/`;
 - `/recuperar-password/`;
-- `/recuperar-password/<uidb64>/<token>/`;
-- fluxos de convite admin quando aplicável.
+- `/recuperar-password/<token>/`;
+- `/convite/<token>/` para concluir convites administrativos.
 
 Regras atuais:
 
@@ -161,7 +161,11 @@ Regras atuais:
 - passwords usam validadores Django configurados;
 - email de confirmação é enviado no registo;
 - se o email de confirmação falhar, a conta continua criada quando aplicável e a UI orienta o utilizador a contactar suporte;
-- admins podem confirmar manualmente contas pendentes;
+- admins podem convidar utilizadores com nome, email profissional, acesso, empresa, tipo de entidade e mensagem opcional;
+- dados empresariais indicados pelo admin ficam provisoriamente em `account_verification_tokens.invite_payload` e aparecem pré-preenchidos na conclusão do registo;
+- o perfil operacional do produtor só é criado quando o convidado define a própria password e ativa a conta;
+- convites administrativos expiram ao fim de 48 horas e podem ser reenviados ou revogados;
+- admins podem validar manualmente o email de contas pendentes mediante justificação auditada; utilizadores convidados continuam obrigados a concluir o registo;
 - recuperação de password invalida tokens pendentes anteriores antes de emitir novo token;
 - depois de resetar password, é enviado email de segurança de password alterada.
 
@@ -331,7 +335,10 @@ Gestão de utilizadores:
 
 - listagem clicável;
 - detalhe com dados do utilizador;
-- confirmar email manualmente;
+- convite administrativo com dados iniciais pré-preenchidos, mensagem opcional e validade de 48 horas;
+- detalhe do convite com último envio, validade e estado pendente/aceite/expirado/revogado;
+- reenviar ou revogar convites pendentes;
+- validar email manualmente apenas com justificação auditada;
 - suspender/reativar utilizador;
 - atividade relacionada com alterações de conta, login, password, suporte e ações admin.
 
@@ -1017,7 +1024,7 @@ Infraestrutura:
 Eventos de conta, administração e suporte já registados:
 
 - início de sessão e alterações relevantes de conta/perfil/preferências/password;
-- convites, confirmação de email por admin e alteração/suspensão/reativação de utilizadores;
+- criação, reenvio e revogação de convites, confirmação justificada de email por admin e alteração/suspensão/reativação de utilizadores;
 - criação, atualização, claim, resposta do admin, resposta do utilizador e fecho de tickets de suporte;
 - criação, atualização e remoção de produtos/categorias do catálogo.
 

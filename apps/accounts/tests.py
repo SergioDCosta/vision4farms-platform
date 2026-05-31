@@ -65,6 +65,51 @@ class RegisterEmailDeliveryTests(SimpleTestCase):
         self.assertEqual(request.session["registration_email"], "sergio@example.com")
         self.assertTrue(request.session["registration_email_delivery_failed"])
 
+    @patch("apps.accounts.views.render")
+    @patch("apps.accounts.views.AdminInviteCompleteForm")
+    @patch("apps.accounts.views.validate_admin_invite_token")
+    def test_admin_invite_completion_prefills_admin_provided_data(
+        self,
+        validate_token,
+        form_class,
+        render_mock,
+    ):
+        user = SimpleNamespace(
+            email="ana@example.com",
+            first_name="Ana",
+            last_name="Silva",
+            role="CLIENTE",
+        )
+        validate_token.return_value = SimpleNamespace(
+            user=user,
+            invite_payload={
+                "company": "Quinta Verde",
+                "user_type": "AGRICULTOR",
+                "personal_message": "Bem-vinda à cooperativa.",
+            },
+        )
+        render_mock.return_value = SimpleNamespace(status_code=200)
+
+        request = self.factory.get("/convite/token-1/")
+        response = views.admin_invite_complete_view(request, "token-1")
+
+        self.assertEqual(response.status_code, 200)
+        form_class.assert_called_once_with(
+            None,
+            user_role="CLIENTE",
+            user=user,
+            initial={
+                "first_name": "Ana",
+                "last_name": "Silva",
+                "company": "Quinta Verde",
+                "user_type": "AGRICULTOR",
+            },
+        )
+        self.assertEqual(
+            render_mock.call_args.args[2]["personal_message"],
+            "Bem-vinda à cooperativa.",
+        )
+
     @override_settings(SUPPORT_CONTACT_EMAIL="suporte@example.com")
     @patch("apps.accounts.views.render")
     def test_register_success_context_includes_support_email_on_delivery_failure(

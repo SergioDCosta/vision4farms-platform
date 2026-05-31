@@ -157,17 +157,22 @@ def create_signup_verification_token(user):
     return verification
 
 
-def create_admin_invite_token(user):
+def create_admin_invite_token(user, *, invite_payload=None, revoked_by_user=None):
     token = secrets.token_urlsafe(48)
     now = timezone.now()
 
     with transaction.atomic():
-        invalidate_pending_admin_invite_tokens(user, used_at=now)
+        revoke_pending_admin_invite_tokens(
+            user,
+            revoked_at=now,
+            revoked_by_user=revoked_by_user,
+        )
         verification = AccountVerificationToken.objects.create(
             user=user,
             token=token,
             purpose=VerificationPurpose.ADMIN_INVITE,
             expires_at=timezone.now() + timedelta(hours=48),
+            invite_payload=invite_payload or {},
         )
 
     return verification
@@ -213,6 +218,9 @@ def send_admin_invite_email(request, user, verification_token, async_send=False)
     context = {
         "first_name": user.first_name or "Utilizador",
         "verify_url": verify_url,
+        "personal_message": (verification_token.invite_payload or {}).get(
+            "personal_message"
+        ),
     }
     email_bundle = _render_verification_email_bundle(purpose=purpose, context=context)
 
@@ -231,6 +239,8 @@ def send_admin_invite_email(request, user, verification_token, async_send=False)
         recipient_list=[user.email],
         async_send=async_send,
     )
+    verification_token.sent_at = timezone.now()
+    verification_token.save(update_fields=["sent_at"])
 
 
 def authenticate_user_with_reason(email, password):
@@ -279,6 +289,7 @@ def validate_verification_token(token_value):
                 VerificationPurpose.ADMIN_INVITE,
             ],
             used_at__isnull=True,
+            revoked_at__isnull=True,
         )
     except AccountVerificationToken.DoesNotExist:
         return None
@@ -295,6 +306,7 @@ def validate_admin_invite_token(token_value):
             token=token_value,
             purpose=VerificationPurpose.ADMIN_INVITE,
             used_at__isnull=True,
+            revoked_at__isnull=True,
         )
     except AccountVerificationToken.DoesNotExist:
         return None
@@ -318,6 +330,19 @@ def invalidate_pending_admin_invite_tokens(user, used_at=None):
         purpose=VerificationPurpose.ADMIN_INVITE,
         used_at__isnull=True,
     ).update(used_at=mark_time)
+
+
+def revoke_pending_admin_invite_tokens(user, *, revoked_at=None, revoked_by_user=None):
+    mark_time = revoked_at or timezone.now()
+    return AccountVerificationToken.objects.filter(
+        user=user,
+        purpose=VerificationPurpose.ADMIN_INVITE,
+        used_at__isnull=True,
+        revoked_at__isnull=True,
+    ).update(
+        revoked_at=mark_time,
+        revoked_by_user=revoked_by_user,
+    )
 
 
 def invalidate_pending_password_reset_tokens(user, used_at=None):

@@ -3,7 +3,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.core.cache import caches
 from django.http import HttpResponse
@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from apps.accounts.models import AccountStatus, RegistrationSource, UserRole
 from apps.dashboard import views
+from apps.dashboard.forms import AdminUserCreateForm
 from apps.dashboard.services import admin_audit, admin_users
 from apps.dashboard.services.client_dashboard import (
     build_weather_operational_summary,
@@ -387,8 +388,8 @@ class AdminUserServiceTests(SimpleTestCase):
         user = SimpleNamespace(
             id="user-1",
             email="novo@example.com",
-            first_name="",
-            last_name="",
+            first_name="Ana",
+            last_name="Silva",
             role=UserRole.CLIENTE,
             registration_source=RegistrationSource.ADMIN_CREATED,
             account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
@@ -405,7 +406,15 @@ class AdminUserServiceTests(SimpleTestCase):
         request = self.factory.post("/gestor/utilizadores/novo/")
         request.current_user = SimpleNamespace(id="admin-1")
         form = SimpleNamespace(
-            cleaned_data={"email": "novo@example.com", "role": UserRole.CLIENTE}
+            cleaned_data={
+                "first_name": "Ana",
+                "last_name": "Silva",
+                "email": "novo@example.com",
+                "role": UserRole.CLIENTE,
+                "company": "Quinta Verde",
+                "user_type": "AGRICULTOR",
+                "personal_message": "Bem-vinda à cooperativa.",
+            }
         )
 
         result = admin_users.create_invited_user_from_admin_form(
@@ -415,13 +424,138 @@ class AdminUserServiceTests(SimpleTestCase):
 
         self.assertIs(result, user)
         create_user_mock.assert_called_once()
-        create_token_mock.assert_called_once_with(user)
+        create_token_mock.assert_called_once_with(
+            user,
+            invite_payload={
+                "company": "Quinta Verde",
+                "user_type": "AGRICULTOR",
+                "personal_message": "Bem-vinda à cooperativa.",
+            },
+            revoked_by_user=request.current_user,
+        )
         log_mock.assert_called_once()
         on_commit_mock.assert_called_once()
         send_email_mock.assert_not_called()
 
         callbacks[0]()
         send_email_mock.assert_called_once_with(request, user, token)
+
+    @patch("apps.dashboard.forms.User.objects.filter")
+    def test_admin_invite_form_requires_business_data_for_producer(self, filter_mock):
+        filter_mock.return_value.exists.return_value = False
+        form = AdminUserCreateForm(
+            data={
+                "first_name": "Ana",
+                "last_name": "Silva",
+                "email": "ana@example.com",
+                "role": UserRole.CLIENTE,
+                "company": "",
+                "user_type": "",
+                "personal_message": "",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("company", form.errors)
+        self.assertIn("user_type", form.errors)
+
+    @patch("apps.dashboard.services.admin_users.log_admin_action")
+    @patch("apps.dashboard.services.admin_users.transaction.atomic", return_value=_DummyAtomic())
+    @patch("apps.dashboard.services.admin_users.ProducerProfile.objects.filter")
+    def test_manual_confirmation_keeps_invited_user_pending_until_password_setup(
+        self,
+        producer_filter_mock,
+        atomic_mock,
+        log_mock,
+    ):
+        producer_filter_mock.return_value.first.return_value = None
+        user = SimpleNamespace(
+            id="user-1",
+            email="ana@example.com",
+            first_name="Ana",
+            last_name="Silva",
+            role=UserRole.CLIENTE,
+            registration_source=RegistrationSource.ADMIN_CREATED,
+            account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
+            email_verified_at=None,
+            is_active=False,
+            is_staff=False,
+            updated_at=None,
+            save=Mock(),
+            refresh_from_db=Mock(),
+        )
+        request = self.factory.post("/gestor/utilizadores/user-1/confirmar-email/")
+        request.current_user = SimpleNamespace(id="admin-1")
+
+        result = admin_users.confirm_user_email_by_admin(
+            request=request,
+            user_obj=user,
+            justification="Validação presencial na cooperativa.",
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(user.account_status, AccountStatus.PENDING_EMAIL_CONFIRMATION)
+        self.assertFalse(user.is_active)
+        user.save.assert_called_once_with(update_fields=["email_verified_at", "updated_at"])
+        self.assertIn("ainda deve concluir", result.message)
+        self.assertIn("Validação presencial", log_mock.call_args.kwargs["notes"])
+
+    @patch("apps.dashboard.services.admin_users.log_admin_action")
+    @patch("apps.dashboard.services.admin_users.send_admin_invite_email")
+    @patch("apps.dashboard.services.admin_users.create_admin_invite_token")
+    @patch("apps.dashboard.services.admin_users._latest_admin_invite_token")
+    def test_resend_admin_invite_preserves_prefill_payload(
+        self,
+        latest_token_mock,
+        create_token_mock,
+        send_email_mock,
+        log_mock,
+    ):
+        user = SimpleNamespace(
+            id="user-1",
+            email="ana@example.com",
+            registration_source=RegistrationSource.ADMIN_CREATED,
+            account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
+        )
+        payload = {"company": "Quinta Verde", "user_type": "AGRICULTOR"}
+        latest_token_mock.return_value = SimpleNamespace(invite_payload=payload)
+        new_token = SimpleNamespace(id="token-2")
+        create_token_mock.return_value = new_token
+        request = self.factory.post("/gestor/utilizadores/user-1/reenviar-convite/")
+        request.current_user = SimpleNamespace(id="admin-1")
+
+        result = admin_users.resend_admin_invite(request=request, user_obj=user)
+
+        self.assertTrue(result.ok)
+        create_token_mock.assert_called_once_with(
+            user,
+            invite_payload=payload,
+            revoked_by_user=request.current_user,
+        )
+        send_email_mock.assert_called_once_with(request, user, new_token)
+        log_mock.assert_called_once()
+
+    @patch("apps.dashboard.services.admin_users.log_admin_action")
+    @patch("apps.dashboard.services.admin_users.revoke_pending_admin_invite_tokens")
+    def test_revoke_admin_invite_records_admin(self, revoke_mock, log_mock):
+        revoke_mock.return_value = 1
+        user = SimpleNamespace(
+            id="user-1",
+            email="ana@example.com",
+            registration_source=RegistrationSource.ADMIN_CREATED,
+            account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
+        )
+        request = self.factory.post("/gestor/utilizadores/user-1/revogar-convite/")
+        request.current_user = SimpleNamespace(id="admin-1")
+
+        result = admin_users.revoke_admin_invite(request=request, user_obj=user)
+
+        self.assertTrue(result.ok)
+        revoke_mock.assert_called_once_with(
+            user,
+            revoked_by_user=request.current_user,
+        )
+        log_mock.assert_called_once()
 
 
 class AdminAuditPresenterTests(SimpleTestCase):

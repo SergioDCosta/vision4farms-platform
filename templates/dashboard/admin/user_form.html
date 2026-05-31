@@ -1,38 +1,116 @@
 {% extends "dashboard/admin/base_admin.html" %}
 {% block admin_content %}
-<div style="max-width:560px;">
-  <div class="adm-card">
-    <div class="adm-card-head">
+<div class="adm-form-shell">
+  <div class="adm-card adm-form-card">
+    <div class="adm-form-head">
+      <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-btn-ghost">
+        <i class="bi bi-arrow-left"></i> Voltar
+      </a>
       <div>
-        <h3 style="font-size:1rem;font-weight:700;color:#0f172a;margin:0 0 .15rem;">{{ page_title }}</h3>
-        <p style="font-size:.8rem;color:#64748b;margin:0;">Será enviado um email de ativação ao utilizador.</p>
+        <h2 class="adm-form-title">{{ page_title }}</h2>
+        <p class="adm-form-sub">Registe os dados iniciais e envie um convite seguro para ativação da conta.</p>
       </div>
-      <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-btn-ghost"><i class="bi bi-arrow-left"></i> Voltar</a>
     </div>
-    <div style="padding:1.4rem;">
-      <form method="post" novalidate>
-        {% csrf_token %}
-        {% if form.non_field_errors %}
-          <div style="background:#fee2e2;border:1px solid #fecaca;border-radius:.6rem;padding:.8rem 1rem;font-size:.84rem;color:#b91c1c;margin-bottom:1rem;">{{ form.non_field_errors }}</div>
-        {% endif %}
-        <div style="display:flex;flex-direction:column;gap:1rem;">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="adm-form-error">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <section class="adm-form-section">
+        <h3 class="adm-form-section-title">Identificação</h3>
+        <p class="adm-form-section-sub">Estes dados ficam pré-preenchidos quando o convidado continuar a inscrição.</p>
+        <div class="adm-form-grid">
           <div>
-            <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.4rem;">{{ form.email.label }}</label>
+            <label class="form-label" for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+            {{ form.first_name }}
+            {% if form.first_name.errors %}<p class="adm-field-error">{{ form.first_name.errors|join:" " }}</p>{% endif %}
+          </div>
+          <div>
+            <label class="form-label" for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+            {{ form.last_name }}
+            {% if form.last_name.errors %}<p class="adm-field-error">{{ form.last_name.errors|join:" " }}</p>{% endif %}
+          </div>
+          <div class="adm-form-span-2">
+            <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
             {{ form.email }}
-            {% if form.email.errors %}<p style="font-size:.78rem;color:#dc2626;margin:.3rem 0 0;">{{ form.email.errors|join:" " }}</p>{% endif %}
+            {% if form.email.errors %}<p class="adm-field-error">{{ form.email.errors|join:" " }}</p>{% endif %}
+          </div>
+        </div>
+      </section>
+
+      <section class="adm-form-section">
+        <h3 class="adm-form-section-title">Tipo de acesso</h3>
+        <p class="adm-form-section-sub">Escolha as permissões adequadas à função do utilizador.</p>
+        <div class="adm-form-grid adm-form-grid--single">
+          <div>
+            <label class="form-label" for="{{ form.role.id_for_label }}">{{ form.role.label }}</label>
+            {{ form.role }}
+            {% if form.role.errors %}<p class="adm-field-error">{{ form.role.errors|join:" " }}</p>{% endif %}
+          </div>
+          <div class="adm-form-note" data-admin-access-note="CLIENTE">
+            <div class="adm-form-note-title">Acesso de produtor</div>
+            <div class="adm-form-note-text">Permite gerir inventário, marketplace, recomendações, encomendas e mensagens.</div>
+          </div>
+          <div class="adm-form-note" data-admin-access-note="ADMIN" hidden>
+            <div class="adm-form-note-title">Permissões elevadas</div>
+            <div class="adm-form-note-text">O administrador terá acesso à gestão global da cooperativa, utilizadores, catálogo, suporte e auditoria.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="adm-form-section" data-producer-fields>
+        <h3 class="adm-form-section-title">Entidade representada</h3>
+        <p class="adm-form-section-sub">Informação empresarial do produtor, distribuidor ou retalhista.</p>
+        <div class="adm-form-grid">
+          <div>
+            <label class="form-label" for="{{ form.company.id_for_label }}">{{ form.company.label }}</label>
+            {{ form.company }}
+            {% if form.company.errors %}<p class="adm-field-error">{{ form.company.errors|join:" " }}</p>{% endif %}
           </div>
           <div>
-            <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.4rem;">{{ form.role.label }}</label>
-            {{ form.role }}
-            {% if form.role.errors %}<p style="font-size:.78rem;color:#dc2626;margin:.3rem 0 0;">{{ form.role.errors|join:" " }}</p>{% endif %}
+            <label class="form-label" for="{{ form.user_type.id_for_label }}">{{ form.user_type.label }}</label>
+            {{ form.user_type }}
+            {% if form.user_type.errors %}<p class="adm-field-error">{{ form.user_type.errors|join:" " }}</p>{% endif %}
           </div>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid #f1f5f9;">
-          <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-btn-ghost">Cancelar</a>
-          <button type="submit" class="adm-btn-primary"><i class="bi bi-envelope-check"></i> {{ submit_label }}</button>
+      </section>
+
+      <section class="adm-form-section">
+        <h3 class="adm-form-section-title">Convite</h3>
+        <p class="adm-form-section-sub">O convite expira em 48 horas. O utilizador irá rever os dados e definir a própria palavra-passe.</p>
+        <div class="adm-form-grid adm-form-grid--single">
+          <div>
+            <label class="form-label" for="{{ form.personal_message.id_for_label }}">{{ form.personal_message.label }}</label>
+            {{ form.personal_message }}
+            {% if form.personal_message.errors %}<p class="adm-field-error">{{ form.personal_message.errors|join:" " }}</p>{% endif %}
+          </div>
         </div>
-      </form>
-    </div>
+      </section>
+
+      <div class="adm-form-actions">
+        <button type="submit" class="adm-btn-primary"><i class="bi bi-envelope-check"></i> {{ submit_label }}</button>
+        <a href="{% url 'dashboard:gestor_utilizadores' %}" class="adm-btn-ghost">Cancelar</a>
+      </div>
+    </form>
   </div>
 </div>
+<script>
+(function () {
+  const accessSelect = document.querySelector("[data-admin-access-select]");
+  const producerFields = document.querySelector("[data-producer-fields]");
+  const accessNotes = document.querySelectorAll("[data-admin-access-note]");
+  if (!accessSelect || !producerFields) return;
+
+  function updateAccessFields() {
+    const selectedAccess = accessSelect.value;
+    producerFields.hidden = selectedAccess === "ADMIN";
+    accessNotes.forEach(function (note) {
+      note.hidden = note.dataset.adminAccessNote !== selectedAccess;
+    });
+  }
+
+  accessSelect.addEventListener("change", updateAccessFields);
+  updateAccessFields();
+})();
+</script>
 {% endblock %}

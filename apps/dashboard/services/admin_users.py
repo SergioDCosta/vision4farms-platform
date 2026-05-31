@@ -15,7 +15,11 @@ from apps.accounts.models import (
     UserRole,
     VerificationPurpose,
 )
-from apps.accounts.services import create_admin_invite_token, send_admin_invite_email
+from apps.accounts.services import (
+    create_admin_invite_token,
+    revoke_pending_admin_invite_tokens,
+    send_admin_invite_email,
+)
 from apps.common.audit import log_audit_event
 from apps.dashboard.models import AuditLog
 from apps.dashboard.services.admin_audit import build_user_activity_rows
@@ -97,6 +101,7 @@ def build_admin_users_context(*, q="", page_number=None):
 
 def build_admin_user_detail_context(user_obj):
     producer_profile = ProducerProfile.objects.filter(user=user_obj).first()
+    invitation = build_admin_invitation_context(user_obj)
     related_logs = (
         AuditLog.objects.filter(Q(entity_type="users", entity_id=user_obj.id) | Q(user=user_obj))
         .select_related("user")
@@ -106,8 +111,84 @@ def build_admin_user_detail_context(user_obj):
         "admin_tab": "utilizadores",
         "user_obj": user_obj,
         "producer_profile": producer_profile,
+        "invitation": invitation,
         "related_logs": related_logs,
         "related_activity_rows": build_user_activity_rows(related_logs),
+    }
+
+
+def _build_invite_payload(cleaned_data):
+    return {
+        "company": (cleaned_data.get("company") or "").strip(),
+        "user_type": cleaned_data.get("user_type") or "",
+        "personal_message": (cleaned_data.get("personal_message") or "").strip(),
+    }
+
+
+def _latest_admin_invite_token(user_obj):
+    return (
+        AccountVerificationToken.objects.filter(
+            user=user_obj,
+            purpose=VerificationPurpose.ADMIN_INVITE,
+        )
+        .select_related("revoked_by_user")
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def build_admin_invitation_context(user_obj):
+    if user_obj.registration_source != RegistrationSource.ADMIN_CREATED:
+        return None
+
+    token = _latest_admin_invite_token(user_obj)
+    if user_obj.account_status == AccountStatus.ACTIVE:
+        return {
+            "status": "accepted",
+            "label": "Aceite",
+            "tone": "green",
+            "token": token,
+        }
+    if not token:
+        return {
+            "status": "missing",
+            "label": "Sem convite ativo",
+            "tone": "grey",
+            "token": None,
+        }
+    if token.revoked_at:
+        return {
+            "status": "revoked",
+            "label": "Revogado",
+            "tone": "red",
+            "token": token,
+        }
+    if token.used_at:
+        return {
+            "status": "used",
+            "label": "Utilizado",
+            "tone": "grey",
+            "token": token,
+        }
+    if token.expires_at < timezone.now():
+        return {
+            "status": "expired",
+            "label": "Expirado",
+            "tone": "amber",
+            "token": token,
+        }
+    if not token.sent_at:
+        return {
+            "status": "delivery_failed",
+            "label": "Envio por confirmar",
+            "tone": "amber",
+            "token": token,
+        }
+    return {
+        "status": "pending",
+        "label": "Pendente",
+        "tone": "amber",
+        "token": token,
     }
 
 
@@ -118,15 +199,19 @@ def create_invited_user_from_admin_form(*, request, form):
             user = User.objects.create(
                 email=form.cleaned_data["email"],
                 password="",
-                first_name="",
-                last_name="",
+                first_name=form.cleaned_data["first_name"],
+                last_name=form.cleaned_data["last_name"],
                 role=role,
                 registration_source=RegistrationSource.ADMIN_CREATED,
                 account_status=AccountStatus.PENDING_EMAIL_CONFIRMATION,
                 is_active=False,
                 is_staff=(role == UserRole.ADMIN),
             )
-            verification = create_admin_invite_token(user)
+            verification = create_admin_invite_token(
+                user,
+                invite_payload=_build_invite_payload(form.cleaned_data),
+                revoked_by_user=request.current_user,
+            )
             log_admin_action(
                 request=request,
                 action="USER_INVITED",
@@ -153,7 +238,94 @@ def create_invited_user_from_admin_form(*, request, form):
         return None
 
 
-def confirm_user_email_by_admin(*, request, user_obj):
+def resend_admin_invite(*, request, user_obj):
+    if user_obj.registration_source != RegistrationSource.ADMIN_CREATED:
+        return AdminUserActionResult(
+            ok=False,
+            message="Este utilizador não foi criado por convite administrativo.",
+            user=user_obj,
+        )
+    if user_obj.account_status != AccountStatus.PENDING_EMAIL_CONFIRMATION:
+        return AdminUserActionResult(
+            ok=False,
+            message="Esta conta já não está pendente de ativação.",
+            user=user_obj,
+        )
+
+    latest_token = _latest_admin_invite_token(user_obj)
+    verification = create_admin_invite_token(
+        user_obj,
+        invite_payload=(latest_token.invite_payload if latest_token else {}),
+        revoked_by_user=request.current_user,
+    )
+    try:
+        send_admin_invite_email(request, user_obj, verification)
+    except Exception:
+        logger.exception("Falha ao reenviar convite admin user_id=%s", user_obj.id)
+        return AdminUserActionResult(
+            ok=False,
+            message="O novo convite foi criado, mas falhou o envio do email.",
+            user=user_obj,
+        )
+
+    log_admin_action(
+        request=request,
+        action="USER_INVITE_RESENT",
+        entity_type="users",
+        entity_id=user_obj.id,
+        notes=f"Administrador reenviou convite para {user_obj.email}.",
+        new_values={"invite_token_id": str(verification.id)},
+    )
+    return AdminUserActionResult(
+        ok=True,
+        message="Convite reenviado com sucesso.",
+        user=user_obj,
+        action="resent",
+    )
+
+
+def revoke_admin_invite(*, request, user_obj):
+    if user_obj.registration_source != RegistrationSource.ADMIN_CREATED:
+        return AdminUserActionResult(
+            ok=False,
+            message="Este utilizador não foi criado por convite administrativo.",
+            user=user_obj,
+        )
+    if user_obj.account_status != AccountStatus.PENDING_EMAIL_CONFIRMATION:
+        return AdminUserActionResult(
+            ok=False,
+            message="Esta conta já não está pendente de ativação.",
+            user=user_obj,
+        )
+
+    revoked_count = revoke_pending_admin_invite_tokens(
+        user_obj,
+        revoked_by_user=request.current_user,
+    )
+    if not revoked_count:
+        return AdminUserActionResult(
+            ok=False,
+            message="Não existe um convite ativo para revogar.",
+            user=user_obj,
+        )
+
+    log_admin_action(
+        request=request,
+        action="USER_INVITE_REVOKED",
+        entity_type="users",
+        entity_id=user_obj.id,
+        notes=f"Administrador revogou convite de {user_obj.email}.",
+        new_values={"revoked": True},
+    )
+    return AdminUserActionResult(
+        ok=True,
+        message="Convite revogado com sucesso.",
+        user=user_obj,
+        action="revoked",
+    )
+
+
+def confirm_user_email_by_admin(*, request, user_obj, justification):
     if request.current_user and request.current_user.id == user_obj.id:
         return AdminUserActionResult(
             ok=False,
@@ -174,20 +346,23 @@ def confirm_user_email_by_admin(*, request, user_obj):
 
     with transaction.atomic():
         user_obj.email_verified_at = now
-        user_obj.account_status = AccountStatus.ACTIVE
-        user_obj.is_active = True
         user_obj.updated_at = now
-        user_obj.save(
-            update_fields=["email_verified_at", "account_status", "is_active", "updated_at"]
-        )
-        AccountVerificationToken.objects.filter(
-            user=user_obj,
-            purpose__in=[
-                VerificationPurpose.SIGNUP_CONFIRMATION,
-                VerificationPurpose.ADMIN_INVITE,
-            ],
-            used_at__isnull=True,
-        ).update(used_at=now)
+        if user_obj.registration_source == RegistrationSource.ADMIN_CREATED:
+            user_obj.save(update_fields=["email_verified_at", "updated_at"])
+        else:
+            user_obj.account_status = AccountStatus.ACTIVE
+            user_obj.is_active = True
+            user_obj.save(
+                update_fields=["email_verified_at", "account_status", "is_active", "updated_at"]
+            )
+            AccountVerificationToken.objects.filter(
+                user=user_obj,
+                purpose__in=[
+                    VerificationPurpose.SIGNUP_CONFIRMATION,
+                    VerificationPurpose.ADMIN_INVITE,
+                ],
+                used_at__isnull=True,
+            ).update(used_at=now)
 
     user_obj.refresh_from_db()
     log_admin_action(
@@ -195,14 +370,22 @@ def confirm_user_email_by_admin(*, request, user_obj):
         action="USER_EMAIL_CONFIRMED_BY_ADMIN",
         entity_type="users",
         entity_id=user_obj.id,
-        notes=f"Administrador confirmou manualmente a conta de {user_obj.email}.",
+        notes=(
+            f"Administrador confirmou manualmente o email de {user_obj.email}. "
+            f"Justificação: {justification}"
+        ),
         old_values=old_snapshot,
         new_values=user_snapshot(user_obj, producer_profile),
     )
 
     return AdminUserActionResult(
         ok=True,
-        message="Conta confirmada manualmente com sucesso.",
+        message=(
+            "Email confirmado manualmente. O utilizador ainda deve concluir o convite "
+            "e definir a sua palavra-passe."
+            if user_obj.registration_source == RegistrationSource.ADMIN_CREATED
+            else "Conta confirmada manualmente com sucesso."
+        ),
         user=user_obj,
         action="confirmed",
     )

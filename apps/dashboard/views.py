@@ -26,7 +26,7 @@ from apps.catalog.services import (
 from apps.common.decorators import admin_required, client_only_required
 from apps.common.htmx import with_htmx_toast
 from apps.common.redirects import get_safe_next_url
-from apps.dashboard.forms import AdminUserCreateForm
+from apps.dashboard.forms import AdminManualConfirmationForm, AdminUserCreateForm
 from apps.dashboard.services.admin_audit import (
     build_admin_audit_context,
     build_admin_audit_entity_context,
@@ -43,6 +43,8 @@ from apps.dashboard.services.admin_users import (
     confirm_user_email_by_admin,
     create_invited_user_from_admin_form,
     log_admin_action,
+    resend_admin_invite,
+    revoke_admin_invite,
     toggle_user_status_by_admin,
 )
 from apps.dashboard.services.client_dashboard import (
@@ -595,7 +597,16 @@ def admin_user_detail_view(request, user_id):
 @require_POST
 def admin_user_confirm_email_view(request, user_id):
     user_obj = get_object_or_404(User, id=user_id)
-    result = confirm_user_email_by_admin(request=request, user_obj=user_obj)
+    form = AdminManualConfirmationForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Indica uma justificação válida para confirmar o email manualmente.")
+        return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
+
+    result = confirm_user_email_by_admin(
+        request=request,
+        user_obj=user_obj,
+        justification=form.cleaned_data["justification"],
+    )
 
     if result.ok:
         messages.success(request, result.message)
@@ -607,6 +618,30 @@ def admin_user_confirm_email_view(request, user_id):
     next_url = _safe_next(request)
     if next_url:
         return redirect(next_url)
+    return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
+
+
+@admin_required
+@require_POST
+def admin_user_resend_invite_view(request, user_id):
+    user_obj = get_object_or_404(User, id=user_id)
+    result = resend_admin_invite(request=request, user_obj=user_obj)
+    if result.ok:
+        messages.success(request, result.message)
+    else:
+        messages.error(request, result.message)
+    return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
+
+
+@admin_required
+@require_POST
+def admin_user_revoke_invite_view(request, user_id):
+    user_obj = get_object_or_404(User, id=user_id)
+    result = revoke_admin_invite(request=request, user_obj=user_obj)
+    if result.ok:
+        messages.success(request, result.message)
+    else:
+        messages.error(request, result.message)
     return redirect("dashboard:gestor_utilizador_detalhe", user_id=user_obj.id)
 
 

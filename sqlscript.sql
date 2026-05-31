@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict LPV991DGybINpxp9rEiyFIoUbBvmT9GC0ZeCktERno80K5aMXvRftmRQ6hqezri
+\restrict FhZg3TbLrTWkQaJEWe94qIA56yp7cq6dkcSLgDwKnlwCymE6hKQutS3fAJXgogw
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -63,6 +63,10 @@ CREATE TABLE public.account_verification_tokens (
     expires_at timestamp with time zone NOT NULL,
     used_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    invite_payload jsonb,
+    sent_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    revoked_by_user_id uuid,
     CONSTRAINT account_verification_tokens_purpose_check CHECK (((purpose)::text = ANY ((ARRAY['SIGNUP_CONFIRMATION'::character varying, 'ADMIN_INVITE'::character varying, 'PASSWORD_RESET'::character varying])::text[])))
 );
 
@@ -1925,6 +1929,14 @@ CREATE UNIQUE INDEX uniq_active_alert_context ON public.alerts USING btree (prod
 
 
 --
+-- Name: account_verification_tokens account_verification_tokens_revoked_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.account_verification_tokens
+    ADD CONSTRAINT account_verification_tokens_revoked_by_user_id_fkey FOREIGN KEY (revoked_by_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: account_verification_tokens account_verification_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2568,5 +2580,5 @@ ALTER TABLE ONLY public.user_preferences
 -- PostgreSQL database dump complete
 --
 
-\unrestrict LPV991DGybINpxp9rEiyFIoUbBvmT9GC0ZeCktERno80K5aMXvRftmRQ6hqezri
+\unrestrict FhZg3TbLrTWkQaJEWe94qIA56yp7cq6dkcSLgDwKnlwCymE6hKQutS3fAJXgogw
 

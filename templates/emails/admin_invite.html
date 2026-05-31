@@ -22,8 +22,14 @@
                     Foi convidado por um administrador para aceder à plataforma Vision4Farms.
                 </p>
 
+                {% if personal_message %}
+                <div style="margin:0 0 20px;padding:14px 16px;border-left:4px solid #16a34a;background:#f0fdf4;color:#334155;line-height:1.6;">
+                    {{ personal_message }}
+                </div>
+                {% endif %}
+
                 <p style="margin:0 0 24px;line-height:1.6;">
-                    Para ativar a sua conta, clique no botão abaixo:
+                    Para rever os seus dados, definir a sua palavra-passe e ativar a conta, clique no botão abaixo. Este convite é válido durante 48 horas.
                 </p>
 
                 <p style="margin:0 0 24px;">

@@ -269,12 +269,19 @@ class AdminInviteCompleteForm(forms.Form):
         self.user_role = user_role
         self.user = user
         if user_role == UserRole.ADMIN:
+            self.fields.pop("company", None)
             self.fields.pop("user_type", None)
 
     def clean(self):
         cleaned_data = super().clean()
         password = cleaned_data.get("password")
         confirm_password = cleaned_data.get("confirm_password")
+
+        if self.user_role != UserRole.ADMIN:
+            if not (cleaned_data.get("company") or "").strip():
+                self.add_error("company", "Indica a empresa ou exploração agrícola.")
+            if not cleaned_data.get("user_type"):
+                self.add_error("user_type", "Seleciona o tipo de entidade.")
 
         if password and confirm_password and password != confirm_password:
             self.add_error("confirm_password", "As palavras-passe não coincidem.")

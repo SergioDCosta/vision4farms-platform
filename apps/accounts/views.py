@@ -220,7 +220,18 @@ def admin_invite_complete_view(request, token):
 
     user = token_obj.user
     show_user_type = user.role != "ADMIN"
-    form = AdminInviteCompleteForm(request.POST or None, user_role=user.role, user=user)
+    invite_payload = token_obj.invite_payload or {}
+    form = AdminInviteCompleteForm(
+        request.POST or None,
+        user_role=user.role,
+        user=user,
+        initial={
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "company": invite_payload.get("company", ""),
+            "user_type": invite_payload.get("user_type", ""),
+        },
+    )
 
     if request.method == "POST" and form.is_valid():
         complete_invited_user_account(user, form.cleaned_data)
@@ -239,6 +250,7 @@ def admin_invite_complete_view(request, token):
             "invited_email": user.email,
             "token": token,
             "show_user_type": show_user_type,
+            "personal_message": invite_payload.get("personal_message", ""),
         },
     )
 

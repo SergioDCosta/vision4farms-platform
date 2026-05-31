@@ -1,20 +1,15 @@
 {% extends "dashboard/admin/base_admin.html" %}
 {% block admin_content %}
 
-<div style="display:flex;flex-direction:column;gap:1rem;">
-  <div class="adm-card" style="max-width:960px;padding:1.15rem;">
-    <div class="adm-card-head" style="padding:0 0 1rem 0;">
+<div class="adm-form-shell adm-form-shell--wide">
+  <div class="adm-card adm-form-card">
+    <div class="adm-form-head">
+      <a href="{% if is_create %}{% url 'dashboard:gestor_produtos' %}{% else %}{% url 'dashboard:gestor_produto_detalhe' product_obj.id %}{% endif %}" class="adm-btn-ghost">
+        <i class="bi bi-arrow-left"></i> Voltar
+      </a>
       <div>
-        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.55rem;">
-          <a href="{% if is_create %}{% url 'dashboard:gestor_produtos' %}{% else %}{% url 'dashboard:gestor_produto_detalhe' product_obj.id %}{% endif %}" class="adm-btn-ghost">
-            <i class="bi bi-arrow-left"></i> Voltar
-          </a>
-        </div>
-
-        <h2 style="margin:0;font-size:1.35rem;font-weight:800;color:#0f172a;">
-          {{ page_title }}
-        </h2>
-        <p style="margin:.3rem 0 0 0;color:#64748b;font-size:.92rem;">
+        <h2 class="adm-form-title">{{ page_title }}</h2>
+        <p class="adm-form-sub">
           Preencha os dados globais do produto do catálogo.
         </p>
       </div>
@@ -24,19 +19,19 @@
       {% csrf_token %}
 
       {% if form.non_field_errors %}
-        <div style="margin-bottom:1rem;padding:.95rem 1rem;border-radius:1rem;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;">
+        <div class="adm-form-error">
           {% for error in form.non_field_errors %}
             <div>{{ error }}</div>
           {% endfor %}
         </div>
       {% endif %}
 
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;">
+      <div class="adm-form-grid">
         <div>
           <label class="form-label" for="{{ form.category.id_for_label }}">{{ form.category.label }}</label>
           {{ form.category }}
           {% if form.category.errors %}
-            <div class="errorlist">{{ form.category.errors }}</div>
+            <div class="adm-field-error">{{ form.category.errors }}</div>
           {% endif %}
         </div>
 
@@ -44,15 +39,15 @@
           <label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
           {{ form.name }}
           {% if form.name.errors %}
-            <div class="errorlist">{{ form.name.errors }}</div>
+            <div class="adm-field-error">{{ form.name.errors }}</div>
           {% endif %}
         </div>
 
-        <div style="padding:.8rem .9rem;border:1px solid #dbeafe;border-radius:.9rem;background:#eff6ff;color:#1e3a8a;">
-          <div style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.25rem;">
+        <div class="adm-form-note">
+          <div class="adm-form-note-title">
             Unidade operacional
           </div>
-          <div style="font-size:.92rem;line-height:1.35;">
+          <div class="adm-form-note-text">
             As quantidades são sempre registadas em <strong>kg</strong>. Detalhes como caixas, molhos ou embalagens devem ir na descrição.
           </div>
         </div>
@@ -66,19 +61,19 @@
           </div>
         </div>
 
-        <div style="grid-column:span 2;">
+        <div class="adm-form-span-2">
           <label class="form-label" for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
           {{ form.description }}
-          <p style="margin:.35rem 0 0 0;color:#64748b;font-size:.8rem;">
+          <p class="adm-form-help">
             Esta descrição é global no catálogo e não representa descrições específicas de produtores.
           </p>
           {% if form.description.errors %}
-            <div class="errorlist">{{ form.description.errors }}</div>
+            <div class="adm-field-error">{{ form.description.errors }}</div>
           {% endif %}
         </div>
       </div>
 
-      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.5rem;">
+      <div class="adm-form-actions">
         <button type="submit" class="adm-btn-primary">
           <i class="bi bi-check-circle"></i> {{ submit_label }}
         </button>
