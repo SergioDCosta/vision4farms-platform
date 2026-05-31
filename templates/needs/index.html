@@ -306,7 +306,11 @@
         </thead>
         <tbody>
           {% for row in need_my_rows %}
-          <tr class="nd-needs-table__row{% if selected_need_id|stringformat:'s' == row.need.id|stringformat:'s' %} nd-needs-table__row--active{% endif %}">
+          <tr class="nd-needs-table__row{% if selected_need_id|stringformat:'s' == row.need.id|stringformat:'s' %} nd-needs-table__row--active{% endif %}"
+              data-nd-need-url="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+              tabindex="0"
+              role="link"
+              aria-label="Ver detalhe e propostas de {{ row.need.product.name }}">
             <td>
               <div class="nd-product-cell">
                 <div class="nd-product-avatar nd-product-avatar--{% if row.status == 'COVERED' %}green{% elif row.status == 'PARTIALLY_COVERED' %}blue{% else %}amber{% endif %}">{{ row.need.product.name|slice:":1"|upper }}</div>
@@ -330,17 +334,10 @@
               <div class="nd-state-cell">
                 <span class="nd-badge {% if row.status == 'COVERED' %}nd-badge--ok{% elif row.status == 'PARTIALLY_COVERED' %}nd-badge--info{% else %}nd-badge--warn{% endif %}">{{ row.status_label }}</span>
                 {% if row.need.is_marketplace_published %}<span class="nd-badge nd-badge--published" title="Visível no marketplace para outros produtores"><i class="bi bi-shop"></i> Publicada</span>{% endif %}
+                {% if row.response_count %}<span class="nd-badge nd-badge--responses" title="Propostas recebidas"><i class="bi bi-chat-square-text"></i> {{ row.response_count }}</span>{% endif %}
               </div>
             </td>
             <td class="nd-demands-table__actions">
-              {# — Ver propostas — #}
-              <a href="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
-                 hx-get="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
-                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-                 class="nd-btn nd-btn--ghost nd-btn--sm" title="Ver propostas recebidas">
-                <i class="bi bi-chat-square-text"></i>
-                Propostas{% if row.response_count %}<span class="nd-btn-badge nd-btn-badge--dark">{{ row.response_count }}</span>{% endif %}
-              </a>
               {# — Ver planeamento (só pedidos de clientes) — #}
               {% if row.need.source_system == 'CUSTOMER_DEMAND' %}
                 <a href="{% url 'needs:external_demands' %}?product={{ row.need.product_id }}"
@@ -914,15 +911,19 @@
 .nd-progress__pct { font-size: .7rem; font-weight: 700; color: var(--mt); white-space: nowrap; }
 .nd-text-muted { color: var(--mt); }
 .nd-btn-badge--dark { background: rgba(15,23,42,.14); color: var(--tx); }
+.nd-needs-table__row[data-nd-need-url] { cursor: pointer; }
+.nd-needs-table__row[data-nd-need-url]:focus { outline: 0; }
+.nd-needs-table__row[data-nd-need-url]:focus-visible > td { background: #f8fafc; }
 .nd-needs-table__row--active > td { background: #f0fdf4 !important; }
 .nd-needs-table th { text-align: center; }
 .nd-needs-table td { vertical-align: middle; }
 .nd-state-cell { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .2rem; }
 .nd-badge--published { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; display: inline-flex; align-items: center; gap: .25rem; }
+.nd-badge--responses { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; display: inline-flex; align-items: center; gap: .25rem; }
 .nd-needs-table .nd-demands-table__actions button[disabled],
 .nd-needs-table .nd-demands-table__actions button.htmx-request,
 .nd-needs-table .nd-demands-table__actions form.htmx-request button { opacity: .55; cursor: progress; pointer-events: none; }
-.nd-needs-table .nd-demands-table__actions { display: flex; align-items: center; gap: .3rem; flex-wrap: nowrap; }
+.nd-needs-table .nd-demands-table__actions { display: flex; align-items: center; justify-content: center; gap: .3rem; flex-wrap: nowrap; }
 .nd-needs-table .nd-demands-table__actions form { display: inline-flex; margin: 0; }
 .nd-needs-table .nd-demands-table__actions .nd-btn--danger-soft { margin-left: .25rem; border-left: 1px solid var(--br); padding-left: .45rem; }
 .nd-empty-cell { padding: 0 !important; border: 0; }
@@ -1254,6 +1255,11 @@
     document.body._ndBound = true;
 
     document.body.addEventListener("click", function (e) {
+      const needRow = e.target.closest("[data-nd-need-url]");
+      if (needRow && !e.target.closest("a, button, input, select, textarea, label, form")) {
+        window.location.href = needRow.dataset.ndNeedUrl;
+        return;
+      }
       const ht = e.target.closest("[data-nd-history-toggle]");
       if (ht) {
         const s = ht.closest("[data-nd-history-section]");
@@ -1289,6 +1295,12 @@
     });
 
     document.body.addEventListener("keydown", function (e) {
+      const needRow = e.target.closest("[data-nd-need-url]");
+      if (needRow && e.target === needRow && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        window.location.href = needRow.dataset.ndNeedUrl;
+        return;
+      }
       const ht = e.target.closest("[data-nd-history-toggle]");
       if (ht && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ht.click(); return; }
       if (e.key === "Escape") closeModal();
