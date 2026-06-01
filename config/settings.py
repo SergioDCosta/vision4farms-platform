@@ -14,9 +14,30 @@ def _split_csv_env(value):
     return [part.strip() for part in str(value or "").split(",") if part.strip()]
 
 
-ALLOWED_HOSTS = _split_csv_env(
-    config("ALLOWED_HOSTS", default="127.0.0.1,localhost")
-)
+def _required_env(name):
+    value = config(name, default="").strip()
+    if not value:
+        raise ImproperlyConfigured(f"{name} is required in production.")
+    return value
+
+
+if DEBUG:
+    allowed_hosts_value = config("ALLOWED_HOSTS", default="127.0.0.1,localhost")
+    redis_url = config("REDIS_URL", default="redis://127.0.0.1:6379/0")
+    db_host = config("DB_HOST", default="127.0.0.1")
+    app_base_url = config("APP_BASE_URL", default="")
+    csrf_trusted_origins_value = config(
+        "CSRF_TRUSTED_ORIGINS",
+        default="http://127.0.0.1:8000",
+    )
+else:
+    allowed_hosts_value = _required_env("ALLOWED_HOSTS")
+    redis_url = _required_env("REDIS_URL")
+    db_host = _required_env("DB_HOST")
+    app_base_url = _required_env("APP_BASE_URL")
+    csrf_trusted_origins_value = _required_env("CSRF_TRUSTED_ORIGINS")
+
+ALLOWED_HOSTS = _split_csv_env(allowed_hosts_value)
 
 INSTALLED_APPS = [
     "daphne",
@@ -80,9 +101,9 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "apps.common.context_processors.brand_assets",
                 "apps.common.context_processors.topbar_user_profile",
-                "apps.common.context_processors.admin_support_sidebar_badge",
-                "apps.common.context_processors.client_alerts_sidebar_badge",
-                "apps.common.context_processors.client_messages_sidebar_badge",
+                "apps.support.context_processors.admin_support_sidebar_badge",
+                "apps.alerts.context_processors.client_alerts_sidebar_badge",
+                "apps.messaging.context_processors.client_messages_sidebar_badge",
             ],
         },
     },
@@ -92,7 +113,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [config("REDIS_URL", default="redis://127.0.0.1:6379/0")],
+            "hosts": [redis_url],
         },
     }
 }
@@ -103,7 +124,7 @@ if DEBUG:
     os.makedirs(weather_cache_location, exist_ok=True)
 else:
     weather_cache_backend = "django.core.cache.backends.redis.RedisCache"
-    weather_cache_location = config("REDIS_URL", default="redis://127.0.0.1:6379/0")
+    weather_cache_location = redis_url
 
 CACHES = {
     "default": {
@@ -118,13 +139,9 @@ CACHES = {
     },
 }
 
-CSRF_TRUSTED_ORIGINS = config(
-    "CSRF_TRUSTED_ORIGINS",
-    default="http://127.0.0.1:8000"
-)
-CSRF_TRUSTED_ORIGINS = _split_csv_env(CSRF_TRUSTED_ORIGINS)
+CSRF_TRUSTED_ORIGINS = _split_csv_env(csrf_trusted_origins_value)
 
-APP_BASE_URL = config("APP_BASE_URL", default="").strip().rstrip("/")
+APP_BASE_URL = app_base_url.strip().rstrip("/")
 
 BRAND_WHITE_LOGO_DEFAULT_URL = "https://res.cloudinary.com/db5vjz2ei/image/upload/v1779492792/logo_branco_1_x4byvk.svg"
 
@@ -152,6 +169,7 @@ BRAND_FAVICON_URL = config(
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+SECURE_SSL_REDIRECT = not DEBUG
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
@@ -165,7 +183,7 @@ DATABASES = {
         "NAME": config("DB_NAME"),
         "USER": config("DB_USER"),
         "PASSWORD": config("DB_PASSWORD"),
-        "HOST": config("DB_HOST", default="127.0.0.1"),
+        "HOST": db_host,
         "PORT": config("DB_PORT", default="5432"),
     }
 }

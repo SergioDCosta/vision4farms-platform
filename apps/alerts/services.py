@@ -11,7 +11,6 @@ from django.db.models import Count, Max
 from django.db.models import Q
 from django.db import transaction
 from django.template.loader import render_to_string
-from django.utils.dateparse import parse_datetime
 from django.utils import formats, timezone
 
 from apps.accounts.models import UserRole
@@ -28,6 +27,7 @@ from apps.alerts.models import (
     AlertStatus,
     AlertType,
 )
+from apps.common.dates import parse_session_datetime as _parse_session_datetime
 from apps.inventory.models import ProducerProfile, ProductionForecast, Stock
 from apps.inventory.services import calculate_inventory_commitment_state
 from apps.marketplace.models import ListingStatus, MarketplaceListing
@@ -100,18 +100,6 @@ EMAIL_ALERT_TYPES = {
     AlertType.ORDER_REQUIRES_CONFIRMATION,
     AlertType.ORDER_DELIVERY_OVERDUE,
 }
-
-
-def _parse_session_datetime(value):
-    raw = (value or "").strip()
-    if not raw:
-        return None
-    parsed = parse_datetime(raw)
-    if not parsed:
-        return None
-    if timezone.is_naive(parsed):
-        return timezone.make_aware(parsed, timezone.get_current_timezone())
-    return parsed
 
 
 def get_alerts_badge_group_name(user_id):

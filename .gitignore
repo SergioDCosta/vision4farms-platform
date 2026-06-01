@@ -73,6 +73,7 @@ htmlcov/
 *.pdf
 *.sql
 !sqlscript.sql
+!entrega/**/*.pdf
 
 # -----------------------------
 # MEMORIA LOCAL / PLANOS TEMPORARIOS

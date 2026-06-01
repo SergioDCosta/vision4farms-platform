@@ -1,7 +1,6 @@
 import logging
 import uuid
 from pathlib import Path
-from urllib.parse import urljoin
 
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -11,10 +10,11 @@ from django.db import connection, models, transaction
 from django.db.models import Count, Max
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
 from apps.accounts.models import AccountStatus, User, UserRole
+from apps.common.dates import parse_session_datetime as _parse_session_datetime
+from apps.common.urls import build_public_absolute_url as _build_public_absolute_url
 from apps.inventory.models import ProducerProfile
 from apps.support.models import (
     SupportMessageRole,
@@ -68,18 +68,6 @@ class SupportServiceError(Exception):
     pass
 
 
-def _parse_session_datetime(value):
-    raw = (value or "").strip()
-    if not raw:
-        return None
-    parsed = parse_datetime(raw)
-    if not parsed:
-        return None
-    if timezone.is_naive(parsed):
-        return timezone.make_aware(parsed, timezone.get_current_timezone())
-    return parsed
-
-
 def support_conversation_schema_available():
     try:
         table_names = set(connection.introspection.table_names())
@@ -97,16 +85,6 @@ def support_conversation_schema_available():
     except Exception:
         logger.exception("Falha ao verificar schema conversacional do suporte.")
         return False
-
-
-def _build_public_absolute_url(request, relative_path):
-    path = str(relative_path or "")
-    app_base_url = (getattr(settings, "APP_BASE_URL", "") or "").strip().rstrip("/")
-    if app_base_url and not app_base_url.startswith(("http://", "https://")):
-        app_base_url = f"https://{app_base_url.lstrip('/')}"
-    if app_base_url:
-        return urljoin(f"{app_base_url}/", path.lstrip("/"))
-    return request.build_absolute_uri(path)
 
 
 def _send_system_email(*, subject, text_body, html_body, recipient_list):

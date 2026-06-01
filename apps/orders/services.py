@@ -10,12 +10,12 @@ from apps.common.audit import log_audit_event
 from apps.common.formatting import format_quantity
 from apps.inventory.models import (
     ProductionForecast,
-    ProducerProfile,
     ProducerProduct,
     Stock,
     StockMovement,
     StockMovementType,
 )
+from apps.inventory.producers import get_current_producer_for_user
 from apps.needs.models import NeedResponseStatus
 from apps.needs.services import (
     recalculate_needs_for_order,
@@ -124,12 +124,6 @@ def _quantity_label(value, unit=""):
     unit_label = (unit or "").strip()
     quantity = format_quantity(value)
     return f"{quantity} {unit_label}".strip()
-
-
-def get_current_producer_for_user(user):
-    if not user:
-        return None
-    return ProducerProfile.objects.filter(user=user).first()
 
 
 def _sync_alerts_for_producers(*producers, acting_user=None):
@@ -1465,6 +1459,29 @@ def compute_order_status_from_db(order_id, *, preferred_status=None, current_sta
         return OrderStatus.CONFIRMED
 
     return OrderStatus.PENDING
+
+
+@transaction.atomic
+def reconcile_order_status(order, *, expected_status=None, changed_by=None, notes=None):
+    expected_status = expected_status or compute_order_status_from_db(
+        order.id,
+        current_status=order.status,
+    )
+    if order.status == expected_status:
+        return False
+
+    previous_status = order.status
+    _set_order_status(order, expected_status)
+    _create_status_history(
+        order=order,
+        status=expected_status,
+        changed_by=changed_by,
+        notes=notes or (
+            "Reconciliação técnica automática: "
+            f"{previous_status} -> {expected_status}."
+        ),
+    )
+    return True
 
 
 def _recalculate_order_status(order, preferred_status=None):

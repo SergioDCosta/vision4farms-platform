@@ -2,7 +2,6 @@ import secrets
 import threading
 import logging
 from datetime import timedelta
-from urllib.parse import urljoin
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
@@ -21,6 +20,7 @@ from apps.accounts.models import (
     AccountStatus,
     VerificationPurpose,
 )
+from apps.common.urls import build_public_absolute_url as _build_public_absolute_url
 from apps.inventory.models import ProducerProfile
 
 
@@ -71,16 +71,6 @@ def _send_system_email(subject, text_body, html_body, recipient_list, async_send
         return
 
     email.send(fail_silently=False)
-
-
-def _build_public_absolute_url(request, relative_path):
-    path = str(relative_path or "")
-    app_base_url = (getattr(settings, "APP_BASE_URL", "") or "").strip().rstrip("/")
-    if app_base_url and not app_base_url.startswith(("http://", "https://")):
-        app_base_url = f"https://{app_base_url.lstrip('/')}"
-    if app_base_url:
-        return urljoin(f"{app_base_url}/", path.lstrip("/"))
-    return request.build_absolute_uri(path)
 
 
 def _render_verification_email_bundle(*, purpose, context):

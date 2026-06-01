@@ -1686,7 +1686,7 @@ def reduce_listings_to_fit_stock(
     mantêm-se. Status do anúncio passa a ``CLOSED`` se ficar com 0 disponível
     e sem reservas.
     """
-    from apps.marketplace.services import retire_listing, _listing_audit_values
+    from apps.marketplace.services import listing_audit_values, retire_listing
 
     new_quantity = _quantize_stock_quantity(new_quantity)
     reserved_quantity = _quantize_stock_quantity(getattr(stock, "reserved_quantity", 0))
@@ -1734,7 +1734,7 @@ def reduce_listings_to_fit_stock(
     )
     running_total = Decimal("0.000")
     for index, listing in enumerate(listings):
-        old_values = _listing_audit_values(listing)
+        old_values = listing_audit_values(listing)
         old_qty = _quantize_stock_quantity(listing.quantity_available)
         if target_available_total <= ZERO:
             new_qty = Decimal("0.000")
@@ -1766,7 +1766,7 @@ def reduce_listings_to_fit_stock(
             entity_id=listing.id,
             notes="Anúncio reduzido para caber no novo stock disponível.",
             old_values=old_values,
-            new_values=_listing_audit_values(listing),
+            new_values=listing_audit_values(listing),
         )
         reduced_log.append({"listing_id": str(listing.id), "from": str(old_qty), "to": str(new_qty)})
 

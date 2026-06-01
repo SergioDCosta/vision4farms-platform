@@ -312,6 +312,13 @@
               role="link"
               aria-label="Ver detalhe e propostas de {{ row.need.product.name }}">
             <td>
+              <a href="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+                 hx-get="{% url 'needs:index' %}?need={{ row.need.id }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if selected_category_id %}&category={{ selected_category_id|urlencode }}{% endif %}"
+                 hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
+                 data-nd-need-nav
+                 tabindex="-1"
+                 aria-hidden="true"
+                 hidden></a>
               <div class="nd-product-cell">
                 <div class="nd-product-avatar nd-product-avatar--{% if row.status == 'COVERED' %}green{% elif row.status == 'PARTIALLY_COVERED' %}blue{% else %}amber{% endif %}">{{ row.need.product.name|slice:":1"|upper }}</div>
                 <div class="nd-product-cell__info">
@@ -399,7 +406,7 @@
     </div>
 
     {% if selected_need_row %}
-    <div class="nd-need-detail-panel">
+    <div class="nd-need-detail-panel" id="nd-selected-need-panel">
       <div class="nd-need-detail-panel__head">
         <div>
           <span class="nd-need-card__kicker">{% if selected_need_row.need.source_system == 'CUSTOMER_DEMAND' %}<i class="bi bi-clipboard2-check"></i> Pedidos de clientes{% elif selected_need_row.need.source_system == 'VISION4FARMS' %}<i class="bi bi-magic"></i> Recomendação automática{% else %}<i class="bi bi-pencil"></i> Procura manual{% endif %}</span>
@@ -1248,6 +1255,22 @@
     if (m) m.hidden = true;
   }
 
+  function scrollToSelectedNeed() {
+    const panel = document.getElementById("nd-selected-need-panel");
+    if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function openNeedRow(needRow) {
+    if (needRow.classList.contains("nd-needs-table__row--active")) {
+      scrollToSelectedNeed();
+      return;
+    }
+    const nav = needRow.querySelector("[data-nd-need-nav]");
+    if (!nav) return;
+    document.body._ndScrollToSelectedNeed = true;
+    nav.click();
+  }
+
   // Registar listeners apenas uma vez — document.body persiste entre swaps HTMX,
   // por isso sem esta flag os listeners acumulam a cada navegação para esta página
   // e cada clique togglava a classe duas vezes (bug: dropdown parecia não abrir).
@@ -1257,7 +1280,7 @@
     document.body.addEventListener("click", function (e) {
       const needRow = e.target.closest("[data-nd-need-url]");
       if (needRow && !e.target.closest("a, button, input, select, textarea, label, form")) {
-        window.location.href = needRow.dataset.ndNeedUrl;
+        openNeedRow(needRow);
         return;
       }
       const ht = e.target.closest("[data-nd-history-toggle]");
@@ -1298,7 +1321,7 @@
       const needRow = e.target.closest("[data-nd-need-url]");
       if (needRow && e.target === needRow && (e.key === "Enter" || e.key === " ")) {
         e.preventDefault();
-        window.location.href = needRow.dataset.ndNeedUrl;
+        openNeedRow(needRow);
         return;
       }
       const ht = e.target.closest("[data-nd-history-toggle]");
@@ -1308,6 +1331,11 @@
 
     window.addEventListener("resize", syncAll);
     document.body.addEventListener("htmx:afterSwap", syncAll);
+    document.body.addEventListener("htmx:afterSettle", function () {
+      if (!document.body._ndScrollToSelectedNeed) return;
+      document.body._ndScrollToSelectedNeed = false;
+      scrollToSelectedNeed();
+    });
   }
 
   // Sempre sincronizar ao carregar o conteúdo novo (independente dos listeners)

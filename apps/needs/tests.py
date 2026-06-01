@@ -219,13 +219,13 @@ class ExternalDemandPlanningTests(SimpleTestCase):
             forecast.product = getattr(forecast, "product", product)
 
         with (
-            patch("apps.needs.services.ExternalCustomerDemand.objects", FakeServiceManager(demands)),
-            patch("apps.needs.services.Stock.objects", FakeServiceManager([stock] if stock else [])),
-            patch("apps.needs.services.ProductionForecast.objects", FakeServiceManager(forecasts)),
-            patch("apps.needs.services._stock_active_listings_quantity", return_value=Decimal("0.000")),
-            patch("apps.needs.services._stock_pending_need_responses_quantity", return_value=Decimal("0.000")),
-            patch("apps.needs.services._forecast_active_listings_quantity", return_value=Decimal("0.000")),
-            patch("apps.needs.services._get_customer_demand_need_for_product", return_value=None),
+            patch("apps.needs.external_demands.ExternalCustomerDemand.objects", FakeServiceManager(demands)),
+            patch("apps.needs.external_demands.Stock.objects", FakeServiceManager([stock] if stock else [])),
+            patch("apps.needs.external_demands.ProductionForecast.objects", FakeServiceManager(forecasts)),
+            patch("apps.needs.external_demands._stock_active_listings_quantity", return_value=Decimal("0.000")),
+            patch("apps.needs.external_demands._stock_pending_need_responses_quantity", return_value=Decimal("0.000")),
+            patch("apps.needs.external_demands._forecast_active_listings_quantity", return_value=Decimal("0.000")),
+            patch("apps.needs.external_demands._get_customer_demand_need_for_product", return_value=None),
         ):
             return calculate_external_demand_plan(producer=producer, product=product)
 
@@ -368,7 +368,7 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         queryset.order_by.return_value = queryset
         queryset.first.return_value = None
 
-        with patch("apps.needs.services.Need.objects", manager):
+        with patch("apps.needs.external_demands.Need.objects", manager):
             result = _lock_need_for_customer_demand_sync(
                 producer=SimpleNamespace(id="producer-1"),
                 product=SimpleNamespace(id="product-1"),
@@ -424,11 +424,11 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
 
         with (
-            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
-            patch("apps.needs.services.Stock.objects", stock_manager),
-            patch("apps.needs.services.StockMovement.objects", movement_manager),
-            patch("apps.needs.services.log_audit_event"),
-            patch("apps.needs.services.sync_external_customer_demand_state_for_product") as sync,
+            patch("apps.needs.external_demands.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.external_demands.Stock.objects", stock_manager),
+            patch("apps.needs.external_demands.StockMovement.objects", movement_manager),
+            patch("apps.needs.external_demands.log_audit_event"),
+            patch("apps.needs.external_demands.sync_external_customer_demand_state_for_product") as sync,
             patch("apps.inventory.services.get_listings_blocking_stock_decrease", return_value={"deficit": Decimal("0.000")}),
         ):
             result, changed = fulfill(demand=demand, producer=producer, updated_by=None)
@@ -460,10 +460,10 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
 
         with (
-            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
-            patch("apps.needs.services.Stock.objects", stock_manager),
-            patch("apps.needs.services.StockMovement.objects", movement_manager),
-            patch("apps.needs.services.sync_external_customer_demand_state_for_product") as sync,
+            patch("apps.needs.external_demands.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.external_demands.Stock.objects", stock_manager),
+            patch("apps.needs.external_demands.StockMovement.objects", movement_manager),
+            patch("apps.needs.external_demands.sync_external_customer_demand_state_for_product") as sync,
         ):
             with self.assertRaisesMessage(ValidationError, "Não existe stock atual suficiente"):
                 fulfill(demand=demand, producer=producer, updated_by=None)
@@ -481,8 +481,8 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
 
         with (
-            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
-            patch("apps.needs.services.StockMovement.objects", movement_manager),
+            patch("apps.needs.external_demands.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.external_demands.StockMovement.objects", movement_manager),
         ):
             result, changed = fulfill(demand=demand, producer=producer, updated_by=None)
 
@@ -502,11 +502,11 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         fulfill = getattr(mark_external_customer_demand_fulfilled, "__wrapped__", mark_external_customer_demand_fulfilled)
 
         with (
-            patch("apps.needs.services.ExternalCustomerDemand.objects", manager),
-            patch("apps.needs.services.Stock.objects", stock_manager),
-            patch("apps.needs.services.StockMovement.objects", movement_manager),
-            patch("apps.needs.services.log_audit_event"),
-            patch("apps.needs.services.sync_external_customer_demand_state_for_product") as sync,
+            patch("apps.needs.external_demands.ExternalCustomerDemand.objects", manager),
+            patch("apps.needs.external_demands.Stock.objects", stock_manager),
+            patch("apps.needs.external_demands.StockMovement.objects", movement_manager),
+            patch("apps.needs.external_demands.log_audit_event"),
+            patch("apps.needs.external_demands.sync_external_customer_demand_state_for_product") as sync,
         ):
             result, changed = fulfill(demand=demand, producer=producer, updated_by=None)
 
@@ -546,10 +546,10 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         }
 
         with (
-            patch("apps.needs.views.list_external_customer_demands", return_value=[active, fulfilled]),
-            patch("apps.needs.views.get_need_candidate_products", return_value=[product]),
-            patch("apps.needs.views.build_external_demand_plans", return_value=[plan]),
-            patch("apps.needs.views.get_external_customer_demand_summary", return_value={}),
+            patch("apps.needs.presenters.list_external_customer_demands", return_value=[active, fulfilled]),
+            patch("apps.needs.presenters.get_need_candidate_products", return_value=[product]),
+            patch("apps.needs.presenters.build_external_demand_plans", return_value=[plan]),
+            patch("apps.needs.presenters.get_external_customer_demand_summary", return_value={}),
         ):
             context = build_external_demands_context(
                 producer,
@@ -586,11 +586,11 @@ class ExternalDemandLifecycleTests(SimpleTestCase):
         sync = getattr(sync_need_from_external_demands, "__wrapped__", sync_need_from_external_demands)
 
         with (
-            patch("apps.needs.services.calculate_external_demand_plan", return_value=plan),
-            patch("apps.needs.services._lock_need_for_customer_demand_sync", return_value=existing_need),
-            patch("apps.needs.services.recalculate_need_status", return_value=(existing_need, {}, False)),
-            patch("apps.needs.services._set_external_demands_generated_need"),
-            patch("apps.needs.services.log_audit_event") as audit,
+            patch("apps.needs.external_demands.calculate_external_demand_plan", return_value=plan),
+            patch("apps.needs.external_demands._lock_need_for_customer_demand_sync", return_value=existing_need),
+            patch("apps.needs.external_demands.recalculate_need_status", return_value=(existing_need, {}, False)),
+            patch("apps.needs.external_demands._set_external_demands_generated_need"),
+            patch("apps.needs.external_demands.log_audit_event") as audit,
         ):
             need, _, changed = sync(producer=producer, product=product)
 
@@ -1025,9 +1025,9 @@ class NeedEditTests(SimpleTestCase):
         update = getattr(update_need, "__wrapped__", update_need)
 
         with (
-            patch("apps.needs.services.Need") as need_model,
-            patch("apps.needs.services.calculate_need_coverage", return_value=coverage_before),
-            patch("apps.needs.services.recalculate_need_status", return_value=(locked_need, coverage_after, True)) as recalc,
+            patch("apps.needs.lifecycle.Need") as need_model,
+            patch("apps.needs.lifecycle.calculate_need_coverage", return_value=coverage_before),
+            patch("apps.needs.lifecycle.recalculate_need_status", return_value=(locked_need, coverage_after, True)) as recalc,
         ):
             need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
             updated_need, coverage, changed = update(
@@ -1066,8 +1066,8 @@ class NeedEditTests(SimpleTestCase):
         update = getattr(update_need, "__wrapped__", update_need)
 
         with (
-            patch("apps.needs.services.Need") as need_model,
-            patch("apps.needs.services.calculate_need_coverage", return_value=coverage_before),
+            patch("apps.needs.lifecycle.Need") as need_model,
+            patch("apps.needs.lifecycle.calculate_need_coverage", return_value=coverage_before),
         ):
             need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
             with self.assertRaisesMessage(Exception, "quantidade mínima permitida"):
@@ -1096,7 +1096,7 @@ class NeedEditTests(SimpleTestCase):
         )
         update = getattr(update_need, "__wrapped__", update_need)
 
-        with patch("apps.needs.services.Need") as need_model:
+        with patch("apps.needs.lifecycle.Need") as need_model:
             need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
             with self.assertRaisesMessage(Exception, "Não pode editar esta necessidade"):
                 update(
@@ -1124,7 +1124,7 @@ class NeedEditTests(SimpleTestCase):
         )
         update = getattr(update_need, "__wrapped__", update_need)
 
-        with patch("apps.needs.services.Need") as need_model:
+        with patch("apps.needs.lifecycle.Need") as need_model:
             need_model.objects.select_for_update.return_value.select_related.return_value.get.return_value = locked_need
             with self.assertRaisesMessage(Exception, "já não pode ser editada"):
                 update(
@@ -1146,9 +1146,9 @@ class NeedsServiceTests(SimpleTestCase):
         )
 
         with (
-            patch("apps.needs.services._stock_active_listings_quantity", return_value=Decimal("20.000")),
+            patch("apps.needs.external_demands._stock_active_listings_quantity", return_value=Decimal("20.000")),
             patch(
-                "apps.needs.services._stock_pending_need_responses_quantity",
+                "apps.needs.external_demands._stock_pending_need_responses_quantity",
                 return_value=Decimal("30.000"),
             ),
         ):
@@ -1177,7 +1177,7 @@ class NeedsServiceTests(SimpleTestCase):
         ]
 
         with patch(
-            "apps.needs.services.OrderItem.objects.filter"
+            "apps.needs.coverage.OrderItem.objects.filter"
         ) as filter_items:
             filter_items.return_value.select_related.return_value = items
             coverage = calculate_need_coverage(need)
@@ -1203,7 +1203,7 @@ class NeedsServiceTests(SimpleTestCase):
         manager.objects.select_for_update.return_value.filter.return_value = active_qs
         create = getattr(create_need, "__wrapped__", create_need)
 
-        with patch("apps.needs.services.Need", manager):
+        with patch("apps.needs.lifecycle.Need", manager):
             with self.assertRaises(DuplicateActiveNeedError) as caught:
                 create(
                     producer=producer,
@@ -1239,12 +1239,12 @@ class NeedsServiceTests(SimpleTestCase):
         create = getattr(create_need, "__wrapped__", create_need)
 
         with (
-            patch("apps.needs.services.Need", manager),
+            patch("apps.needs.lifecycle.Need", manager),
             patch(
-                "apps.needs.services.recalculate_need_status",
+                "apps.needs.lifecycle.recalculate_need_status",
                 return_value=(need, {"remaining_to_plan": Decimal("4.000")}, False),
             ),
-            patch("apps.needs.services.log_audit_event"),
+            patch("apps.needs.lifecycle.log_audit_event"),
         ):
             result, _ = create(
                 producer=producer,
@@ -1289,9 +1289,9 @@ class NeedsServiceTests(SimpleTestCase):
         qs.__iter__.return_value = iter([need])
 
         with (
-            patch("apps.needs.services.Need", manager),
+            patch("apps.needs.marketplace_queries.Need", manager),
             patch(
-                "apps.needs.services.calculate_need_coverage",
+                "apps.needs.marketplace_queries.calculate_need_coverage",
                 return_value={
                     "required_quantity": Decimal("10.000"),
                     "planned_qty": Decimal("4.000"),
@@ -1300,8 +1300,8 @@ class NeedsServiceTests(SimpleTestCase):
                     "remaining_to_receive": Decimal("10.000"),
                 },
             ),
-            patch("apps.needs.services.get_need_response_summaries_for_responder", return_value={}),
-            patch("apps.needs.services.get_public_offered_quantities_by_need", return_value={str(need_id): Decimal("5.000")}),
+            patch("apps.needs.marketplace_queries.get_need_response_summaries_for_responder", return_value={}),
+            patch("apps.needs.marketplace_queries.get_public_offered_quantities_by_need", return_value={str(need_id): Decimal("5.000")}),
         ):
             rows = list_marketplace_public_needs(viewer_producer=SimpleNamespace(id="viewer-1"))
 
@@ -1335,16 +1335,16 @@ class NeedsServiceTests(SimpleTestCase):
         withdraw = getattr(withdraw_need_from_marketplace, "__wrapped__", withdraw_need_from_marketplace)
 
         with (
-            patch("apps.needs.services.Need.objects", manager),
+            patch("apps.needs.lifecycle.Need.objects", manager),
             patch(
-                "apps.needs.services.calculate_need_coverage",
+                "apps.needs.lifecycle.calculate_need_coverage",
                 return_value={"remaining_to_plan": Decimal("10.000")},
             ),
             patch(
                 "apps.needs.services.calculate_external_demand_plan",
                 return_value={"max_deficit": Decimal("10.000")},
             ),
-            patch("apps.needs.services.log_audit_event") as audit,
+            patch("apps.needs.lifecycle.log_audit_event") as audit,
         ):
             _, published = publish(need=need, producer=producer)
             publication_timestamp = need.published_at
@@ -1452,11 +1452,11 @@ class NeedsServiceTests(SimpleTestCase):
 
         with (
             patch(
-                "apps.needs.services.MarketplaceListing.objects.filter",
+                "apps.needs.marketplace_queries.MarketplaceListing.objects.filter",
                 side_effect=lambda **kwargs: pending_listings.filter(**kwargs),
             ),
             patch(
-                "apps.needs.services.OrderItem.objects.filter",
+                "apps.needs.marketplace_queries.OrderItem.objects.filter",
                 side_effect=lambda **kwargs: order_items.filter(**kwargs),
             ),
         ):
@@ -1496,7 +1496,7 @@ class NeedsServiceTests(SimpleTestCase):
             }
 
         with (
-            patch("apps.needs.services.Stock.objects.filter", return_value=qs),
+            patch("apps.needs.marketplace_queries.Stock.objects.filter", return_value=qs),
             patch(
                 "apps.inventory.services.calculate_inventory_commitment_state",
                 side_effect=commitment_side_effect,
@@ -1528,13 +1528,13 @@ class NeedsServiceTests(SimpleTestCase):
         )
 
         with patch(
-            "apps.needs.services._get_need_response_listings_for_owner",
+            "apps.needs.responses._get_need_response_listings_for_owner",
             return_value=[listing],
         ), patch(
-            "apps.needs.services._get_need_response_order_state_listing_ids",
+            "apps.needs.responses._get_need_response_order_state_listing_ids",
             return_value=(set(), set(), set()),
         ), patch(
-            "apps.needs.services.get_need_response_order_snapshot",
+            "apps.needs.responses.get_need_response_order_snapshot",
             return_value={},
         ):
             responses = list_need_responses_for_owner(
@@ -1578,9 +1578,9 @@ class NeedsServiceTests(SimpleTestCase):
         qs.filter.return_value.order_by.return_value = [listing]
 
         with (
-            patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
-            patch("apps.needs.services.get_need_response_order_snapshot", return_value={}),
+            patch("apps.needs.responses._get_need_response_listing_queryset", return_value=qs),
+            patch("apps.needs.responses._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
+            patch("apps.needs.responses.get_need_response_order_snapshot", return_value={}),
         ):
             summaries = get_need_response_summaries_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -1617,9 +1617,9 @@ class NeedsServiceTests(SimpleTestCase):
         qs.filter.return_value.order_by.return_value = [listing]
 
         with (
-            patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
-            patch("apps.needs.services.get_need_response_order_snapshot", return_value={}),
+            patch("apps.needs.responses._get_need_response_listing_queryset", return_value=qs),
+            patch("apps.needs.responses._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
+            patch("apps.needs.responses.get_need_response_order_snapshot", return_value={}),
         ):
             summaries = get_need_response_summaries_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -1643,8 +1643,8 @@ class NeedsServiceTests(SimpleTestCase):
         qs.filter.return_value.order_by.return_value = [listing]
 
         with (
-            patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
+            patch("apps.needs.responses._get_need_response_listing_queryset", return_value=qs),
+            patch("apps.needs.responses._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
         ):
             active = get_active_need_response_for_responder(
                 responder_producer=SimpleNamespace(id="seller-1"),
@@ -1672,13 +1672,13 @@ class NeedsServiceTests(SimpleTestCase):
         )
 
         with patch(
-            "apps.needs.services._get_need_response_listings_for_owner",
+            "apps.needs.responses._get_need_response_listings_for_owner",
             return_value=[listing],
         ), patch(
-            "apps.needs.services._get_need_response_order_state_listing_ids",
+            "apps.needs.responses._get_need_response_order_state_listing_ids",
             return_value=(set(), {listing_id}, set()),
         ), patch(
-            "apps.needs.services.get_need_response_order_snapshot",
+            "apps.needs.responses.get_need_response_order_snapshot",
             return_value={
                 listing_id: {
                     "status": NeedResponseStatus.CANCELLED,
@@ -1720,13 +1720,13 @@ class NeedsServiceTests(SimpleTestCase):
         )
 
         with patch(
-            "apps.needs.services._get_need_response_listings_for_owner",
+            "apps.needs.responses._get_need_response_listings_for_owner",
             return_value=[listing],
         ), patch(
-            "apps.needs.services._get_need_response_order_state_listing_ids",
+            "apps.needs.responses._get_need_response_order_state_listing_ids",
             return_value=(set(), set(), {listing_id}),
         ), patch(
-            "apps.needs.services.get_need_response_order_snapshot",
+            "apps.needs.responses.get_need_response_order_snapshot",
             return_value={
                 listing_id: {
                     "status": NeedResponseStatus.COMPLETED,
@@ -1769,13 +1769,13 @@ class NeedsServiceTests(SimpleTestCase):
         )
 
         with patch(
-            "apps.needs.services._get_need_response_listings_for_owner",
+            "apps.needs.responses._get_need_response_listings_for_owner",
             return_value=[listing],
         ), patch(
-            "apps.needs.services._get_need_response_order_state_listing_ids",
+            "apps.needs.responses._get_need_response_order_state_listing_ids",
             return_value=(set(), set(), set()),
         ), patch(
-            "apps.needs.services.get_need_response_order_snapshot",
+            "apps.needs.responses.get_need_response_order_snapshot",
             return_value={},
         ):
             responses = list_need_responses_for_owner(
@@ -1809,10 +1809,10 @@ class NeedsServiceTests(SimpleTestCase):
         qs.filter.return_value.order_by.return_value = [listing]
 
         with (
-            patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
+            patch("apps.needs.responses._get_need_response_listing_queryset", return_value=qs),
+            patch("apps.needs.responses._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
             patch(
-                "apps.needs.services.get_need_response_order_snapshot",
+                "apps.needs.responses.get_need_response_order_snapshot",
                 return_value={
                     listing_id: {
                         "status": NeedResponseStatus.COMPLETED,
@@ -1857,10 +1857,10 @@ class NeedsServiceTests(SimpleTestCase):
         qs.filter.return_value.exclude.return_value.order_by.return_value = [listing]
 
         with (
-            patch("apps.needs.services._get_need_response_listing_queryset", return_value=qs),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
+            patch("apps.needs.responses._get_need_response_listing_queryset", return_value=qs),
+            patch("apps.needs.responses._get_need_response_order_state_listing_ids", return_value=(set(), set(), {listing_id})),
             patch(
-                "apps.needs.services.get_need_response_order_snapshot",
+                "apps.needs.responses.get_need_response_order_snapshot",
                 return_value={
                     listing_id: {
                         "status": NeedResponseStatus.COMPLETED,
@@ -1892,8 +1892,10 @@ class NeedsServiceTests(SimpleTestCase):
         reject = getattr(reject_need_response, "__wrapped__", reject_need_response)
 
         with (
-            patch("apps.needs.services._get_need_response_listing_for_update", return_value=listing),
-            patch("apps.needs.services._get_accepted_need_response_listing_ids", return_value=set()),
+            patch("apps.needs.responses._get_need_response_listing_for_update", return_value=listing),
+            patch("apps.needs.responses._get_accepted_need_response_listing_ids", return_value=set()),
+            patch("apps.needs.responses.log_audit_event"),
+            patch("apps.alerts.services.create_need_response_event_alert"),
         ):
             changed = reject(listing=listing, owner_producer=owner)
 
@@ -1915,8 +1917,8 @@ class NeedsServiceTests(SimpleTestCase):
         reject = getattr(reject_need_response, "__wrapped__", reject_need_response)
 
         with (
-            patch("apps.needs.services._get_need_response_listing_for_update", return_value=listing),
-            patch("apps.needs.services._get_accepted_need_response_listing_ids", return_value={"listing-1"}),
+            patch("apps.needs.responses._get_need_response_listing_for_update", return_value=listing),
+            patch("apps.needs.responses._get_accepted_need_response_listing_ids", return_value={"listing-1"}),
         ):
             with self.assertRaisesMessage(Exception, "Esta oferta já foi aceite"):
                 reject(listing=listing, owner_producer=owner)
@@ -1935,8 +1937,8 @@ class NeedsServiceTests(SimpleTestCase):
         update = getattr(update_need_response, "__wrapped__", update_need_response)
 
         with (
-            patch("apps.needs.services._get_need_response_listing_for_update", return_value=listing),
-            patch("apps.needs.services._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
+            patch("apps.needs.responses._get_need_response_listing_for_update", return_value=listing),
+            patch("apps.needs.responses._get_need_response_order_state_listing_ids", return_value=(set(), set(), set())),
             patch("apps.marketplace.services.update_listing", return_value=listing) as update_listing,
         ):
             updated_listing = update(
@@ -1974,16 +1976,15 @@ class NeedsServiceTests(SimpleTestCase):
         past_response = SimpleNamespace(id="response-2", response_status="REJECTED")
 
         with (
-            patch("apps.needs.views.list_marketplace_public_needs", return_value=[]),
-            patch("apps.needs.views.list_marketplace_my_needs", return_value=[own_row]),
-            patch("apps.needs.views.get_need_candidate_products", return_value=[need.product]),
-            patch("apps.needs.views.get_critical_stock_product_ids", return_value={"product-1"}),
-            patch("apps.needs.views.get_need_response_counts_for_owner", return_value={"need-1": 1}),
-            patch("apps.needs.views.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
-            patch("apps.needs.views.MarketplaceListing.objects.filter") as sent_response_filter,
-            patch("apps.needs.views.list_external_customer_demands", return_value=[]),
-            patch("apps.needs.views.ExternalCustomerDemand.objects.filter") as demand_filter,
-            patch("apps.needs.views.Stock.objects.filter", return_value=[]),
+            patch("apps.needs.presenters.list_marketplace_public_needs", return_value=[]),
+            patch("apps.needs.presenters.list_marketplace_my_needs", return_value=[own_row]),
+            patch("apps.needs.presenters.get_need_candidate_products", return_value=[need.product]),
+            patch("apps.needs.presenters.get_critical_stock_product_ids", return_value={"product-1"}),
+            patch("apps.needs.presenters.get_need_response_counts_for_owner", return_value={"need-1": 1}),
+            patch("apps.needs.presenters.list_need_responses_for_owner", return_value=[active_response, past_response]) as responses,
+            patch("apps.needs.presenters.MarketplaceListing.objects.filter") as sent_response_filter,
+            patch("apps.needs.presenters.list_external_customer_demands", return_value=[]),
+            patch("apps.needs.presenters.ExternalCustomerDemand.objects.filter") as demand_filter,
         ):
             demand_filter.return_value.select_related.return_value.order_by.return_value.__getitem__ = lambda self, s: iter([])
             demand_filter.return_value.count.return_value = 0

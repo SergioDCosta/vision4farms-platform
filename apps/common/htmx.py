@@ -1,6 +1,10 @@
 import json
 
 
+def is_htmx_request(request):
+    return getattr(request, "htmx", False) or request.headers.get("HX-Request") == "true"
+
+
 def _decode_hx_trigger(value):
     if not value:
         return {}

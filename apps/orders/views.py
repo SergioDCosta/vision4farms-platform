@@ -6,6 +6,7 @@ from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 
 from apps.common.decorators import client_only_required
+from apps.common.htmx import is_htmx_request
 from apps.common.redirects import get_safe_next_url
 from apps.needs.models import NeedResponseStatus, NeedStatus
 from apps.needs.services import get_need_for_producer
@@ -36,7 +37,7 @@ from apps.orders.services import (
 
 
 def _is_orders_panel_request(request):
-    return request.headers.get("HX-Request") == "true" and request.headers.get("HX-Target") == "orders-panel"
+    return is_htmx_request(request) and request.headers.get("HX-Target") == "orders-panel"
 
 
 def _is_presale_purchase_entry(entry):

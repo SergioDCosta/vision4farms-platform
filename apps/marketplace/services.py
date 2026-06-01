@@ -6,7 +6,8 @@ from django.utils import timezone
 
 from apps.catalog.models import Product, ProductCategory
 from apps.common.audit import log_audit_event
-from apps.inventory.models import ProducerProfile, ProducerProduct, ProductionForecast, Stock
+from apps.inventory.models import ProducerProduct, ProductionForecast, Stock
+from apps.inventory.producers import get_current_producer_for_user
 from apps.marketplace.models import MarketplaceListing, ListingStatus, DeliveryMode
 from apps.needs.models import NeedResponseStatus, NeedStatus
 
@@ -29,7 +30,7 @@ class MarketplaceServiceError(Exception):
     pass
 
 
-def _listing_audit_values(listing):
+def listing_audit_values(listing):
     if getattr(listing, "need_id", None):
         origin = "need_response"
     elif getattr(listing, "forecast_id", None):
@@ -54,14 +55,11 @@ def _listing_audit_values(listing):
     }
 
 
+_listing_audit_values = listing_audit_values
+
+
 def quantize_qty(value):
     return Decimal(str(value)).quantize(QTY_DECIMAL)
-
-
-def get_current_producer_for_user(user):
-    if not user:
-        return None
-    return ProducerProfile.objects.filter(user=user).first()
 
 
 def get_producer_display_name(producer):
@@ -351,7 +349,7 @@ def expire_due_active_listings():
         updated_at=now,
     )
     for listing in expiring:
-        old_values = _listing_audit_values(listing)
+        old_values = listing_audit_values(listing)
         listing.status = ListingStatus.EXPIRED
         log_audit_event(
             action="LISTING_EXPIRED",
@@ -359,7 +357,7 @@ def expire_due_active_listings():
             entity_id=listing.id,
             notes="Anúncio ou proposta expirou automaticamente após atingir a data limite.",
             old_values=old_values,
-            new_values=_listing_audit_values(listing),
+            new_values=listing_audit_values(listing),
         )
     return need_responses_expired + listings_expired
 
@@ -423,7 +421,7 @@ def get_public_listings(*, producer=None, q="", category_id="", origin="", sort=
 
 
 def retire_listing(*, listing, acting_user=None):
-    old_values = _listing_audit_values(listing)
+    old_values = listing_audit_values(listing)
     now = timezone.now()
     listing.status = ListingStatus.CANCELLED
     listing.quantity_available = Decimal("0.000")
@@ -438,7 +436,7 @@ def retire_listing(*, listing, acting_user=None):
         entity_id=getattr(listing, "id", None),
         notes="Anúncio retirado do marketplace pelo produtor.",
         old_values=old_values,
-        new_values=_listing_audit_values(listing),
+        new_values=listing_audit_values(listing),
     )
     return listing
 
@@ -849,7 +847,7 @@ def create_listing(
         entity_type="marketplace_listings",
         entity_id=listing.id,
         notes=notes,
-        new_values=_listing_audit_values(listing),
+        new_values=listing_audit_values(listing),
     )
     return listing
 
@@ -880,7 +878,7 @@ def update_listing(
             "Este anúncio já está reservado ou fechado e não pode ser editado."
         )
 
-    old_values = _listing_audit_values(listing)
+    old_values = listing_audit_values(listing)
     has_stock_source = bool(listing.stock_id)
     has_forecast_source = bool(listing.forecast_id)
     if has_stock_source == has_forecast_source:
@@ -984,7 +982,7 @@ def update_listing(
             else "Condições do anúncio atualizadas."
         ),
         old_values=old_values,
-        new_values=_listing_audit_values(listing),
+        new_values=listing_audit_values(listing),
     )
     return listing
 
@@ -1036,7 +1034,7 @@ def reactivate_listing(*, listing, acting_user=None):
             f"publicável atual ({max_publishable} {listing.product.unit})."
         )
 
-    old_values = _listing_audit_values(listing)
+    old_values = listing_audit_values(listing)
     listing.status = ListingStatus.ACTIVE
     if listing.expires_at and listing.expires_at <= timezone.now():
         listing.expires_at = None
@@ -1049,7 +1047,7 @@ def reactivate_listing(*, listing, acting_user=None):
         entity_id=listing.id,
         notes="Anúncio reativado pelo produtor após validação da quantidade publicável.",
         old_values=old_values,
-        new_values=_listing_audit_values(listing),
+        new_values=listing_audit_values(listing),
     )
     return listing
 

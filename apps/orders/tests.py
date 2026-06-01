@@ -25,6 +25,7 @@ from apps.orders.services import (
     get_order_source_label,
     is_order_from_need_response,
     is_order_forecast_only,
+    reconcile_order_status,
     seller_update_order_status,
 )
 
@@ -32,6 +33,22 @@ from apps.orders.services import (
 class OrderQuantityLabelTests(SimpleTestCase):
     def test_quantity_label_trims_unneeded_decimal_places(self):
         self.assertEqual(_quantity_label("200.000", "kg"), "200 kg")
+
+
+class OrderStatusReconciliationTests(SimpleTestCase):
+    @patch("apps.orders.services._create_status_history")
+    @patch("apps.orders.services._set_order_status")
+    def test_public_reconciliation_api_updates_status_and_history(self, set_status_mock, history_mock):
+        order = SimpleNamespace(id="order-1", status=OrderStatus.PENDING)
+
+        changed = reconcile_order_status.__wrapped__(
+            order,
+            expected_status=OrderStatus.CONFIRMED,
+        )
+
+        self.assertTrue(changed)
+        set_status_mock.assert_called_once_with(order, OrderStatus.CONFIRMED)
+        history_mock.assert_called_once()
 
 
 class PresaleOrderClassificationTests(SimpleTestCase):

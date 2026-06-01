@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from apps.orders.models import Order
-from apps.orders.services import _create_status_history, _set_order_status, compute_order_status_from_db
+from apps.orders.services import compute_order_status_from_db, reconcile_order_status
 
 
 class Command(BaseCommand):
@@ -51,11 +51,9 @@ class Command(BaseCommand):
 
             if apply_changes:
                 previous_status = order.status
-                _set_order_status(order, expected_status)
-                _create_status_history(
-                    order=order,
-                    status=expected_status,
-                    changed_by=None,
+                reconcile_order_status(
+                    order,
+                    expected_status=expected_status,
                     notes=(
                         "Reconciliação técnica automática: "
                         f"{previous_status} -> {expected_status}."

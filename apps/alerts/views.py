@@ -6,10 +6,12 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from apps.common.decorators import client_only_required
-from apps.common.htmx import with_htmx_toast
+from apps.common.dates import parse_session_datetime
+from apps.common.htmx import is_htmx_request as _is_htmx, with_htmx_toast
 from apps.inventory.models import ProducerProfile
 from apps.notifications_app.services import clear_recent_notifications_for_user, list_recent_notifications_for_user
 from apps.alerts.services import (
+    ALERTS_LAST_SEEN_SESSION_KEY,
     build_alert_sections,
     expire_ignored_alerts_for_producer,
     get_alert_category_filter_options,
@@ -29,11 +31,6 @@ from apps.alerts.services import (
     resolve_alert,
     sync_alerts_for_producer,
 )
-
-
-def _is_htmx(request):
-    return request.headers.get("HX-Request") == "true"
-
 
 def _normalize_tab(raw_tab):
     tab = (raw_tab or "active").strip().lower()
@@ -129,9 +126,8 @@ def alerts_index_view(request):
     _expire_ignored_alerts(producer, acting_user=request.current_user)
     sync_alerts_for_producer(producer, acting_user=request.current_user)
 
-    from apps.alerts.services import ALERTS_LAST_SEEN_SESSION_KEY, _parse_session_datetime
     last_seen_val = request.session.get(ALERTS_LAST_SEEN_SESSION_KEY)
-    previous_last_seen_at = _parse_session_datetime(last_seen_val)
+    previous_last_seen_at = parse_session_datetime(last_seen_val)
 
     mark_client_alerts_seen(request)
     tab = _normalize_tab(request.GET.get("tab"))

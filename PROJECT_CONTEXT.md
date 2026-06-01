@@ -1194,8 +1194,9 @@ Variáveis importantes:
 - `SECRET_KEY`;
 - `ALLOWED_HOSTS`;
 - `CSRF_TRUSTED_ORIGINS`;
-- `DATABASE_URL` ou variáveis `DB_*`;
+- `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` e `DB_PORT`;
 - `REDIS_URL`;
+- `APP_BASE_URL`;
 - `EMAIL_PROVIDER=resend`;
 - `RESEND_API_KEY`;
 - `DEFAULT_FROM_EMAIL`;
@@ -1220,6 +1221,7 @@ Cuidados:
 
 - `DEBUG` tem de ser booleano (`true`/`false`);
 - `DEBUG=release` é inválido;
+- em produção, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `APP_BASE_URL`, `DB_HOST` e `REDIS_URL` são obrigatórias e não usam defaults locais;
 - `sqlscript.sql` representa o schema consolidado atual;
 - `sqlscript.sql` é atualizado através de exportação apenas de schema da base PostgreSQL de produção, sem conteúdo de utilizadores ou segredos;
 - o snapshot de produção de 2026-05-24 confirma a presença residual de `stocks.max_quantity`; a remoção física exige SQL explícito numa iteração controlada;

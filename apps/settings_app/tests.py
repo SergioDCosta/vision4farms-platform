@@ -5,13 +5,12 @@ from unittest.mock import Mock, patch
 from django.template.loader import get_template
 from django.test import SimpleTestCase, override_settings
 
-from apps.settings_app.forms import ProducerProfileSettingsForm, ProfilePhotoForm
+from apps.settings_app.forms import IdentityProfileForm, ProducerLocationForm, ProfilePhotoForm
 from apps.settings_app.services import (
     avatar_initials,
     ensure_user_preference,
-    get_support_tickets_context,
     profile_photo_url,
-    update_account_profile,
+    update_identity_profile,
 )
 
 
@@ -19,12 +18,10 @@ class SettingsTemplateTests(SimpleTestCase):
     def test_settings_templates_load(self):
         template_names = [
             "settings/settings_panel.html",
-            "settings/partials/account.html",
+            "settings/partials/identity_profile.html",
             "settings/partials/photo.html",
             "settings/partials/notifications.html",
-            "settings/partials/producer_profile.html",
             "settings/partials/location.html",
-            "settings/partials/support.html",
             "settings/partials/security.html",
             "settings/partials/location_script.html",
         ]
@@ -71,22 +68,8 @@ class SettingsServiceTests(SimpleTestCase):
 
         self.assertEqual(profile_photo_url(preference), "/media/profile.jpg?v=123")
 
-    @patch("apps.settings_app.services.SupportTicket")
-    def test_support_ticket_context_limits_to_three_by_default(self, ticket_model_mock):
-        tickets = [SimpleNamespace(id=index) for index in range(4)]
-        qs = ticket_model_mock.objects.filter.return_value.select_related.return_value.order_by.return_value
-        qs.count.return_value = 4
-        qs.__getitem__.return_value = tickets[:3]
-
-        context = get_support_tickets_context(SimpleNamespace(id="user-1"))
-
-        self.assertEqual(context["support_tickets"], tickets[:3])
-        self.assertTrue(context["support_tickets_has_more"])
-        self.assertFalse(context["support_tickets_show_all"])
-
     @patch("apps.settings_app.services.log_audit_event")
-    @patch("apps.settings_app.services.ProducerProfile")
-    def test_update_account_profile_syncs_producer_display_name(self, producer_model_mock, audit_mock):
+    def test_update_identity_profile_syncs_producer_display_name(self, audit_mock):
         class DummyUser:
             id = "user-1"
             email = "sergio@example.com"
@@ -104,18 +87,30 @@ class SettingsServiceTests(SimpleTestCase):
         producer_profile = SimpleNamespace(
             id="producer-1",
             display_name="Nome Antigo",
+            company_name="Empresa Antiga",
+            phone=None,
+            nif=None,
+            user_type=None,
             save=Mock(),
         )
-        producer_model_mock.objects.filter.return_value.first.return_value = producer_profile
         request = SimpleNamespace(session={})
         form = SimpleNamespace(
             cleaned_data={
                 "first_name": "Joao",
                 "last_name": "Silva",
+                "company_name": "Empresa Nova",
+                "phone": None,
+                "nif": None,
+                "user_type": None,
             }
         )
 
-        changed = update_account_profile(request=request, user=user, form=form)
+        changed = update_identity_profile(
+            request=request,
+            user=user,
+            producer_profile=producer_profile,
+            form=form,
+        )
 
         self.assertTrue(changed)
         self.assertEqual(user.full_name, "Joao Silva")
@@ -133,18 +128,14 @@ class SettingsFormTests(SimpleTestCase):
         self.assertIn("profile_photo", form.errors)
 
     def test_producer_profile_rejects_invalid_coordinates(self):
-        form = ProducerProfileSettingsForm(
+        form = ProducerLocationForm(
             data={
-                "company_name": "",
-                "phone": "",
-                "nif": "",
                 "address_line": "",
                 "postal_code": "",
                 "city": "Viseu",
                 "district": "Viseu",
                 "latitude": Decimal("91"),
                 "longitude": Decimal("181"),
-                "user_type": "",
             }
         )
 
@@ -152,8 +143,22 @@ class SettingsFormTests(SimpleTestCase):
         self.assertIn("latitude", form.errors)
         self.assertIn("longitude", form.errors)
 
-    def test_producer_profile_form_does_not_expose_identity_or_marketplace_toggle(self):
-        form = ProducerProfileSettingsForm()
+    def test_location_form_does_not_expose_identity_or_marketplace_toggle(self):
+        form = ProducerLocationForm()
 
         self.assertNotIn("display_name", form.fields)
         self.assertNotIn("is_active_marketplace", form.fields)
+
+    def test_identity_form_hides_producer_fields_for_admin_user(self):
+        form = IdentityProfileForm(
+            user=SimpleNamespace(
+                first_name="Admin",
+                last_name="User",
+                email="admin@example.com",
+            ),
+        )
+
+        self.assertNotIn("company_name", form.fields)
+        self.assertNotIn("phone", form.fields)
+        self.assertNotIn("nif", form.fields)
+        self.assertNotIn("user_type", form.fields)

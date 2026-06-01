@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from apps.common.decorators import client_only_required
+from apps.common.htmx import is_htmx_request as _is_htmx
 from apps.marketplace.models import MarketplaceListing
 from apps.messaging.models import ConversationParticipant, Message, MessageType
 from apps.orders.models import Order
@@ -26,11 +27,6 @@ from apps.messaging.services import (
     serialize_message_payload,
     unarchive_conversation_for_user,
 )
-
-
-def _is_htmx(request):
-    return request.headers.get("HX-Request") == "true"
-
 
 def _parse_message_limit(raw_value, *, default=150, maximum=600):
     try:

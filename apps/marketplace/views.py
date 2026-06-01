@@ -16,6 +16,7 @@ from PIL import Image, ImageOps
 
 from apps.common.decorators import login_required, client_only_required
 from apps.common.audit import log_audit_event
+from apps.common.htmx import is_htmx_request as _is_htmx
 from apps.common.redirects import get_safe_next_url
 from apps.accounts.models import UserRole
 from apps.inventory.models import ProductionForecast
@@ -338,10 +339,6 @@ def _maybe_crop_uploaded_photo(uploaded_file, crop_payload):
         except Exception:
             pass
         return uploaded_file
-
-
-def _is_htmx(request):
-    return request.headers.get("HX-Request") == "true"
 
 
 def _activate_forecast_for_marketplace_if_possible(*, producer, product_id, forecast_id):

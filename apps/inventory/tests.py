@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.catalog.services import CatalogValidationError
 from apps.inventory.forms import CreateCustomProductForm, UpdateStockForm
 from apps.inventory import views
+from apps.inventory.producers import get_current_producer_for_user
 from apps.inventory.services import (
     ListingsBlockStockReductionError,
     calculate_inventory_commitment_state,
@@ -21,6 +22,20 @@ from apps.inventory.services import (
     _period_bounds,
     _period_chart_segments,
 )
+
+
+class ProducerLookupTests(SimpleTestCase):
+    @patch("apps.inventory.producers.ProducerProfile.objects")
+    def test_returns_current_producer_for_user(self, objects_mock):
+        user = SimpleNamespace(id="user-1")
+        producer = SimpleNamespace(id="producer-1")
+        objects_mock.filter.return_value.first.return_value = producer
+
+        self.assertIs(get_current_producer_for_user(user), producer)
+        objects_mock.filter.assert_called_once_with(user=user)
+
+    def test_returns_none_without_user(self):
+        self.assertIsNone(get_current_producer_for_user(None))
 
 
 class InventoryCatalogIntegrationTests(SimpleTestCase):
@@ -292,6 +307,7 @@ class InventoryViewContextTests(SimpleTestCase):
         context = render_mock.call_args.args[2]
         self.assertFalse(context["has_active_inventory_products"])
 
+    @patch("apps.inventory.views._sync_alerts_after_inventory_change")
     @patch("apps.inventory.views.messages")
     @patch("apps.inventory.views.services.remove_product_from_producer")
     @patch("apps.inventory.views._get_producer_or_redirect")
@@ -300,6 +316,7 @@ class InventoryViewContextTests(SimpleTestCase):
         get_producer_mock,
         remove_product_mock,
         messages_mock,
+        sync_alerts_mock,
     ):
         producer = SimpleNamespace(id="producer-1")
         request = self.factory.post(
@@ -316,7 +333,9 @@ class InventoryViewContextTests(SimpleTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/inventario/produtos/?tab=desativados")
         messages_mock.success.assert_called_once()
+        sync_alerts_mock.assert_called_once_with(producer, request.current_user)
 
+    @patch("apps.inventory.views._sync_alerts_after_inventory_change")
     @patch("apps.inventory.views.messages")
     @patch("apps.inventory.views.services.reactivate_product_from_producer")
     @patch("apps.inventory.views._get_producer_or_redirect")
@@ -325,6 +344,7 @@ class InventoryViewContextTests(SimpleTestCase):
         get_producer_mock,
         reactivate_product_mock,
         messages_mock,
+        sync_alerts_mock,
     ):
         producer = SimpleNamespace(id="producer-1")
         request = self.factory.post(
@@ -341,6 +361,7 @@ class InventoryViewContextTests(SimpleTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/inventario/stock/product-1/")
         messages_mock.success.assert_called_once()
+        sync_alerts_mock.assert_called_once_with(producer, request.current_user)
 
 
 class ListingsBlockingStockDecreaseTests(SimpleTestCase):
@@ -419,7 +440,7 @@ class ReduceListingsToFitStockTests(SimpleTestCase):
         )
 
     @patch("apps.inventory.services.log_audit_event")
-    @patch("apps.marketplace.services._listing_audit_values", return_value={})
+    @patch("apps.marketplace.services.listing_audit_values", return_value={})
     @patch("apps.marketplace.services.retire_listing")
     @patch("apps.inventory.services.MarketplaceListing")
     def test_proportional_distributes_remaining_capacity(
@@ -444,7 +465,7 @@ class ReduceListingsToFitStockTests(SimpleTestCase):
         retire_mock.assert_not_called()
 
     @patch("apps.inventory.services.log_audit_event")
-    @patch("apps.marketplace.services._listing_audit_values", return_value={})
+    @patch("apps.marketplace.services.listing_audit_values", return_value={})
     @patch("apps.marketplace.services.retire_listing")
     @patch("apps.inventory.services.MarketplaceListing")
     def test_cancel_selected_retires_chosen_listings(

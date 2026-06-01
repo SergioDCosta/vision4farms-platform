@@ -4,7 +4,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.accounts.models import AccountStatus
-from apps.inventory.models import ProducerProfile
+from apps.inventory.producers import get_current_producer_for_user
 from apps.marketplace.models import ListingStatus, MarketplaceListing
 from apps.messaging.attachments import resolve_attachment_url
 from apps.messaging.exceptions import MessagingServiceError
@@ -25,12 +25,6 @@ def normalize_messages_tab(tab):
     if value in {MESSAGE_TAB_ACTIVE, "ativas"}:
         return MESSAGE_TAB_ACTIVE
     return MESSAGE_TAB_ACTIVE
-
-
-def get_current_producer_for_user(user):
-    if not user:
-        return None
-    return ProducerProfile.objects.filter(user=user).first()
 
 
 def _conversation_sort_annotation():

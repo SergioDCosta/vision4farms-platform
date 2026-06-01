@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.common.decorators import client_only_required
-from apps.common.htmx import with_htmx_toast
+from apps.common.htmx import is_htmx_request as _is_htmx, with_htmx_toast
 from apps.inventory.models import ProducerProfile, Stock
 from apps.inventory.services import calculate_inventory_commitment_state
 from apps.marketplace.models import ListingStatus
@@ -60,11 +60,6 @@ def _sync_alerts_after_need_change(producer, acting_user):
         sync_alerts_for_producer(producer, acting_user=acting_user)
     except Exception:
         return
-
-
-def _is_htmx(request):
-    return request.headers.get("HX-Request") == "true"
-
 
 def _get_current_producer(request):
     user = getattr(request, "current_user", None)

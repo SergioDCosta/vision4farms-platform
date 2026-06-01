@@ -254,9 +254,12 @@ Smoke test manual recomendado antes de deploy:
 
 Checklist Railway:
 
-- Definir todas as variáveis de ambiente necessárias.
-- Usar `DEBUG=false`.
-- Configurar PostgreSQL, Redis, Cloudinary e Resend.
+- Definir `DEBUG=false`, `SECRET_KEY`, `ALLOWED_HOSTS` e `CSRF_TRUSTED_ORIGINS`.
+- Definir `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` e `DB_PORT` para PostgreSQL.
+- Definir `REDIS_URL` para Channels e cache de meteorologia.
+- Definir `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e `CLOUDINARY_API_SECRET`.
+- Definir `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `DEFAULT_FROM_EMAIL`, `DEFAULT_REPLY_TO_EMAIL` e `SUPPORT_CONTACT_EMAIL`.
+- Definir `APP_BASE_URL` com o URL público da aplicação.
 - Aplicar alterações SQL manuais antes do deploy de código que dependa delas.
 - Executar `python manage.py check`.
 - Agendar ou executar `python manage.py sync_operational_alerts --apply`.
@@ -267,12 +270,13 @@ O `Procfile` arranca a aplicação como ASGI:
 web: python manage.py collectstatic --noinput && daphne -b 0.0.0.0 -p $PORT config.asgi:application
 ```
 
-Nota: `DEBUG` deve ser booleano (`true` ou `false`). Valores como `release` são inválidos para `python-decouple`.
+Nota: `DEBUG` deve ser booleano (`true` ou `false`). Valores como `release` são inválidos para `python-decouple`. Em produção, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `APP_BASE_URL`, `DB_HOST` e `REDIS_URL` não usam defaults locais: o arranque falha se estiverem em falta.
 
 ## Documentação
 
 - `PROJECT_CONTEXT.md`: contexto completo para desenvolvimento, relatório e continuidade entre sessões.
 - `README.md`: visão técnica pública e guia de setup.
+- `entrega/`: materiais finais e guia detalhado de configuração do Railway.
 - `sqlscript.sql`: schema-only exportado da base de dados PostgreSQL configurada.
 - `memory/`: notas temporárias locais, ignoradas pelo Git.
 

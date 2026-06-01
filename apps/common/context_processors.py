@@ -1,33 +1,8 @@
 from django.conf import settings
 
-from apps.accounts.models import UserRole
-from apps.alerts.services import get_client_alerts_badge_state
+from apps.common.context import cached
 from apps.common.media import resolve_media_url
-from apps.messaging.services import get_client_messages_badge_state
 from apps.settings_app.models import UserPreference
-from apps.support.services import get_admin_support_badge_state
-
-
-EMPTY_BADGE = {"visible": False, "count": 0, "tone": "orange"}
-
-
-def _empty_badge():
-    return dict(EMPTY_BADGE)
-
-
-def _request_cache(request):
-    cache = getattr(request, "_common_context_cache", None)
-    if cache is None:
-        cache = {}
-        setattr(request, "_common_context_cache", cache)
-    return cache
-
-
-def _cached(request, key, factory):
-    cache = _request_cache(request)
-    if key not in cache:
-        cache[key] = factory()
-    return cache[key]
 
 
 def brand_assets(request):
@@ -79,49 +54,10 @@ def topbar_user_profile(request):
         return resolve_media_url(preference.profile_photo)
 
     return {
-        "topbar_profile_photo_url": _cached(
+        "topbar_profile_photo_url": cached(
             request,
             "topbar_profile_photo_url",
             _get_profile_photo_url,
         ),
         "topbar_avatar_initials": _avatar_initials(user),
-    }
-
-
-def admin_support_sidebar_badge(request):
-    user = getattr(request, "current_user", None)
-    if not user or getattr(user, "role", None) != UserRole.ADMIN:
-        return {"admin_support_badge": _empty_badge()}
-    return {
-        "admin_support_badge": _cached(
-            request,
-            "admin_support_badge",
-            lambda: get_admin_support_badge_state(request),
-        )
-    }
-
-
-def client_alerts_sidebar_badge(request):
-    user = getattr(request, "current_user", None)
-    if not user or getattr(user, "role", None) != UserRole.CLIENTE:
-        return {"client_alerts_badge": _empty_badge()}
-    return {
-        "client_alerts_badge": _cached(
-            request,
-            "client_alerts_badge",
-            lambda: get_client_alerts_badge_state(request),
-        )
-    }
-
-
-def client_messages_sidebar_badge(request):
-    user = getattr(request, "current_user", None)
-    if not user or getattr(user, "role", None) != UserRole.CLIENTE:
-        return {"client_messages_badge": _empty_badge()}
-    return {
-        "client_messages_badge": _cached(
-            request,
-            "client_messages_badge",
-            lambda: get_client_messages_badge_state(user),
-        )
     }

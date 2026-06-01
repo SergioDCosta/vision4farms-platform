@@ -3,22 +3,23 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.http import HttpResponse
-from django.test import RequestFactory, SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from apps.accounts.models import AccountStatus, UserRole
+from apps.alerts.context_processors import client_alerts_sidebar_badge
 from apps.common.audit import log_audit_event
-from apps.common.context_processors import (
-    admin_support_sidebar_badge,
-    client_alerts_sidebar_badge,
-    topbar_user_profile,
-)
+from apps.common.context_processors import topbar_user_profile
+from apps.common.dates import parse_session_datetime
 from apps.common.decorators import admin_required, client_only_required, login_required
 from apps.common.formatting import format_quantity
-from apps.common.htmx import with_htmx_toast, with_htmx_trigger
+from apps.common.htmx import is_htmx_request, with_htmx_toast, with_htmx_trigger
 from apps.common.redirects import get_safe_next_url
 from apps.common.session import resolve_active_session_user
 from apps.common.templatetags.quantity import quantity
+from apps.common.urls import build_public_absolute_url
+from apps.messaging.context_processors import client_messages_sidebar_badge
 from apps.notifications_app.services import _normalize_quantity_text
+from apps.support.context_processors import admin_support_sidebar_badge
 
 
 class QuantityFormattingTests(SimpleTestCase):
@@ -133,6 +134,17 @@ class CommonDecoratorTests(SimpleTestCase):
 
 
 class HtmxTests(SimpleTestCase):
+    def test_is_htmx_request_accepts_middleware_attribute(self):
+        request = RequestFactory().get("/")
+        request.htmx = True
+
+        self.assertTrue(is_htmx_request(request))
+
+    def test_is_htmx_request_accepts_header(self):
+        request = RequestFactory().get("/", HTTP_HX_REQUEST="true")
+
+        self.assertTrue(is_htmx_request(request))
+
     def test_with_htmx_trigger_preserves_existing_trigger_payload(self):
         response = HttpResponse("ok")
 
@@ -169,11 +181,27 @@ class SafeRedirectTests(SimpleTestCase):
         self.assertEqual(get_safe_next_url(request, "https://evil.example/phish"), "")
 
 
+class CommonUrlTests(SimpleTestCase):
+    @override_settings(APP_BASE_URL="app.example.com")
+    def test_build_public_absolute_url_uses_configured_app_base_url(self):
+        request = RequestFactory().get("/", HTTP_HOST="testserver")
+
+        self.assertEqual(
+            build_public_absolute_url(request, "/login/"),
+            "https://app.example.com/login/",
+        )
+
+
+class CommonDateTests(SimpleTestCase):
+    def test_parse_session_datetime_returns_none_for_invalid_value(self):
+        self.assertIsNone(parse_session_datetime("not-a-date"))
+
+
 class CommonContextProcessorTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
-    @patch("apps.common.context_processors.get_client_alerts_badge_state")
+    @patch("apps.alerts.context_processors.get_client_alerts_badge_state")
     def test_client_alerts_badge_does_not_call_service_for_admin(self, badge_mock):
         request = self.factory.get("/")
         request.current_user = SimpleNamespace(role=UserRole.ADMIN)
@@ -183,7 +211,7 @@ class CommonContextProcessorTests(SimpleTestCase):
         self.assertEqual(result["client_alerts_badge"], {"visible": False, "count": 0, "tone": "orange"})
         badge_mock.assert_not_called()
 
-    @patch("apps.common.context_processors.get_admin_support_badge_state")
+    @patch("apps.support.context_processors.get_admin_support_badge_state")
     def test_admin_support_badge_is_cached_per_request(self, badge_mock):
         request = self.factory.get("/")
         request.current_user = SimpleNamespace(role=UserRole.ADMIN)
@@ -194,6 +222,18 @@ class CommonContextProcessorTests(SimpleTestCase):
 
         self.assertEqual(first, second)
         badge_mock.assert_called_once_with(request)
+
+    @patch("apps.messaging.context_processors.get_client_messages_badge_state")
+    def test_client_messages_badge_is_cached_per_request(self, badge_mock):
+        request = self.factory.get("/")
+        request.current_user = SimpleNamespace(role=UserRole.CLIENTE)
+        badge_mock.return_value = {"visible": True, "count": 3, "tone": "orange"}
+
+        first = client_messages_sidebar_badge(request)
+        second = client_messages_sidebar_badge(request)
+
+        self.assertEqual(first, second)
+        badge_mock.assert_called_once_with(request.current_user)
 
     @patch("apps.common.context_processors.UserPreference.objects")
     def test_topbar_avatar_initials_use_first_and_last_name(self, preference_manager_mock):
