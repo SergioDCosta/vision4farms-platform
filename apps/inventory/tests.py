@@ -16,6 +16,7 @@ from apps.inventory.services import (
     calculate_inventory_commitment_state,
     create_custom_product_for_producer,
     get_listings_blocking_stock_decrease,
+    get_stock_activity_feed,
     get_stock_state,
     producer_has_active_inventory_products,
     reduce_listings_to_fit_stock,
@@ -44,9 +45,9 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
     def test_custom_product_form_does_not_expose_unit(self):
         self.assertNotIn("unit", CreateCustomProductForm().fields)
 
-    @patch("apps.inventory.services._ensure_stock_for_product")
-    @patch("apps.inventory.services.ProducerProduct")
-    @patch("apps.inventory.services.get_or_create_product_for_inventory")
+    @patch("apps.inventory.products._ensure_stock_for_product")
+    @patch("apps.inventory.products.ProducerProduct")
+    @patch("apps.inventory.products.get_or_create_product_for_inventory")
     def test_custom_product_uses_catalog_service_and_creates_link(
         self,
         get_or_create_product_mock,
@@ -87,7 +88,7 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
         producer_product_model_mock.objects.get_or_create.assert_called_once()
         ensure_stock_mock.assert_called_once()
 
-    @patch("apps.inventory.services.get_or_create_product_for_inventory")
+    @patch("apps.inventory.products.get_or_create_product_for_inventory")
     def test_custom_product_preserves_catalog_validation_message(self, get_or_create_product_mock):
         get_or_create_product_mock.side_effect = CatalogValidationError(
             "name",
@@ -104,7 +105,7 @@ class InventoryCatalogIntegrationTests(SimpleTestCase):
                 user=SimpleNamespace(id="user-1"),
             )
 
-    @patch("apps.inventory.services.ProducerProduct")
+    @patch("apps.inventory.products.ProducerProduct")
     def test_active_inventory_product_flag_uses_active_producer_products(self, producer_product_mock):
         filter_mock = producer_product_mock.objects.filter
         filter_mock.return_value.exists.return_value = True
@@ -136,6 +137,7 @@ class InventoryStockStateTests(SimpleTestCase):
         )
 
         self.assertEqual(get_stock_state(stock)["key"], "critical")
+
 
     @patch("apps.needs.services.calculate_external_demand_plan")
     def test_commitment_state_uses_forecast_cover_before_deadline(self, plan_mock):
@@ -227,6 +229,40 @@ class InventoryStockStateTests(SimpleTestCase):
 
         self.assertFalse(commitment_state["has_external_demands"])
         self.assertEqual(commitment_state["state_key"], "normal")
+
+
+class InventoryStockActivityFeedTests(SimpleTestCase):
+    @patch("apps.inventory.stock_adjustments.OrderStatusHistory.objects")
+    @patch("apps.inventory.stock_adjustments.Order.objects")
+    @patch("apps.inventory.stock_adjustments.StockMovement.objects")
+    def test_formats_stock_movement_impact_after_service_split(
+        self,
+        movement_objects_mock,
+        order_objects_mock,
+        history_objects_mock,
+    ):
+        movement = SimpleNamespace(
+            reference_type="MANUAL",
+            reference_id=None,
+            notes="Entrada manual",
+            quantity_delta=Decimal("2.500"),
+            created_at=timezone.now(),
+            performed_by=None,
+            get_movement_type_display=lambda: "Importação",
+        )
+        movement_objects_mock.filter.return_value.select_related.return_value.order_by.return_value.__getitem__.return_value = [movement]
+        order_objects_mock.filter.return_value.only.return_value = []
+        history_objects_mock.filter.return_value.select_related.return_value.prefetch_related.return_value.order_by.return_value = []
+        stock = SimpleNamespace(
+            producer=SimpleNamespace(id="producer-1"),
+            product=SimpleNamespace(id="product-1", unit="kg"),
+        )
+
+        feed = get_stock_activity_feed(stock)
+
+        self.assertEqual(len(feed), 1)
+        self.assertEqual(feed[0]["impact_label"], "+2.5 kg")
+        self.assertEqual(feed[0]["source"], "movement")
 
 
 class InventoryStockFormTests(SimpleTestCase):
@@ -381,7 +417,7 @@ class ListingsBlockingStockDecreaseTests(SimpleTestCase):
             product=SimpleNamespace(name="Batata", unit="kg"),
         )
 
-    @patch("apps.inventory.services.MarketplaceListing")
+    @patch("apps.marketplace.reconciliation.MarketplaceListing")
     def test_deficit_when_listings_exceed_new_quantity(self, listing_model):
         stock = self._make_stock(current=Decimal("150"), reserved=Decimal("0"))
         listings = [
@@ -397,7 +433,7 @@ class ListingsBlockingStockDecreaseTests(SimpleTestCase):
         self.assertEqual(blocking["deficit"], Decimal("40.000"))
         self.assertEqual(len(blocking["affected_listings"]), 2)
 
-    @patch("apps.inventory.services.MarketplaceListing")
+    @patch("apps.marketplace.reconciliation.MarketplaceListing")
     def test_no_deficit_when_new_quantity_covers_published(self, listing_model):
         stock = self._make_stock(current=Decimal("150"), reserved=Decimal("10"))
         listings = [self._make_listing("l1", Decimal("80"))]
@@ -408,7 +444,7 @@ class ListingsBlockingStockDecreaseTests(SimpleTestCase):
         self.assertEqual(blocking["deficit"], Decimal("0.000"))
         self.assertEqual(blocking["min_required"], Decimal("90.000"))
 
-    @patch("apps.inventory.services.MarketplaceListing")
+    @patch("apps.marketplace.reconciliation.MarketplaceListing")
     def test_deficit_considers_reserved_quantity(self, listing_model):
         stock = self._make_stock(current=Decimal("100"), reserved=Decimal("60"))
         listings = [self._make_listing("l1", Decimal("30"))]
@@ -439,10 +475,10 @@ class ReduceListingsToFitStockTests(SimpleTestCase):
             product=SimpleNamespace(name="Batata", unit="kg"),
         )
 
-    @patch("apps.inventory.services.log_audit_event")
-    @patch("apps.marketplace.services.listing_audit_values", return_value={})
-    @patch("apps.marketplace.services.retire_listing")
-    @patch("apps.inventory.services.MarketplaceListing")
+    @patch("apps.marketplace.reconciliation.log_audit_event")
+    @patch("apps.marketplace.reconciliation.listing_audit_values", return_value={})
+    @patch("apps.marketplace.reconciliation.retire_listing")
+    @patch("apps.marketplace.reconciliation.MarketplaceListing")
     def test_proportional_distributes_remaining_capacity(
         self, listing_model, retire_mock, audit_values_mock, audit_event_mock
     ):
@@ -464,10 +500,10 @@ class ReduceListingsToFitStockTests(SimpleTestCase):
         self.assertEqual(l2.quantity_available, Decimal("10.000"))
         retire_mock.assert_not_called()
 
-    @patch("apps.inventory.services.log_audit_event")
-    @patch("apps.marketplace.services.listing_audit_values", return_value={})
-    @patch("apps.marketplace.services.retire_listing")
-    @patch("apps.inventory.services.MarketplaceListing")
+    @patch("apps.marketplace.reconciliation.log_audit_event")
+    @patch("apps.marketplace.reconciliation.listing_audit_values", return_value={})
+    @patch("apps.marketplace.reconciliation.retire_listing")
+    @patch("apps.marketplace.reconciliation.MarketplaceListing")
     def test_cancel_selected_retires_chosen_listings(
         self, listing_model, retire_mock, audit_values_mock, audit_event_mock
     ):
@@ -491,7 +527,7 @@ class ReduceListingsToFitStockTests(SimpleTestCase):
 
     def test_unknown_mode_raises_value_error(self):
         stock = self._make_stock()
-        with patch("apps.inventory.services.MarketplaceListing"):
+        with patch("apps.marketplace.reconciliation.MarketplaceListing"):
             with self.assertRaises(ValueError):
                 reduce_listings_to_fit_stock(
                     stock, Decimal("50"), mode="bogus", acting_user=None

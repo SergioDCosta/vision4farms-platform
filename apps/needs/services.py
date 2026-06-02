@@ -7,10 +7,18 @@ from apps.needs.constants import (
     EXTERNAL_DEMAND_ACTIVE_STATUSES,
     EXTERNAL_DEMAND_EDITABLE_STATUSES,
     EXTERNAL_DEMAND_NOTES_MAX_LENGTH,
+    EXTERNAL_DEMAND_SEARCH_QUERY_MAX_LENGTH,
     NEED_NOTES_MAX_LENGTH,
     NEED_RESPONSE_NOTES_MAX_LENGTH,
+    NEEDS_SEARCH_QUERY_MAX_LENGTH,
     PLANNED_NEED_ORDER_STATUSES,
     PUBLIC_OFFERED_ORDER_STATUSES,
+)
+from apps.needs.audit import (
+    audit_quantity as _audit_quantity,
+    external_demand_audit_values as _external_demand_audit_values,
+    need_audit_values as _need_audit_values,
+    need_marketplace_audit_values as _need_marketplace_audit_values,
 )
 from apps.needs.coverage import (
     calculate_need_coverage,
@@ -20,6 +28,7 @@ from apps.needs.coverage import (
 )
 from apps.needs.exceptions import DuplicateActiveNeedError
 from apps.needs.external_demands import (
+    _customer_demand_need_external_id,
     _forecast_active_listings_quantity,
     _forecast_available_date,
     _forecast_available_quantity,

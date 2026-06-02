@@ -1,0 +1,2 @@
+class MarketplaceServiceError(Exception):
+    pass

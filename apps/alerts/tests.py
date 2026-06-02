@@ -69,7 +69,7 @@ class NeedResponseAlertCandidateTests(SimpleTestCase):
             .distinct.return_value
         ) = [listing]
 
-        with patch("apps.alerts.services.MarketplaceListing.objects", manager):
+        with patch("apps.alerts.candidates.MarketplaceListing.objects", manager):
             rows = _need_response_candidates(owner)
 
         self.assertEqual(len(rows), 1)
@@ -91,8 +91,8 @@ class NeedResponseAlertCandidateTests(SimpleTestCase):
 
 
 class AlertTemporalStockCandidatesTests(SimpleTestCase):
-    @patch("apps.alerts.services.calculate_inventory_commitment_state")
-    @patch("apps.alerts.services.Stock")
+    @patch("apps.alerts.candidates.calculate_inventory_commitment_state")
+    @patch("apps.alerts.candidates.Stock")
     def test_no_critical_alert_when_forecast_covers_external_demands(self, stock_model_mock, commitment_mock):
         product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
         stock = SimpleNamespace(product=product, product_id="product-1")
@@ -109,8 +109,8 @@ class AlertTemporalStockCandidatesTests(SimpleTestCase):
 
         self.assertEqual(rows, [])
 
-    @patch("apps.alerts.services.calculate_inventory_commitment_state")
-    @patch("apps.alerts.services.Stock")
+    @patch("apps.alerts.candidates.calculate_inventory_commitment_state")
+    @patch("apps.alerts.candidates.Stock")
     def test_critical_alert_uses_temporal_deficit(self, stock_model_mock, commitment_mock):
         product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
         stock = SimpleNamespace(product=product, product_id="product-1")
@@ -131,9 +131,9 @@ class AlertTemporalStockCandidatesTests(SimpleTestCase):
         self.assertIn("até", rows[0]["description"])
         self.assertEqual(rows[0]["payload"]["max_deficit"], "125.000")
 
-    @patch("apps.alerts.services.get_max_publishable_quantity")
-    @patch("apps.alerts.services.calculate_inventory_commitment_state")
-    @patch("apps.alerts.services.Stock")
+    @patch("apps.alerts.candidates.get_max_publishable_quantity")
+    @patch("apps.alerts.candidates.calculate_inventory_commitment_state")
+    @patch("apps.alerts.candidates.Stock")
     def test_surplus_alert_uses_quantity_still_publishable_in_marketplace(
         self,
         stock_model_mock,
@@ -158,7 +158,7 @@ class AlertTemporalStockCandidatesTests(SimpleTestCase):
         self.assertEqual(rows[0]["payload"]["action_label"], "Publicar no marketplace")
         publishable_mock.assert_called_once_with(stock)
 
-    @patch("apps.alerts.services.get_max_publishable_quantity")
+    @patch("apps.alerts.candidates.get_max_publishable_quantity")
     def test_surplus_with_external_demands_reuses_cached_temporal_margin(self, publishable_mock):
         product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
         stock = SimpleNamespace(product=product, product_id="product-1")
@@ -178,9 +178,9 @@ class AlertTemporalStockCandidatesTests(SimpleTestCase):
         self.assertEqual(rows[0]["payload"]["publishable_quantity"], "75.000")
         publishable_mock.assert_not_called()
 
-    @patch("apps.alerts.services.logger")
-    @patch("apps.alerts.services.calculate_inventory_commitment_state")
-    @patch("apps.alerts.services.Stock")
+    @patch("apps.alerts.candidates.logger")
+    @patch("apps.alerts.candidates.calculate_inventory_commitment_state")
+    @patch("apps.alerts.candidates.Stock")
     def test_invalid_stock_state_does_not_break_other_alert_candidates(
         self,
         stock_model_mock,
@@ -207,17 +207,17 @@ class AlertTemporalStockCandidatesTests(SimpleTestCase):
         self.assertEqual(rows, [(valid_stock, valid_state)])
         logger_mock.exception.assert_called_once()
 
-    @patch("apps.alerts.services._listing_expiring_candidates", return_value=[])
-    @patch("apps.alerts.services._order_delivery_overdue_candidates", return_value=[])
-    @patch("apps.alerts.services._order_confirmation_candidates", return_value=[])
-    @patch("apps.alerts.services._sell_suggestion_candidates", return_value=[])
-    @patch("apps.alerts.services._buy_opportunity_candidates", return_value=[])
-    @patch("apps.alerts.services._need_deadline_candidates", return_value=[])
-    @patch("apps.alerts.services._need_response_candidates", return_value=[])
-    @patch("apps.alerts.services._need_candidates", return_value=[])
-    @patch("apps.alerts.services._surplus_candidates", return_value=[])
-    @patch("apps.alerts.services._critical_stock_candidates", return_value=[])
-    @patch("apps.alerts.services._stock_commitment_rows")
+    @patch("apps.alerts.candidates._listing_expiring_candidates", return_value=[])
+    @patch("apps.alerts.candidates._order_delivery_overdue_candidates", return_value=[])
+    @patch("apps.alerts.candidates._order_confirmation_candidates", return_value=[])
+    @patch("apps.alerts.candidates._sell_suggestion_candidates", return_value=[])
+    @patch("apps.alerts.candidates._buy_opportunity_candidates", return_value=[])
+    @patch("apps.alerts.candidates._need_deadline_candidates", return_value=[])
+    @patch("apps.alerts.candidates._need_response_candidates", return_value=[])
+    @patch("apps.alerts.candidates._need_candidates", return_value=[])
+    @patch("apps.alerts.candidates._surplus_candidates", return_value=[])
+    @patch("apps.alerts.candidates._critical_stock_candidates", return_value=[])
+    @patch("apps.alerts.candidates._stock_commitment_rows")
     def test_candidate_rows_share_one_stock_calculation_for_critical_and_surplus(
         self,
         commitment_rows_mock,
@@ -238,9 +238,9 @@ class AlertTemporalStockCandidatesTests(SimpleTestCase):
 
 
 class ManagedNeedAlertCandidateTests(SimpleTestCase):
-    @patch("apps.alerts.services.calculate_inventory_commitment_state")
-    @patch("apps.alerts.services.calculate_need_coverage")
-    @patch("apps.alerts.services.Need")
+    @patch("apps.alerts.candidates.calculate_inventory_commitment_state")
+    @patch("apps.alerts.candidates.calculate_need_coverage")
+    @patch("apps.alerts.candidates.Need")
     def test_customer_demand_need_does_not_duplicate_temporal_deficit_alert(
         self,
         need_model_mock,
@@ -282,10 +282,10 @@ class ManagedAlertSyncLifecycleTests(SimpleTestCase):
         manager.objects.select_for_update.return_value.filter.return_value.order_by.side_effect = list(rows)
         return manager
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
-    @patch("apps.alerts.services._candidate_rows", return_value=[])
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.sync._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.sync.record_alert_event")
+    @patch("apps.alerts.sync._candidate_rows", return_value=[])
+    @patch("apps.alerts.sync.Alert")
     def test_critical_alert_is_resolved_when_forecast_or_fulfillment_removes_deficit(
         self,
         alert_model_mock,
@@ -312,9 +312,9 @@ class ManagedAlertSyncLifecycleTests(SimpleTestCase):
         record_event_mock.assert_called_once()
         queue_mock.assert_called_once_with(user_id="user-1")
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services._candidate_rows")
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.sync._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.sync._candidate_rows")
+    @patch("apps.alerts.sync.Alert")
     def test_manually_resolved_managed_alert_does_not_reappear_while_condition_persists(
         self,
         alert_model_mock,
@@ -334,9 +334,9 @@ class ManagedAlertSyncLifecycleTests(SimpleTestCase):
         alert_model_mock.objects.create.assert_not_called()
         queue_mock.assert_not_called()
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services._candidate_rows")
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.sync._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.sync._candidate_rows")
+    @patch("apps.alerts.sync.Alert")
     def test_snoozed_alert_does_not_reappear_before_snooze_expires(
         self,
         alert_model_mock,
@@ -358,8 +358,8 @@ class ManagedAlertSyncLifecycleTests(SimpleTestCase):
 
 
 class ClientAlertsBadgeStateTests(SimpleTestCase):
-    @patch("apps.alerts.services.Alert")
-    @patch("apps.alerts.services.ProducerProfile")
+    @patch("apps.alerts.badges.Alert")
+    @patch("apps.alerts.badges.ProducerProfile")
     def test_returns_red_when_has_unseen_active_alerts(self, producer_model_mock, alert_model_mock):
         now = timezone.now()
         request = SimpleNamespace(
@@ -382,8 +382,8 @@ class ClientAlertsBadgeStateTests(SimpleTestCase):
         state = get_client_alerts_badge_state(request)
         self.assertEqual(state, {"visible": True, "count": 4, "tone": "red"})
 
-    @patch("apps.alerts.services.Alert")
-    @patch("apps.alerts.services.ProducerProfile")
+    @patch("apps.alerts.badges.Alert")
+    @patch("apps.alerts.badges.ProducerProfile")
     def test_returns_orange_when_alerts_are_seen(self, producer_model_mock, alert_model_mock):
         now = timezone.now()
         request = SimpleNamespace(
@@ -419,9 +419,9 @@ class ClientAlertsBadgeStateTests(SimpleTestCase):
 class ResolveAlertSemanticsTests(SimpleTestCase):
     databases = {"default"}
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
-    @patch("apps.alerts.services.timezone")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.record_alert_event")
+    @patch("apps.alerts.actions.timezone")
     def test_managed_alert_keeps_cleared_at_null(self, timezone_mock, record_event_mock, queue_mock):
         now = timezone.now()
         timezone_mock.now.return_value = now
@@ -444,9 +444,9 @@ class ResolveAlertSemanticsTests(SimpleTestCase):
         record_event_mock.assert_called_once()
         queue_mock.assert_called_once_with(user_id="user-1")
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
-    @patch("apps.alerts.services.timezone")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.record_alert_event")
+    @patch("apps.alerts.actions.timezone")
     def test_non_managed_alert_sets_cleared_at_now(self, timezone_mock, record_event_mock, queue_mock):
         now = timezone.now()
         timezone_mock.now.return_value = now
@@ -469,8 +469,8 @@ class ResolveAlertSemanticsTests(SimpleTestCase):
         record_event_mock.assert_called_once()
         queue_mock.assert_called_once_with(user_id="user-2")
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.record_alert_event")
     def test_already_resolved_returns_false_without_side_effects(self, record_event_mock, queue_mock):
         alert = SimpleNamespace(
             status=AlertStatus.RESOLVED,
@@ -487,8 +487,8 @@ class ResolveAlertSemanticsTests(SimpleTestCase):
         record_event_mock.assert_not_called()
         queue_mock.assert_not_called()
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.record_alert_event")
     def test_ignored_alert_cannot_be_resolved_manually(self, record_event_mock, queue_mock):
         alert = SimpleNamespace(
             status=AlertStatus.IGNORED,
@@ -505,8 +505,8 @@ class ResolveAlertSemanticsTests(SimpleTestCase):
         record_event_mock.assert_not_called()
         queue_mock.assert_not_called()
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.record_alert_event")
     def test_cleared_alert_cannot_be_resolved_manually(self, record_event_mock, queue_mock):
         alert = SimpleNamespace(
             status=AlertStatus.CLEARED,
@@ -527,8 +527,8 @@ class ResolveAlertSemanticsTests(SimpleTestCase):
 class IgnoreAlertSemanticsTests(SimpleTestCase):
     databases = {"default"}
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.record_alert_event")
     def test_resolved_alert_cannot_be_ignored_manually(self, record_event_mock, queue_mock):
         alert = SimpleNamespace(
             status=AlertStatus.RESOLVED,
@@ -547,8 +547,8 @@ class IgnoreAlertSemanticsTests(SimpleTestCase):
         record_event_mock.assert_not_called()
         queue_mock.assert_not_called()
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.record_alert_event")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.record_alert_event")
     def test_cleared_alert_cannot_be_ignored_manually(self, record_event_mock, queue_mock):
         alert = SimpleNamespace(
             status=AlertStatus.CLEARED,
@@ -569,7 +569,7 @@ class IgnoreAlertSemanticsTests(SimpleTestCase):
 
 
 class AlertActionsFallbackTests(SimpleTestCase):
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.queries.Alert")
     def test_order_alert_fallback_actions(self, alert_model_mock):
         alert = SimpleNamespace(
             type=AlertType.ORDER_CONFIRMED,
@@ -586,7 +586,7 @@ class AlertActionsFallbackTests(SimpleTestCase):
         self.assertEqual(alert.secondary_action_url, "/mensagens/encomenda/ord-1/iniciar/")
         self.assertEqual(alert.secondary_action_label, "Ir para conversa")
 
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.queries.Alert")
     def test_message_alert_fallback_primary_action_label(self, alert_model_mock):
         alert = SimpleNamespace(
             type=AlertType.MESSAGE_UNREAD,
@@ -608,7 +608,7 @@ class AlertFilterTests(SimpleTestCase):
         self.assertEqual(normalize_alert_type(""), "")
         self.assertEqual(normalize_alert_type(AlertType.CRITICAL_STOCK), AlertType.CRITICAL_STOCK)
 
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.queries.Alert")
     def test_list_alerts_for_producer_filters_by_valid_type(self, alert_model_mock):
         alert = SimpleNamespace(
             type=AlertType.CRITICAL_STOCK,
@@ -631,7 +631,7 @@ class AlertFilterTests(SimpleTestCase):
         base_qs.filter.assert_called_once_with(type=AlertType.CRITICAL_STOCK)
         self.assertEqual(alerts, [alert])
 
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.queries.Alert")
     def test_list_alerts_for_producer_ignores_invalid_type(self, alert_model_mock):
         alert = SimpleNamespace(
             type=AlertType.ORDER_CONFIRMED,
@@ -656,9 +656,9 @@ class AlertFilterTests(SimpleTestCase):
 class IgnoreAllAlertFilterTests(SimpleTestCase):
     databases = {"default"}
 
-    @patch("apps.alerts.services._queue_alerts_badge_changed_for_user")
-    @patch("apps.alerts.services.ignore_alert")
-    @patch("apps.alerts.services.Alert")
+    @patch("apps.alerts.actions._queue_alerts_badge_changed_for_user")
+    @patch("apps.alerts.actions.ignore_alert")
+    @patch("apps.alerts.actions.Alert")
     def test_ignore_all_active_alerts_filters_by_type(self, alert_model_mock, ignore_alert_mock, queue_mock):
         user = SimpleNamespace(id="user-1")
         alert = SimpleNamespace(id="alert-1")
@@ -688,7 +688,7 @@ class IgnoreAllAlertFilterTests(SimpleTestCase):
 
 
 class OperationalAlertsJobTests(SimpleTestCase):
-    @patch("apps.alerts.services.ProducerProfile")
+    @patch("apps.alerts.sync.ProducerProfile")
     def test_job_dry_run_does_not_apply_changes(self, producer_model_mock):
         producer_qs = MagicMock()
         producer_qs.order_by.return_value = [SimpleNamespace(id="producer-1")]
@@ -700,11 +700,11 @@ class OperationalAlertsJobTests(SimpleTestCase):
         self.assertEqual(summary["producers_seen"], 1)
         self.assertEqual(summary["producers_synced"], 0)
 
-    @patch("apps.alerts.services.sync_alerts_for_producer")
-    @patch("apps.alerts.services.expire_due_alerts", return_value=1)
-    @patch("apps.alerts.services.expire_ignored_alerts_for_producer", return_value=2)
+    @patch("apps.alerts.sync.sync_alerts_for_producer")
+    @patch("apps.alerts.sync.expire_due_alerts", return_value=1)
+    @patch("apps.alerts.sync.expire_ignored_alerts_for_producer", return_value=2)
     @patch("apps.marketplace.services.expire_due_active_listings", return_value=3)
-    @patch("apps.alerts.services.ProducerProfile")
+    @patch("apps.alerts.sync.ProducerProfile")
     def test_job_apply_runs_periodic_tasks(
         self,
         producer_model_mock,

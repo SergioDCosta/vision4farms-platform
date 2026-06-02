@@ -1,10 +1,13 @@
 from decimal import Decimal
-from datetime import timedelta
 
 from django import forms
 from django.utils import timezone
 
 from apps.inventory.models import ProductionForecast
+from apps.marketplace.form_validation import (
+    apply_delivery_validation,
+    resolve_expiration,
+)
 from apps.marketplace.models import DeliveryMode, ListingStatus
 from apps.marketplace.services import (
     LISTING_SOURCE_FORECAST,
@@ -244,12 +247,6 @@ class MarketplacePublishForm(forms.Form):
         product = cleaned_data.get("product")
         forecast = cleaned_data.get("forecast")
         quantity = cleaned_data.get("quantity")
-        delivery_mode = cleaned_data.get("delivery_mode")
-        delivery_radius_km = cleaned_data.get("delivery_radius_km")
-        status = cleaned_data.get("status")
-        expiration_mode = cleaned_data.get("expiration_mode") or self.EXPIRY_MODE_NONE
-        expires_at = cleaned_data.get("expires_at")
-        now = timezone.now()
 
         if self.producer and product and quantity:
             if listing_source == self.LISTING_SOURCE_STOCK:
@@ -288,29 +285,12 @@ class MarketplacePublishForm(forms.Form):
             else:
                 self.add_error("listing_source", "Origem da oferta inválida.")
 
-        if delivery_mode in {DeliveryMode.DELIVERY, DeliveryMode.BOTH}:
-            if not delivery_radius_km:
-                self.add_error("delivery_radius_km", "Indica o raio de entrega.")
-        else:
-            cleaned_data["delivery_radius_km"] = None
-            cleaned_data["delivery_fee"] = None
-
-        expires_at_final = None
-        if expiration_mode == self.EXPIRY_MODE_DATE:
-            if not expires_at:
-                self.add_error("expires_at", "Indica a data/hora de expiração.")
-            else:
-                if timezone.is_naive(expires_at):
-                    expires_at = timezone.make_aware(expires_at, timezone.get_current_timezone())
-                expires_at_final = expires_at
-        elif expiration_mode != self.EXPIRY_MODE_NONE:
-            self.add_error("expiration_mode", "Modo de expiração inválido.")
-
-        if status == ListingStatus.ACTIVE and expires_at_final and expires_at_final <= now:
-            self.add_error("expires_at", "Para manter ativo, a expiração tem de ser no futuro.")
-
-        if status == ListingStatus.EXPIRED and not expires_at_final:
-            expires_at_final = now
+        apply_delivery_validation(self, cleaned_data)
+        expires_at_final = resolve_expiration(
+            self,
+            cleaned_data,
+            reject_unknown_mode=True,
+        )
 
         if listing_source == self.LISTING_SOURCE_FORECAST and forecast and not self.errors.get("forecast"):
             cleaned_data["product"] = forecast.product
@@ -486,13 +466,6 @@ class MarketplaceEditForm(forms.Form):
         cleaned_data = super().clean()
 
         quantity_total = cleaned_data.get("quantity_total")
-        status = cleaned_data.get("status")
-        expiration_mode = cleaned_data.get("expiration_mode") or self.EXPIRY_MODE_NONE
-        expires_in = cleaned_data.get("expires_in")
-        expires_at = cleaned_data.get("expires_at")
-        delivery_mode = cleaned_data.get("delivery_mode")
-        delivery_radius_km = cleaned_data.get("delivery_radius_km")
-        now = timezone.now()
 
         if self.listing:
             has_stock_source = bool(self.listing.stock_id)
@@ -527,32 +500,12 @@ class MarketplaceEditForm(forms.Form):
                     f"A quantidade excede o máximo disponível para esta origem ({max_allowed} {source_unit}).",
                 )
 
-        if delivery_mode in {DeliveryMode.DELIVERY, DeliveryMode.BOTH}:
-            if not delivery_radius_km:
-                self.add_error("delivery_radius_km", "Indica o raio de entrega.")
-        else:
-            cleaned_data["delivery_radius_km"] = None
-            cleaned_data["delivery_fee"] = None
-
-        expires_at_final = None
-        if expiration_mode == self.EXPIRY_MODE_TIMER:
-            if expires_in is None:
-                self.add_error("expires_in", "Indica a duração entre 6 e 720 horas.")
-            else:
-                expires_at_final = now + timedelta(hours=expires_in)
-        elif expiration_mode == self.EXPIRY_MODE_DATE:
-            if not expires_at:
-                self.add_error("expires_at", "Indica a data/hora de expiração.")
-            else:
-                if timezone.is_naive(expires_at):
-                    expires_at = timezone.make_aware(expires_at, timezone.get_current_timezone())
-                expires_at_final = expires_at
-
-        if status == ListingStatus.ACTIVE and expires_at_final and expires_at_final <= now:
-            self.add_error("expires_at", "Para manter ativo, a expiração tem de ser no futuro.")
-
-        if status == ListingStatus.EXPIRED and not expires_at_final:
-            expires_at_final = now
+        apply_delivery_validation(self, cleaned_data)
+        expires_at_final = resolve_expiration(
+            self,
+            cleaned_data,
+            allow_timer=True,
+        )
 
         cleaned_data["expires_at_final"] = expires_at_final
         return cleaned_data

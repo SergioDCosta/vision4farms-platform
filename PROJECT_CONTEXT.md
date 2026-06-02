@@ -1,6 +1,6 @@
 # VISION4FARMS - Contexto Atual do Projeto
 
-Última revisão: 2026-05-28.
+Última revisão: 2026-06-02.
 
 Este ficheiro serve como mapa funcional e técnico atual da aplicação. O objetivo é ajudar a explicar o projeto em relatório, manter o contexto entre sessões de desenvolvimento e evitar decisões baseadas em informação desatualizada.
 
@@ -92,7 +92,7 @@ Email atual:
 
 - `EMAIL_PROVIDER=resend` ativa `anymail.backends.resend.EmailBackend`;
 - `RESEND_API_KEY` é obrigatória em produção;
-- `DEFAULT_FROM_EMAIL` atual: `VISION4FARMS <onboarding@resend.dev>`;
+- `DEFAULT_FROM_EMAIL` tem default `VISION4FARMS <no-reply@farm.vision4you.pt>` e pode ser substituído por variável de ambiente;
 - `DEFAULT_REPLY_TO_EMAIL` e `SUPPORT_CONTACT_EMAIL` apontam para o email de suporte da empresa;
 - SMTP só é usado quando `EMAIL_PROVIDER=smtp`.
 
@@ -113,6 +113,13 @@ Email atual:
 - `dashboard`: painel do produtor e consola admin.
 - `common`: helpers transversais de sessão, permissões, auditoria, redirects, HTMX, contexto global e formatação.
 - `integrations`: integrações externas/serviços auxiliares.
+
+Organização interna dos serviços operacionais:
+
+- apps com regras extensas foram separadas por responsabilidade sem alterar os imports públicos existentes;
+- `apps.inventory.services`, `apps.marketplace.services`, `apps.needs.services`, `apps.orders.services` e `apps.alerts.services` são fachadas de compatibilidade: continuam a expor as funções usadas pelas views e por outras apps, mas delegam a implementação a módulos menores;
+- o objetivo é permitir evolução isolada de cada regra, reduzir ficheiros monolíticos e evitar dependências privadas entre apps;
+- alterações de stock que afetam anúncios passam pela API pública `apps.marketplace.reconciliation.reconcile_listings_for_stock_reduction`.
 
 ## 4) Layout Global e Navegação
 
@@ -198,6 +205,12 @@ Email de segurança de password alterada:
 - formatação:
   - `format_quantity`;
   - filtro template `|quantity`;
+- datas:
+  - `parse_session_datetime` normaliza timestamps guardados na sessão;
+- media:
+  - `resolve_media_url` resolve URLs através de `default_storage` com fallback local seguro;
+- contexto:
+  - cache por request evita repetir consultas iguais em context processors;
 - context processors:
   - foto/avatar;
   - badges de alertas, mensagens e suporte admin.
@@ -358,6 +371,7 @@ Auditoria:
 Arquitetura do backoffice:
 
 - a interface de gestão vive atualmente sobretudo em `dashboard`, enquanto `support` mantém as ações admin próprias do domínio de suporte;
+- `apps.dashboard.services` está separado em `client_dashboard`, `weather`, `admin_metrics`, `admin_catalog`, `admin_users` e `admin_audit`;
 - as regras de negócio continuam nas apps responsáveis (`inventory`, `marketplace`, `needs`, `orders`, `support`), e o backoffice apenas consulta ou aciona serviços públicos desses domínios;
 - esta separação evita duplicar validações críticas no painel administrativo;
 - evolução futura possível: extrair rotas/templates de `/gestor/` para uma app `admin_panel` e extrair `AuditLog`, consulta/exportação e convenções de eventos para uma app `audit`;
@@ -422,7 +436,6 @@ Stock:
 - `available = current_quantity - reserved_quantity`;
 - no planeamento de pedidos externos, o stock imediatamente utilizável também desconta quantidades anunciadas em listings públicas `ACTIVE`/`RESERVED` ainda não ligadas a necessidades, evitando comprometer o mesmo stock duas vezes;
 - `safety_stock`: campo técnico mantido por compatibilidade, atualmente sincronizado com a soma dos pedidos externos em aberto do produtor/produto;
-- a BD de produção ainda contém `stocks.max_quantity` como coluna residual de uma iteração anterior; o modelo Django e a lógica funcional atual não utilizam esse campo;
 - na UI este valor aparece como "Compromissos externos" ou "Reservado para clientes externos";
 - quantidade vendável/publicável é calculada por margem temporal quando existem pedidos externos, não apenas por `available - safety_stock`.
 
@@ -467,20 +480,34 @@ Compras, vendas e produção:
 - produção/entradas usa movimentos positivos em `StockMovement`;
 - inclui métricas, rankings, históricos e gráficos Chart.js.
 
+Organização interna:
+
+- `apps.inventory.services`: fachada compatível para imports existentes;
+- `apps.inventory.constants`: constantes operacionais e labels de períodos;
+- `apps.inventory.utils`: normalização de quantidades, datas e percentagens;
+- `apps.inventory.audit`: snapshots e eventos de stock/previsão;
+- `apps.inventory.commitments`: cálculo central de cobertura temporal e estado visual do stock;
+- `apps.inventory.products`: associação de produtos, inicialização de stock e dashboard operacional;
+- `apps.inventory.forecasts`: criação, edição, remoção e assimilação de produção futura;
+- `apps.inventory.stock_adjustments`: movimentos, feed de atividade e atualização manual de stock;
+- `apps.inventory.reporting`: métricas, gráficos e exportação de compras/vendas/produção;
+- quando uma redução de stock pode deixar anúncios sem cobertura, `stock_adjustments` usa apenas a API pública de reconciliação do marketplace.
+
 ## 12) Marketplace
 
 Páginas:
 
 - `/marketplace/`;
 - `/marketplace/publicar/`;
-- `/marketplace/<uuid>/`;
-- rota própria para detalhe de anúncio do próprio produtor;
+- `/marketplace/anuncios/<uuid>/` para detalhe público;
+- `/marketplace/meus/<uuid>/` para detalhe do próprio produtor;
+- `/marketplace/<uuid>/` mantém compatibilidade e redireciona para o detalhe adequado;
 - rotas de edição/eliminação/gestão de anúncio próprio.
 
 Feed público:
 
-- mostra anúncios/ofertas de outros produtores e procuras agregadas de outros produtores;
-- não mostra anúncios do próprio produtor;
+- mostra anúncios/ofertas ativos, incluindo anúncios do próprio produtor, e procuras agregadas de outros produtores;
+- anúncios do próprio produtor aparecem com badge "O seu anúncio" e não podem ser comprados pelo próprio;
 - não mostra procuras do próprio produtor no feed geral;
 - filtros: pesquisa, categoria, origem, ordenação e "apenas disponíveis";
 - cards modernos com imagem, origem, estado, produtor, localização, quantidade, preço/kg, entrega e CTAs.
@@ -492,7 +519,7 @@ Tab "Meus anúncios":
 - ações do dono de procura: "Ver detalhes e propostas" (navega para `/necessidades/?need=<id>`) e "Retirar do marketplace";
 - a linha de contagem de resultados separa "X oferta(s) · Y procura(s)";
 - o contador do tab soma listings + procuras publicadas para o badge numérico;
-- não usa badge "meu anúncio" no feed público porque anúncios/procuras próprios já não aparecem ali.
+- o feed geral distingue anúncios próprios com badge e CTA de gestão; procuras próprias continuam concentradas neste tab.
 
 Tabs adicionais do marketplace:
 
@@ -521,7 +548,8 @@ Regras:
 - respostas a necessidades têm `need_id IS NOT NULL` e não aparecem no feed público;
 - publicar excedente usa quantidade vendável temporal calculada pelo inventário;
 - editar anúncio fechado é bloqueado;
-- eliminar fisicamente anúncio referenciado por recomendação/encomenda pode falhar por FK, por isso o fluxo deve preferir fechar/cancelar em vez de apagar quando já existe histórico relacionado.
+- remover anúncio usa retirada lógica (`CANCELLED`) para preservar histórico e evitar conflitos de FK;
+- reduções de stock usam `reconcile_listings_for_stock_reduction` com modos `inspect`, `proportional` ou `cancel_selected`.
 
 Detalhe de anúncio:
 
@@ -530,6 +558,21 @@ Detalhe de anúncio:
 - buybox tem botões de incremento/decremento e botão `Máx.` para comprar toda a quantidade disponível;
 - CTAs diferem entre anúncio próprio e anúncio de outro produtor.
 - compras a partir de anúncio usam bloqueios transacionais compatíveis com PostgreSQL, evitando `FOR UPDATE` em joins nullable.
+
+Organização interna:
+
+- `apps.marketplace.services`: fachada compatível para imports existentes;
+- `apps.marketplace.constants` e `apps.marketplace.exceptions`: valores e erro de domínio partilhados;
+- `apps.marketplace.utils`: quantidades e labels de produtor/entrega;
+- `apps.marketplace.audit`: snapshots de anúncios e propostas;
+- `apps.marketplace.availability`: origem exclusiva stock/previsão e quantidades publicáveis;
+- `apps.marketplace.queries`: querysets, filtros, ordenação e regras de visibilidade;
+- `apps.marketplace.commands`: criação, edição, expiração, retirada e reativação;
+- `apps.marketplace.reconciliation`: contrato público usado pelo inventário após reduções de stock;
+- `apps.marketplace.media`: URL, upload, remoção e crop de fotografias;
+- `apps.marketplace.presenters`: construção de contexto para index e detalhe;
+- `apps.marketplace.form_validation`: validação partilhada de entrega e expiração entre publicar/editar;
+- `apps.marketplace.views`: orquestra pedidos HTTP e mantém explícitas as verificações específicas de origem stock/previsão.
 
 ## 13) Needs
 
@@ -639,6 +682,17 @@ Publicação de needs no marketplace:
 - auto-retirar ocorre em dois cenários: (1) quando `required_quantity` ou `needed_by_date` muda ao recalcular pedidos externos (criação ou edição de pedido externo) — é mostrado um toast de aviso HTMX "Pedido atualizado. A procura no marketplace foi retirada porque a quantidade ou data mudou — republique se ainda quiser receber propostas."; (2) quando o status da need passa a `COVERED` por `recalculate_need_status` — silencioso, sem toast;
 - evento de auditoria `NEED_MARKETPLACE_UNPUBLISHED_AFTER_RECALCULATION` é registado em ambos os casos de auto-retirar;
 - toasts de confirmação HTMX são emitidos via `with_htmx_toast()` em `apps/common/htmx.py` que adiciona `HX-Trigger: {"app:toast": {...}}` ao response sem sobrescrever outros triggers — necessário porque swaps HTMX nunca re-executam `base.html` onde os `messages` Django seriam renderizados.
+
+Organização interna:
+
+- `apps.needs.services`: fachada compatível para imports existentes;
+- `apps.needs.external_demands`: pedidos externos, planeamento temporal e sincronização de stock/need agregada;
+- `apps.needs.coverage`: cálculo e atualização de cobertura;
+- `apps.needs.lifecycle`: criação, edição, publicação, retirada e ignore de necessidades;
+- `apps.needs.responses`: propostas privadas e respetivos estados;
+- `apps.needs.marketplace_queries`: leituras de procuras publicadas e quantidades oferecidas;
+- `apps.needs.presenters`: contextos das páginas e tabelas;
+- `apps.needs.audit`, `apps.needs.constants`, `apps.needs.types` e `apps.needs.utils`: suporte partilhado do domínio.
 
 ## 14) Respostas a Necessidades
 
@@ -761,6 +815,17 @@ Detalhe:
 - ação "Aceitar pedido" posicionada na área de decisão;
 - cancelamento tem motivo e notas alinhados visualmente.
 
+Organização interna:
+
+- `apps.orders.services`: fachada compatível para imports existentes;
+- `apps.orders.queries`: leitura de compras, vendas, grupos e detalhes;
+- `apps.orders.projections`: timeline de pré-venda e projeções de compras futuras;
+- `apps.orders.statuses`: cálculo, histórico e reconciliação de estados;
+- `apps.orders.reservations`: reserva, libertação, consumo e reconciliação de quantidades, preservando locks transacionais;
+- `apps.orders.lifecycle`: criação, cancelamento, receção e transições do vendedor;
+- `apps.orders.notifications`: alertas e notificações secundárias fail-open; falhas ficam registadas em log sem bloquear o fluxo principal;
+- `apps.orders.constants`, `apps.orders.exceptions` e `apps.orders.utils`: suporte partilhado do domínio.
+
 ## 17) Alerts
 
 Página:
@@ -826,10 +891,23 @@ Ações:
 - adiar todos/visíveis;
 - filtros preservados em ações HTMX.
 
+Organização interna:
+
+- `apps.alerts.services`: fachada compatível para imports existentes;
+- `apps.alerts.badges`: estado da sidebar e broadcasts realtime;
+- `apps.alerts.delivery`: preferências, notificações, email e registos de entrega;
+- `apps.alerts.events`: alertas originados por encomendas, respostas a necessidades e mensagens;
+- `apps.alerts.candidates`: geração read-only dos candidatos operacionais;
+- `apps.alerts.sync`: upsert, expiração e job agendado;
+- `apps.alerts.actions`: ignorar, reativar e resolver;
+- `apps.alerts.queries`: filtros, secções, labels e contagens;
+- `apps.alerts.constants` e `apps.alerts.utils`: suporte partilhado do domínio.
+
 Realtime:
 
 - badge via Channels/Redis quando disponível;
-- se Redis falhar localmente, a página continua a funcionar via HTTP/polling.
+- a renderização HTTP e os context processors continuam funcionais se Redis estiver indisponível;
+- o frontend tenta reconectar o WebSocket com backoff e atualiza o badge por endpoint HTTP quando recebe evento ou restabelece ligação; não existe polling periódico.
 
 ## 18) Notifications App
 
@@ -1214,7 +1292,11 @@ Variáveis importantes:
 Comandos/tarefas:
 
 - `python manage.py check` para validação;
-- `python manage.py sync_operational_alerts --apply` para sincronização operacional de alertas/listings expiradas;
+- `python manage.py test` para regressão completa;
+- `python manage.py reconcile_order_statuses` para inspecionar divergências entre estado global e itens de encomenda em dry-run;
+- `python manage.py reconcile_order_statuses --apply` para aplicar reconciliações verificadas;
+- `python manage.py sync_operational_alerts` para inspecionar a sincronização operacional em dry-run;
+- `python manage.py sync_operational_alerts --apply` para sincronizar alertas e listings expiradas;
 - Railway Scheduler/cron deve executar a sincronização operacional.
 
 Cuidados:
@@ -1224,7 +1306,6 @@ Cuidados:
 - em produção, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `APP_BASE_URL`, `DB_HOST` e `REDIS_URL` são obrigatórias e não usam defaults locais;
 - `sqlscript.sql` representa o schema consolidado atual;
 - `sqlscript.sql` é atualizado através de exportação apenas de schema da base PostgreSQL de produção, sem conteúdo de utilizadores ou segredos;
-- o snapshot de produção de 2026-05-24 confirma a presença residual de `stocks.max_quantity`; a remoção física exige SQL explícito numa iteração controlada;
 - como os modelos de negócio são `managed=False`, alterações de schema não são aplicadas por migrations Django.
 
 ## 26) Organização de Documentação e Memória Local
@@ -1247,3 +1328,58 @@ Objetivo:
 - manter o repositório limpo;
 - separar documentação estável de notas de trabalho;
 - evitar que planos antigos ou apontamentos temporários entrem em produção ou confundam futuras análises.
+
+## 27) Guia Curto para Fixes e Expansão
+
+### Antes de alterar código
+
+1. Confirmar o estado do worktree com `git status --short` e não reverter alterações que não pertencem ao fix.
+2. Ler este ficheiro, o `README.md` e a fachada pública da app afetada.
+3. Localizar o módulo proprietário da regra. As fachadas `services.py` existem para compatibilidade; lógica nova deve entrar no módulo específico sempre que ele existir.
+4. Identificar consumidores noutras apps com `rg "apps\\.<dominio>\\.services|from apps\\.<dominio>" apps`.
+
+### Fronteiras que devem ser preservadas
+
+- usar APIs públicas entre apps; não importar helpers privados de outro domínio;
+- manter `@transaction.atomic`, `select_for_update()` e a ordem dos locks nos fluxos de stock, reservas e encomendas;
+- reduções de stock que afetam anúncios passam por `apps.marketplace.reconciliation.reconcile_listings_for_stock_reduction`;
+- efeitos secundários como email, notificações e broadcasts realtime devem ser fail-open quando o fluxo principal já foi concluído, mas a falha deve ficar registada em log;
+- usar `transaction.on_commit()` quando um efeito secundário só deve ocorrer depois de persistir a operação principal;
+- alterações de schema exigem SQL explícito e atualização de `sqlscript.sql`, porque os modelos operacionais usam maioritariamente `managed=False`.
+
+### Onde colocar alterações
+
+- stock, previsões e compromissos temporais: `apps.inventory`;
+- anúncios, disponibilidade, media e reconciliação de listings: `apps.marketplace`;
+- pedidos externos, cobertura e propostas privadas: `apps.needs`;
+- reservas, estados e lifecycle de encomendas: `apps.orders`;
+- candidatos, ações, entrega e sincronização de alertas: `apps.alerts`;
+- conversas, mensagens, anexos e não lidos: `apps.messaging`;
+- tickets e conversa de suporte: `apps.support`;
+- helpers realmente transversais: `apps.common`.
+
+### Validação mínima
+
+```powershell
+$env:DEBUG = "True"
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py test apps.<app_afetada>
+.\.venv\Scripts\python.exe manage.py test
+.\.venv\Scripts\python.exe manage.py reconcile_order_statuses
+.\.venv\Scripts\python.exe manage.py sync_operational_alerts
+```
+
+- não correr suites Django em paralelo quando partilham a mesma base de dados de testes;
+- para alterações de UI, validar também rotas, templates e fluxos HTMX relevantes;
+- para alterações realtime, confirmar comportamento com Redis disponível e indisponível;
+- para alterações de schema, testar primeiro numa base PostgreSQL controlada e exportar novamente `sqlscript.sql`.
+
+### Áreas que exigem cuidado adicional
+
+- `apps.needs.external_demands`, `apps.needs.views` e `apps.needs.responses` concentram fluxos extensos;
+- `apps.orders.reservations` e `apps.orders.lifecycle` protegem consistência transacional;
+- `apps.marketplace.views`, `apps.marketplace.presenters` e `apps.inventory.views` ainda têm bastante orquestração HTTP;
+- `apps.recommendations.views` e `apps.support.services` continuam extensos;
+- separar refatorações estruturais de alterações funcionais reduz o risco e facilita a revisão.
+
+Baseline validada em 2026-06-02: `python manage.py check` e suite completa com `261` testes passaram.

@@ -17,6 +17,9 @@ from apps.orders.services import (
     _reconcile_listing_reservation,
     _reconcile_listings_against_stock_capacity,
     _register_buyer_order_inbound,
+    _safe_create_order_update_notification,
+    _safe_emit_order_interaction_alert,
+    _sync_alerts_for_producers,
     _update_stock_reserved,
     buyer_cancel_order,
     build_presale_timeline_context,
@@ -30,14 +33,64 @@ from apps.orders.services import (
 )
 
 
+class OrderSecondaryNotificationTests(SimpleTestCase):
+    @patch("apps.orders.notifications.logger")
+    @patch("apps.alerts.services.sync_alerts_for_producer", side_effect=RuntimeError("alerts unavailable"))
+    def test_alert_sync_failure_is_logged_without_propagating(self, sync_mock, logger_mock):
+        producer = SimpleNamespace(id="producer-1")
+
+        _sync_alerts_for_producers(producer)
+
+        sync_mock.assert_called_once_with(producer, acting_user=None)
+        logger_mock.exception.assert_called_once()
+
+    @patch("apps.orders.notifications.logger")
+    @patch("apps.alerts.services.create_order_interaction_alert", side_effect=RuntimeError("alerts unavailable"))
+    def test_interaction_alert_failure_is_logged_without_propagating(self, create_mock, logger_mock):
+        order = SimpleNamespace(id="order-1")
+        producer = SimpleNamespace(id="producer-1")
+
+        _safe_emit_order_interaction_alert(
+            target_producer=producer,
+            order=order,
+            alert_type="ORDER_CANCELLED",
+            title="title",
+            description="description",
+            counterpart_name="counterpart",
+            summary_label="summary",
+            action_url="/encomendas/order-1/",
+            acting_user=None,
+        )
+
+        create_mock.assert_called_once()
+        logger_mock.exception.assert_called_once()
+
+    @patch("apps.orders.notifications.logger")
+    @patch("apps.notifications_app.services.create_order_update_notification", side_effect=RuntimeError("notifications unavailable"))
+    def test_update_notification_failure_is_logged_without_propagating(self, create_mock, logger_mock):
+        order = SimpleNamespace(id="order-1")
+        producer = SimpleNamespace(id="producer-1", user=SimpleNamespace(id="user-1"))
+
+        _safe_create_order_update_notification(
+            target_producer=producer,
+            order=order,
+            title="title",
+            body="body",
+            action_url="/encomendas/order-1/",
+        )
+
+        create_mock.assert_called_once()
+        logger_mock.exception.assert_called_once()
+
+
 class OrderQuantityLabelTests(SimpleTestCase):
     def test_quantity_label_trims_unneeded_decimal_places(self):
         self.assertEqual(_quantity_label("200.000", "kg"), "200 kg")
 
 
 class OrderStatusReconciliationTests(SimpleTestCase):
-    @patch("apps.orders.services._create_status_history")
-    @patch("apps.orders.services._set_order_status")
+    @patch("apps.orders.statuses._create_status_history")
+    @patch("apps.orders.statuses._set_order_status")
     def test_public_reconciliation_api_updates_status_and_history(self, set_status_mock, history_mock):
         order = SimpleNamespace(id="order-1", status=OrderStatus.PENDING)
 
@@ -198,9 +251,9 @@ class NeedResponseOrderTests(SimpleTestCase):
         seller = SimpleNamespace(id="seller-1")
 
         with (
-            patch("apps.orders.services.is_order_from_need_response", return_value=True),
-            patch("apps.orders.services._build_order_alert_summary", return_value="50.000 kg de Pera Rocha"),
-            patch("apps.orders.services._safe_emit_order_interaction_alert") as emit,
+            patch("apps.orders.notifications.is_order_from_need_response", return_value=True),
+            patch("apps.orders.notifications._build_order_alert_summary", return_value="50.000 kg de Pera Rocha"),
+            patch("apps.orders.notifications._safe_emit_order_interaction_alert") as emit,
         ):
             _notify_order_purchase_created(
                 order=order,
@@ -243,20 +296,20 @@ class NeedResponseOrderTests(SimpleTestCase):
         create = getattr(create_order_from_listing, "__wrapped__", create_order_from_listing)
 
         with (
-            patch("apps.orders.services._lock_listing_for_order", return_value=listing),
-            patch("apps.orders.services._validate_listing_can_be_ordered"),
-            patch("apps.orders.services._validate_listing_source_xor"),
-            patch("apps.orders.services._create_order_group_with_retry", return_value=order_group),
-            patch("apps.orders.services._create_order_with_retry", return_value=order),
-            patch("apps.orders.services._map_delivery_method_from_listing", return_value="PICKUP"),
-            patch("apps.orders.services.OrderItem.objects", item_manager),
-            patch("apps.orders.services._reconcile_listing_reservation"),
-            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
-            patch("apps.orders.services._create_status_history"),
-            patch("apps.orders.services.log_audit_event"),
-            patch("apps.orders.services._notify_order_purchase_created"),
-            patch("apps.orders.services.recalculate_needs_for_order") as recalculate_needs,
-            patch("apps.orders.services._sync_alerts_for_producers"),
+            patch("apps.orders.lifecycle._lock_listing_for_order", return_value=listing),
+            patch("apps.orders.lifecycle._validate_listing_can_be_ordered"),
+            patch("apps.orders.lifecycle._validate_listing_source_xor"),
+            patch("apps.orders.lifecycle._create_order_group_with_retry", return_value=order_group),
+            patch("apps.orders.lifecycle._create_order_with_retry", return_value=order),
+            patch("apps.orders.lifecycle._map_delivery_method_from_listing", return_value="PICKUP"),
+            patch("apps.orders.lifecycle.OrderItem.objects", item_manager),
+            patch("apps.orders.lifecycle._reconcile_listing_reservation"),
+            patch("apps.orders.lifecycle._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.lifecycle._create_status_history"),
+            patch("apps.orders.lifecycle.log_audit_event"),
+            patch("apps.orders.lifecycle._notify_order_purchase_created"),
+            patch("apps.orders.lifecycle.recalculate_needs_for_order") as recalculate_needs,
+            patch("apps.orders.lifecycle._sync_alerts_for_producers"),
         ):
             create(
                 buyer_producer=buyer,
@@ -303,15 +356,15 @@ class BuyerOrderCancellationTests(SimpleTestCase):
             return current_order
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
-            patch("apps.orders.services.OrderItem.objects", items_query),
-            patch("apps.orders.services._reconcile_listing_reservation") as reconcile,
-            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids") as sync_responses,
-            patch("apps.orders.services._recalculate_order_status", side_effect=mark_cancelled),
-            patch("apps.orders.services._create_status_history") as create_history,
-            patch("apps.orders.services.recalculate_needs_for_order") as recalculate_needs,
-            patch("apps.orders.services._sync_alerts_for_producers"),
-            patch("apps.orders.services._log_order_status_change") as audit_status,
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.OrderItem.objects", items_query),
+            patch("apps.orders.lifecycle._reconcile_listing_reservation") as reconcile,
+            patch("apps.orders.lifecycle._sync_need_response_statuses_for_listing_ids") as sync_responses,
+            patch("apps.orders.lifecycle._recalculate_order_status", side_effect=mark_cancelled),
+            patch("apps.orders.lifecycle._create_status_history") as create_history,
+            patch("apps.orders.lifecycle.recalculate_needs_for_order") as recalculate_needs,
+            patch("apps.orders.lifecycle._sync_alerts_for_producers"),
+            patch("apps.orders.lifecycle._log_order_status_change") as audit_status,
         ):
             result = cancel(
                 order=order,
@@ -342,7 +395,7 @@ class BuyerOrderCancellationTests(SimpleTestCase):
         cancel = getattr(buyer_cancel_order, "__wrapped__", buyer_cancel_order)
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
             self.assertRaisesMessage(OrderServiceError, "em entrega ou concluída"),
         ):
             cancel(order=order, buyer_producer=buyer, acting_user=None)
@@ -359,7 +412,7 @@ class BuyerOrderCancellationTests(SimpleTestCase):
         cancel = getattr(buyer_cancel_order, "__wrapped__", buyer_cancel_order)
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
             self.assertRaisesMessage(OrderServiceError, "em entrega ou concluída"),
         ):
             cancel(order=order, buyer_producer=buyer, acting_user=None)
@@ -383,7 +436,7 @@ class StockReservationCapacityTests(SimpleTestCase):
         stock = self._make_stock(current=Decimal("90"), reserved=Decimal("0"))
 
         with (
-            patch("apps.orders.services.log_audit_event"),
+            patch("apps.orders.reservations.log_audit_event"),
             self.assertRaisesMessage(
                 OrderServiceError, "O stock de Batatas já não chega"
             ),
@@ -395,7 +448,7 @@ class StockReservationCapacityTests(SimpleTestCase):
     def test_update_stock_reserved_succeeds_within_capacity(self):
         stock = self._make_stock(current=Decimal("100"), reserved=Decimal("20"))
 
-        with patch("apps.orders.services.log_audit_event") as audit:
+        with patch("apps.orders.reservations.log_audit_event") as audit:
             _update_stock_reserved(stock, Decimal("30"), acting_user=None)
 
         self.assertEqual(stock.reserved_quantity, Decimal("50.000"))
@@ -456,11 +509,11 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
         listing_manager.select_for_update.return_value.get.return_value = listing
 
         with (
-            patch("apps.orders.services.MarketplaceListing.objects", listing_manager),
-            patch("apps.orders.services._expected_reserved_quantity_for_listing", return_value=Decimal("30.000")),
-            patch("apps.orders.services._update_stock_reserved") as update_stock_reserved,
-            patch("apps.orders.services.Stock.objects") as stock_manager,
-            patch("apps.orders.services._log_listing_status_if_changed"),
+            patch("apps.orders.reservations.MarketplaceListing.objects", listing_manager),
+            patch("apps.orders.reservations._expected_reserved_quantity_for_listing", return_value=Decimal("30.000")),
+            patch("apps.orders.reservations._update_stock_reserved") as update_stock_reserved,
+            patch("apps.orders.reservations.Stock.objects") as stock_manager,
+            patch("apps.orders.reservations._log_listing_status_if_changed"),
         ):
             stock = SimpleNamespace(id="stock-1")
             stock_manager.select_for_update.return_value.get.return_value = stock
@@ -476,9 +529,9 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
         listing_manager.select_for_update.return_value.get.return_value = listing
 
         with (
-            patch("apps.orders.services.MarketplaceListing.objects", listing_manager),
-            patch("apps.orders.services._expected_reserved_quantity_for_listing", return_value=Decimal("30.000")),
-            patch("apps.orders.services._update_stock_reserved") as update_stock_reserved,
+            patch("apps.orders.reservations.MarketplaceListing.objects", listing_manager),
+            patch("apps.orders.reservations._expected_reserved_quantity_for_listing", return_value=Decimal("30.000")),
+            patch("apps.orders.reservations._update_stock_reserved") as update_stock_reserved,
         ):
             _reconcile_listing_reservation("listing-1", acting_user=None)
 
@@ -506,16 +559,16 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
         confirm = getattr(seller_update_order_status, "__wrapped__", seller_update_order_status)
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
-            patch("apps.orders.services.OrderItem.objects", item_manager),
-            patch("apps.orders.services._reconcile_listing_reservation") as reconcile,
-            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
-            patch("apps.orders.services._recalculate_order_status"),
-            patch("apps.orders.services._create_status_history") as status_history,
-            patch("apps.orders.services._notify_order_status_changed_to_buyer"),
-            patch("apps.orders.services.recalculate_needs_for_order"),
-            patch("apps.orders.services._sync_alerts_for_producers"),
-            patch("apps.orders.services._log_order_status_change"),
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.OrderItem.objects", item_manager),
+            patch("apps.orders.lifecycle._reconcile_listing_reservation") as reconcile,
+            patch("apps.orders.lifecycle._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.lifecycle._recalculate_order_status"),
+            patch("apps.orders.lifecycle._create_status_history") as status_history,
+            patch("apps.orders.lifecycle._notify_order_status_changed_to_buyer"),
+            patch("apps.orders.lifecycle.recalculate_needs_for_order"),
+            patch("apps.orders.lifecycle._sync_alerts_for_producers"),
+            patch("apps.orders.lifecycle._log_order_status_change"),
         ):
             confirm(
                 order=order,
@@ -549,16 +602,16 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
         deliver = getattr(seller_update_order_status, "__wrapped__", seller_update_order_status)
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
-            patch("apps.orders.services.OrderItem.objects", item_manager),
-            patch("apps.orders.services.OrderStatusHistory.objects.filter") as history_filter,
-            patch("apps.orders.services._consume_listing_reservation") as consume_reservation,
-            patch("apps.orders.services._recalculate_order_status"),
-            patch("apps.orders.services._create_status_history") as status_history,
-            patch("apps.orders.services._notify_order_status_changed_to_buyer"),
-            patch("apps.orders.services.recalculate_needs_for_order"),
-            patch("apps.orders.services._sync_alerts_for_producers"),
-            patch("apps.orders.services._log_order_status_change"),
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.OrderItem.objects", item_manager),
+            patch("apps.orders.lifecycle.OrderStatusHistory.objects.filter") as history_filter,
+            patch("apps.orders.lifecycle._consume_listing_reservation") as consume_reservation,
+            patch("apps.orders.lifecycle._recalculate_order_status"),
+            patch("apps.orders.lifecycle._create_status_history") as status_history,
+            patch("apps.orders.lifecycle._notify_order_status_changed_to_buyer"),
+            patch("apps.orders.lifecycle.recalculate_needs_for_order"),
+            patch("apps.orders.lifecycle._sync_alerts_for_producers"),
+            patch("apps.orders.lifecycle._log_order_status_change"),
         ):
             history_filter.return_value.exists.return_value = True
             deliver(
@@ -598,16 +651,16 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
             return current_order
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
-            patch("apps.orders.services.OrderItem.objects", item_manager),
-            patch("apps.orders.services._reconcile_listing_reservation") as reconcile,
-            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
-            patch("apps.orders.services._recalculate_order_status", side_effect=mark_cancelled),
-            patch("apps.orders.services._create_status_history") as status_history,
-            patch("apps.orders.services._notify_order_status_changed_to_buyer") as notify_buyer,
-            patch("apps.orders.services.recalculate_needs_for_order"),
-            patch("apps.orders.services._sync_alerts_for_producers"),
-            patch("apps.orders.services._log_order_status_change"),
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.OrderItem.objects", item_manager),
+            patch("apps.orders.lifecycle._reconcile_listing_reservation") as reconcile,
+            patch("apps.orders.lifecycle._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.lifecycle._recalculate_order_status", side_effect=mark_cancelled),
+            patch("apps.orders.lifecycle._create_status_history") as status_history,
+            patch("apps.orders.lifecycle._notify_order_status_changed_to_buyer") as notify_buyer,
+            patch("apps.orders.lifecycle.recalculate_needs_for_order"),
+            patch("apps.orders.lifecycle._sync_alerts_for_producers"),
+            patch("apps.orders.lifecycle._log_order_status_change"),
         ):
             cancel(
                 order=order,
@@ -638,8 +691,8 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
         cancel = getattr(seller_update_order_status, "__wrapped__", seller_update_order_status)
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
-            patch("apps.orders.services.OrderItem.objects", item_manager),
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.OrderItem.objects", item_manager),
             self.assertRaisesMessage(OrderServiceError, "já não pode ser alterada"),
         ):
             cancel(
@@ -681,19 +734,19 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
             current_order.status = status
 
         with (
-            patch("apps.orders.services.Order.objects", order_manager),
-            patch("apps.orders.services.OrderItem.objects", item_manager),
-            patch("apps.orders.services._consume_listing_reservation") as consume_reservation,
-            patch("apps.orders.services._register_buyer_order_inbound") as register_inbound,
-            patch("apps.orders.services._sync_external_demands_for_product_change"),
-            patch("apps.orders.services._set_order_status", side_effect=mark_completed),
-            patch("apps.orders.services._create_status_history") as status_history,
-            patch("apps.orders.services._log_order_status_change"),
-            patch("apps.orders.services.log_audit_event"),
-            patch("apps.orders.services._notify_order_completed_to_seller"),
-            patch("apps.orders.services._sync_need_response_statuses_for_listing_ids"),
-            patch("apps.orders.services.recalculate_needs_for_order"),
-            patch("apps.orders.services._sync_alerts_for_producers"),
+            patch("apps.orders.lifecycle.Order.objects", order_manager),
+            patch("apps.orders.lifecycle.OrderItem.objects", item_manager),
+            patch("apps.orders.lifecycle._consume_listing_reservation") as consume_reservation,
+            patch("apps.orders.lifecycle._register_buyer_order_inbound") as register_inbound,
+            patch("apps.orders.lifecycle._sync_external_demands_for_product_change"),
+            patch("apps.orders.lifecycle._set_order_status", side_effect=mark_completed),
+            patch("apps.orders.lifecycle._create_status_history") as status_history,
+            patch("apps.orders.lifecycle._log_order_status_change"),
+            patch("apps.orders.lifecycle.log_audit_event"),
+            patch("apps.orders.lifecycle._notify_order_completed_to_seller"),
+            patch("apps.orders.lifecycle._sync_need_response_statuses_for_listing_ids"),
+            patch("apps.orders.lifecycle.recalculate_needs_for_order"),
+            patch("apps.orders.lifecycle._sync_alerts_for_producers"),
         ):
             complete(order=order, acting_user=None)
 
@@ -731,9 +784,9 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
         )
 
         with (
-            patch("apps.orders.services.StockMovement.objects.create", return_value=movement) as create_movement,
-            patch("apps.orders.services.log_audit_event"),
-            patch("apps.orders.services._reconcile_listings_against_stock_capacity") as reconcile,
+            patch("apps.orders.reservations.StockMovement.objects.create", return_value=movement) as create_movement,
+            patch("apps.orders.reservations.log_audit_event"),
+            patch("apps.orders.reservations._reconcile_listings_against_stock_capacity") as reconcile,
         ):
             _consume_stock_reservation(stock, Decimal("30.000"), None, order=order)
 
@@ -761,10 +814,10 @@ class MarketplaceOrderLifecycleTests(SimpleTestCase):
         )
 
         with (
-            patch("apps.orders.services._ensure_buyer_product_link"),
-            patch("apps.orders.services._ensure_buyer_stock", return_value=stock),
-            patch("apps.orders.services.StockMovement.objects.create", return_value=movement) as create_movement,
-            patch("apps.orders.services.log_audit_event"),
+            patch("apps.orders.reservations._ensure_buyer_product_link"),
+            patch("apps.orders.reservations._ensure_buyer_stock", return_value=stock),
+            patch("apps.orders.reservations.StockMovement.objects.create", return_value=movement) as create_movement,
+            patch("apps.orders.reservations.log_audit_event"),
         ):
             _register_buyer_order_inbound(
                 buyer_producer=buyer,

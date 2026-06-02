@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,8 +8,13 @@ from uuid import UUID
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import AccountStatus, UserRole
+from apps.marketplace.form_validation import (
+    apply_delivery_validation,
+    resolve_expiration,
+)
 from apps.marketplace.services import (
     MarketplaceServiceError,
     create_listing,
@@ -21,7 +27,7 @@ from apps.marketplace.services import (
     retire_listing,
     update_listing,
 )
-from apps.marketplace.models import ListingStatus
+from apps.marketplace.models import DeliveryMode, ListingStatus
 from apps.marketplace.views import (
     marketplace_delete_view,
     marketplace_detail_view,
@@ -58,6 +64,70 @@ class MarketplaceNeedsRoutingTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/necessidades/?q=tomate&show_need_form=1")
+
+
+class MarketplaceSharedFormValidationTests(SimpleTestCase):
+    def test_pickup_clears_delivery_only_values(self):
+        form = MagicMock()
+        cleaned_data = {
+            "delivery_mode": DeliveryMode.PICKUP,
+            "delivery_radius_km": Decimal("10"),
+            "delivery_fee": Decimal("2.50"),
+        }
+
+        apply_delivery_validation(form, cleaned_data)
+
+        self.assertIsNone(cleaned_data["delivery_radius_km"])
+        self.assertIsNone(cleaned_data["delivery_fee"])
+        form.add_error.assert_not_called()
+
+    def test_delivery_requires_radius(self):
+        form = MagicMock()
+        cleaned_data = {
+            "delivery_mode": DeliveryMode.DELIVERY,
+            "delivery_radius_km": None,
+        }
+
+        apply_delivery_validation(form, cleaned_data)
+
+        form.add_error.assert_called_once_with(
+            "delivery_radius_km",
+            "Indica o raio de entrega.",
+        )
+
+    @patch("apps.marketplace.form_validation.timezone.now")
+    def test_edit_timer_builds_expiration_from_current_time(self, now_mock):
+        now = timezone.make_aware(datetime(2026, 6, 2, 12, 0))
+        now_mock.return_value = now
+        form = MagicMock()
+
+        expires_at = resolve_expiration(
+            form,
+            {
+                "expiration_mode": "timer",
+                "expires_in": 12,
+                "status": ListingStatus.ACTIVE,
+            },
+            allow_timer=True,
+        )
+
+        self.assertEqual(expires_at, now + timedelta(hours=12))
+        form.add_error.assert_not_called()
+
+    @patch("apps.marketplace.form_validation.timezone.now")
+    def test_expired_listing_without_deadline_uses_current_time(self, now_mock):
+        now = timezone.make_aware(datetime(2026, 6, 2, 12, 0))
+        now_mock.return_value = now
+
+        expires_at = resolve_expiration(
+            MagicMock(),
+            {
+                "expiration_mode": "none",
+                "status": ListingStatus.EXPIRED,
+            },
+        )
+
+        self.assertEqual(expires_at, now)
 
 
 class MarketplacePublishNeedResponseTests(SimpleTestCase):
@@ -126,7 +196,7 @@ class MarketplaceDetailRoutingTests(SimpleTestCase):
 
 
 class MarketplaceListingVisibilityTests(SimpleTestCase):
-    @patch("apps.marketplace.services.get_base_listing_queryset")
+    @patch("apps.marketplace.queries.get_base_listing_queryset")
     def test_public_marketplace_includes_own_active_listings(self, base_queryset_mock):
         qs = MagicMock()
         qs.filter.return_value = qs
@@ -139,7 +209,7 @@ class MarketplaceListingVisibilityTests(SimpleTestCase):
         self.assertIs(result, qs.order_by.return_value)
         qs.exclude.assert_not_called()
 
-    @patch("apps.marketplace.services.get_base_listing_queryset")
+    @patch("apps.marketplace.queries.get_base_listing_queryset")
     def test_public_marketplace_only_fetches_active_listings_with_quantity(self, base_queryset_mock):
         qs = MagicMock()
         qs.filter.return_value = qs
@@ -154,7 +224,7 @@ class MarketplaceListingVisibilityTests(SimpleTestCase):
             product__is_active=True,
         )
 
-    @patch("apps.marketplace.services.get_base_listing_queryset")
+    @patch("apps.marketplace.queries.get_base_listing_queryset")
     def test_my_marketplace_listings_exclude_need_responses(self, base_queryset_mock):
         qs = MagicMock()
         qs.filter.return_value = qs
@@ -170,8 +240,8 @@ class MarketplaceListingVisibilityTests(SimpleTestCase):
 
 
 class MarketplaceQuantityLimitTests(SimpleTestCase):
-    @patch("apps.marketplace.services._get_pending_stock_need_response_quantity", return_value=Decimal("30.000"))
-    @patch("apps.marketplace.services._get_open_stock_published_quantity", return_value=Decimal("20.000"))
+    @patch("apps.marketplace.availability._get_pending_stock_need_response_quantity", return_value=Decimal("30.000"))
+    @patch("apps.marketplace.availability._get_open_stock_published_quantity", return_value=Decimal("20.000"))
     @patch(
         "apps.inventory.services.calculate_inventory_commitment_state",
         return_value={
@@ -198,7 +268,7 @@ class MarketplaceQuantityLimitTests(SimpleTestCase):
         private_quantity_mock.assert_called_once_with(stock, exclude_listing_id=None)
 
     @patch(
-        "apps.marketplace.services.get_max_publishable_quantity",
+        "apps.marketplace.commands.get_max_publishable_quantity",
         side_effect=[Decimal("200.000"), Decimal("0.000")],
     )
     def test_second_listing_is_blocked_after_full_publishable_margin_is_used(
@@ -230,9 +300,9 @@ class MarketplaceQuantityLimitTests(SimpleTestCase):
         create = getattr(create_listing, "__wrapped__", create_listing)
 
         with (
-            patch("apps.marketplace.services.Stock.objects", stock_manager),
-            patch("apps.marketplace.services.MarketplaceListing.objects", listing_manager),
-            patch("apps.marketplace.services.log_audit_event"),
+            patch("apps.marketplace.commands.Stock.objects", stock_manager),
+            patch("apps.marketplace.commands.MarketplaceListing.objects", listing_manager),
+            patch("apps.marketplace.commands.log_audit_event"),
         ):
             result = create(
                 producer=producer,
@@ -254,7 +324,55 @@ class MarketplaceQuantityLimitTests(SimpleTestCase):
         listing_manager.create.assert_called_once()
         self.assertEqual(max_publishable_mock.call_count, 2)
 
-    @patch("apps.marketplace.services.get_max_publishable_quantity", return_value=Decimal("200.000"))
+    @patch("apps.marketplace.commands.listing_audit_values", return_value={})
+    @patch("apps.marketplace.commands.log_audit_event")
+    @patch(
+        "apps.marketplace.commands.get_forecast_available_quantity",
+        return_value=Decimal("25.000"),
+    )
+    def test_forecast_listing_creation_uses_forecast_as_exclusive_source(
+        self,
+        available_quantity_mock,
+        audit_mock,
+        audit_values_mock,
+    ):
+        producer = SimpleNamespace(id="producer-1")
+        product = SimpleNamespace(id="product-1", name="Batata", unit="kg")
+        forecast = SimpleNamespace(
+            id="forecast-1",
+            producer=producer,
+            product=product,
+            is_marketplace_enabled=True,
+        )
+        listing = SimpleNamespace(id="listing-1")
+        forecast_manager = MagicMock()
+        forecast_manager.select_for_update.return_value.filter.return_value.first.return_value = forecast
+        listing_manager = MagicMock()
+        listing_manager.create.return_value = listing
+        create = getattr(create_listing, "__wrapped__", create_listing)
+
+        with (
+            patch("apps.marketplace.commands.ProductionForecast.objects", forecast_manager),
+            patch("apps.marketplace.commands.MarketplaceListing.objects", listing_manager),
+        ):
+            result = create(
+                producer=producer,
+                product=product,
+                quantity=Decimal("10"),
+                unit_price=Decimal("1"),
+                delivery_mode="PICKUP",
+                listing_source="forecast",
+                forecast=forecast,
+            )
+
+        self.assertIs(result, listing)
+        listing_manager.create.assert_called_once()
+        create_kwargs = listing_manager.create.call_args.kwargs
+        self.assertIsNone(create_kwargs["stock"])
+        self.assertIs(create_kwargs["forecast"], forecast)
+        available_quantity_mock.assert_called_once_with(forecast)
+
+    @patch("apps.marketplace.commands.get_max_publishable_quantity", return_value=Decimal("200.000"))
     def test_edit_active_listing_above_source_maximum_is_blocked(self, max_publishable_mock):
         product = SimpleNamespace(name="Batata", unit="kg")
         listing = SimpleNamespace(
@@ -277,7 +395,7 @@ class MarketplaceQuantityLimitTests(SimpleTestCase):
         update = getattr(update_listing, "__wrapped__", update_listing)
 
         with (
-            patch("apps.marketplace.services.Stock.objects", stock_manager),
+            patch("apps.marketplace.commands.Stock.objects", stock_manager),
             self.assertRaisesMessage(MarketplaceServiceError, "máximo disponível"),
         ):
             update(
@@ -307,7 +425,7 @@ class MarketplaceEditSafetyTests(SimpleTestCase):
                 delivery_mode="PICKUP",
             )
 
-    @patch("apps.marketplace.services.get_max_publishable_quantity", return_value=Decimal("5.000"))
+    @patch("apps.marketplace.commands.get_max_publishable_quantity", return_value=Decimal("5.000"))
     def test_reactivate_listing_rejects_quantity_above_current_publishable_limit(self, max_quantity_mock):
         listing = SimpleNamespace(
             id="listing-1",
@@ -328,8 +446,8 @@ class MarketplaceEditSafetyTests(SimpleTestCase):
         reactivate = getattr(reactivate_listing, "__wrapped__", reactivate_listing)
 
         with (
-            patch("apps.marketplace.services.MarketplaceListing.objects", listing_manager),
-            patch("apps.marketplace.services.Stock.objects", stock_manager),
+            patch("apps.marketplace.commands.MarketplaceListing.objects", listing_manager),
+            patch("apps.marketplace.commands.Stock.objects", stock_manager),
             self.assertRaisesMessage(MarketplaceServiceError, "máximo publicável atual"),
         ):
             reactivate(listing=listing)
@@ -500,7 +618,7 @@ class MarketplaceEditSafetyTests(SimpleTestCase):
 
 
 class MarketplaceDeleteListingTests(SimpleTestCase):
-    @patch("apps.marketplace.services.log_audit_event")
+    @patch("apps.marketplace.commands.log_audit_event")
     def test_retire_listing_cancels_without_physical_delete(self, audit_mock):
         listing = SimpleNamespace(
             status=ListingStatus.ACTIVE,
