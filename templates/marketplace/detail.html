@@ -209,7 +209,7 @@
                     step="0.001"
                     value="{{ quantity|unlocalize }}"
                     hx-get="{% url 'marketplace:detail_total' listing.id %}"
-                    hx-trigger="keyup changed delay:250ms"
+                    hx-trigger="input changed delay:150ms"
                     hx-target="#mkd-total-box"
                     hx-swap="outerHTML"
                     hx-include="#quantityInput">
@@ -1191,6 +1191,17 @@
   color: #0f172a;
   outline: none;
   background: #fff;
+}
+
+.mkd-quantity-wrap input[type="number"]::-webkit-outer-spin-button,
+.mkd-quantity-wrap input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.mkd-quantity-wrap input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .mkd-quantity-wrap input:focus {
