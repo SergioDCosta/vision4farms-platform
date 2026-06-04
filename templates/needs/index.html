@@ -418,7 +418,8 @@
           <a href="{% url 'needs:index' %}{% if q %}?q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if q %}&{% else %}?{% endif %}category={{ selected_category_id|urlencode }}{% endif %}"
              hx-get="{% url 'needs:index' %}{% if q %}?q={{ q|urlencode }}{% endif %}{% if selected_category_id %}{% if q %}&{% else %}?{% endif %}category={{ selected_category_id|urlencode }}{% endif %}"
              hx-target="#shellMain" hx-select="#shellMain" hx-swap="outerHTML" hx-push-url="true"
-             class="nd-btn nd-btn--ghost nd-btn--sm"><i class="bi bi-x-lg"></i> Fechar</a>
+             class="nd-btn nd-btn--ghost nd-btn--sm"
+             data-nd-close-selected-need><i class="bi bi-x-lg"></i> Fechar</a>
         </div>
       </div>
 
@@ -550,17 +551,17 @@
     </div>
   {% endif %}
 
-  {# ── Propostas recebidas (flat, todas as procuras) ─────────────────────── #}
-  {% if all_active_received_proposals %}
+  {# ── Propostas recebidas fora da procura selecionada ───────────────────── #}
+  {% if visible_active_received_proposals %}
   <section class="nd-section">
     <div class="nd-section-head">
       <div>
-        <h2>Propostas recebidas</h2>
-        <p>Ofertas pendentes de outros produtores para as suas procuras. Veja e decida aqui.</p>
+        <h2>{% if selected_need_row %}Outras propostas recebidas{% else %}Propostas recebidas{% endif %}</h2>
+        <p>{% if selected_need_row %}Ofertas pendentes para outras procuras. A procura aberta é gerida no detalhe acima.{% else %}Ofertas pendentes de outros produtores para as suas procuras. Veja e decida aqui.{% endif %}</p>
       </div>
     </div>
     <div class="nd-proposals-grid">
-      {% for response in all_active_received_proposals %}
+      {% for response in visible_active_received_proposals %}
         <article class="nd-response-card">
           <div class="nd-response-card__head">
             <div>
@@ -930,8 +931,9 @@
 .nd-needs-table .nd-demands-table__actions button[disabled],
 .nd-needs-table .nd-demands-table__actions button.htmx-request,
 .nd-needs-table .nd-demands-table__actions form.htmx-request button { opacity: .55; cursor: progress; pointer-events: none; }
-.nd-needs-table .nd-demands-table__actions { display: flex; align-items: center; justify-content: center; gap: .3rem; flex-wrap: nowrap; }
-.nd-needs-table .nd-demands-table__actions form { display: inline-flex; margin: 0; }
+.nd-needs-table .nd-demands-table__actions { text-align: center; }
+.nd-needs-table .nd-demands-table__actions > a,
+.nd-needs-table .nd-demands-table__actions > form { display: inline-flex; vertical-align: middle; margin: .15rem; }
 .nd-needs-table .nd-demands-table__actions .nd-btn--danger-soft { margin-left: .25rem; border-left: 1px solid var(--br); padding-left: .45rem; }
 .nd-empty-cell { padding: 0 !important; border: 0; }
 .nd-need-detail-panel {
@@ -1262,6 +1264,11 @@
 
   function openNeedRow(needRow) {
     if (needRow.classList.contains("nd-needs-table__row--active")) {
+      const closeLink = document.querySelector("[data-nd-close-selected-need]");
+      if (closeLink) {
+        closeLink.click();
+        return;
+      }
       scrollToSelectedNeed();
       return;
     }

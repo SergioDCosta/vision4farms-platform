@@ -1972,8 +1972,8 @@ class NeedsServiceTests(SimpleTestCase):
             "remaining_to_receive": Decimal("10.000"),
             "progress_percent": Decimal("0"),
         }
-        active_response = SimpleNamespace(id="response-1", response_status="PENDING")
-        past_response = SimpleNamespace(id="response-2", response_status="REJECTED")
+        active_response = SimpleNamespace(id="response-1", need_id="need-1", response_status="PENDING")
+        past_response = SimpleNamespace(id="response-2", need_id="need-1", response_status="REJECTED")
 
         with (
             patch("apps.needs.presenters.list_marketplace_public_needs", return_value=[]),
@@ -2001,6 +2001,7 @@ class NeedsServiceTests(SimpleTestCase):
         self.assertEqual(context["need_response_rows"], [])
         self.assertEqual(context["active_need_response_rows"], [])
         self.assertEqual(context["all_active_received_proposals"], [active_response])
+        self.assertEqual(context["visible_active_received_proposals"], [active_response])
         self.assertEqual(context["sent_proposals_pending_count"], 1)
         self.assertNotIn("received_past_need_response_rows", context)
         self.assertNotIn("sent_need_response_rows", context)
@@ -2011,6 +2012,68 @@ class NeedsServiceTests(SimpleTestCase):
             category_id="",
         )
         sent_response_filter.assert_called_once()
+
+    def test_needs_context_hides_selected_need_proposals_from_global_list(self):
+        need = SimpleNamespace(
+            id="need-1",
+            product_id="product-1",
+            product=SimpleNamespace(id="product-1", name="Tomate", unit="kg", category=None),
+            status=NeedStatus.OPEN,
+            source_system=NeedSourceSystem.MANUAL,
+            required_quantity=Decimal("10.000"),
+            planned_quantity=Decimal("0.000"),
+            completed_quantity=Decimal("0.000"),
+            notes="",
+            needed_by_date=None,
+        )
+        own_row = {
+            "need": need,
+            "status": NeedStatus.OPEN,
+            "status_label": "Aberta",
+            "required_quantity": Decimal("10.000"),
+            "planned_qty": Decimal("0.000"),
+            "completed_qty": Decimal("0.000"),
+            "remaining_to_plan": Decimal("10.000"),
+            "remaining_to_receive": Decimal("10.000"),
+            "progress_percent": Decimal("0"),
+            "can_edit": True,
+        }
+        selected_response = SimpleNamespace(id="response-1", need_id="need-1", response_status="PENDING")
+        other_response = SimpleNamespace(id="response-2", need_id="need-2", response_status="PENDING")
+        rejected_response = SimpleNamespace(id="response-3", need_id="need-3", response_status="REJECTED")
+
+        def list_responses(**kwargs):
+            if kwargs.get("need_id"):
+                return [selected_response]
+            return [selected_response, other_response, rejected_response]
+
+        with (
+            patch("apps.needs.presenters.list_marketplace_public_needs", return_value=[]),
+            patch("apps.needs.presenters.list_marketplace_my_needs", return_value=[own_row]),
+            patch("apps.needs.presenters.get_need_for_producer", return_value=need),
+            patch("apps.needs.presenters.get_need_candidate_products", return_value=[need.product]),
+            patch("apps.needs.presenters.get_critical_stock_product_ids", return_value=set()),
+            patch("apps.needs.presenters.get_need_response_counts_for_owner", return_value={"need-1": 1}),
+            patch("apps.needs.presenters.list_need_responses_for_owner", side_effect=list_responses),
+            patch("apps.needs.presenters.MarketplaceListing.objects.filter") as sent_response_filter,
+            patch("apps.needs.presenters.list_external_customer_demands", return_value=[]),
+            patch("apps.needs.presenters.ExternalCustomerDemand.objects.filter") as demand_filter,
+        ):
+            demand_filter.return_value.count.return_value = 0
+            sent_response_filter.return_value.count.return_value = 0
+            context = build_needs_index_context(
+                SimpleNamespace(id="owner-1"),
+                q="",
+                category_id="",
+                selected_need_id="need-1",
+            )
+
+        self.assertEqual(context["selected_need_id"], "need-1")
+        self.assertIs(context["selected_need_row"], own_row)
+        self.assertEqual(context["active_need_response_rows"], [selected_response])
+        self.assertEqual(context["all_active_received_proposals"], [selected_response, other_response])
+        self.assertEqual(context["visible_active_received_proposals"], [other_response])
+        self.assertEqual(context["received_proposals_pending_count"], 2)
 
 
 class ExternalDemandConflictTests(SimpleTestCase):

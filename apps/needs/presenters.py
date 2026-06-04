@@ -452,6 +452,10 @@ def build_needs_index_context(
         response for response in all_need_response_rows
         if response.response_status == "PENDING"
     ]
+    visible_active_received_proposals = [
+        response for response in all_active_received_proposals
+        if not validated_need_id or str(getattr(response, "need_id", "")) != validated_need_id
+    ]
 
     generated_needs_count = sum(
         1 for row in need_my_rows
@@ -575,6 +579,7 @@ def build_needs_index_context(
         "need_response_rows": need_response_rows,
         "active_need_response_rows": active_need_response_rows,
         "all_active_received_proposals": all_active_received_proposals,
+        "visible_active_received_proposals": visible_active_received_proposals,
         "external_demands_open_count": external_demands_open_count,
         "active_demands_preview": active_demands_preview,
         "past_demands_preview": past_demands_preview,
