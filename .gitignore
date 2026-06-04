@@ -73,11 +73,7 @@ htmlcov/
 *.pdf
 *.sql
 !sqlscript.sql
-!entrega/**/*.pdf
-entrega/video/*.mp4
-entrega/video/*.mov
-entrega/video/*.mkv
-!entrega/video/README.md
+
 
 # -----------------------------
 # MEMORIA LOCAL / PLANOS TEMPORARIOS
