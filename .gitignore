@@ -70,7 +70,6 @@ htmlcov/
 # -----------------------------
 *.csv
 *.xlsx
-*.pdf
 *.sql
 !sqlscript.sql
 
