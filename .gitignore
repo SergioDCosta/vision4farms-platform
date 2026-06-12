@@ -72,6 +72,10 @@ htmlcov/
 *.xlsx
 *.sql
 !sqlscript.sql
+entrega/video/*.mp4
+entrega/video/*.mov
+entrega/video/*.mkv
+!entrega/video/README.md
 
 
 # -----------------------------

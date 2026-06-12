@@ -1,6 +1,6 @@
 # VISION4FARMS - Contexto Atual do Projeto
 
-Última revisão: 2026-06-02.
+Última revisão: 2026-06-12.
 
 Este ficheiro serve como mapa funcional e técnico atual da aplicação. O objetivo é ajudar a explicar o projeto em relatório, manter o contexto entre sessões de desenvolvimento e evitar decisões baseadas em informação desatualizada.
 
@@ -1382,4 +1382,4 @@ $env:DEBUG = "True"
 - `apps.recommendations.views` e `apps.support.services` continuam extensos;
 - separar refatorações estruturais de alterações funcionais reduz o risco e facilita a revisão.
 
-Baseline validada em 2026-06-02: `python manage.py check` e suite completa com `261` testes passaram.
+Baseline validada em 2026-06-12: `python manage.py check` e suite completa com `262` testes passaram.
