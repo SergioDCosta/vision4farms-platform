@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict FhZg3TbLrTWkQaJEWe94qIA56yp7cq6dkcSLgDwKnlwCymE6hKQutS3fAJXgogw
+\restrict aOBinySN8gucg1vxAboXGcjPlJe6te8LsPaIKFiszesCvlVFNyVt8cE8RghcsCD
 
--- Dumped from database version 17.6
--- Dumped by pg_dump version 17.6
+-- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
+-- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -67,7 +67,7 @@ CREATE TABLE public.account_verification_tokens (
     sent_at timestamp with time zone,
     revoked_at timestamp with time zone,
     revoked_by_user_id uuid,
-    CONSTRAINT account_verification_tokens_purpose_check CHECK (((purpose)::text = ANY ((ARRAY['SIGNUP_CONFIRMATION'::character varying, 'ADMIN_INVITE'::character varying, 'PASSWORD_RESET'::character varying])::text[])))
+    CONSTRAINT account_verification_tokens_purpose_check CHECK (((purpose)::text = ANY (ARRAY[('SIGNUP_CONFIRMATION'::character varying)::text, ('ADMIN_INVITE'::character varying)::text, ('PASSWORD_RESET'::character varying)::text])))
 );
 
 
@@ -100,7 +100,7 @@ CREATE TABLE public.alert_events (
     performed_by_id uuid,
     notes text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT alert_events_event_type_check CHECK (((event_type)::text = ANY ((ARRAY['CREATED'::character varying, 'READ'::character varying, 'RESOLVED'::character varying, 'IGNORED'::character varying, 'CLEARED'::character varying])::text[])))
+    CONSTRAINT alert_events_event_type_check CHECK (((event_type)::text = ANY (ARRAY[('CREATED'::character varying)::text, ('READ'::character varying)::text, ('RESOLVED'::character varying)::text, ('IGNORED'::character varying)::text, ('CLEARED'::character varying)::text])))
 );
 
 
@@ -137,9 +137,9 @@ CREATE TABLE public.alerts (
     expires_at timestamp with time zone,
     priority smallint DEFAULT 50 NOT NULL,
     CONSTRAINT alerts_category_check CHECK (((category)::text = ANY ((ARRAY['STOCK'::character varying, 'NEEDS'::character varying, 'ORDERS'::character varying, 'MARKETPLACE'::character varying, 'MESSAGES'::character varying, 'SYSTEM'::character varying])::text[]))),
-    CONSTRAINT alerts_severity_check CHECK (((severity)::text = ANY ((ARRAY['INFO'::character varying, 'WARNING'::character varying, 'CRITICAL'::character varying])::text[]))),
-    CONSTRAINT alerts_source_system_check CHECK (((source_system)::text = ANY ((ARRAY['INTERNAL'::character varying, 'VISION4FARMS'::character varying, 'MANUAL'::character varying])::text[]))),
-    CONSTRAINT alerts_status_check CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'READ'::character varying, 'RESOLVED'::character varying, 'IGNORED'::character varying, 'CLEARED'::character varying])::text[]))),
+    CONSTRAINT alerts_severity_check CHECK (((severity)::text = ANY (ARRAY[('INFO'::character varying)::text, ('WARNING'::character varying)::text, ('CRITICAL'::character varying)::text]))),
+    CONSTRAINT alerts_source_system_check CHECK (((source_system)::text = ANY (ARRAY[('INTERNAL'::character varying)::text, ('VISION4FARMS'::character varying)::text, ('MANUAL'::character varying)::text]))),
+    CONSTRAINT alerts_status_check CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('READ'::character varying)::text, ('RESOLVED'::character varying)::text, ('IGNORED'::character varying)::text, ('CLEARED'::character varying)::text]))),
     CONSTRAINT alerts_type_check CHECK (((type)::text = ANY ((ARRAY['SHORTAGE'::character varying, 'CRITICAL_STOCK'::character varying, 'SURPLUS_AVAILABLE'::character varying, 'BUY_OPPORTUNITY'::character varying, 'SELL_SUGGESTION'::character varying, 'EXTERNAL_DEFICIT'::character varying, 'NEED_UNDERCOVERED'::character varying, 'NEED_RESPONSE_RECEIVED'::character varying, 'NEED_DEADLINE_APPROACHING'::character varying, 'OFFER_REJECTED'::character varying, 'ORDER_REQUIRES_CONFIRMATION'::character varying, 'ORDER_DELIVERY_OVERDUE'::character varying, 'ORDER_PURCHASE_CREATED'::character varying, 'ORDER_CONFIRMED'::character varying, 'ORDER_IN_PROGRESS'::character varying, 'ORDER_DELIVERING'::character varying, 'ORDER_CANCELLED'::character varying, 'ORDER_COMPLETED'::character varying, 'LISTING_EXPIRING_SOON'::character varying, 'MESSAGE_UNREAD'::character varying])::text[])))
 );
 
@@ -350,7 +350,7 @@ CREATE TABLE public.conversations (
     last_message_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT conversations_conversation_type_check CHECK (((conversation_type)::text = ANY ((ARRAY['DIRECT'::character varying, 'LISTING_CONTACT'::character varying, 'ORDER_CONTACT'::character varying])::text[])))
+    CONSTRAINT conversations_conversation_type_check CHECK (((conversation_type)::text = ANY (ARRAY[('DIRECT'::character varying)::text, ('LISTING_CONTACT'::character varying)::text, ('ORDER_CONTACT'::character varying)::text])))
 );
 
 
@@ -507,14 +507,14 @@ CREATE TABLE public.marketplace_listings (
     need_response_status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
     CONSTRAINT listing_qty_consistency CHECK (((quantity_available + quantity_reserved) <= quantity_total)),
     CONSTRAINT marketplace_listings_delivery_fee_check CHECK (((delivery_fee IS NULL) OR (delivery_fee >= (0)::numeric))),
-    CONSTRAINT marketplace_listings_delivery_mode_check CHECK (((delivery_mode)::text = ANY ((ARRAY['PICKUP'::character varying, 'DELIVERY'::character varying, 'BOTH'::character varying])::text[]))),
+    CONSTRAINT marketplace_listings_delivery_mode_check CHECK (((delivery_mode)::text = ANY (ARRAY[('PICKUP'::character varying)::text, ('DELIVERY'::character varying)::text, ('BOTH'::character varying)::text]))),
     CONSTRAINT marketplace_listings_delivery_radius_km_check CHECK (((delivery_radius_km IS NULL) OR (delivery_radius_km >= (0)::numeric))),
     CONSTRAINT marketplace_listings_need_response_status_check CHECK (((need_response_status)::text = ANY ((ARRAY['PENDING'::character varying, 'ACCEPTED'::character varying, 'REJECTED'::character varying, 'CANCELLED'::character varying, 'COMPLETED'::character varying, 'WITHDRAWN'::character varying, 'EXPIRED'::character varying])::text[]))),
     CONSTRAINT marketplace_listings_quantity_available_check CHECK ((quantity_available >= (0)::numeric)),
     CONSTRAINT marketplace_listings_quantity_reserved_check CHECK ((quantity_reserved >= (0)::numeric)),
     CONSTRAINT marketplace_listings_quantity_total_check CHECK ((quantity_total > (0)::numeric)),
     CONSTRAINT marketplace_listings_source_xor_chk CHECK ((((stock_id IS NOT NULL) AND (forecast_id IS NULL)) OR ((stock_id IS NULL) AND (forecast_id IS NOT NULL)))),
-    CONSTRAINT marketplace_listings_status_check CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'RESERVED'::character varying, 'CLOSED'::character varying, 'EXPIRED'::character varying, 'CANCELLED'::character varying])::text[]))),
+    CONSTRAINT marketplace_listings_status_check CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('RESERVED'::character varying)::text, ('CLOSED'::character varying)::text, ('EXPIRED'::character varying)::text, ('CANCELLED'::character varying)::text]))),
     CONSTRAINT marketplace_listings_unit_price_check CHECK ((unit_price > (0)::numeric))
 );
 
@@ -557,7 +557,7 @@ CREATE TABLE public.needs (
     published_at timestamp with time zone,
     CONSTRAINT needs_required_quantity_check CHECK ((required_quantity > (0)::numeric)),
     CONSTRAINT needs_source_system_check CHECK (((source_system)::text = ANY ((ARRAY['MANUAL'::character varying, 'VISION4FARMS'::character varying, 'ALERT'::character varying, 'CUSTOMER_DEMAND'::character varying])::text[]))),
-    CONSTRAINT needs_status_check CHECK (((status)::text = ANY ((ARRAY['OPEN'::character varying, 'PARTIALLY_COVERED'::character varying, 'COVERED'::character varying, 'IGNORED'::character varying, 'CANCELLED'::character varying])::text[])))
+    CONSTRAINT needs_status_check CHECK (((status)::text = ANY (ARRAY[('OPEN'::character varying)::text, ('PARTIALLY_COVERED'::character varying)::text, ('COVERED'::character varying)::text, ('IGNORED'::character varying)::text, ('CANCELLED'::character varying)::text])))
 );
 
 
@@ -579,7 +579,7 @@ CREATE TABLE public.notifications (
     is_read boolean DEFAULT false NOT NULL,
     read_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT notifications_type_check CHECK (((type)::text = ANY ((ARRAY['ALERT'::character varying, 'MESSAGE'::character varying, 'ORDER_UPDATE'::character varying, 'RECOMMENDATION'::character varying, 'SYSTEM'::character varying, 'ACCOUNT'::character varying])::text[])))
+    CONSTRAINT notifications_type_check CHECK (((type)::text = ANY (ARRAY[('ALERT'::character varying)::text, ('MESSAGE'::character varying)::text, ('ORDER_UPDATE'::character varying)::text, ('RECOMMENDATION'::character varying)::text, ('SYSTEM'::character varying)::text, ('ACCOUNT'::character varying)::text])))
 );
 
 
@@ -628,7 +628,7 @@ CREATE TABLE public.order_items (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     need_id uuid,
-    CONSTRAINT order_items_item_status_check CHECK (((item_status)::text = ANY ((ARRAY['PENDING'::character varying, 'CONFIRMED'::character varying, 'IN_DELIVERY'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying])::text[]))),
+    CONSTRAINT order_items_item_status_check CHECK (((item_status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('CONFIRMED'::character varying)::text, ('IN_DELIVERY'::character varying)::text, ('COMPLETED'::character varying)::text, ('CANCELLED'::character varying)::text]))),
     CONSTRAINT order_items_quantity_check CHECK ((quantity > (0)::numeric)),
     CONSTRAINT order_items_subtotal_check CHECK ((subtotal >= (0)::numeric)),
     CONSTRAINT order_items_unit_price_check CHECK ((unit_price > (0)::numeric))
@@ -646,7 +646,7 @@ CREATE TABLE public.order_status_history (
     changed_by_id uuid,
     notes text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT order_status_history_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'CONFIRMED'::character varying, 'IN_PROGRESS'::character varying, 'DELIVERING'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying])::text[])))
+    CONSTRAINT order_status_history_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('CONFIRMED'::character varying)::text, ('IN_PROGRESS'::character varying)::text, ('DELIVERING'::character varying)::text, ('COMPLETED'::character varying)::text, ('CANCELLED'::character varying)::text])))
 );
 
 
@@ -675,10 +675,10 @@ CREATE TABLE public.orders (
     completed_at timestamp with time zone,
     cancelled_at timestamp with time zone,
     group_id uuid,
-    CONSTRAINT orders_delivery_method_check CHECK (((delivery_method)::text = ANY ((ARRAY['PICKUP'::character varying, 'DELIVERY'::character varying, 'MIXED'::character varying])::text[]))),
-    CONSTRAINT orders_payment_status_check CHECK (((payment_status)::text = ANY ((ARRAY['PENDING'::character varying, 'PAID'::character varying, 'FAILED'::character varying])::text[]))),
-    CONSTRAINT orders_source_type_check CHECK (((source_type)::text = ANY ((ARRAY['MARKETPLACE'::character varying, 'RECOMMENDATION'::character varying])::text[]))),
-    CONSTRAINT orders_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'CONFIRMED'::character varying, 'IN_PROGRESS'::character varying, 'DELIVERING'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying])::text[]))),
+    CONSTRAINT orders_delivery_method_check CHECK (((delivery_method)::text = ANY (ARRAY[('PICKUP'::character varying)::text, ('DELIVERY'::character varying)::text, ('MIXED'::character varying)::text]))),
+    CONSTRAINT orders_payment_status_check CHECK (((payment_status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('PAID'::character varying)::text, ('FAILED'::character varying)::text]))),
+    CONSTRAINT orders_source_type_check CHECK (((source_type)::text = ANY (ARRAY[('MARKETPLACE'::character varying)::text, ('RECOMMENDATION'::character varying)::text]))),
+    CONSTRAINT orders_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('CONFIRMED'::character varying)::text, ('IN_PROGRESS'::character varying)::text, ('DELIVERING'::character varying)::text, ('COMPLETED'::character varying)::text, ('CANCELLED'::character varying)::text]))),
     CONSTRAINT orders_total_amount_check CHECK ((total_amount >= (0)::numeric))
 );
 
@@ -737,7 +737,7 @@ CREATE TABLE public.producer_profiles (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     user_type character varying(30),
     CONSTRAINT producer_profiles_completed_transactions_count_check CHECK ((completed_transactions_count >= 0)),
-    CONSTRAINT producer_profiles_user_type_check CHECK (((user_type)::text = ANY ((ARRAY['AGRICULTOR'::character varying, 'DISTRIBUIDOR'::character varying, 'VENDEDOR'::character varying])::text[])))
+    CONSTRAINT producer_profiles_user_type_check CHECK (((user_type)::text = ANY (ARRAY[('AGRICULTOR'::character varying)::text, ('DISTRIBUIDOR'::character varying)::text, ('VENDEDOR'::character varying)::text])))
 );
 
 
@@ -777,7 +777,7 @@ CREATE TABLE public.production_forecasts (
     notes text,
     CONSTRAINT production_forecasts_confidence_score_check CHECK (((confidence_score IS NULL) OR ((confidence_score >= (0)::numeric) AND (confidence_score <= (1)::numeric)))),
     CONSTRAINT production_forecasts_forecast_quantity_check CHECK ((forecast_quantity >= (0)::numeric)),
-    CONSTRAINT production_forecasts_source_system_check CHECK (((source_system)::text = ANY ((ARRAY['MANUAL'::character varying, 'VISION4FARMS'::character varying, 'MODEL'::character varying])::text[])))
+    CONSTRAINT production_forecasts_source_system_check CHECK (((source_system)::text = ANY (ARRAY[('MANUAL'::character varying)::text, ('VISION4FARMS'::character varying)::text, ('MODEL'::character varying)::text])))
 );
 
 
@@ -846,8 +846,8 @@ CREATE TABLE public.recommendations (
     CONSTRAINT recommendations_deficit_quantity_check CHECK (((deficit_quantity IS NULL) OR (deficit_quantity >= (0)::numeric))),
     CONSTRAINT recommendations_estimated_total_check CHECK (((estimated_total IS NULL) OR (estimated_total >= (0)::numeric))),
     CONSTRAINT recommendations_requested_quantity_check CHECK ((requested_quantity > (0)::numeric)),
-    CONSTRAINT recommendations_source_type_check CHECK (((source_type)::text = ANY ((ARRAY['MANUAL'::character varying, 'ALERT'::character varying, 'VISION4FARMS'::character varying])::text[]))),
-    CONSTRAINT recommendations_status_check CHECK (((status)::text = ANY ((ARRAY['GENERATED'::character varying, 'ACCEPTED'::character varying, 'ADJUSTED'::character varying, 'IGNORED'::character varying, 'EXPIRED'::character varying])::text[])))
+    CONSTRAINT recommendations_source_type_check CHECK (((source_type)::text = ANY (ARRAY[('MANUAL'::character varying)::text, ('ALERT'::character varying)::text, ('VISION4FARMS'::character varying)::text]))),
+    CONSTRAINT recommendations_status_check CHECK (((status)::text = ANY (ARRAY[('GENERATED'::character varying)::text, ('ACCEPTED'::character varying)::text, ('ADJUSTED'::character varying)::text, ('IGNORED'::character varying)::text, ('EXPIRED'::character varying)::text])))
 );
 
 
@@ -865,7 +865,7 @@ CREATE TABLE public.stock_movements (
     notes text,
     performed_by_id uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT stock_movements_movement_type_check CHECK (((movement_type)::text = ANY ((ARRAY['MANUAL_ADJUSTMENT'::character varying, 'ORDER_IN'::character varying, 'ORDER_OUT'::character varying, 'IMPORT'::character varying, 'CORRECTION'::character varying, 'LISTING_PUBLISH'::character varying, 'LISTING_CANCEL'::character varying])::text[]))),
+    CONSTRAINT stock_movements_movement_type_check CHECK (((movement_type)::text = ANY (ARRAY[('MANUAL_ADJUSTMENT'::character varying)::text, ('ORDER_IN'::character varying)::text, ('ORDER_OUT'::character varying)::text, ('IMPORT'::character varying)::text, ('CORRECTION'::character varying)::text, ('LISTING_PUBLISH'::character varying)::text, ('LISTING_CANCEL'::character varying)::text]))),
     CONSTRAINT stock_movements_quantity_delta_check CHECK ((quantity_delta <> (0)::numeric))
 );
 
@@ -885,6 +885,7 @@ CREATE TABLE public.stocks (
     last_updated_at timestamp with time zone DEFAULT now() NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    max_quantity numeric(14,3),
     CONSTRAINT stock_reserved_not_gt_current CHECK ((reserved_quantity <= current_quantity)),
     CONSTRAINT stocks_current_quantity_check CHECK ((current_quantity >= (0)::numeric)),
     CONSTRAINT stocks_minimum_threshold_check CHECK ((safety_stock >= (0)::numeric)),
@@ -999,9 +1000,9 @@ CREATE TABLE public.users (
     last_login timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT users_account_status_check CHECK (((account_status)::text = ANY ((ARRAY['PENDING_EMAIL_CONFIRMATION'::character varying, 'ACTIVE'::character varying, 'SUSPENDED'::character varying])::text[]))),
-    CONSTRAINT users_registration_source_check CHECK (((registration_source)::text = ANY ((ARRAY['SELF_REGISTERED'::character varying, 'ADMIN_CREATED'::character varying])::text[]))),
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['CLIENTE'::character varying, 'ADMIN'::character varying])::text[])))
+    CONSTRAINT users_account_status_check CHECK (((account_status)::text = ANY (ARRAY[('PENDING_EMAIL_CONFIRMATION'::character varying)::text, ('ACTIVE'::character varying)::text, ('SUSPENDED'::character varying)::text]))),
+    CONSTRAINT users_registration_source_check CHECK (((registration_source)::text = ANY (ARRAY[('SELF_REGISTERED'::character varying)::text, ('ADMIN_CREATED'::character varying)::text]))),
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('CLIENTE'::character varying)::text, ('ADMIN'::character varying)::text])))
 );
 
 
@@ -1023,8 +1024,8 @@ CREATE TABLE public.vision4farms_sync_log (
     CONSTRAINT vision4farms_sync_log_records_imported_check CHECK ((records_imported >= 0)),
     CONSTRAINT vision4farms_sync_log_records_received_check CHECK ((records_received >= 0)),
     CONSTRAINT vision4farms_sync_log_records_skipped_check CHECK ((records_skipped >= 0)),
-    CONSTRAINT vision4farms_sync_log_status_check CHECK (((status)::text = ANY ((ARRAY['SUCCESS'::character varying, 'PARTIAL'::character varying, 'FAILED'::character varying])::text[]))),
-    CONSTRAINT vision4farms_sync_log_sync_type_check CHECK (((sync_type)::text = ANY ((ARRAY['DEFICITS'::character varying, 'FORECASTS'::character varying, 'NEEDS'::character varying, 'EVENTS'::character varying])::text[])))
+    CONSTRAINT vision4farms_sync_log_status_check CHECK (((status)::text = ANY (ARRAY[('SUCCESS'::character varying)::text, ('PARTIAL'::character varying)::text, ('FAILED'::character varying)::text]))),
+    CONSTRAINT vision4farms_sync_log_sync_type_check CHECK (((sync_type)::text = ANY (ARRAY[('DEFICITS'::character varying)::text, ('FORECASTS'::character varying)::text, ('NEEDS'::character varying)::text, ('EVENTS'::character varying)::text])))
 );
 
 
@@ -1691,6 +1692,20 @@ CREATE INDEX idx_audit_log_user_date ON public.audit_log USING btree (user_id, c
 
 
 --
+-- Name: idx_conversation_participants_user_archived; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_conversation_participants_user_archived ON public.conversation_participants USING btree (user_id, is_archived, conversation_id);
+
+
+--
+-- Name: idx_conversations_last_message; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_conversations_last_message ON public.conversations USING btree (is_active, last_message_at DESC, updated_at DESC);
+
+
+--
 -- Name: idx_forecasts_producer_product; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1730,6 +1745,13 @@ CREATE INDEX idx_marketplace_listings_need_id ON public.marketplace_listings USI
 --
 
 CREATE INDEX idx_marketplace_listings_need_response_status ON public.marketplace_listings USING btree (need_id, need_response_status);
+
+
+--
+-- Name: idx_messages_conversation_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_messages_conversation_created ON public.messages USING btree (conversation_id, created_at DESC);
 
 
 --
@@ -2580,5 +2602,5 @@ ALTER TABLE ONLY public.user_preferences
 -- PostgreSQL database dump complete
 --
 
-\unrestrict FhZg3TbLrTWkQaJEWe94qIA56yp7cq6dkcSLgDwKnlwCymE6hKQutS3fAJXgogw
+\unrestrict aOBinySN8gucg1vxAboXGcjPlJe6te8LsPaIKFiszesCvlVFNyVt8cE8RghcsCD
 
